@@ -1,0 +1,44 @@
+"use client";
+
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Map, List } from "lucide-react";
+import { LocationMap } from "./location-map";
+import { LocationHierarchyView } from "./location-hierarchy-view";
+
+interface LocationsViewProps {
+    locations: any[];
+    connections: any[];
+    novelId: string;
+}
+
+export function LocationsView({ locations, connections, novelId }: LocationsViewProps) {
+    return (
+        <Tabs defaultValue="map" className="w-full">
+            <TabsList className="mb-4">
+                <TabsTrigger value="map" className="flex items-center gap-2">
+                    <Map className="w-4 h-4" />
+                    Map View
+                </TabsTrigger>
+                <TabsTrigger value="hierarchy" className="flex items-center gap-2">
+                    <List className="w-4 h-4" />
+                    Hierarchy View
+                </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="map">
+                <LocationMap
+                    locations={locations}
+                    connections={connections}
+                    novelId={novelId}
+                />
+            </TabsContent>
+
+            <TabsContent value="hierarchy">
+                <LocationHierarchyView
+                    locations={locations}
+                    novelId={novelId}
+                />
+            </TabsContent>
+        </Tabs>
+    );
+}

@@ -1,0 +1,231 @@
+"use client"
+//33.50
+import { z } from "zod"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useForm } from "react-hook-form"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
+import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field"
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormMessage,
+} from "@/components/ui/form"
+import { Input } from "@/components/ui/input"
+import Link from "next/link"
+
+const formSchema = z.object({
+  email: z.string().email({ message: "Please enter a valid email." }),
+  password: z
+    .string()
+    .min(8, { message: "Password must be at least 8 characters." })
+    .max(50),
+  confirmPassword: z
+    .string()
+    .min(8, { message: "Password must be at least 8 characters." }),
+  name: z.string().min(2, { message: "Name must be at least 2 characters." }),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords do not match.",
+  path: ["confirmPassword"],
+})
+export function SignupForm({
+  className,
+  ...props
+}: React.ComponentProps<"div">) {
+  const router = useRouter()
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      email: "",
+      password: "",
+      confirmPassword: "",
+      name: "",
+    },
+  })
+
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    const toastId = toast.loading("Creating your account...")
+    try {
+      const response = await fetch("/api/auth/sign-up/email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: values.email,
+          password: values.password,
+          name: values.name,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => null)
+        const message =
+          errorBody?.error?.message || "Unable to sign up with those details."
+        toast.error(message, { id: toastId })
+        return
+      }
+
+      const data = await response.json().catch(() => null)
+
+      if (data?.redirect && data?.url) {
+        toast.success("Redirecting...", { id: toastId })
+        router.push(data.url)
+        return
+      }
+
+      toast.success("Account created successfully.", { id: toastId })
+      form.reset()
+    } catch (error) {
+      toast.error("Something went wrong while signing up.", { id: toastId })
+      console.log(error)
+    }
+  }
+  return (
+    <div className={cn("flex flex-col gap-6", className)} {...props}>
+      <Form {...form}>
+        <Card>
+          <CardHeader>
+            <CardTitle>Create an account</CardTitle>
+            <CardDescription>
+              Enter your details below to create your account
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+              <FieldGroup>
+                <Field>
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FieldLabel htmlFor="name">Name</FieldLabel>
+                        <FormControl>
+                          <Input
+                            id="name"
+                            type="text"
+                            placeholder="Your name"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </Field>
+                <Field>
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FieldLabel htmlFor="email">Email</FieldLabel>
+                        <FormControl>
+                          <Input
+                            id="email"
+                            type="email"
+                            placeholder="m@example.com"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          We&apos;ll use this to contact you about your account.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </Field>
+                <Field>
+                  <FormField
+                    control={form.control}
+                    name="password"
+                    render={({ field }) => (
+                      <FormItem>
+                        <div className="flex items-center">
+                          <FieldLabel htmlFor="password">Password</FieldLabel>
+                          <Link
+                            href="#"
+                            className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
+                          >
+                            Forgot your password?
+                          </Link>
+                        </div>
+                        <FormControl>
+                          <Input
+                            id="password"
+                            type="password"
+                            placeholder="••••••••"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </Field>
+                <Field>
+                  <FormField
+                    control={form.control}
+                    name="confirmPassword"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FieldLabel htmlFor="confirmPassword">
+                          Confirm password
+                        </FieldLabel>
+                        <FormControl>
+                          <Input
+                            id="confirmPassword"
+                            type="password"
+                            placeholder="••••••••"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </Field>
+                <Field>
+                  <div className="flex flex-col gap-2">
+                    <Button type="submit">Sign up</Button>
+                    <Button variant="outline" type="button">
+                      Sign up with Google
+                    </Button>
+                  </div>
+                  <FieldDescription className="text-center">
+                    Already have an account?{" "}
+                    <Link
+                      href="/login"
+                      className="underline underline-offset-4"
+                    >
+                      Login
+                    </Link>
+                  </FieldDescription>
+                </Field>
+              </FieldGroup>
+            </form>
+          </CardContent>
+        </Card>
+      </Form>
+    </div>
+  )
+}

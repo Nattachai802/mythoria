@@ -1,0 +1,11 @@
+lancedb
+langchain
+langchain-openai
+pydantic
+google-generativeai
+python-dotenv
+pandas
+openai
+fastapi
+uvicorn
+httpx
