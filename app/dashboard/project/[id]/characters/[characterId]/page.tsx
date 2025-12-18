@@ -30,14 +30,16 @@ export default async function CharacterDetailPage({
 
     return (
         <div className="p-8">
-            <ProjectBreadcrumb
-                novelId={novelId}
-                novelTitle={novelTitle}
-                items={[
-                    { label: "Characters", href: `/dashboard/project/${novelId}/characters` },
-                    { label: character.name }
-                ]}
-            />
+            <div className="relative z-10">
+                <ProjectBreadcrumb
+                    novelId={novelId}
+                    novelTitle={novelTitle}
+                    items={[
+                        { label: "Characters", href: `/dashboard/project/${novelId}/characters` },
+                        { label: character.name }
+                    ]}
+                />
+            </div>
             <CharacterDetailContent character={character} novelId={novelId} />
         </div>
     );

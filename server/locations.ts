@@ -12,6 +12,16 @@ export async function createLocation(data: {
     description?: string;
     image?: string;
     parentLocationId?: string;
+    // Immersive fields
+    highlights?: string[];
+    atmosphere?: string;
+    climate?: string;
+    landmarks?: string[];
+    dangers?: string[];
+    inhabitants?: string;
+    resources?: string[];
+    secrets?: string;
+    history?: string;
 }) {
     try {
         // Convert empty string to null for parentLocationId
@@ -28,6 +38,7 @@ export async function createLocation(data: {
             .returning();
 
         revalidatePath(`/dashboard/project/${data.novelId}/locations`);
+        revalidatePath(`/dashboard/project/${data.novelId}/worldbuilding`);
 
         return { success: true, data: newLocation };
     } catch (error) {
@@ -81,13 +92,32 @@ export async function updateLocation(
         type: string;
         description: string;
         image: string;
-        parentLocationId: string;
+        parentLocationId: string | null;
+        // Immersive fields
+        highlights: string[];
+        atmosphere: string;
+        climate: string;
+        landmarks: string[];
+        dangers: string[];
+        inhabitants: string;
+        resources: string[];
+        secrets: string;
+        history: string;
     }>
 ) {
     try {
+        // Sanitize data - convert empty strings to null for foreign keys
+        const sanitizedData = {
+            ...data,
+            parentLocationId: data.parentLocationId && data.parentLocationId.trim() !== ''
+                ? data.parentLocationId
+                : null,
+            updatedAt: new Date(),
+        };
+
         const [updatedLocation] = await db
             .update(locations)
-            .set({ ...data, updatedAt: new Date() })
+            .set(sanitizedData)
             .where(eq(locations.id, locationId))
             .returning();
 
@@ -96,6 +126,7 @@ export async function updateLocation(
         }
 
         revalidatePath(`/dashboard/project/${updatedLocation.novelId}/locations`);
+        revalidatePath(`/dashboard/project/${updatedLocation.novelId}/worldbuilding`);
 
         return { success: true, data: updatedLocation };
     } catch (error) {
@@ -181,5 +212,31 @@ export async function validateLocationDepth(parentLocationId: string | null): Pr
     } catch (error) {
         console.error("Error validating location depth:", error);
         return { valid: false, depth: -1, error: "Failed to validate depth" };
+    }
+}
+
+// Save map layout positions for all locations
+export async function saveMapLayout(
+    novelId: string,
+    positions: { id: string; x: number; y: number }[]
+) {
+    try {
+        // Update each location's mapPosition
+        await Promise.all(
+            positions.map(pos =>
+                db
+                    .update(locations)
+                    .set({ mapPosition: { x: pos.x, y: pos.y } })
+                    .where(eq(locations.id, pos.id))
+            )
+        );
+
+        revalidatePath(`/dashboard/project/${novelId}/worldbuilding`);
+        revalidatePath(`/dashboard/project/${novelId}/locations`);
+
+        return { success: true };
+    } catch (error) {
+        console.error("Error saving map layout:", error);
+        return { success: false, error: "Failed to save map layout" };
     }
 }

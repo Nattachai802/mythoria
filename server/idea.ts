@@ -1,25 +1,38 @@
 'use server';
 
 import { db } from "@/db/drizzle";
-import { notes } from "@/db/schema";
+import { ideas, ideaConnections, Idea } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 export async function createIdea(data: {
     title: string;
-    content: any; // jsonb content from rich text editor
+    content?: string;
+    summary?: string;
     novelId: string;
+    category?: string;
     tags?: string[];
-    linkedToChapterId?: string;
-    linkedToCharacterId?: string;
-    linkedToLocationId?: string;
+    linkedChapterId?: string;
+    linkedCharacterIds?: string[];
+    canvasX?: number;
+    canvasY?: number;
+    color?: string;
 }) {
     try {
         const [newIdea] = await db
-            .insert(notes)
+            .insert(ideas)
             .values({
-                ...data,
-                type: "idea",
+                title: data.title,
+                content: data.content,
+                summary: data.summary,
+                novelId: data.novelId,
+                category: data.category || "general",
+                tags: data.tags,
+                linkedChapterId: data.linkedChapterId,
+                linkedCharacterIds: data.linkedCharacterIds,
+                canvasX: data.canvasX,
+                canvasY: data.canvasY,
+                color: data.color,
             })
             .returning();
 
@@ -36,14 +49,9 @@ export async function getIdeasByNovelId(novelId: string) {
     try {
         const allIdeas = await db
             .select()
-            .from(notes)
-            .where(
-                and(
-                    eq(notes.novelId, novelId),
-                    eq(notes.type, "idea") // filter เฉพาะ type = idea
-                )
-            )
-            .orderBy(notes.createdAt);
+            .from(ideas)
+            .where(eq(ideas.novelId, novelId))
+            .orderBy(ideas.createdAt);
 
         return { success: true, data: allIdeas };
     } catch (error) {
@@ -56,13 +64,8 @@ export async function getIdeaById(ideaId: string) {
     try {
         const [idea] = await db
             .select()
-            .from(notes)
-            .where(
-                and(
-                    eq(notes.id, ideaId),
-                    eq(notes.type, "idea")
-                )
-            )
+            .from(ideas)
+            .where(eq(ideas.id, ideaId))
             .limit(1);
 
         if (!idea) {
@@ -80,23 +83,24 @@ export async function updateIdea(
     ideaId: string,
     data: Partial<{
         title: string;
-        content: any;
+        content: string;
+        summary: string;
+        category: string;
         tags: string[];
-        linkedToChapterId: string;
-        linkedToCharacterId: string;
-        linkedToLocationId: string;
+        linkedChapterId: string | null;
+        linkedCharacterIds: string[];
+        canvasX: number;
+        canvasY: number;
+        color: string;
+        isArchived: boolean;
+        connectedIdeaIds: string[];
     }>
 ) {
     try {
         const [updatedIdea] = await db
-            .update(notes)
+            .update(ideas)
             .set({ ...data, updatedAt: new Date() })
-            .where(
-                and(
-                    eq(notes.id, ideaId),
-                    eq(notes.type, "idea")
-                )
-            )
+            .where(eq(ideas.id, ideaId))
             .returning();
 
         if (!updatedIdea) {
@@ -115,13 +119,8 @@ export async function updateIdea(
 export async function deleteIdea(ideaId: string) {
     try {
         const [deletedIdea] = await db
-            .delete(notes)
-            .where(
-                and(
-                    eq(notes.id, ideaId),
-                    eq(notes.type, "idea")
-                )
-            )
+            .delete(ideas)
+            .where(eq(ideas.id, ideaId))
             .returning();
 
         if (!deletedIdea) {
@@ -134,5 +133,86 @@ export async function deleteIdea(ideaId: string) {
     } catch (error) {
         console.error("Error deleting idea:", error);
         return { success: false, error: "Failed to delete idea" };
+    }
+}
+
+// Batch update canvas positions (for playground drag & drop)
+export async function updateIdeaPositions(
+    updates: Array<{ id: string; canvasX: number; canvasY: number }>
+) {
+    try {
+        const results = await Promise.all(
+            updates.map(({ id, canvasX, canvasY }) =>
+                db
+                    .update(ideas)
+                    .set({ canvasX, canvasY, updatedAt: new Date() })
+                    .where(eq(ideas.id, id))
+                    .returning()
+            )
+        );
+
+        return { success: true, data: results.flat() };
+    } catch (error) {
+        console.error("Error updating idea positions:", error);
+        return { success: false, error: "Failed to update positions" };
+    }
+}
+
+// ============================================
+// IDEA CONNECTIONS
+// ============================================
+
+export async function createIdeaConnection(data: {
+    sourceIdeaId: string;
+    targetIdeaId: string;
+    novelId: string;
+    label?: string;
+}) {
+    try {
+        const [connection] = await db
+            .insert(ideaConnections)
+            .values(data)
+            .returning();
+
+        revalidatePath(`/dashboard/project/${data.novelId}/idea`);
+
+        return { success: true, data: connection };
+    } catch (error) {
+        console.error("Error creating idea connection:", error);
+        return { success: false, error: "Failed to create connection" };
+    }
+}
+
+export async function getIdeaConnectionsByNovelId(novelId: string) {
+    try {
+        const connections = await db
+            .select()
+            .from(ideaConnections)
+            .where(eq(ideaConnections.novelId, novelId));
+
+        return { success: true, data: connections };
+    } catch (error) {
+        console.error("Error fetching idea connections:", error);
+        return { success: false, error: "Failed to fetch connections" };
+    }
+}
+
+export async function deleteIdeaConnection(connectionId: string) {
+    try {
+        const [deleted] = await db
+            .delete(ideaConnections)
+            .where(eq(ideaConnections.id, connectionId))
+            .returning();
+
+        if (!deleted) {
+            return { success: false, error: "Connection not found" };
+        }
+
+        revalidatePath(`/dashboard/project/${deleted.novelId}/idea`);
+
+        return { success: true, data: deleted };
+    } catch (error) {
+        console.error("Error deleting idea connection:", error);
+        return { success: false, error: "Failed to delete connection" };
     }
 }

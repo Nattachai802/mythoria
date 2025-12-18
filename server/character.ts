@@ -1,8 +1,8 @@
 'use server';
 
 import { db } from "@/db/drizzle";
-import { characters, characterRelationships } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { characters, characterRelationships, relationshipHistory, chapters } from "@/db/schema";
+import { eq, and, desc, asc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 export async function createCharacter(data: {
@@ -145,11 +145,17 @@ export async function createCharacterRelationship(data: {
     targetCharacterId: string;
     type: string;
     description?: string;
+    opinionLevel?: number;
+    sentiment?: string;
 }) {
     try {
         const [newRelationship] = await db
             .insert(characterRelationships)
-            .values(data)
+            .values({
+                ...data,
+                opinionLevel: data.opinionLevel ?? 50,
+                sentiment: data.sentiment ?? "neutral",
+            })
             .returning();
 
         revalidatePath(`/dashboard/project/${data.novelId}/characters`);
@@ -158,6 +164,35 @@ export async function createCharacterRelationship(data: {
     } catch (error) {
         console.error("Error creating relationship:", error);
         return { success: false, error: "Failed to create relationship" };
+    }
+}
+
+export async function updateCharacterRelationship(
+    relationshipId: string,
+    data: Partial<{
+        type: string;
+        description: string;
+        opinionLevel: number;
+        sentiment: string;
+    }>
+) {
+    try {
+        const [updated] = await db
+            .update(characterRelationships)
+            .set({ ...data, updatedAt: new Date() })
+            .where(eq(characterRelationships.id, relationshipId))
+            .returning();
+
+        if (!updated) {
+            return { success: false, error: "Relationship not found" };
+        }
+
+        revalidatePath(`/dashboard/project/${updated.novelId}/characters`);
+
+        return { success: true, data: updated };
+    } catch (error) {
+        console.error("Error updating relationship:", error);
+        return { success: false, error: "Failed to update relationship" };
     }
 }
 
@@ -184,6 +219,8 @@ export async function getCharacterRelationships(characterId: string) {
                 id: rel.id,
                 relationshipType: rel.type,
                 description: rel.description,
+                opinionLevel: rel.opinionLevel ?? 50,
+                sentiment: rel.sentiment ?? "neutral",
                 // Information about the related character
                 character: {
                     id: otherCharacter.id,
@@ -237,5 +274,96 @@ export async function getAllCharacterRelationships(novelId: string) {
     } catch (error) {
         console.error("Error fetching all relationships:", error);
         return { success: false, error: "Failed to fetch relationships" };
+    }
+}
+
+// ============================================
+// RELATIONSHIP HISTORY FUNCTIONS
+// ============================================
+
+export async function addRelationshipHistoryEntry(data: {
+    relationshipId: string;
+    novelId: string;
+    chapterId?: string;
+    opinionLevel: number;
+    sentiment?: string;
+    reason?: string;
+}) {
+    try {
+        const [entry] = await db
+            .insert(relationshipHistory)
+            .values(data)
+            .returning();
+
+        return { success: true, data: entry };
+    } catch (error) {
+        console.error("Error adding relationship history:", error);
+        return { success: false, error: "Failed to add history entry" };
+    }
+}
+
+export async function getRelationshipHistory(relationshipId: string) {
+    try {
+        const history = await db.query.relationshipHistory.findMany({
+            where: eq(relationshipHistory.relationshipId, relationshipId),
+            with: {
+                chapter: true,
+            },
+            orderBy: [asc(relationshipHistory.createdAt)],
+        });
+
+        return { success: true, data: history };
+    } catch (error) {
+        console.error("Error fetching relationship history:", error);
+        return { success: false, error: "Failed to fetch history" };
+    }
+}
+
+// Auto-record history when opinion level changes significantly
+export async function recordOpinionChange(
+    relationshipId: string,
+    novelId: string,
+    newOpinionLevel: number,
+    chapterId?: string,
+    reason?: string
+) {
+    try {
+        // Get the last history entry to compare
+        const lastEntry = await db.query.relationshipHistory.findFirst({
+            where: eq(relationshipHistory.relationshipId, relationshipId),
+            orderBy: [desc(relationshipHistory.createdAt)],
+        });
+
+        // Only record if:
+        // 1. No previous entry exists, OR
+        // 2. Opinion changed by at least 10 points, OR
+        // 3. A reason was provided (explicit user action)
+        const shouldRecord = !lastEntry ||
+            Math.abs((lastEntry.opinionLevel || 50) - newOpinionLevel) >= 10 ||
+            (reason && reason.trim().length > 0);
+
+        if (!shouldRecord) {
+            return { success: true, data: null, message: "Change too small to record" };
+        }
+
+        const sentiment = newOpinionLevel >= 60 ? "positive" :
+            newOpinionLevel >= 40 ? "neutral" : "negative";
+
+        const [entry] = await db
+            .insert(relationshipHistory)
+            .values({
+                relationshipId,
+                novelId,
+                chapterId: chapterId || null,
+                opinionLevel: newOpinionLevel,
+                sentiment,
+                reason: reason || null,
+            })
+            .returning();
+
+        return { success: true, data: entry };
+    } catch (error) {
+        console.error("Error recording opinion change:", error);
+        return { success: false, error: "Failed to record change" };
     }
 }

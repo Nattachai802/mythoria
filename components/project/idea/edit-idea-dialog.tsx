@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Note } from "@/db/schema";
+import { Idea } from "@/db/schema";
 import {
     Dialog,
     DialogContent,
@@ -34,7 +34,7 @@ const ideaSchema = z.object({
 type IdeaFormData = z.infer<typeof ideaSchema>;
 
 interface EditIdeaDialogProps {
-    idea: Note;
+    idea: Idea;
     open: boolean;
     onOpenChange: (open: boolean) => void;
 }

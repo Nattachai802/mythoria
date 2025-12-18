@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Note } from "@/db/schema";
+import { Idea } from "@/db/schema";
 import { IdeaCard } from "./idea-card";
 import { CreateIdeaDialog } from "./create-idea-dialog";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 
 interface IdeasViewProps {
-    ideas: Note[];
+    ideas: Idea[];
     novelId: string;
     chapters?: { id: string; title: string }[];
 }
@@ -40,9 +40,9 @@ export function IdeasView({ ideas, novelId, chapters = [] }: IdeasViewProps) {
     });
 
     // Get chapter info for idea
-    const getChapterInfo = (idea: Note) => {
-        if (!idea.linkedToChapterId) return null;
-        return chapters.find(ch => ch.id === idea.linkedToChapterId);
+    const getChapterInfo = (idea: Idea) => {
+        if (!idea.linkedChapterId) return null;
+        return chapters.find(ch => ch.id === idea.linkedChapterId);
     };
 
     return (

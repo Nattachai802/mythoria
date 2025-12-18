@@ -1,15 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getCharacterRelationships, deleteCharacterRelationship } from "@/server/character";
+import { getCharacterRelationships, deleteCharacterRelationship, updateCharacterRelationship } from "@/server/character";
 import { getCharacterFactions, removeCharacterFromFaction } from "@/server/factions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, User, ArrowLeftRight, ArrowRight, ArrowLeft } from "lucide-react";
+import { Plus, Trash2, User, ArrowRight, ArrowLeft, History } from "lucide-react";
 import { AddRelationshipDialog } from "./add-relationship-dialog";
 import { ManageFactionDialog } from "./manage-faction-dialog";
+import { RelationshipTimeline } from "./relationship-timeline";
 import { RELATIONSHIP_COLORS } from "./relationship-constants";
 import { Badge } from "@/components/ui/badge";
+import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 import {
     AlertDialog,
@@ -48,6 +50,42 @@ export function CharacterRelationships({ characterId, novelId }: CharacterRelati
     const [isFactionAddOpen, setIsFactionAddOpen] = useState(false);
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [deleteFactionId, setDeleteFactionId] = useState<string | null>(null);
+    const [editingOpinion, setEditingOpinion] = useState<string | null>(null);
+    const [timelineRelId, setTimelineRelId] = useState<string | null>(null);
+    const [timelineCharName, setTimelineCharName] = useState<string>("");
+
+    // Helper function to get opinion level color
+    const getOpinionColor = (level: number) => {
+        if (level >= 80) return "bg-emerald-500";
+        if (level >= 60) return "bg-green-400";
+        if (level >= 40) return "bg-yellow-400";
+        if (level >= 20) return "bg-orange-400";
+        return "bg-red-500";
+    };
+
+    const getOpinionLabel = (level: number) => {
+        if (level >= 80) return "สนิทมาก";
+        if (level >= 60) return "เป็นมิตร";
+        if (level >= 40) return "ปกติ";
+        if (level >= 20) return "ไม่ชอบ";
+        return "เป็นศัตรู";
+    };
+
+    const handleOpinionChange = async (relationshipId: string, newLevel: number) => {
+        const result = await updateCharacterRelationship(relationshipId, {
+            opinionLevel: newLevel,
+            sentiment: newLevel >= 60 ? "positive" : newLevel >= 40 ? "neutral" : "negative"
+        });
+        if (result.success) {
+            setRelationships(prev => prev.map(rel =>
+                rel.id === relationshipId
+                    ? { ...rel, opinionLevel: newLevel }
+                    : rel
+            ));
+        } else {
+            toast.error("ไม่สามารถอัปเดตระดับความสัมพันธ์");
+        }
+    };
 
     const fetchData = async () => {
         const [relResult, facResult, chapResult] = await Promise.all([
@@ -280,10 +318,72 @@ export function CharacterRelationships({ characterId, novelId }: CharacterRelati
                                                     </div>
 
                                                     {rel.description && (
-                                                        <p className="text-sm text-muted-foreground break-words line-clamp-2">
+                                                        <p className="text-sm text-muted-foreground break-words line-clamp-2 mb-2">
                                                             {rel.description}
                                                         </p>
                                                     )}
+
+                                                    {/* Opinion Level */}
+                                                    <div className="mt-2 pt-2 border-t">
+                                                        <div className="flex items-center justify-between mb-1">
+                                                            <div className="flex items-center gap-1">
+                                                                <span className="text-xs text-muted-foreground">ระดับความสัมพันธ์</span>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-5 w-5"
+                                                                    onClick={() => {
+                                                                        setTimelineRelId(rel.id);
+                                                                        setTimelineCharName(rel.character.name);
+                                                                    }}
+                                                                    title="ดูประวัติความสัมพันธ์"
+                                                                >
+                                                                    <History className="h-3 w-3" />
+                                                                </Button>
+                                                            </div>
+                                                            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${getOpinionColor(rel.opinionLevel)} text-white`}>
+                                                                {rel.opinionLevel}% - {getOpinionLabel(rel.opinionLevel)}
+                                                            </span>
+                                                        </div>
+                                                        {editingOpinion === rel.id ? (
+                                                            <div className="flex items-center gap-2">
+                                                                <Slider
+                                                                    value={[rel.opinionLevel]}
+                                                                    onValueChange={(value) => {
+                                                                        setRelationships(prev => prev.map(r =>
+                                                                            r.id === rel.id ? { ...r, opinionLevel: value[0] } : r
+                                                                        ));
+                                                                    }}
+                                                                    onValueCommit={(value) => {
+                                                                        handleOpinionChange(rel.id, value[0]);
+                                                                        setEditingOpinion(null);
+                                                                    }}
+                                                                    max={100}
+                                                                    min={0}
+                                                                    step={5}
+                                                                    className="flex-1"
+                                                                />
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    onClick={() => setEditingOpinion(null)}
+                                                                >
+                                                                    ยกเลิก
+                                                                </Button>
+                                                            </div>
+                                                        ) : (
+                                                            <div
+                                                                className="h-2 rounded-full bg-muted overflow-hidden cursor-pointer hover:ring-2 ring-primary/50 transition-all"
+                                                                onClick={() => setEditingOpinion(rel.id)}
+                                                                title="คลิกเพื่อแก้ไข"
+                                                            >
+                                                                <div
+                                                                    className={`h-full transition-all ${getOpinionColor(rel.opinionLevel)}`}
+                                                                    style={{ width: `${rel.opinionLevel}%` }}
+                                                                />
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         ))
@@ -342,6 +442,21 @@ export function CharacterRelationships({ characterId, novelId }: CharacterRelati
                         </AlertDialogFooter>
                     </AlertDialogContent>
                 </AlertDialog>
+
+                {/* Relationship Timeline Dialog */}
+                {timelineRelId && (
+                    <RelationshipTimeline
+                        relationshipId={timelineRelId}
+                        novelId={novelId}
+                        currentOpinionLevel={
+                            relationships.find(r => r.id === timelineRelId)?.opinionLevel ?? 50
+                        }
+                        characterName={timelineCharName}
+                        open={!!timelineRelId}
+                        onOpenChange={(open) => !open && setTimelineRelId(null)}
+                        onUpdate={fetchData}
+                    />
+                )}
             </div>
         </>
     );

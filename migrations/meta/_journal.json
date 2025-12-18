@@ -22,6 +22,27 @@
       "when": 1765553106750,
       "tag": "0002_cheerful_mantis",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1765772954168,
+      "tag": "0003_nervous_quentin_quire",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1765775530084,
+      "tag": "0004_conscious_mongoose",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1765857462427,
+      "tag": "0005_shiny_mysterio",
+      "breakpoints": true
     }
   ]
 }

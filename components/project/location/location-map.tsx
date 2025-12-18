@@ -42,7 +42,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { MapPin, Plus, Trash2, Clock, MoreHorizontal } from "lucide-react";
+import { MapPin, Plus, Trash2, Clock, MoreHorizontal, Save } from "lucide-react";
 import { toast } from "sonner";
 import {
     createLocationConnection,
@@ -50,6 +50,7 @@ import {
 } from "@/server/location-connections";
 import { CONNECTION_TYPES } from "@/lib/location-constants";
 import { TravelTimeEditor } from "./travel-time-editor";
+import { saveMapLayout } from "@/server/locations";
 
 interface LocationMapProps {
     locations: any[];
@@ -113,6 +114,7 @@ export function LocationMap({ locations, connections, novelId }: LocationMapProp
     // Travel time editor state
     const [travelTimeEditorOpen, setTravelTimeEditorOpen] = useState(false);
     const [selectedEdgeForTravel, setSelectedEdgeForTravel] = useState<any>(null);
+    const [isSaving, setIsSaving] = useState(false);
 
     // Calculate hierarchical positions for nodes
     const calculatePositions = () => {
@@ -180,13 +182,16 @@ export function LocationMap({ locations, connections, novelId }: LocationMapProp
 
     const nodePositions = calculatePositions();
 
-    // Convert locations to nodes with hierarchical positions
-    const initialNodes: Node[] = locations.map((loc) => ({
-        id: loc.id,
-        type: "location",
-        position: nodePositions[loc.id] || { x: 150, y: 100 },
-        data: { label: loc.name, type: loc.type },
-    }));
+    // Convert locations to nodes with saved or calculated positions
+    const initialNodes: Node[] = locations.map((loc) => {
+        const savedPos = loc.mapPosition as { x: number; y: number } | null;
+        return {
+            id: loc.id,
+            type: "location",
+            position: savedPos || nodePositions[loc.id] || { x: 150, y: 100 },
+            data: { label: loc.name, type: loc.type },
+        };
+    });
 
     // Create parent-child edges (hierarchy edges)
     // Child (ด้านล่าง) ออกจากด้านบน -> Parent (ด้านบน) รับที่ด้านล่าง
@@ -310,6 +315,23 @@ export function LocationMap({ locations, connections, novelId }: LocationMapProp
         }
     };
 
+    const handleSaveLayout = async () => {
+        setIsSaving(true);
+        const positions = nodes.map(node => ({
+            id: node.id,
+            x: node.position.x,
+            y: node.position.y,
+        }));
+
+        const result = await saveMapLayout(novelId, positions);
+        if (result.success) {
+            toast.success("Layout saved!");
+        } else {
+            toast.error(result.error || "Failed to save layout");
+        }
+        setIsSaving(false);
+    };
+
     return (
         <>
             <Card className="h-[600px]">
@@ -337,6 +359,15 @@ export function LocationMap({ locations, connections, novelId }: LocationMapProp
                                 <span>ทางไป</span>
                             </div>
                         </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleSaveLayout}
+                            disabled={isSaving}
+                        >
+                            <Save className="h-4 w-4 mr-2" />
+                            {isSaving ? "Saving..." : "Save Layout"}
+                        </Button>
                     </div>
                     <p className="text-sm text-muted-foreground">
                         Drag locations to arrange. Connect by dragging from one location to another.
@@ -438,6 +469,10 @@ export function LocationMap({ locations, connections, novelId }: LocationMapProp
                     }}
                     onUpdate={() => {
                         // Page will revalidate from server
+                    }}
+                    onDelete={() => {
+                        setEdges(edges.filter(e => e.id !== selectedEdgeForTravel.id));
+                        setSelectedEdgeForTravel(null);
                     }}
                 />
             )}

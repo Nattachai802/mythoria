@@ -101,8 +101,7 @@ export function NoteCastDeck({ noteId, novelId, linkedChapterId, content = "" }:
         const suggestions = scanForCharacters(
             content,
             allCharacters,
-            confirmedIds,
-            0.7 // Confidence threshold
+            confirmedIds
         )
 
         // Filter out dismissed characters

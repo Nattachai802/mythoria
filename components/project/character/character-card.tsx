@@ -9,7 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { EditCharacterDialog } from "./edit-character-dialog";
+import { CharacterSheet } from "./character-sheet";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -41,7 +41,7 @@ const ROLE_CONFIG = {
 
 export function CharacterCard({ character, novelId, onEdit }: CharacterCardProps) {
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 
   const handleDelete = async () => {
@@ -106,7 +106,7 @@ export function CharacterCard({ character, novelId, onEdit }: CharacterCardProps
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={(e) => { e.preventDefault(); setIsEditOpen(true); }}>
+              <DropdownMenuItem onClick={(e) => { e.preventDefault(); setIsSheetOpen(true); }}>
                 <Pencil className="h-4 w-4 mr-2" />
                 Edit
               </DropdownMenuItem>
@@ -129,10 +129,11 @@ export function CharacterCard({ character, novelId, onEdit }: CharacterCardProps
         </div>
       </Link>
 
-      <EditCharacterDialog
+      <CharacterSheet
         character={character}
-        open={isEditOpen}
-        onOpenChange={setIsEditOpen}
+        novelId={novelId}
+        open={isSheetOpen}
+        onOpenChange={setIsSheetOpen}
       />
 
       <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>

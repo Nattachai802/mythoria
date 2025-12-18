@@ -1,97 +1,261 @@
 # Mythoria 🖋️✨
 
-Mythoria is a modern, comprehensive web application designed for novelists and storytellers. It provides a dedicated workspace to plan, write, and manage your novels, characters, worlds, and plotlines in one seamless interface.
+**Mythoria** เป็น Web Application สำหรับนักเขียนนิยายที่ต้องการจัดการโปรเจกต์เขียนนิยายอย่างครบวงจร ตั้งแต่การสร้างตัวละคร สร้างโลก วางพล็อต ไปจนถึงการเขียนเนื้อหา พร้อมระบบ AI ช่วยวิเคราะห์
 
-## 🚀 Features
+---
 
-### 📚 Project Management
-- **Dashboard**: Central hub for all your novels/projects.
-- **Detailed Statistics**: Track word counts (total per novel and per chapter), progress towards goals, and chapter statuses (Draft/Published).
-- **Metadata Management**: Easily update project titles, descriptions, status, and visibility.
+## 📑 สารบัญ
 
-### ✍️ Writing Suite
-- **Chapter Management**: Create, edit, reorder, and organize chapters.
-- **Rich Text Editor**: Distraction-free writing environment with formatting support (powered by Quill).
-- **Notes System**: Attach sticky notes to specific chapters for quick reference or ideas.
+- [ฟีเจอร์หลัก](#-ฟีเจอร์หลัก)
+- [เทคโนโลยีที่ใช้](#-เทคโนโลยีที่ใช้)
+- [โครงสร้างฐานข้อมูล](#-โครงสร้างฐานข้อมูล)
+- [โครงสร้างโปรเจกต์](#-โครงสร้างโปรเจกต์)
+- [การติดตั้ง](#-การติดตั้ง)
+- [การใช้งาน](#-การใช้งาน)
 
-### 🌍 World Building
-- **Character Database**: Create detailed character profiles with attributes, roles, and backstories.
-- **Relationship Board**: Visualize character connections and relationships on an interactive board.
-- **Location Manager**: Document settings and places, including hierarchy and details.
-- **Lore & Factions**: Manage factions, groups, and world lore.
+---
 
-### 🧩 Plotting & Planning
-- **Idea Vault**: Store stray ideas, snippets, and inspiration in a centralized list.
-- **Timeline Board**: Visually map out events on a timeline to ensure plot consistency.
-- **Plot Playground**: Interactive canvas to organize scenes and plot points (using React Flow).
+## 🚀 ฟีเจอร์หลัก
 
-## 🛠️ Technology Stack
+### 📚 จัดการโปรเจกต์
+| ฟีเจอร์ | รายละเอียด |
+|--------|-----------|
+| **Dashboard** | ศูนย์กลางจัดการนิยายทั้งหมด |
+| **สถิติ** | ติดตาม word count, ความคืบหน้า, สถานะบท |
+| **จัดการข้อมูล** | แก้ไข title, description, status, visibility |
 
-- **Framework**: [Next.js 16](https://nextjs.org/) (App Router)
-- **Language**: TypeScript
-- **Styling**: [Tailwind CSS v4](https://tailwindcss.com/)
-- **UI Components**: [Radix UI](https://www.radix-ui.com/), [Lucide React](https://lucide.dev/)
-- **Database & ORM**: PostgreSQL, [Drizzle ORM](https://orm.drizzle.team/)
-- **Authentication**: [Better Auth](https://www.better-auth.com/)
-- **State & Interaction**: 
-  - [React Hook Form](https://react-hook-form.com/) + [Zod](https://zod.dev/) for validation
-  - [DnD Kit](https://dndkit.com/) for drag-and-drop
-  - [React Flow](https://reactflow.dev/) for node-based visualizaions
-  - [Sonner](https://sonner.emilkowal.ski/) for toast notifications
+### ✍️ เครื่องมือเขียน
+| ฟีเจอร์ | รายละเอียด |
+|--------|-----------|
+| **Chapter Editor** | Rich text editor (Quill) |
+| **Notes System** | โน้ตประกอบแต่ละ chapter พร้อม Plot Hole Tracking |
+| **Cast Deck** | เลือกตัวละครที่ปรากฏใน note |
 
-## 🏁 Getting Started
+### 👥 ระบบตัวละคร
+| ฟีเจอร์ | รายละเอียด |
+|--------|-----------|
+| **Character Profiles** | ข้อมูลครบ (role, appearance, personality, goals, aliases) |
+| **Relationship Board** | แสดงความสัมพันธ์เป็น network graph |
+| **Life Events** | เหตุการณ์สำคัญในชีวิตตัวละคร |
+| **Faction Timeline** | ตัวละครอยู่กลุ่มไหนเมื่อไหร่ |
+| **Power Manager** | จัดการพลังที่ตัวละครมี |
 
-### Prerequisites
+### 🎯 ระบบพลัง (Power System)
+| ฟีเจอร์ | รายละเอียด |
+|--------|-----------|
+| **Power Definition** | นิยามพลัง + ข้อจำกัด + rarity |
+| **Power Levels** | แต่ละระดับมี pros/cons/changes |
+| **Power Combinations** | รวมพลังหลายอย่าง |
 
-- Node.js (Latest LTS recommended)
-- PostgreSQL database
+### 🌍 สร้างโลก (World Building)
+| ฟีเจอร์ | รายละเอียด |
+|--------|-----------|
+| **Locations** | สถานที่แบบ hierarchy + map connections + travel time |
+| **Lore Timeline** | ประวัติศาสตร์โลกแบบ visual (ยุคสมัย, กลุ่ม) |
+| **Items/Artifacts** | ไอเทม อาวุธ ของวิเศษ |
+| **Entities** | สิ่งมีชีวิต มอนสเตอร์ + threat level |
+| **Factions** | กลุ่มก๊วนต่างๆ |
 
-### Installation
+### 🧩 วางพล็อต
+| ฟีเจอร์ | รายละเอียด |
+|--------|-----------|
+| **Timeline Board** | วางเหตุการณ์บน timeline |
+| **Idea Playground** | Canvas สำหรับวางไอเดีย (React Flow) |
+| **Idea Connections** | เชื่อมโยงไอเดียถึงกัน |
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd mythoria
-   ```
+### 🤖 AI Features
+| ฟีเจอร์ | รายละเอียด |
+|--------|-----------|
+| **Character Analysis** | วิเคราะห์ความสัมพันธ์/เหตุการณ์จากเนื้อหาอัตโนมัติ |
+| **Plot Hole Detection** | ตรวจหาข้อขัดแย้งในเนื้อเรื่อง |
+| **State Extraction** | ดึงสถานะตัวละคร ณ จุดต่างๆ |
+| **Vector Search** | ค้นหาเนื้อหาที่เกี่ยวข้องแบบอัจฉริยะ |
+| **AI Suggestions** | แนะนำข้อมูลที่รอ user review |
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+---
 
-3. **Environment Setup**
-   Create a `.env` file in the root directory and configure your database connection and authentication secrets:
-   ```env
-   DATABASE_URL="postgresql://user:password@localhost:5432/mythoria"
-   # Add other necessary auth secrets here
-   ```
+## 🛠️ เทคโนโลยีที่ใช้
 
-4. **Database Migration**
-   Push the schema to your database:
-   ```bash
-   npm run db:push
-   ```
+### Frontend
+| เทคโนโลยี | เวอร์ชัน |
+|----------|---------|
+| [Next.js](https://nextjs.org/) | 16 (App Router) |
+| [React](https://react.dev/) | 19 |
+| [TypeScript](https://www.typescriptlang.org/) | 5 |
+| [Tailwind CSS](https://tailwindcss.com/) | v4 |
 
-5. **Run Development Server**
-   ```bash
-   npm run dev
-   ```
-   Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### UI Components
+| Library | หน้าที่ |
+|---------|--------|
+| [Radix UI](https://www.radix-ui.com/) | Accessible components |
+| [Lucide React](https://lucide.dev/) | Icons |
+| [DnD Kit](https://dndkit.com/) | Drag-and-drop |
+| [React Flow](https://reactflow.dev/) | Node-based visualizations |
+| [Sonner](https://sonner.emilkowal.ski/) | Toast notifications |
 
-## 📂 Project Structure
+### Backend
+| เทคโนโลยี | หน้าที่ |
+|----------|--------|
+| [PostgreSQL](https://www.postgresql.org/) | Database |
+| [Drizzle ORM](https://orm.drizzle.team/) | ORM + Migrations |
+| [Better Auth](https://www.better-auth.com/) | Authentication |
+| [Zod](https://zod.dev/) | Validation |
 
-- `/app`: App Router pages and layouts.
-  - `/dashboard`: Main authenticated interface.
-  - `/api`: Server-side API routes.
-- `/components`: Reusable UI components and feature-specific widgets.
-- `/db`: Database schema and Drizzle configuration.
-- `/lib`: Utility functions and shared helpers.
-- `/server`: Server Actions and data access layer.
+### AI Service (Python)
+| เทคโนโลยี | หน้าที่ |
+|----------|--------|
+| [FastAPI](https://fastapi.tiangolo.com/) | REST API |
+| [LanceDB](https://lancedb.com/) | Vector Database |
+| [Gemini AI](https://ai.google.dev/) | AI Analysis |
 
-## 🤝 Contributing
+---
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+## 🗄️ โครงสร้างฐานข้อมูล
+
+ระบบมี **30+ tables** แบ่งเป็นกลุ่มหลักๆ:
+
+### Authentication
+`user` • `session` • `account` • `verification`
+
+### Core Novel
+`novels` • `chapters` • `notes` • `tags`
+
+### Character System
+`characters` • `characterRelationships` • `relationshipHistory` • `characterLifeEvents` • `characterStates` • `characterFactions` • `characterPowers` • `chapterCharacters` • `noteCharacters` • `aliasCache`
+
+### Power System
+`powers` • `powerLevels` • `powerCombinations`
+
+### World Building
+`locations` • `locationConnections` • `factions` • `items` • `entities` • `locationEntities` • `eras` • `loreEntries` • `loreGroups`
+
+### Plotting
+`timelineEvents` • `ideas` • `ideaConnections`
+
+### AI Analysis
+`characterAnalysisQueue` • `aiSuggestions` • `stateExtractionQueue`
+
+---
+
+## 📂 โครงสร้างโปรเจกต์
+
+```
+mythoria/
+├── app/                          # Next.js App Router pages
+│   ├── api/                      # API routes
+│   │   ├── auth/                 # Better Auth
+│   │   ├── novel/                # Novel-related APIs
+│   │   └── upload/               # File upload
+│   ├── dashboard/                # Main interface
+│   │   └── project/[id]/         # Project workspace
+│   │       ├── chapter/          # Chapter editor
+│   │       ├── characters/       # Character management
+│   │       ├── locations/        # Location management
+│   │       ├── powers/           # Power system
+│   │       ├── relationships/    # Relationship board
+│   │       ├── worldbuilding/    # Lore, items, entities
+│   │       └── plot/             # Timeline & Ideas
+│   └── (auth pages)
+│
+├── components/                   # React Components (84+ files)
+│   ├── project/                  # Project-specific
+│   │   ├── character/            # 23 components
+│   │   ├── location/             # 10 components
+│   │   ├── power/                # 7 components
+│   │   ├── worldbuilding/        # 12 components
+│   │   └── ...
+│   └── ui/                       # Shadcn/ui
+│
+├── server/                       # Server Actions (31 files)
+│   ├── novel.ts, chapter.ts, character.ts
+│   ├── power.ts, locations.ts, factions.ts
+│   ├── lore.ts, timeline.ts, idea.ts
+│   └── ai.ts, character-state-*.ts
+│
+├── db/
+│   ├── schema.ts                 # Drizzle schema (1388 lines)
+│   └── drizzle.ts
+│
+├── lib/                          # Utilities
+│
+├── pythonservice/                # AI Service
+│   ├── main.py                   # FastAPI endpoints
+│   ├── ai_agent.py               # Plot analysis
+│   ├── character_analyzer.py
+│   ├── lance_client.py
+│   └── tools/                    # Timeline checker, validator
+│
+└── migrations/                   # Drizzle migrations
+```
+
+---
+
+## 🏁 การติดตั้ง
+
+### ความต้องการ
+- Node.js (LTS ล่าสุด)
+- PostgreSQL
+- Python 3.10+ (สำหรับ AI Service)
+
+### ขั้นตอน
+
+**1. Clone repository**
+```bash
+git clone <repository-url>
+cd mythoria
+```
+
+**2. ติดตั้ง dependencies**
+```bash
+npm install
+```
+
+**3. ตั้งค่า Environment**
+
+สร้างไฟล์ `.env`:
+```env
+DATABASE_URL="postgresql://user:password@localhost:5432/mythoria"
+BETTER_AUTH_SECRET="your-secret-key"
+```
+
+**4. สร้างฐานข้อมูล**
+```bash
+npm run db:push
+```
+
+**5. ตั้งค่า Python Service** (optional)
+```bash
+cd pythonservice
+python -m venv venv
+venv\Scripts\activate  # Windows
+pip install -r requirements.txt
+```
+
+---
+
+## 🎮 การใช้งาน
+
+### รัน Development Server
+```bash
+# Next.js only
+npm run dev
+
+# Next.js + Python AI Service
+npm run dev:all
+```
+
+เปิด [http://localhost:3000](http://localhost:3000) เพื่อเริ่มใช้งาน
+
+### Database Commands
+| คำสั่ง | หน้าที่ |
+|-------|--------|
+| `npm run db:push` | Push schema to database |
+| `npm run db:generate` | Generate migration |
+| `npm run db:migrate` | Run migrations |
+| `npm run db:studio` | Open Drizzle Studio |
+
+---
 
 ## 📄 License
 
-This project is licensed under the [MIT License](LICENSE).
+MIT License

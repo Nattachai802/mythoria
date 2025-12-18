@@ -1,8 +1,9 @@
 import { getCharactersByNovelId } from "@/server/character";
 import { getNovelById } from "@/server/novel";
-import { CreateCharacterDialog } from "@/components/project/character/create-character-dialog";
+import { CreateCharacterButton } from "@/components/project/character/create-character-button";
 import { CharacterList } from "@/components/project/character/character-list";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
+import { AIAnalysisButton } from "@/components/project/character/ai-analysis-button";
 
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -48,13 +49,14 @@ export default async function CharactersPage({ params }: CharactersPageProps) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <AIAnalysisButton novelId={novelId} />
           <Link href={`/dashboard/project/${novelId}/relationships`}>
             <Button variant="outline">
               <Network className="w-4 h-4 mr-2" />
               Relationship Board
             </Button>
           </Link>
-          <CreateCharacterDialog novelId={novelId} />
+          <CreateCharacterButton novelId={novelId} />
         </div>
       </div>
 
@@ -63,7 +65,7 @@ export default async function CharactersPage({ params }: CharactersPageProps) {
           <p className="text-muted-foreground mb-4">
             No characters yet. Create your first character!
           </p>
-          <CreateCharacterDialog novelId={novelId} />
+          <CreateCharacterButton novelId={novelId} />
         </div>
       ) : (
         <CharacterList novelId={novelId} initialCharacters={characters} />
@@ -71,3 +73,4 @@ export default async function CharactersPage({ params }: CharactersPageProps) {
     </div>
   );
 }
+

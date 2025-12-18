@@ -1,6 +1,6 @@
 "use client";
 
-import { Note } from "@/db/schema";
+import { Idea } from "@/db/schema";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,7 @@ import { toast } from "sonner";
 import { EditIdeaDialog } from "./edit-idea-dialog";
 
 interface IdeaCardProps {
-    idea: Note;
+    idea: Idea;
     novelId: string;
     chapterInfo?: { id: string; title: string } | null;
 }

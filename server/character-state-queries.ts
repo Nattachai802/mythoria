@@ -288,3 +288,205 @@ export async function getCharacterCurrentLocation(characterId: string): Promise<
         };
     }
 }
+
+// ============================================
+// Chapter-Based State Aggregation (Method B)
+// ============================================
+
+export interface CharacterStateAtChapter {
+    characterId: string;
+    characterName: string;
+    characterImage: string | null;
+    chapterId: string;
+    chapterTitle: string;
+    chapterOrderIndex: number;
+    // Aggregated state data
+    locationName: string | null;
+    status: string | null;
+    mood: string | null;
+    health: number | null;
+    equipment: unknown;
+    notes: string | null;
+    // Meta
+    stateCount: number; // How many states contributed
+    latestStateId: string | null;
+}
+
+/**
+ * Get character state at a specific chapter by aggregating states from notes linked to that chapter
+ */
+export async function getCharacterStateAtChapter(
+    characterId: string,
+    chapterId: string
+): Promise<{
+    success: boolean;
+    state: CharacterStateAtChapter | null;
+    error?: string;
+}> {
+    try {
+        // Get chapter info first
+        const chapter = await db.query.chapters.findFirst({
+            where: (chapters, { eq }) => eq(chapters.id, chapterId),
+        });
+
+        if (!chapter) {
+            return { success: false, state: null, error: "Chapter not found" };
+        }
+
+        // Get all notes linked to this chapter
+        const notesInChapter = await db.query.notes.findMany({
+            where: (notes, { eq }) => eq(notes.linkedToChapterId, chapterId),
+        });
+
+        if (notesInChapter.length === 0) {
+            return { success: true, state: null };
+        }
+
+        const noteIds = notesInChapter.map((n) => n.id);
+
+        // Get character states from those notes
+        const states = await db.query.characterStates.findMany({
+            where: (cs, { eq, and, inArray }) =>
+                and(
+                    eq(cs.characterId, characterId),
+                    inArray(cs.noteId, noteIds)
+                ),
+            with: {
+                character: true,
+            },
+            orderBy: (cs, { desc }) => [desc(cs.extractedAt)],
+        });
+
+        if (states.length === 0) {
+            return { success: true, state: null };
+        }
+
+        // Use the most recent state as the primary
+        const latestState = states[0];
+
+        const aggregatedState: CharacterStateAtChapter = {
+            characterId,
+            characterName: latestState.character?.name || "Unknown",
+            characterImage: latestState.character?.image || null,
+            chapterId,
+            chapterTitle: chapter.title,
+            chapterOrderIndex: chapter.orderIndex,
+            locationName: latestState.locationName,
+            status: latestState.status,
+            mood: latestState.mood,
+            health: latestState.health,
+            equipment: latestState.equipment,
+            notes: latestState.notes,
+            stateCount: states.length,
+            latestStateId: latestState.id,
+        };
+
+        return { success: true, state: aggregatedState };
+    } catch (error) {
+        console.error("[CharacterStateQueries] Error fetching state at chapter:", error);
+        return {
+            success: false,
+            state: null,
+            error: error instanceof Error ? error.message : "Unknown error",
+        };
+    }
+}
+
+/**
+ * Get character states across all chapters for timeline visualization
+ */
+export async function getCharacterStateTimeline(
+    characterId: string,
+    novelId: string
+): Promise<{
+    success: boolean;
+    timeline: CharacterStateAtChapter[];
+    error?: string;
+}> {
+    try {
+        // Get all chapters for this novel, ordered
+        const chapters = await db.query.chapters.findMany({
+            where: (ch, { eq }) => eq(ch.novelId, novelId),
+            orderBy: (ch, { asc }) => [asc(ch.orderIndex)],
+        });
+
+        if (chapters.length === 0) {
+            return { success: true, timeline: [] };
+        }
+
+        // For each chapter, get the character's state
+        const timeline: CharacterStateAtChapter[] = [];
+
+        for (const chapter of chapters) {
+            const result = await getCharacterStateAtChapter(characterId, chapter.id);
+            if (result.success && result.state) {
+                timeline.push(result.state);
+            }
+        }
+
+        return { success: true, timeline };
+    } catch (error) {
+        console.error("[CharacterStateQueries] Error fetching state timeline:", error);
+        return {
+            success: false,
+            timeline: [],
+            error: error instanceof Error ? error.message : "Unknown error",
+        };
+    }
+}
+
+/**
+ * Compare character states between two chapters
+ */
+export async function compareCharacterStates(
+    characterId: string,
+    chapterIdFrom: string,
+    chapterIdTo: string
+): Promise<{
+    success: boolean;
+    comparison: {
+        from: CharacterStateAtChapter | null;
+        to: CharacterStateAtChapter | null;
+        differences: string[];
+    } | null;
+    error?: string;
+}> {
+    try {
+        const [fromResult, toResult] = await Promise.all([
+            getCharacterStateAtChapter(characterId, chapterIdFrom),
+            getCharacterStateAtChapter(characterId, chapterIdTo),
+        ]);
+
+        const from = fromResult.state;
+        const to = toResult.state;
+
+        const differences: string[] = [];
+
+        if (from && to) {
+            if (from.locationName !== to.locationName) {
+                differences.push(`ตำแหน่ง: ${from.locationName || "ไม่ระบุ"} → ${to.locationName || "ไม่ระบุ"}`);
+            }
+            if (from.status !== to.status) {
+                differences.push(`สถานะ: ${from.status || "ไม่ระบุ"} → ${to.status || "ไม่ระบุ"}`);
+            }
+            if (from.mood !== to.mood) {
+                differences.push(`อารมณ์: ${from.mood || "ไม่ระบุ"} → ${to.mood || "ไม่ระบุ"}`);
+            }
+            if (from.health !== to.health) {
+                differences.push(`สุขภาพ: ${from.health ?? "?"}% → ${to.health ?? "?"}%`);
+            }
+        }
+
+        return {
+            success: true,
+            comparison: { from, to, differences },
+        };
+    } catch (error) {
+        console.error("[CharacterStateQueries] Error comparing states:", error);
+        return {
+            success: false,
+            comparison: null,
+            error: error instanceof Error ? error.message : "Unknown error",
+        };
+    }
+}

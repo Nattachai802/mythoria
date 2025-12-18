@@ -334,6 +334,214 @@ async def analyze_plot_endpoint(request: AnalyzePlotRequest):
 
 
 # ============================================
+# CHARACTER ANALYSIS ENDPOINTS
+# ============================================
+
+from character_analyzer import (
+    analyze_unanalyzed_chapters,
+    analyze_character_for_novel,
+    analyze_chapter,
+    fetch_chapters,
+    fetch_characters,
+    fetch_analyzed_chapters
+)
+
+
+class AnalyzeCharactersRequest(BaseModel):
+    character_id: str = None  # None = all characters
+    analysis_types: list[str] = ["relationships", "life_events"]
+
+
+@app.post("/analyze-characters/{novel_id}")
+async def analyze_characters_endpoint(novel_id: str, request: AnalyzeCharactersRequest = None):
+    """วิเคราะห์ตัวละครใน novel - auto-run สำหรับ chapters ที่ยังไม่วิเคราะห์"""
+    try:
+        if request and request.character_id:
+            # Analyze specific character
+            characters = await fetch_characters(novel_id)
+            char = next((c for c in characters if c["id"] == request.character_id), None)
+            if not char:
+                return {"success": False, "error": "Character not found"}
+            
+            result = await analyze_character_for_novel(
+                novel_id, request.character_id, char.get("name", "")
+            )
+            return {"success": True, "suggestions": result}
+        else:
+            # Analyze all unanalyzed chapters
+            result = await analyze_unanalyzed_chapters(novel_id)
+            return {"success": True, "suggestions": result}
+    except Exception as e:
+        print(f"[AnalyzeCharacters] Error: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/analyze-characters-stream/{novel_id}")
+async def analyze_characters_stream(novel_id: str, character_id: str = None):
+    """SSE endpoint for real-time character analysis progress"""
+    
+    print(f"\n{'='*50}")
+    print(f"[SSE] === STARTING STREAM ===")
+    print(f"[SSE] novel_id: {novel_id}")
+    print(f"[SSE] character_id: {character_id}")
+    print(f"{'='*50}\n")
+    
+    async def event_generator():
+        import sys
+        try:
+            print("[SSE] Entering event_generator...")
+            sys.stdout.flush()
+            
+            print("[SSE] Sending start event...")
+            sys.stdout.flush()
+            yield f"data: {json.dumps({'type': 'start'})}\n\n"
+            
+            print("[SSE] Fetching chapters...")
+            chapters = await fetch_chapters(novel_id)
+            print(f"[SSE] Got {len(chapters)} chapters")
+            
+            print("[SSE] Fetching characters...")
+            characters = await fetch_characters(novel_id)
+            print(f"[SSE] Got {len(characters)} characters")
+            
+            if len(chapters) == 0:
+                print("[SSE] ERROR: No chapters found!")
+                yield f"data: {json.dumps({'type': 'error', 'message': 'ไม่พบ chapters ใน novel นี้'})}\n\n"
+                return
+            
+            if len(characters) == 0:
+                print("[SSE] ERROR: No characters found!")
+                yield f"data: {json.dumps({'type': 'error', 'message': 'ไม่พบ characters ใน novel นี้'})}\n\n"
+                return
+            
+            if character_id:
+                # Filter chapters that mention specific character
+                char = next((c for c in characters if c["id"] == character_id), None)
+                if not char:
+                    print(f"[SSE] ERROR: Character {character_id} not found!")
+                    yield f"data: {json.dumps({'type': 'error', 'message': 'Character not found'})}\n\n"
+                    return
+                
+                char_name = char.get("name", "")
+                char_aliases = char.get("aliases", []) or []
+                
+                # Build list of all names to search for
+                all_names = [char_name]
+                if isinstance(char_aliases, list):
+                    all_names.extend([str(a) for a in char_aliases if a])
+                
+                print(f"[SSE] Filtering chapters for character: {char_name}")
+                print(f"[SSE] Character aliases: {char_aliases}")
+                print(f"[SSE] Searching for names: {all_names}")
+                sys.stdout.flush()
+                
+                # Debug: show chapter content preview
+                for c in chapters:
+                    preview = (c.get("plainText", "") or "")[:100]
+                    print(f"[SSE] Chapter '{c.get('title')}' plainText preview: {preview}...")
+                sys.stdout.flush()
+                
+                # Filter chapters that mention any of the character's names
+                def mentions_character(chapter_text: str) -> bool:
+                    text_lower = chapter_text.lower()
+                    for name in all_names:
+                        if name.lower() in text_lower:
+                            print(f"[SSE] MATCH! Found '{name}' in chapter")
+                            return True
+                    return False
+                
+                chapters = [c for c in chapters if mentions_character(c.get("plainText", "") or "")]
+                print(f"[SSE] Found {len(chapters)} chapters mentioning {char_name} or aliases")
+                sys.stdout.flush()
+            else:
+                # No character filter - analyze all chapters
+                print("[SSE] No character filter - will analyze all chapters")
+                sys.stdout.flush()
+            
+            total = len(chapters)
+            
+            if total == 0:
+                print("[SSE] No chapters to analyze, sending complete...")
+                yield f"data: {json.dumps({'type': 'complete', 'message': 'ไม่มี chapters ใหม่ที่ต้องวิเคราะห์', 'suggestions': {'relationships': [], 'life_events': [], 'chapters_analyzed': []}})}\n\n"
+                return
+            
+            info_msg = f'พบ {total} chapters ที่ต้องวิเคราะห์'
+            print(f"[SSE] {info_msg}")
+            sys.stdout.flush()
+            yield f"data: {json.dumps({'type': 'info', 'total': total, 'message': info_msg}, ensure_ascii=False)}\n\n"
+            
+            all_suggestions = {
+                "relationships": [],
+                "life_events": [],
+                "chapters_analyzed": []
+            }
+            
+            for i, chapter in enumerate(chapters):
+                chapter_title = chapter.get("title", "Untitled")
+                chapter_content = chapter.get("plainText", "") or ""
+                
+                print(f"[SSE] Processing chapter {i+1}/{total}: {chapter_title}")
+                print(f"[SSE] Content length: {len(chapter_content)} chars")
+                
+                yield f"data: {json.dumps({'type': 'progress', 'current': chapter_title, 'progress': i + 1, 'total': total}, ensure_ascii=False)}\n\n"
+                
+                print(f"[SSE] Calling analyze_chapter...")
+                sys.stdout.flush()
+                result = await analyze_chapter(novel_id, chapter, characters)
+                
+                print(f"[SSE] Result: {len(result['relationships'])} relationships, {len(result['life_events'])} life events")
+                
+                all_suggestions["relationships"].extend(result["relationships"])
+                all_suggestions["life_events"].extend(result["life_events"])
+                all_suggestions["chapters_analyzed"].append(chapter["id"])
+                
+                # Send intermediate results
+                yield f"data: {json.dumps({'type': 'result', 'chapter_id': chapter['id'], 'chapter_title': chapter_title, 'relationships_found': len(result['relationships']), 'events_found': len(result['life_events'])}, ensure_ascii=False)}\n\n"
+                
+                # Small delay to avoid rate limiting
+                await asyncio.sleep(0.5)
+            
+            print(f"[SSE] === COMPLETE ===")
+            print(f"[SSE] Total relationships: {len(all_suggestions['relationships'])}")
+            print(f"[SSE] Total life events: {len(all_suggestions['life_events'])}")
+            yield f"data: {json.dumps({'type': 'complete', 'suggestions': all_suggestions}, ensure_ascii=False)}\n\n"
+            
+        except Exception as e:
+            import traceback
+            print(f"[SSE] ERROR: {e}")
+            print(traceback.format_exc())
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "http://localhost:3000",
+        }
+    )
+
+
+@app.get("/analysis-status/{novel_id}")
+async def get_analysis_status(novel_id: str):
+    """Get analysis status for a novel - which chapters have been analyzed"""
+    try:
+        chapters = await fetch_chapters(novel_id)
+        analyzed_ids = await fetch_analyzed_chapters(novel_id)
+        
+        return {
+            "success": True,
+            "total_chapters": len(chapters),
+            "analyzed_count": len(analyzed_ids),
+            "unanalyzed_count": len(chapters) - len(analyzed_ids),
+            "analyzed_chapter_ids": list(analyzed_ids)
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ============================================
 # BACKGROUND JOB: CHECK ALL NOTES
 # ============================================
 

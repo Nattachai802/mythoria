@@ -1,19 +1,20 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, ReactNode } from "react";
 import { Upload, X, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 interface ImageUploadProps {
     value?: string;
-    onChange: (url: string) => void;
+    onChange?: (url: string) => void;
     folder?: string;
     className?: string;
+    /** If provided, renders only the trigger element (for compact UI) */
+    trigger?: ReactNode;
 }
 
-export function ImageUpload({ value, onChange, folder = "characters", className }: ImageUploadProps) {
+export function ImageUpload({ value, onChange, folder = "characters", className, trigger }: ImageUploadProps) {
     const [isUploading, setIsUploading] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -36,7 +37,7 @@ export function ImageUpload({ value, onChange, folder = "characters", className 
             const result = await response.json();
 
             if (result.success) {
-                onChange(result.url);
+                onChange?.(result.url);
             } else {
                 setError(result.error || "Upload failed");
             }
@@ -75,12 +76,45 @@ export function ImageUpload({ value, onChange, folder = "characters", className 
     };
 
     const handleRemove = () => {
-        onChange("");
+        onChange?.("");
         if (inputRef.current) {
             inputRef.current.value = "";
         }
     };
 
+    // Hidden file input (shared by both modes)
+    const hiddenInput = (
+        <input
+            ref={inputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            onChange={handleFileChange}
+            className="hidden"
+        />
+    );
+
+    // Compact trigger mode - just render the trigger that opens file picker
+    if (trigger) {
+        return (
+            <>
+                {hiddenInput}
+                <div
+                    onClick={() => inputRef.current?.click()}
+                    className={cn("cursor-pointer", isUploading && "opacity-50 pointer-events-none")}
+                >
+                    {isUploading ? (
+                        <div className="flex items-center justify-center">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                        </div>
+                    ) : (
+                        trigger
+                    )}
+                </div>
+            </>
+        );
+    }
+
+    // Full mode - original UI
     return (
         <div className={cn("space-y-2", className)}>
             {/* Preview or Upload Area */}
@@ -126,20 +160,14 @@ export function ImageUpload({ value, onChange, folder = "characters", className 
             )}
 
             {/* Hidden file input */}
-            <input
-                ref={inputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif"
-                onChange={handleFileChange}
-                className="hidden"
-            />
+            {hiddenInput}
 
             {/* URL Input (optional fallback) */}
             <div className="flex items-center gap-2">
                 <Input
                     placeholder="or paste image URL"
                     value={value || ""}
-                    onChange={(e) => onChange(e.target.value)}
+                    onChange={(e) => onChange?.(e.target.value)}
                     className="text-xs h-8"
                 />
             </div>
@@ -151,3 +179,4 @@ export function ImageUpload({ value, onChange, folder = "characters", className 
         </div>
     );
 }
+

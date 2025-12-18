@@ -34,7 +34,7 @@ export default async function LocationDetailPage({
                 novelId={novelId}
                 novelTitle={novelTitle}
                 items={[
-                    { label: "Locations", href: `/dashboard/project/${novelId}/locations` },
+                    { label: "World Building", href: `/dashboard/project/${novelId}/worldbuilding` },
                     { label: location.name }
                 ]}
             />

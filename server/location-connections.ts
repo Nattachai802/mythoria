@@ -90,7 +90,7 @@ export async function updateLocationConnection(
     connectionId: string,
     data: Partial<{
         connectionType: string;
-        customLabel: string;
+        customLabel: string | null;
         isBidirectional: boolean;
         travelTime: number | null;
         travelTimeUnit: string;

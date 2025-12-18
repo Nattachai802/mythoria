@@ -13,6 +13,8 @@ import {
     ChevronRight,
     FileText,
     MessageSquareText,
+    Zap,
+    Globe,
 } from "lucide-react"
 
 import {
@@ -52,8 +54,9 @@ export function ProjectSidebar({ projectId, projectTitle, chapters = [] }: Proje
         { title: "Overview", href: `/dashboard/project/${projectId}`, icon: LayoutDashboard },
         { title: "Plot", href: `/dashboard/project/${projectId}/plot`, icon: ScrollText },
         { title: "Characters", href: `/dashboard/project/${projectId}/characters`, icon: Users },
-        { title: "Locations", href: `/dashboard/project/${projectId}/locations`, icon: MapPin },
         { title: "Ideas", href: `/dashboard/project/${projectId}/idea`, icon: MessageSquareText },
+        { title: "World Building", href: `/dashboard/project/${projectId}/worldbuilding`, icon: Globe },
+        { title: "Powers", href: `/dashboard/project/${projectId}/powers`, icon: Zap },
     ]
 
     const publishedChapters = chapters.filter(c => c.status === "published")
