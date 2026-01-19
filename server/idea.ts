@@ -3,7 +3,8 @@
 import { db } from "@/db/drizzle";
 import { ideas, ideaConnections, Idea } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
+import { CACHE_TAGS, CACHE_DURATION } from "@/lib/cache-config";
 
 export async function createIdea(data: {
     title: string;
@@ -36,8 +37,53 @@ export async function createIdea(data: {
             })
             .returning();
 
+        // Clear cache (Next.js 16 requires 2 args)
+        revalidateTag(CACHE_TAGS.ideas(data.novelId), "default");
         revalidatePath(`/dashboard/project/${data.novelId}/idea`);
 
+        return { success: true, data: newIdea };
+    } catch (error) {
+        console.error("Error creating idea:", error);
+        return { success: false, error: "Failed to create idea" };
+    }
+}
+
+/**
+ * Create idea without revalidation - for use during render (Discord sync)
+ * This avoids the "revalidateTag during render" error
+ */
+export async function createIdeaWithoutRevalidate(data: {
+    title: string;
+    content?: string;
+    summary?: string;
+    novelId: string;
+    category?: string;
+    tags?: string[];
+    linkedChapterId?: string;
+    linkedCharacterIds?: string[];
+    canvasX?: number;
+    canvasY?: number;
+    color?: string;
+}) {
+    try {
+        const [newIdea] = await db
+            .insert(ideas)
+            .values({
+                title: data.title,
+                content: data.content,
+                summary: data.summary,
+                novelId: data.novelId,
+                category: data.category || "general",
+                tags: data.tags,
+                linkedChapterId: data.linkedChapterId,
+                linkedCharacterIds: data.linkedCharacterIds,
+                canvasX: data.canvasX,
+                canvasY: data.canvasY,
+                color: data.color,
+            })
+            .returning();
+
+        // No revalidation here - will be refreshed on next page load
         return { success: true, data: newIdea };
     } catch (error) {
         console.error("Error creating idea:", error);
@@ -58,6 +104,34 @@ export async function getIdeasByNovelId(novelId: string) {
         console.error("Error fetching ideas:", error);
         return { success: false, error: "Failed to fetch ideas" };
     }
+}
+
+// Internal count function
+const _getIdeasCount = async (novelId: string) => {
+    try {
+        const result = await db
+            .select({ id: ideas.id })
+            .from(ideas)
+            .where(eq(ideas.novelId, novelId));
+
+        return { success: true as const, count: result.length };
+    } catch (error) {
+        console.error("Error counting ideas:", error);
+        return { success: false as const, count: 0 };
+    }
+};
+
+// Cached version - Fast count-only query with 60s cache
+export async function getIdeasCount(novelId: string) {
+    const cachedFn = unstable_cache(
+        () => _getIdeasCount(novelId),
+        [`ideas-count-${novelId}`],
+        {
+            revalidate: 60,
+            tags: [CACHE_TAGS.ideas(novelId)]
+        }
+    );
+    return cachedFn();
 }
 
 export async function getIdeaById(ideaId: string) {
@@ -133,6 +207,27 @@ export async function deleteIdea(ideaId: string) {
     } catch (error) {
         console.error("Error deleting idea:", error);
         return { success: false, error: "Failed to delete idea" };
+    }
+}
+
+export async function deleteAllIdeas(novelId: string) {
+    try {
+        const deletedIdeas = await db
+            .delete(ideas)
+            .where(eq(ideas.novelId, novelId))
+            .returning();
+
+        revalidateTag(CACHE_TAGS.ideas(novelId), "default");
+        revalidatePath(`/dashboard/project/${novelId}/idea`);
+
+        return {
+            success: true,
+            count: deletedIdeas.length,
+            message: `Deleted ${deletedIdeas.length} ideas`
+        };
+    } catch (error) {
+        console.error("Error deleting all ideas:", error);
+        return { success: false, error: "Failed to delete ideas" };
     }
 }
 

@@ -4,6 +4,8 @@ import { getNovelById } from "@/server/novel";
 import { CreateIdeaDialog } from "@/components/project/idea/create-idea-dialog";
 import { IdeasView } from "@/components/project/idea/ideas-view";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
+import { DiscordSyncButton } from "@/components/project/idea/discord-sync-button";
+import { DeleteAllIdeasButton } from "@/components/project/idea/delete-all-ideas-button";
 
 interface IdeasPageProps {
   params: Promise<{
@@ -49,7 +51,11 @@ export default async function IdeasPage({ params }: IdeasPageProps) {
             Your creative idea vault
           </p>
         </div>
-        <CreateIdeaDialog novelId={novelId} />
+        <div className="flex items-center gap-2">
+          <DeleteAllIdeasButton novelId={novelId} ideaCount={ideas.length} />
+          <DiscordSyncButton novelId={novelId} />
+          <CreateIdeaDialog novelId={novelId} />
+        </div>
       </div>
 
       <IdeasView

@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation"
 import { getNovelById } from "@/server/novel"
 import { getTimeLineEvents } from "@/server/timeline"
-import { TimelineBoard } from "@/components/project/timeline/timeline-board" // ชื่อ Component ยังใช้ TimelineBoard ได้ หรือจะเปลี่ยนเป็น PlotBoard ก็ได้
+import { getCharactersByNovelId } from "@/server/character"
+import { getLocationsByNovelId } from "@/server/locations"
+import { TimelineBoard } from "@/components/project/timeline/timeline-board"
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb"
 
 type Props = {
@@ -9,11 +11,13 @@ type Props = {
 }
 
 export default async function PlotPage({ params }: Props) {
-    const { id } = await params // ดึง id จาก URL /project/[id]/plot
+    const { id } = await params
 
-    const [novelResult, eventsResult] = await Promise.all([
+    const [novelResult, eventsResult, charactersResult, locationsResult] = await Promise.all([
         getNovelById(id),
-        getTimeLineEvents(id)
+        getTimeLineEvents(id),
+        getCharactersByNovelId(id),
+        getLocationsByNovelId(id)
     ])
 
     if (!novelResult.success || !novelResult.novel) {
@@ -22,6 +26,8 @@ export default async function PlotPage({ params }: Props) {
 
     const novel = novelResult.novel
     const events = eventsResult.events || []
+    const characters = charactersResult.data || []
+    const locations = locationsResult.data || []
 
     return (
         <div className="flex flex-col h-[calc(100vh-4rem)]">
@@ -32,7 +38,7 @@ export default async function PlotPage({ params }: Props) {
                         novelTitle={novel.title}
                         items={[{ label: "Plot Board" }]}
                     />
-                    <h1 className="text-lg font-semibold">Plot Board</h1> {/* เปลี่ยนชื่อ Title */}
+                    <h1 className="text-lg font-semibold">Plot Board</h1>
                     <p className="text-sm text-muted-foreground">
                         Manage your plot and events for "{novel.title}"
                     </p>
@@ -44,6 +50,8 @@ export default async function PlotPage({ params }: Props) {
                     novelId={novel.id}
                     chapters={novel.chapters}
                     initialEvents={events}
+                    characters={characters}
+                    locations={locations}
                 />
             </div>
         </div>

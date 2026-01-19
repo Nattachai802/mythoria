@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+/pythonservice/discord_bot/
 
 # next.js
 /.next/

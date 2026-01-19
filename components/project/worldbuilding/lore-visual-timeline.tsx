@@ -11,11 +11,13 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, MoreHorizontal, Pencil, Trash2, MapPin, Globe, ChevronDown, ChevronRight } from "lucide-react";
+import {
+    Plus, MoreHorizontal, Pencil, Trash2,
+    Clock, ChevronDown, ChevronRight, MapPin
+} from "lucide-react";
 import { deleteLoreEntry } from "@/server/lore";
 import { toast } from "sonner";
 import { LoreDialog } from "./lore-dialog";
-import { EraDialog } from "./era-dialog";
 
 interface LoreEntry {
     id: string;
@@ -26,12 +28,16 @@ interface LoreEntry {
     scope?: string | null;
     locationId?: string | null;
     parentLoreId?: string | null;
+    groupId?: string | null;
     icon?: string | null;
     color?: string | null;
     importance?: number | null;
+    orderIndex?: number | null;
     location?: { name: string } | null;
     era?: { id: string; name: string; color: string; icon?: string } | null;
+    parentLore?: LoreEntry | null;
     childLores?: LoreEntry[];
+    group?: { id: string; name: string; color: string; icon?: string } | null;
 }
 
 interface Era {
@@ -59,156 +65,136 @@ const TYPE_ICONS: Record<string, string> = {
     history: "📚",
 };
 
-export function LoreVisualTimeline({ eras, ungroupedLores, novelId, onRefresh }: LoreVisualTimelineProps) {
-    const [loreDialogOpen, setLoreDialogOpen] = useState(false);
-    const [eraDialogOpen, setEraDialogOpen] = useState(false);
-    const [editEntry, setEditEntry] = useState<LoreEntry | null>(null);
-    const [editEra, setEditEra] = useState<Era | null>(null);
-    const [defaultEraId, setDefaultEraId] = useState<string | null>(null);
-    const [defaultParentLoreId, setDefaultParentLoreId] = useState<string | null>(null);
-    const [expandedLores, setExpandedLores] = useState<Set<string>>(new Set());
+const TYPE_COLORS: Record<string, string> = {
+    event: "#f59e0b",
+    legend: "#8b5cf6",
+    prophecy: "#ec4899",
+    mythology: "#10b981",
+    history: "#3b82f6",
+};
 
-    const handleEditLore = (entry: LoreEntry) => {
+export function LoreVisualTimeline({ eras, ungroupedLores, novelId, onRefresh }: LoreVisualTimelineProps) {
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const [editEntry, setEditEntry] = useState<LoreEntry | null>(null);
+    const [defaultEraId, setDefaultEraId] = useState<string | null>(null);
+    const [expandedEras, setExpandedEras] = useState<Set<string>>(new Set(eras.map(e => e.id)));
+
+    const handleEdit = (entry: LoreEntry) => {
         setEditEntry(entry);
         setDefaultEraId(null);
-        setDefaultParentLoreId(null);
-        setLoreDialogOpen(true);
+        setDialogOpen(true);
     };
 
-    const handleAddLoreToEra = (eraId: string) => {
+    const handleAddToEra = (eraId: string) => {
         setEditEntry(null);
         setDefaultEraId(eraId);
-        setDefaultParentLoreId(null);
-        setLoreDialogOpen(true);
+        setDialogOpen(true);
     };
 
-    const handleAddSubLore = (parentId: string, eraId?: string | null) => {
-        setEditEntry(null);
-        setDefaultParentLoreId(parentId);
-        setDefaultEraId(eraId || null);
-        setLoreDialogOpen(true);
-    };
-
-    const handleEditEra = (era: Era) => {
-        setEditEra(era);
-        setEraDialogOpen(true);
-    };
-
-    const handleDeleteLore = async (entry: LoreEntry) => {
+    const handleDelete = async (entry: LoreEntry) => {
         if (!confirm(`ลบ "${entry.title}" ใช่หรือไม่?`)) return;
-
         const result = await deleteLoreEntry(entry.id);
         if (result.success) {
-            toast.success("ลบ Lore สำเร็จ");
+            toast.success("ลบตำนานสำเร็จ");
             onRefresh?.();
         } else {
             toast.error(result.error || "ไม่สามารถลบได้");
         }
     };
 
-    const toggleLore = (loreId: string) => {
-        const newExpanded = new Set(expandedLores);
-        if (newExpanded.has(loreId)) {
-            newExpanded.delete(loreId);
-        } else {
-            newExpanded.add(loreId);
-        }
-        setExpandedLores(newExpanded);
-    };
-
-    const handleLoreDialogClose = (open: boolean) => {
-        setLoreDialogOpen(open);
+    const handleDialogClose = (open: boolean) => {
+        setDialogOpen(open);
         if (!open) {
             setEditEntry(null);
             setDefaultEraId(null);
-            setDefaultParentLoreId(null);
         }
     };
 
-    const handleEraDialogClose = (open: boolean) => {
-        setEraDialogOpen(open);
-        if (!open) setEditEra(null);
+    const toggleEra = (eraId: string) => {
+        const newExpanded = new Set(expandedEras);
+        if (newExpanded.has(eraId)) {
+            newExpanded.delete(eraId);
+        } else {
+            newExpanded.add(eraId);
+        }
+        setExpandedEras(newExpanded);
     };
 
-    // Get child lores from an entry's childLores or from ungrouped list
-    const getChildLores = (parentId: string, allLores: LoreEntry[]) => {
-        return allLores.filter(l => l.parentLoreId === parentId);
+    const getChildLores = (entries: LoreEntry[], parentId: string) => {
+        return entries.filter(e => e.parentLoreId === parentId);
     };
 
-    // Render a lore card
-    const renderLoreCard = (entry: LoreEntry, allLores: LoreEntry[], depth: number = 0) => {
-        const children = getChildLores(entry.id, allLores);
+    const renderLoreCard = (entry: LoreEntry, allEntries: LoreEntry[], depth: number = 0) => {
+        const children = getChildLores(allEntries, entry.id);
         const hasChildren = children.length > 0;
+        const entryColor = entry.color || TYPE_COLORS[entry.type || "event"] || "#8b5cf6";
 
         return (
-            <div key={entry.id} className="w-full">
+            <div key={entry.id} className="space-y-2">
                 <Card
-                    className="hover:shadow-md transition-shadow cursor-pointer"
+                    className="group cursor-pointer hover:shadow-lg transition-all duration-300 overflow-hidden border-l-4"
                     style={{
-                        borderLeftColor: entry.color || "#8b5cf6",
-                        borderLeftWidth: "3px",
+                        borderLeftColor: entryColor,
                         marginLeft: depth * 16,
                     }}
+                    onClick={() => handleEdit(entry)}
                 >
-                    <CardContent className="py-3 px-4">
+                    <CardContent className="pt-3 pb-3">
                         <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-start gap-2 flex-1 min-w-0">
-                                {hasChildren && (
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-5 w-5 shrink-0 p-0"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            toggleLore(entry.id);
-                                        }}
-                                    >
-                                        {expandedLores.has(entry.id) ? (
-                                            <ChevronDown className="h-4 w-4" />
-                                        ) : (
-                                            <ChevronRight className="h-4 w-4" />
+                            <div className="flex items-start gap-3 flex-1 min-w-0">
+                                <div
+                                    className="w-9 h-9 rounded-lg flex items-center justify-center text-lg shrink-0 transition-transform group-hover:scale-110"
+                                    style={{ backgroundColor: `${entryColor}20` }}
+                                >
+                                    {entry.icon || TYPE_ICONS[entry.type || "event"] || "⚡"}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <h4 className="font-medium text-sm line-clamp-1 text-slate-800">{entry.title}</h4>
+                                    <div className="flex flex-wrap items-center gap-1 mt-1">
+                                        {entry.type && (
+                                            <Badge
+                                                variant="outline"
+                                                className="text-[10px] h-4 capitalize border-0"
+                                                style={{ color: entryColor, background: `${entryColor}15` }}
+                                            >
+                                                {entry.type}
+                                            </Badge>
                                         )}
-                                    </Button>
-                                )}
-                                <div className="min-w-0 flex-1" onClick={() => handleEditLore(entry)}>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-sm">{entry.icon || TYPE_ICONS[entry.type || "event"] || "⚡"}</span>
-                                        <span className="font-medium text-sm line-clamp-1">{entry.title}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1 mt-1">
                                         {entry.scope === "location" && entry.location && (
-                                            <Badge variant="outline" className="text-xs gap-0.5 py-0">
+                                            <Badge variant="secondary" className="text-[10px] h-4 gap-0.5">
                                                 <MapPin className="h-2.5 w-2.5" />
                                                 {entry.location.name}
                                             </Badge>
                                         )}
                                         {hasChildren && (
-                                            <Badge variant="secondary" className="text-xs py-0">
-                                                {children.length} sub
+                                            <Badge
+                                                className="text-[10px] h-4 border-0"
+                                                style={{ backgroundColor: `${entryColor}20`, color: entryColor }}
+                                            >
+                                                {children.length} ย่อย
                                             </Badge>
                                         )}
                                     </div>
                                 </div>
                             </div>
                             <DropdownMenu>
-                                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                    <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0">
-                                        <MoreHorizontal className="h-3 w-3" />
+                                <DropdownMenuTrigger asChild>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                        onClick={(e) => e.stopPropagation()}
+                                    >
+                                        <MoreHorizontal className="h-4 w-4" />
                                     </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                    <DropdownMenuItem onClick={() => handleEditLore(entry)}>
-                                        <Pencil className="h-4 w-4 mr-2" />
-                                        แก้ไข
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleAddSubLore(entry.id, entry.eraId)}>
-                                        <Plus className="h-4 w-4 mr-2" />
-                                        เพิ่ม Sub-lore
+                                    <DropdownMenuItem onClick={() => handleEdit(entry)}>
+                                        <Pencil className="h-4 w-4 mr-2" /> แก้ไข
                                     </DropdownMenuItem>
                                     <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={() => handleDeleteLore(entry)} className="text-red-600">
-                                        <Trash2 className="h-4 w-4 mr-2" />
-                                        ลบ
+                                    <DropdownMenuItem onClick={() => handleDelete(entry)} className="text-red-600">
+                                        <Trash2 className="h-4 w-4 mr-2" /> ลบ
                                     </DropdownMenuItem>
                                 </DropdownMenuContent>
                             </DropdownMenu>
@@ -216,142 +202,143 @@ export function LoreVisualTimeline({ eras, ungroupedLores, novelId, onRefresh }:
                     </CardContent>
                 </Card>
 
-                {/* Children */}
-                {hasChildren && expandedLores.has(entry.id) && (
-                    <div className="space-y-2 mt-2">
-                        {children.map(child => renderLoreCard(child, allLores, depth + 1))}
+                {/* Render children */}
+                {hasChildren && (
+                    <div className="space-y-2 border-l-2 border-dashed ml-4" style={{ borderColor: `${entryColor}30` }}>
+                        {children.map(child => renderLoreCard(child, allEntries, depth + 1))}
                     </div>
                 )}
             </div>
         );
     };
 
+    // Sort eras by orderIndex
+    const sortedEras = [...eras].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+
     return (
         <div className="space-y-4">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">📅 Visual Timeline</h3>
-                <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => setEraDialogOpen(true)}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        สร้างยุค
-                    </Button>
-                    <Button onClick={() => setLoreDialogOpen(true)}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        เพิ่ม Lore
-                    </Button>
-                </div>
+            {/* Visual Timeline Header */}
+            <div className="flex items-center gap-2 mb-4">
+                <Clock className="h-5 w-5 text-violet-500" />
+                <h3 className="text-lg font-semibold">Visual Timeline</h3>
             </div>
 
-            {/* Timeline Grid */}
-            {eras.length === 0 && ungroupedLores.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground border rounded-lg border-dashed">
-                    <p className="text-lg mb-2">ยังไม่มียุคสมัย</p>
-                    <p className="text-sm mb-4">สร้างยุคสมัยเพื่อจัดกลุ่ม Lore ตามช่วงเวลา</p>
-                    <Button onClick={() => setEraDialogOpen(true)}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        สร้างยุคแรก
-                    </Button>
-                </div>
-            ) : (
-                <div className="flex gap-4 overflow-x-auto pb-4">
-                    {/* Era Columns */}
-                    {eras.map((era) => {
-                        const rootLores = (era.loreEntries || []).filter(l => !l.parentLoreId);
-                        return (
-                            <Card
-                                key={era.id}
-                                className="flex-shrink-0 w-80"
+            {/* Era Columns - Horizontal Scroll */}
+            <div className="flex gap-4 overflow-x-auto pb-4 -mx-2 px-2">
+                {sortedEras.map((era) => {
+                    const eraColor = era.color || "#6366f1";
+                    const eraLores = (era.loreEntries || []).filter(e => !e.parentLoreId);
+
+                    return (
+                        <div
+                            key={era.id}
+                            className="flex-shrink-0 w-80 rounded-xl overflow-hidden border shadow-sm"
+                            style={{
+                                background: `linear-gradient(180deg, ${eraColor}08 0%, white 100%)`,
+                                borderColor: `${eraColor}25`,
+                            }}
+                        >
+                            {/* Era Header */}
+                            <div
+                                className="p-4 border-b"
                                 style={{
-                                    borderTopColor: era.color || "#8b5cf6",
-                                    borderTopWidth: "4px",
+                                    background: `linear-gradient(135deg, ${eraColor}15 0%, ${eraColor}05 100%)`,
+                                    borderColor: `${eraColor}20`,
                                 }}
                             >
-                                <CardHeader className="pb-2">
-                                    <div className="flex items-center justify-between">
-                                        <CardTitle className="text-base flex items-center gap-2">
-                                            <span>{era.icon || "⏳"}</span>
-                                            {era.name}
-                                            <Badge variant="secondary" className="ml-1">
-                                                {era.loreEntries?.length || 0}
-                                            </Badge>
-                                        </CardTitle>
-                                        <DropdownMenu>
-                                            <DropdownMenuTrigger asChild>
-                                                <Button variant="ghost" size="icon" className="h-8 w-8">
-                                                    <MoreHorizontal className="h-4 w-4" />
-                                                </Button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent align="end">
-                                                <DropdownMenuItem onClick={() => handleAddLoreToEra(era.id)}>
-                                                    <Plus className="h-4 w-4 mr-2" />
-                                                    เพิ่ม Lore
-                                                </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => handleEditEra(era)}>
-                                                    <Pencil className="h-4 w-4 mr-2" />
-                                                    แก้ไขยุค
-                                                </DropdownMenuItem>
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
-                                    </div>
-                                    {era.description && (
-                                        <p className="text-xs text-muted-foreground">{era.description}</p>
-                                    )}
-                                </CardHeader>
-                                <CardContent className="space-y-2 max-h-[500px] overflow-y-auto">
-                                    {rootLores.length === 0 ? (
-                                        <Button
-                                            variant="outline"
-                                            className="w-full border-dashed"
-                                            onClick={() => handleAddLoreToEra(era.id)}
+                                <div className="flex items-center justify-between">
+                                    <button
+                                        onClick={() => toggleEra(era.id)}
+                                        className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                                    >
+                                        {expandedEras.has(era.id) ? (
+                                            <ChevronDown className="h-4 w-4" style={{ color: eraColor }} />
+                                        ) : (
+                                            <ChevronRight className="h-4 w-4" style={{ color: eraColor }} />
+                                        )}
+                                        <span className="text-xl">{era.icon || "📅"}</span>
+                                        <h4 className="font-semibold text-slate-800">{era.name}</h4>
+                                        <Badge
+                                            variant="secondary"
+                                            className="text-xs h-5"
+                                            style={{ background: `${eraColor}20`, color: eraColor }}
                                         >
-                                            <Plus className="h-4 w-4 mr-2" />
-                                            เพิ่ม Lore
-                                        </Button>
+                                            {eraLores.length}
+                                        </Badge>
+                                    </button>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7"
+                                        onClick={() => handleAddToEra(era.id)}
+                                    >
+                                        <Plus className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                                {era.description && (
+                                    <p className="text-xs text-slate-500 mt-2 line-clamp-2">{era.description}</p>
+                                )}
+                            </div>
+
+                            {/* Era Lores */}
+                            {expandedEras.has(era.id) && (
+                                <div className="p-3 space-y-2 max-h-[500px] overflow-y-auto">
+                                    {eraLores.length === 0 ? (
+                                        <div className="text-center py-8 text-slate-400">
+                                            <p className="text-sm">ยังไม่มี Lore</p>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="mt-2"
+                                                onClick={() => handleAddToEra(era.id)}
+                                            >
+                                                <Plus className="h-3 w-3 mr-1" />
+                                                เพิ่ม Lore
+                                            </Button>
+                                        </div>
                                     ) : (
-                                        rootLores.map(entry => renderLoreCard(entry, era.loreEntries || [], 0))
+                                        eraLores.map(entry => renderLoreCard(entry, era.loreEntries || [], 0))
                                     )}
-                                </CardContent>
-                            </Card>
-                        );
-                    })}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
 
-                    {/* Ungrouped Lores Column */}
-                    {ungroupedLores.length > 0 && (
-                        <Card className="flex-shrink-0 w-80 border-dashed">
-                            <CardHeader className="pb-2">
-                                <CardTitle className="text-base flex items-center gap-2 text-muted-foreground">
-                                    <Globe className="h-4 w-4" />
-                                    ไม่ระบุยุค
-                                    <Badge variant="outline">{ungroupedLores.filter(l => !l.parentLoreId).length}</Badge>
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent className="space-y-2 max-h-[500px] overflow-y-auto">
-                                {ungroupedLores
-                                    .filter(l => !l.parentLoreId)
-                                    .map(entry => renderLoreCard(entry, ungroupedLores, 0))}
-                            </CardContent>
-                        </Card>
-                    )}
-                </div>
-            )}
+                {/* Ungrouped Lores Column */}
+                {ungroupedLores.length > 0 && (
+                    <div
+                        className="flex-shrink-0 w-80 rounded-xl overflow-hidden border shadow-sm bg-slate-50/50"
+                        style={{ borderColor: "#94a3b830" }}
+                    >
+                        {/* Header */}
+                        <div className="p-4 border-b bg-slate-100/50" style={{ borderColor: "#94a3b820" }}>
+                            <div className="flex items-center gap-2">
+                                <Clock className="h-4 w-4 text-slate-400" />
+                                <h4 className="font-semibold text-slate-600">ไม่ระบุยุค</h4>
+                                <Badge variant="secondary" className="text-xs h-5">
+                                    {ungroupedLores.length}
+                                </Badge>
+                            </div>
+                        </div>
 
-            {/* Dialogs */}
+                        {/* Lores */}
+                        <div className="p-3 space-y-2 max-h-[500px] overflow-y-auto">
+                            {ungroupedLores.filter(e => !e.parentLoreId).map(entry =>
+                                renderLoreCard(entry, ungroupedLores, 0)
+                            )}
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Dialog */}
             <LoreDialog
-                open={loreDialogOpen}
-                onOpenChange={handleLoreDialogClose}
+                open={dialogOpen}
+                onOpenChange={handleDialogClose}
                 novelId={novelId}
                 editEntry={editEntry}
                 defaultEraId={defaultEraId}
-                defaultParentLoreId={defaultParentLoreId}
-                onSuccess={onRefresh}
-            />
-
-            <EraDialog
-                open={eraDialogOpen}
-                onOpenChange={handleEraDialogClose}
-                novelId={novelId}
-                editEra={editEra}
                 onSuccess={onRefresh}
             />
         </div>

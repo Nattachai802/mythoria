@@ -9,3 +9,6 @@ openai
 fastapi
 uvicorn
 httpx
+
+discord.py>=2.3.0
+psycopg2-binary>=2.9.0

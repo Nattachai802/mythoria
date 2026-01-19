@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
     DropdownMenu,
@@ -13,9 +14,16 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
     Plus, MoreHorizontal, Pencil, Trash2,
     Layers, ChevronDown, ChevronRight as ChevronRightIcon, MapPin,
-    FolderPlus, Clock, X, Sparkles, BookOpen
+    FolderPlus, Clock, X, Sparkles, BookOpen, Download, Search, FilterX
 } from "lucide-react";
 import { deleteLoreEntry } from "@/server/lore";
 import { toast } from "sonner";
@@ -87,6 +95,15 @@ const TYPE_COLORS: Record<string, string> = {
     history: "#3b82f6",
 };
 
+// Type labels for Thai display
+const TYPE_LABELS: Record<string, string> = {
+    event: "เหตุการณ์",
+    legend: "ตำนาน",
+    prophecy: "คำทำนาย",
+    mythology: "เทพนิยาย",
+    history: "ประวัติศาสตร์",
+};
+
 export function LoreTimeline({ entries, groups = [], eras = [], novelId, onRefresh }: LoreTimelineProps) {
     const [dialogOpen, setDialogOpen] = useState(false);
     const [groupDialogOpen, setGroupDialogOpen] = useState(false);
@@ -97,9 +114,55 @@ export function LoreTimeline({ entries, groups = [], eras = [], novelId, onRefre
     const [viewMode, setViewMode] = useState<"timeline" | "hierarchy" | "groups" | "eras">("timeline");
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
-    const rootEntries = entries.filter(e => !e.parentLoreId);
-    const ungroupedEntries = entries.filter(e => !e.groupId && !e.parentLoreId);
-    const loresWithoutEra = entries.filter(e => !e.eraId && !e.parentLoreId);
+    // Search and Filter states
+    const [searchQuery, setSearchQuery] = useState("");
+    const [filterEra, setFilterEra] = useState<string>("all");
+    const [filterType, setFilterType] = useState<string>("all");
+    const [filterImportance, setFilterImportance] = useState<string>("all");
+
+    // Check if any filter is active
+    const hasActiveFilters = searchQuery || filterEra !== "all" || filterType !== "all" || filterImportance !== "all";
+
+    // Clear all filters
+    const clearFilters = () => {
+        setSearchQuery("");
+        setFilterEra("all");
+        setFilterType("all");
+        setFilterImportance("all");
+    };
+
+    // Filter entries based on search and filters
+    const filteredEntries = useMemo(() => {
+        return entries.filter(entry => {
+            // Search by title or content
+            if (searchQuery) {
+                const query = searchQuery.toLowerCase();
+                const matchTitle = entry.title.toLowerCase().includes(query);
+                const matchContent = entry.content?.toLowerCase().includes(query);
+                if (!matchTitle && !matchContent) return false;
+            }
+            // Filter by Era
+            if (filterEra !== "all" && entry.eraId !== filterEra) {
+                return false;
+            }
+            // Filter by Type
+            if (filterType !== "all" && entry.type !== filterType) {
+                return false;
+            }
+            // Filter by Importance
+            if (filterImportance !== "all") {
+                const importance = entry.importance || 0;
+                if (filterImportance === "high" && importance < 7) return false;
+                if (filterImportance === "medium" && (importance < 4 || importance > 6)) return false;
+                if (filterImportance === "low" && importance > 3) return false;
+            }
+            return true;
+        });
+    }, [entries, searchQuery, filterEra, filterType, filterImportance]);
+
+    const rootEntries = filteredEntries.filter(e => !e.parentLoreId);
+    const ungroupedEntries = filteredEntries.filter(e => !e.groupId && !e.parentLoreId);
+    const loresWithoutEra = filteredEntries.filter(e => !e.eraId && !e.parentLoreId);
 
     const handleEdit = (entry: LoreEntry) => {
         setEditEntry(entry);
@@ -150,6 +213,56 @@ export function LoreTimeline({ entries, groups = [], eras = [], novelId, onRefre
     const handleGroupDialogClose = (open: boolean) => {
         setGroupDialogOpen(open);
         if (!open) setEditGroup(null);
+    };
+
+    const handleExportLore = () => {
+        const exportData = {
+            exportedAt: new Date().toISOString(),
+            novelId,
+            totalEntries: entries.length,
+            totalGroups: groups.length,
+            totalEras: eras.length,
+            loreEntries: entries.map(e => ({
+                id: e.id,
+                title: e.title,
+                content: e.content,
+                type: e.type,
+                icon: e.icon,
+                color: e.color,
+                importance: e.importance,
+                scope: e.scope,
+                era: e.era?.name || null,
+                location: e.location?.name || null,
+                group: e.group?.name || null,
+                parentLoreId: e.parentLoreId,
+            })),
+            groups: groups.map(g => ({
+                id: g.id,
+                name: g.name,
+                description: g.description,
+                color: g.color,
+                icon: g.icon,
+            })),
+            eras: eras.map(e => ({
+                id: e.id,
+                name: e.name,
+                description: e.description,
+                color: e.color,
+                icon: e.icon,
+                orderIndex: e.orderIndex,
+            })),
+        };
+
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `lore-export-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        toast.success('Export สำเร็จ!');
     };
 
     const toggleGroup = (groupId: string) => {
@@ -464,11 +577,132 @@ export function LoreTimeline({ entries, groups = [], eras = [], novelId, onRefre
                 </div>
             </div>
 
+            {/* Search & Filter Bar */}
+            <div className="flex flex-wrap items-center gap-3 p-3 bg-slate-50 rounded-lg border">
+                {/* Search Input */}
+                <div className="relative flex-1 min-w-[200px]">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        placeholder="ค้นหา Lore..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-9 h-9 bg-white"
+                    />
+                    {searchQuery && (
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                            onClick={() => setSearchQuery("")}
+                        >
+                            <X className="h-3 w-3" />
+                        </Button>
+                    )}
+                </div>
+
+                {/* Era Filter */}
+                <Select value={filterEra} onValueChange={setFilterEra}>
+                    <SelectTrigger className="w-[140px] h-9 bg-white">
+                        <Clock className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+                        <SelectValue placeholder="ยุคสมัย" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">ทุกยุค</SelectItem>
+                        {eras.map((era) => (
+                            <SelectItem key={era.id} value={era.id}>
+                                <span className="flex items-center gap-1.5">
+                                    <span>{era.icon || "📅"}</span>
+                                    <span>{era.name}</span>
+                                </span>
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+
+                {/* Type Filter */}
+                <Select value={filterType} onValueChange={setFilterType}>
+                    <SelectTrigger className="w-[140px] h-9 bg-white">
+                        <Layers className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+                        <SelectValue placeholder="ประเภท" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">ทุกประเภท</SelectItem>
+                        {Object.entries(TYPE_LABELS).map(([key, label]) => (
+                            <SelectItem key={key} value={key}>
+                                <span className="flex items-center gap-1.5">
+                                    <span>{TYPE_ICONS[key]}</span>
+                                    <span>{label}</span>
+                                </span>
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+
+                {/* Importance Filter */}
+                <Select value={filterImportance} onValueChange={setFilterImportance}>
+                    <SelectTrigger className="w-[140px] h-9 bg-white">
+                        <Sparkles className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+                        <SelectValue placeholder="ความสำคัญ" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">ทั้งหมด</SelectItem>
+                        <SelectItem value="high">
+                            <span className="flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-red-500" />
+                                <span>สูง (7-10)</span>
+                            </span>
+                        </SelectItem>
+                        <SelectItem value="medium">
+                            <span className="flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-yellow-500" />
+                                <span>กลาง (4-6)</span>
+                            </span>
+                        </SelectItem>
+                        <SelectItem value="low">
+                            <span className="flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-green-500" />
+                                <span>ต่ำ (1-3)</span>
+                            </span>
+                        </SelectItem>
+                    </SelectContent>
+                </Select>
+
+                {/* Clear Filters Button */}
+                {hasActiveFilters && (
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={clearFilters}
+                        className="h-9 text-muted-foreground hover:text-foreground"
+                    >
+                        <FilterX className="h-4 w-4 mr-1.5" />
+                        ล้าง
+                    </Button>
+                )}
+
+                {/* Results count */}
+                {hasActiveFilters && (
+                    <Badge variant="secondary" className="ml-auto">
+                        พบ {filteredEntries.length} รายการ
+                    </Badge>
+                )}
+            </div>
+
             {/* Content */}
             {entries.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground border rounded-lg border-dashed">
                     <p className="text-lg mb-2">ยังไม่มี Lore</p>
                     <p className="text-sm">เพิ่มตำนาน เหตุการณ์สำคัญ หรือประวัติศาสตร์ของโลก</p>
+                </div>
+            ) : filteredEntries.length === 0 && hasActiveFilters ? (
+                <div className="text-center py-12 text-muted-foreground border rounded-lg border-dashed bg-slate-50/50">
+                    <Search className="h-12 w-12 mx-auto mb-3 text-slate-300" />
+                    <p className="text-lg mb-2">ไม่พบ Lore ที่ตรงกับการค้นหา</p>
+                    <p className="text-sm mb-4">ลองเปลี่ยนคำค้นหาหรือตัวกรอง</p>
+                    <Button variant="outline" size="sm" onClick={clearFilters}>
+                        <FilterX className="h-4 w-4 mr-1.5" />
+                        ล้างตัวกรองทั้งหมด
+                    </Button>
                 </div>
             ) : viewMode === "timeline" ? (
                 /* Cosmic Archive Timeline - Light Theme */
@@ -568,13 +802,14 @@ export function LoreTimeline({ entries, groups = [], eras = [], novelId, onRefre
             <FloatingLoreFab
                 onCreateLore={() => setDialogOpen(true)}
                 onCreateGroup={() => setGroupDialogOpen(true)}
+                onExport={handleExportLore}
             />
         </div>
     );
 }
 
 // Floating Action Button Component
-function FloatingLoreFab({ onCreateLore, onCreateGroup }: { onCreateLore: () => void; onCreateGroup: () => void }) {
+function FloatingLoreFab({ onCreateLore, onCreateGroup, onExport }: { onCreateLore: () => void; onCreateGroup: () => void; onExport: () => void }) {
     const [open, setOpen] = useState(false);
     const boxRef = useRef<HTMLDivElement>(null);
 
@@ -597,6 +832,7 @@ function FloatingLoreFab({ onCreateLore, onCreateGroup }: { onCreateLore: () => 
     const menuItems = [
         { label: "สร้าง Lore ใหม่", action: onCreateLore, icon: "📜", color: "#8b5cf6" },
         { label: "สร้างกลุ่ม", action: onCreateGroup, icon: "📁", color: "#3b82f6" },
+        { label: "Export JSON", action: onExport, icon: "📥", color: "#10b981" },
     ];
 
     return (

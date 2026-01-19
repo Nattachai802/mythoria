@@ -129,7 +129,11 @@ export function IdeaCard({ idea, novelId, chapterInfo }: IdeaCardProps) {
                         {getPlainText(idea.content)}
                     </p>
                     <p className="text-xs text-muted-foreground mt-2">
-                        {new Date(idea.createdAt).toLocaleDateString()}
+                        {new Date(idea.createdAt).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric'
+                        })}
                     </p>
                 </CardContent>
             </Card>

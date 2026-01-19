@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition, useOptimistic, useCallback } from "react";
 import Link from "next/link";
-import { ChevronRight, ChevronLeft, Plus, StickyNote, FileText, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ChevronRight, ChevronLeft, Plus, StickyNote, FileText, AlertTriangle, CheckCircle2, Pencil, RefreshCw, Send, Circle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -10,24 +11,43 @@ import {
     CollapsibleContent,
     CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { CreateNoteDialog } from "@/components/project/create-note-dialog";
 import { ChapterActions } from "@/components/project/chapter-actions";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { updateNoteStatus } from "@/server/note";
+import { NoteStatus, NOTE_STATUS_CONFIG } from "@/lib/note-constants";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 const NOTES_PER_PAGE = 10;
 const LINES_PER_PAGE = 35;
 const CHARS_PER_LINE = 55;
 
+// Status icon mapping
+const STATUS_ICONS = {
+    draft: Circle,
+    writing: Pencil,
+    needs_rewrite: RefreshCw,
+    published: Send,
+} as const;
+
 /**
  * Calculate page count for a note's content
  */
-function calculatePageCount(content: { text?: string } | null): number {
+// Helper to estimate page count from HTML content
+function estimatePageCount(content: { text?: string } | null): number {
     if (!content?.text) return 0;
 
     const htmlContent = content.text;
 
     // Count explicit line breaks and block elements
-    const blockTags = htmlContent.match(/<(p|br|li|h[1-6])[^>]*>/gi) || [];
+    const blockTags = htmlContent.match(/<(p|div|h[1-6]|li|br)[^>]*>/gi) || [];
     let lines = blockTags.length;
 
     // Get plain text
@@ -61,7 +81,18 @@ export function ChapterRow({
     novelId,
     index
 }: ChapterRowProps) {
+    const router = useRouter();
     const [currentPage, setCurrentPage] = useState(1);
+    const [isPending, startTransition] = useTransition();
+
+    // Local state สำหรับ optimistic updates
+    const [noteStatuses, setNoteStatuses] = useState<Record<string, NoteStatus>>(() => {
+        const initial: Record<string, NoteStatus> = {};
+        for (const note of chapterNotes) {
+            initial[note.id] = note.status || 'draft';
+        }
+        return initial;
+    });
 
     // Pagination logic
     const totalPages = Math.ceil(chapterNotes.length / NOTES_PER_PAGE);
@@ -72,6 +103,32 @@ export function ChapterRow({
 
     // Calculate total plot holes for this chapter
     const totalPlotHoles = chapterNotes.reduce((sum, note) => sum + (note.plotHoleCount || 0), 0);
+
+    // Get current status (from local state หรือ original)
+    const getNoteStatus = useCallback((noteId: string, originalStatus: NoteStatus | null): NoteStatus => {
+        return noteStatuses[noteId] || originalStatus || 'draft';
+    }, [noteStatuses]);
+
+    // Handle status change - Optimistic Update
+    const handleStatusChange = async (noteId: string, newStatus: NoteStatus) => {
+        // 1. อัพเดท UI ทันที (Optimistic)
+        setNoteStatuses(prev => ({ ...prev, [noteId]: newStatus }));
+        toast.success(`สถานะเปลี่ยนเป็น "${NOTE_STATUS_CONFIG[newStatus].label}"`);
+
+        // 2. ส่งไป server ใน background
+        startTransition(async () => {
+            const result = await updateNoteStatus(noteId, newStatus);
+            if (!result.success) {
+                // 3. Rollback ถ้า error
+                const originalNote = chapterNotes.find(n => n.id === noteId);
+                setNoteStatuses(prev => ({
+                    ...prev,
+                    [noteId]: originalNote?.status || 'draft'
+                }));
+                toast.error("ไม่สามารถเปลี่ยนสถานะได้ - กู้คืนสถานะเดิม");
+            }
+        });
+    };
 
     return (
         <Collapsible className="group/chapter">
@@ -144,18 +201,65 @@ export function ChapterRow({
             {chapterNotes.length > 0 && (
                 <CollapsibleContent className="border-l-2 border-muted ml-[52px] pl-4 pb-2">
                     {visibleNotes.map((note: any) => {
-                        const pageCount = calculatePageCount(note.content);
+                        const pageCount = estimatePageCount(note.content);
                         const hasPlotHoles = (note.plotHoleCount || 0) > 0;
                         const isChecked = !!note.plotHoleCheckedAt;
+                        const status = getNoteStatus(note.id, note.status);
+                        const statusConfig = NOTE_STATUS_CONFIG[status];
+                        const StatusIcon = STATUS_ICONS[status];
 
                         return (
-                            <Link
+                            <div
                                 key={note.id}
-                                href={`/dashboard/project/${novelId}/note/${note.id}`}
                                 className="flex items-center gap-2 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors group/note"
                             >
-                                <StickyNote className="h-3 w-3 shrink-0" />
-                                <span className="truncate flex-1">{note.title}</span>
+                                {/* Status Dropdown */}
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <button
+                                            className={cn(
+                                                "p-1 rounded hover:bg-muted transition-colors",
+                                                statusConfig.color,
+                                                isPending && "opacity-50 cursor-wait"
+                                            )}
+                                            disabled={isPending}
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <StatusIcon className="h-3.5 w-3.5" />
+                                        </button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="start" className="w-40">
+                                        {(Object.keys(NOTE_STATUS_CONFIG) as NoteStatus[]).map((statusKey) => {
+                                            const config = NOTE_STATUS_CONFIG[statusKey];
+                                            const Icon = STATUS_ICONS[statusKey];
+                                            return (
+                                                <DropdownMenuItem
+                                                    key={statusKey}
+                                                    onClick={() => handleStatusChange(note.id, statusKey)}
+                                                    className={cn(
+                                                        "gap-2 cursor-pointer",
+                                                        status === statusKey && config.bgColor
+                                                    )}
+                                                >
+                                                    <Icon className={cn("h-4 w-4", config.color)} />
+                                                    <span>{config.label}</span>
+                                                    {status === statusKey && (
+                                                        <CheckCircle2 className="h-3 w-3 ml-auto text-primary" />
+                                                    )}
+                                                </DropdownMenuItem>
+                                            );
+                                        })}
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+
+                                {/* Note Link */}
+                                <Link
+                                    href={`/dashboard/project/${novelId}/note/${note.id}`}
+                                    className="flex items-center gap-2 flex-1 min-w-0"
+                                >
+                                    <StickyNote className="h-3 w-3 shrink-0" />
+                                    <span className="truncate flex-1">{note.title}</span>
+                                </Link>
 
                                 {/* Plot Hole Indicator */}
                                 {hasPlotHoles ? (
@@ -184,7 +288,7 @@ export function ChapterRow({
                                     <FileText className="h-3 w-3" />
                                     {pageCount} pg
                                 </span>
-                            </Link>
+                            </div>
                         );
                     })}
 
@@ -224,4 +328,3 @@ export function ChapterRow({
         </Collapsible>
     );
 }
-

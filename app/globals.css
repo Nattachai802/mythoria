@@ -166,10 +166,20 @@
 }
 
 /* Preserve paragraph spacing on paste */
-.ql-editor br+br {
+.ql-editor br {
   display: block;
   content: "";
-  margin-top: 1em;
+  margin-top: 0.5em;
+}
+
+/* Double line break = paragraph break */
+.ql-editor p+p {
+  margin-top: 1.5em;
+}
+
+/* Also handle div tags from paste */
+.ql-editor div {
+  margin-bottom: 1em;
 }
 
 /* Better placeholder styling */

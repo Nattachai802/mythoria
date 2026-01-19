@@ -3,6 +3,8 @@
 import { db } from "@/db/drizzle";
 import { novels, InsertNovel } from "@/db/schema";
 import { eq, desc, and, or, like } from "drizzle-orm";
+import { unstable_cache, revalidateTag } from "next/cache";
+import { CACHE_TAGS, CACHE_DURATION } from "@/lib/cache-config";
 
 // ====================================
 // CREATE - สร้าง Novel ใหม่
@@ -40,7 +42,7 @@ export const getNovelsByUserId = async (userId: string) => {
     }
 };
 
-// ดึง novel ตาม id พร้อมข้อมูลเต็ม
+// ดึง novel ตาม id พร้อมข้อมูลเต็ม (ใช้เฉพาะหน้าที่ต้องการทุกอย่างจริงๆ)
 export const getNovelById = async (id: string) => {
     try {
         const novel = await db.query.novels.findFirst({
@@ -77,6 +79,65 @@ export const getNovelById = async (id: string) => {
         console.error("Get novel error:", error);
         return { success: false, message: "Failed to get novel" };
     }
+};
+
+// Internal function - actual database query
+const _getNovelByIdLight = async (id: string) => {
+    try {
+        const novel = await db.query.novels.findFirst({
+            where: eq(novels.id, id),
+            with: {
+                chapters: {
+                    orderBy: (chapters, { asc }) => [asc(chapters.orderIndex)],
+                    columns: {
+                        id: true,
+                        title: true,
+                        orderIndex: true,
+                        status: true,
+                        novelId: true,
+                    }
+                },
+                // Only get counts, not full data
+                characters: {
+                    columns: { id: true }
+                },
+                locations: {
+                    columns: { id: true }
+                },
+            }
+        });
+
+        if (!novel) {
+            return { success: false as const, message: "Novel not found" };
+        }
+
+        // Add counts
+        const enrichedNovel = {
+            ...novel,
+            _counts: {
+                characters: novel.characters.length,
+                locations: novel.locations.length,
+            }
+        };
+
+        return { success: true as const, novel: enrichedNovel };
+    } catch (error) {
+        console.error("Get novel light error:", error);
+        return { success: false as const, message: "Failed to get novel" };
+    }
+};
+
+// Cached version - ดึง novel แบบ light สำหรับ Overview page (มี cache 60 วินาที)
+export const getNovelByIdLight = async (id: string) => {
+    const cachedFn = unstable_cache(
+        () => _getNovelByIdLight(id),
+        [`novel-light-${id}`],
+        {
+            revalidate: 60, // cache 60 seconds
+            tags: [CACHE_TAGS.novel(id), CACHE_TAGS.chapters(id), CACHE_TAGS.characters(id), CACHE_TAGS.locations(id)]
+        }
+    );
+    return cachedFn();
 };
 
 // ดึง novel แบบง่าย (ไม่มี relations)

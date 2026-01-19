@@ -271,6 +271,9 @@ export const timelineEvents = pgTable("timeline_events", {
   orderIndex: integer("order_index").notNull(),
   relatedCharacterIds: jsonb("related_character_ids"), // array of character IDs
   relatedLocationIds: jsonb("related_location_ids"), // array of location IDs
+  // Event classification
+  eventType: text("event_type").default("scene"), // scene, action, dialogue, flashback, revelation, emotional, transition
+  isCompleted: boolean("is_completed").default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()
@@ -292,6 +295,8 @@ export const notes = pgTable("notes", {
   linkedToChapterId: text("linked_to_chapter_id").references(() => chapters.id, { onDelete: "set null" }),
   linkedToCharacterId: text("linked_to_character_id").references(() => characters.id, { onDelete: "set null" }),
   linkedToLocationId: text("linked_to_location_id").references(() => locations.id, { onDelete: "set null" }),
+  // Note Status
+  status: text("status").default("draft"), // draft, writing, needs_rewrite, published
   // Plot Hole Checking
   plotHoleCheckedAt: timestamp("plot_hole_checked_at"), // เวลาที่ตรวจสอบล่าสุด
   plotHoleCount: integer("plot_hole_count").default(0), // จำนวน plot holes ที่พบ

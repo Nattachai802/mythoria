@@ -265,7 +265,7 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
             ['clean']
         ],
         clipboard: {
-            matchVisual: false,
+            matchVisual: true,
         },
     }), [isFocusMode])
 

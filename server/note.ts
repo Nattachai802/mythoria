@@ -6,10 +6,17 @@ import { eq, desc, and, or, like } from "drizzle-orm";
 import { syncChapterCharactersFromNotes } from "./analysis-helper";
 import { recalculateNovelWordCountFromNotes } from "./word-count";
 import { queueNoteForStateExtraction } from "./character-state-extractor";
+import { revalidateTag, unstable_cache } from "next/cache";
+import { CACHE_TAGS, CACHE_DURATION } from "@/lib/cache-config";
+import { NoteStatus } from "@/lib/note-constants";
 
 export const createNote = async (data: InsertNote) => {
     try {
         const [newNote] = await db.insert(notes).values(data).returning();
+
+        // Clear cache (Next.js 16 requires 2 args: tag, profile)
+        revalidateTag(CACHE_TAGS.notes(newNote.novelId), "default");
+        revalidateTag(CACHE_TAGS.novel(newNote.novelId), "default");
 
         // Trigger auto-analysis if linked to a chapter
         if (newNote.linkedToChapterId) {
@@ -32,7 +39,8 @@ export const createNote = async (data: InsertNote) => {
     }
 };
 
-export const getNotes = async (novelId: string, type?: string) => {
+// Internal function
+const _getNotes = async (novelId: string, type?: string) => {
     try {
         const conditions = [eq(notes.novelId, novelId)];
         if (type && type !== "all") {
@@ -48,11 +56,24 @@ export const getNotes = async (novelId: string, type?: string) => {
                 linkedLocation: true,
             }
         });
-        return { success: true, notes: allNotes };
+        return { success: true as const, notes: allNotes };
     } catch (error) {
         console.error("Get notes error:", error);
-        return { success: false, message: "Failed to get notes" };
+        return { success: false as const, message: "Failed to get notes" };
     }
+};
+
+// Cached version - getNotes with 30s cache (shorter because notes change more frequently)
+export const getNotes = async (novelId: string, type?: string) => {
+    const cachedFn = unstable_cache(
+        () => _getNotes(novelId, type),
+        [`notes-${novelId}-${type || 'all'}`],
+        {
+            revalidate: 30, // 30 seconds for notes
+            tags: [CACHE_TAGS.notes(novelId)]
+        }
+    );
+    return cachedFn();
 };
 
 export const getNote = async (noteId: string) => {
@@ -106,6 +127,8 @@ export const updateNote = async (noteId: string, data: Partial<InsertNote>) => {
             .where(eq(notes.id, noteId))
             .returning();
 
+        // Clear cache
+        revalidateTag(CACHE_TAGS.notes(updatedNote.novelId), "default");
         // Trigger auto-analysis if linked to a chapter
         if (updatedNote.linkedToChapterId) {
             // Run in background (fire and forget) to not block UI
@@ -146,6 +169,10 @@ export const deleteNote = async (noteId: string) => {
         // Delete the note
         await db.delete(notes).where(eq(notes.id, noteId));
 
+        // Clear cache
+        revalidateTag(CACHE_TAGS.notes(novelId), "default");
+        revalidateTag(CACHE_TAGS.novel(novelId), "default");
+
         // Recalculate novel word count after deletion
         recalculateNovelWordCountFromNotes(novelId)
             .catch(err => console.error("Word count recalculation failed:", err));
@@ -154,5 +181,22 @@ export const deleteNote = async (noteId: string) => {
     } catch (error) {
         console.error("Delete note error:", error);
         return { success: false, message: "Failed to delete note" };
+    }
+};
+
+export const updateNoteStatus = async (noteId: string, status: NoteStatus) => {
+    try {
+        const [updatedNote] = await db.update(notes)
+            .set({
+                status,
+                updatedAt: new Date()
+            })
+            .where(eq(notes.id, noteId))
+            .returning();
+
+        return { success: true, message: "Status updated successfully", note: updatedNote };
+    } catch (error) {
+        console.error("Update note status error:", error);
+        return { success: false, message: "Failed to update status" };
     }
 };

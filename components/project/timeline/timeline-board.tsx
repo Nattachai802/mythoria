@@ -16,27 +16,30 @@ import {
 import {
     sortableKeyboardCoordinates,
     arrayMove,
+    SortableContext,
+    verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
-import { Chapter, TimelineEvent } from "@/db/schema"
+import { Chapter, TimelineEvent, Character, Location } from "@/db/schema"
 import { ChapterColumn } from "./chapter-column"
 import { EventCard } from "./event-card"
-import { Clock, Plus, Lightbulb } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { Clock } from "lucide-react"
 import { reorderTimelineEvents } from "@/server/timeline"
 
 interface TimelineBoardProps {
     novelId: string
     chapters: Chapter[]
     initialEvents: TimelineEvent[]
+    characters?: Character[]
+    locations?: Location[]
 }
 
-export function TimelineBoard({ novelId, chapters, initialEvents }: TimelineBoardProps) {
+export function TimelineBoard({
+    novelId,
+    chapters,
+    initialEvents,
+    characters = [],
+    locations = []
+}: TimelineBoardProps) {
     const [events, setEvents] = useState<TimelineEvent[]>(initialEvents)
     const [activeId, setActiveId] = useState<string | null>(null)
 
@@ -110,13 +113,8 @@ export function TimelineBoard({ novelId, chapters, initialEvents }: TimelineBoar
         const activeEvent = events.find(e => e.id === activeId)
         if (!activeEvent) return
 
-        // Prepare updates for reordering
-        // We need to update orderIndex for all events in the affected chapter(s)
-        // For simplicity and correctness, we recalculate orderIndex for ALL events in the affected chapters based on their current position in `events` array.
-
         const updatesToSave: { id: string; orderIndex: number; relatedChapterId: string | null }[] = []
 
-        // We need to preserve the order from `events` array
         const orderedEventsByChapter: Record<string, TimelineEvent[]> = {}
         events.forEach(e => {
             if (e.relatedChapterId) {
@@ -142,8 +140,11 @@ export function TimelineBoard({ novelId, chapters, initialEvents }: TimelineBoar
         }
     }
 
-    // เรียงลำดับ Chapter ก่อน render
+    // Sort chapters
     const sortedChapters = [...chapters].sort((a, b) => a.orderIndex - b.orderIndex)
+
+    // Get active event for drag overlay
+    const activeEvent = activeId ? events.find(e => e.id === activeId) : null
 
     if (chapters.length === 0) {
         return (
@@ -166,41 +167,49 @@ export function TimelineBoard({ novelId, chapters, initialEvents }: TimelineBoar
             onDragEnd={handleDragEnd}
         >
             <div className="h-full flex flex-col relative">
-                {/* ส่วนหัว Timeline (เช่น Start Story Icon) */}
+                {/* Header */}
                 <div className="flex items-center gap-2 p-4 pb-0 text-muted-foreground">
                     <Clock className="w-5 h-5" />
                     <span className="font-semibold text-sm">Story Timeline</span>
+                    <span className="text-xs ml-2 text-muted-foreground/60">
+                        {events.length} events across {chapters.length} chapters
+                    </span>
                 </div>
 
-                {/* พื้นที่ Scroll แนวนอน */}
+                {/* Timeline Area */}
                 <div className="flex-1 overflow-x-auto overflow-y-hidden p-8">
                     <div className="flex h-full min-w-max items-start pt-8">
-                        {/* pt-8 เพื่อเว้นที่ให้ Label ของ Chapter */}
+                        {sortedChapters.map((chapter, index) => {
+                            const chapterEvents = events.filter(e => e.relatedChapterId === chapter.id)
+                            return (
+                                <ChapterColumn
+                                    key={chapter.id}
+                                    chapter={chapter}
+                                    events={chapterEvents}
+                                    characters={characters}
+                                    locations={locations}
+                                    isFirst={index === 0}
+                                    isLast={index === sortedChapters.length - 1}
+                                />
+                            )
+                        })}
 
-                        {sortedChapters.map((chapter, index) => (
-                            <ChapterColumn
-                                key={chapter.id}
-                                chapter={chapter}
-                                events={events.filter(e => e.relatedChapterId === chapter.id)}
-                                isFirst={index === 0} // เช็คตัวแรก
-                                isLast={index === sortedChapters.length - 1} // เช็คตัวสุดท้าย
-                            />
-                        ))}
-
-                        {/* End Node (Optional: จุดจบเรื่อง) */}
+                        {/* End Node */}
                         <div className="h-1 w-16 bg-gradient-to-r from-muted-foreground/30 to-transparent mt-[26px]" />
                         <div className="mt-[18px] h-4 w-4 rounded-full bg-muted-foreground/20" />
                     </div>
                 </div>
-
-
             </div>
 
             <DragOverlay>
-                {activeId ? (
-                    <EventCard event={events.find(e => e.id === activeId)!} />
+                {activeEvent ? (
+                    <EventCard
+                        event={activeEvent}
+                        characters={characters}
+                        locations={locations}
+                    />
                 ) : null}
             </DragOverlay>
-        </DndContext >
+        </DndContext>
     )
 }

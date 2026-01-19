@@ -12,6 +12,8 @@ import {
     BreadcrumbPage,
     BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
+import { syncDiscordIdeas } from '@/server/discord-sync';
+
 
 type Props = {
     params: Promise<{ id: string }>
@@ -23,6 +25,16 @@ export default async function ProjectLayout({ params, children }: Props) {
 
     // Query ข้อมูล novel
     const result = await getNovelById(id)
+
+    try {
+        const syncResult = await syncDiscordIdeas(id)
+        if (syncResult.synced > 0) {
+            console.log(`[Discord sync] Synced ${syncResult.synced} ideas`)
+
+        }
+    } catch (err) {
+        console.error('[Discord sync] Error:', err);
+    }
 
     // ถ้าไม่เจอให้แสดง 404
     if (!result.success || !result.novel) {

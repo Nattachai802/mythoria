@@ -15,13 +15,18 @@ import {
     Sparkles,
     Target,
     TrendingUp,
-    Pen
+    Pen,
+    Flame,
+    PenTool,
+    BarChart3,
 } from "lucide-react"
 import { ProjectHeaderActions } from "@/components/project/project-header-actions"
 import { CreateChapterDialog } from "@/components/project/create-chapter-dialog"
 import { CreateNoteDialog } from "@/components/project/create-note-dialog"
-import { getNovelById } from "@/server/novel"
+import { getNovelByIdLight } from "@/server/novel"
 import { getNotes } from "@/server/note"
+import { getIdeasCount } from "@/server/idea"
+import { getWritingStreak, getAnalyticsSummary, getWritingActivity } from "@/server/analytics"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -72,28 +77,40 @@ function getChapterWordCount(chapterNotes: any[]): number {
 
 export default async function ProjectOverviewPage({ params }: Props) {
     const { id } = await params
-    const result = await getNovelById(id)
 
-    if (!result.success || !result.novel) {
+    // Parallel fetching with light queries
+    const [novelResult, notesResult, ideasCountResult, streakResult, summaryResult, activityResult] = await Promise.all([
+        getNovelByIdLight(id),
+        getNotes(id),
+        getIdeasCount(id),
+        getWritingStreak(id),
+        getAnalyticsSummary(id),
+        getWritingActivity(id, 14), // Last 14 days for mini calendar
+    ])
+
+    if (!novelResult.success || !novelResult.novel) {
         notFound()
     }
 
-    const { novel } = result
-    const { notes: allNotes } = await getNotes(id)
-    const notes = allNotes || []
+    const { novel } = novelResult
+    const notes = notesResult.notes || []
+    const ideasCount = ideasCountResult.count || 0
+    const streak = streakResult
+    const analytics = summaryResult.summary
+    const activityData = activityResult.activity || []
 
     // Calculate stats
     const totalWords = novel.wordCount || 0
     const targetWords = novel.targetWordCount || 50000
     const progress = targetWords > 0 ? Math.min((totalWords / targetWords) * 100, 100) : 0
     const totalChapters = novel.chapters.length
-    const publishedChapters = novel.chapters.filter(c => c.status === "published")
-    const draftChapters = novel.chapters.filter(c => c.status === "draft")
+    const publishedChapters = novel.chapters.filter((c: any) => c.status === "published")
+    const draftChapters = novel.chapters.filter((c: any) => c.status === "draft")
     const lastUpdated = novel.updatedAt ? format(new Date(novel.updatedAt), "PP") : "Never"
 
     // Sort chapters by orderIndex
-    const sortedDrafts = [...draftChapters].sort((a, b) => a.orderIndex - b.orderIndex)
-    const sortedPublished = [...publishedChapters].sort((a, b) => a.orderIndex - b.orderIndex)
+    const sortedDrafts = [...draftChapters].sort((a: any, b: any) => a.orderIndex - b.orderIndex)
+    const sortedPublished = [...publishedChapters].sort((a: any, b: any) => a.orderIndex - b.orderIndex)
 
     return (
         <div className="flex flex-col gap-6">
@@ -133,8 +150,37 @@ export default async function ProjectOverviewPage({ params }: Props) {
                         </div>
                     </div>
 
+                    {/* Writing Stats Section - Compact */}
+                    <div className="space-y-2 pt-2">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Stats</span>
+                            <Link
+                                href={`/dashboard/project/${id}/analytics`}
+                                className="text-[10px] text-primary hover:underline"
+                            >
+                                เพิ่มเติม
+                            </Link>
+                        </div>
+
+                        {/* Stats Grid - Compact */}
+                        <div className="grid grid-cols-3 gap-1.5">
+                            <div className="p-1.5 rounded-md bg-gradient-to-br from-orange-500/10 to-red-500/10 text-center">
+                                <span className="text-sm font-bold">{streak.currentStreak}</span>
+                                <p className="text-[9px] text-muted-foreground">Streak</p>
+                            </div>
+                            <div className="p-1.5 rounded-md bg-muted/50 text-center">
+                                <span className="text-sm font-bold">{(analytics?.todayWords || 0).toLocaleString()}</span>
+                                <p className="text-[9px] text-muted-foreground">Today</p>
+                            </div>
+                            <div className="p-1.5 rounded-md bg-muted/50 text-center">
+                                <span className="text-sm font-bold">{(analytics?.weekWords || 0).toLocaleString()}</span>
+                                <p className="text-[9px] text-muted-foreground">Week</p>
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Progress Bar - Minimal */}
-                    <div className="space-y-2">
+                    <div className="space-y-2 pt-2 border-t">
                         <div className="flex justify-between text-xs">
                             <span className="text-muted-foreground">Progress</span>
                             <span className="font-medium">{totalWords.toLocaleString()} / {targetWords.toLocaleString()}</span>
@@ -142,38 +188,33 @@ export default async function ProjectOverviewPage({ params }: Props) {
                         <Progress value={progress} className="h-1.5" />
                     </div>
 
-                    {/* Quick Links - Minimal */}
-                    <div className="space-y-1 pt-2">
-                        <Link
-                            href={`/dashboard/project/${id}/characters`}
-                            className="flex items-center justify-between py-2 px-1 rounded hover:bg-muted/50 transition-colors text-sm"
-                        >
-                            <div className="flex items-center gap-2 text-muted-foreground">
-                                <Users className="h-4 w-4" />
-                                <span>Characters</span>
-                            </div>
-                            <span className="font-medium">{novel.characters.length}</span>
-                        </Link>
-                        <Link
-                            href={`/dashboard/project/${id}/locations`}
-                            className="flex items-center justify-between py-2 px-1 rounded hover:bg-muted/50 transition-colors text-sm"
-                        >
-                            <div className="flex items-center gap-2 text-muted-foreground">
-                                <MapPin className="h-4 w-4" />
-                                <span>Locations</span>
-                            </div>
-                            <span className="font-medium">{novel.locations.length}</span>
-                        </Link>
-                        <Link
-                            href={`/dashboard/project/${id}/idea`}
-                            className="flex items-center justify-between py-2 px-1 rounded hover:bg-muted/50 transition-colors text-sm"
-                        >
-                            <div className="flex items-center gap-2 text-muted-foreground">
-                                <StickyNote className="h-4 w-4" />
-                                <span>Ideas</span>
-                            </div>
-                            <span className="font-medium">{notes.length}</span>
-                        </Link>
+                    {/* Mini Activity Calendar - Last 14 days */}
+                    <div className="space-y-2 pt-2">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Activity (14 days)</span>
+                            <Link
+                                href={`/dashboard/project/${id}/analytics`}
+                                className="text-[10px] text-primary hover:underline"
+                            >
+                                เพิ่มเติม
+                            </Link>
+                        </div>
+                        <div className="grid grid-cols-7 gap-1">
+                            {activityData.slice(-14).map((day: { date: string; count: number }, i: number) => (
+                                <div
+                                    key={i}
+                                    className={cn(
+                                        "aspect-square rounded-sm",
+                                        day.count === 0 && "bg-muted/50",
+                                        day.count > 0 && day.count < 500 && "bg-emerald-200 dark:bg-emerald-900",
+                                        day.count >= 500 && day.count < 1000 && "bg-emerald-300 dark:bg-emerald-700",
+                                        day.count >= 1000 && day.count < 2000 && "bg-emerald-400 dark:bg-emerald-600",
+                                        day.count >= 2000 && "bg-emerald-500 dark:bg-emerald-500"
+                                    )}
+                                    title={`${day.date}: ${day.count.toLocaleString()} words`}
+                                />
+                            ))}
+                        </div>
                     </div>
 
                     {/* AI Tools Section */}
