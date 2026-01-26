@@ -9,6 +9,7 @@ export const CACHE_TAGS = {
     locations: (novelId: string) => `locations-${novelId}`,
     ideas: (novelId: string) => `ideas-${novelId}`,
     notes: (novelId: string) => `notes-${novelId}`,
+    analytics: (novelId: string) => `analytics-${novelId}`,
 } as const;
 
 // Cache durations in seconds

@@ -63,7 +63,7 @@ export function ProjectSidebar({ projectId, projectTitle, chapters = [] }: Proje
     const draftChapters = chapters.filter(c => c.status === "draft")
 
     return (
-        <Sidebar collapsible="icon" className="border-r border-sidebar-border bg-sidebar/50 backdrop-blur-md">
+        <Sidebar collapsible="icon" className="border-r border-sidebar-border bg-sidebar/80 backdrop-blur-md">
             <SidebarHeader>
                 <SidebarMenu>
                     <SidebarMenuItem>

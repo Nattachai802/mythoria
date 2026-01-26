@@ -19,6 +19,7 @@ import {
     AlertTriangle,
     Calendar,
     Sparkles,
+    Download,
 } from "lucide-react";
 import { CharacterSheet } from "@/components/project/character/character-sheet";
 import { CharacterRelationships } from "@/components/project/character/character-relationships";
@@ -27,6 +28,8 @@ import { CharacterPowerManager } from "@/components/project/character/character-
 import { CharacterLifeEvents } from "@/components/project/character/character-life-events";
 import { CharacterTimelineSlider } from "@/components/project/character/character-timeline-slider";
 import { FactionTimelineView } from "@/components/project/character/faction-timeline-view";
+import { ExportCharacterDialog } from "@/components/project/character/export-character-dialog";
+import { FormattedTextSection } from "@/components/ui/formatted-text-section";
 import { Character } from "@/db/schema";
 import { cn } from "@/lib/utils";
 
@@ -70,15 +73,21 @@ interface InfoSectionProps {
 }
 
 function InfoSection({ icon, title, children, className }: InfoSectionProps) {
+    const textContent = typeof children === "string" ? children : null;
+
     return (
         <div className={cn("space-y-3", className)}>
             <div className="flex items-center gap-2 text-muted-foreground">
                 {icon}
                 <h3 className="text-sm font-semibold uppercase tracking-wide">{title}</h3>
             </div>
-            <div className="text-sm leading-relaxed whitespace-pre-wrap">
-                {children}
-            </div>
+            {textContent ? (
+                <FormattedTextSection text={textContent} className="text-sm" />
+            ) : (
+                <div className="text-sm leading-relaxed whitespace-pre-wrap">
+                    {children}
+                </div>
+            )}
         </div>
     );
 }
@@ -146,10 +155,23 @@ export function CharacterDetailContent({
                                             )}
                                         </div>
                                     </div>
-                                    <Button onClick={() => setSheetOpen(true)} className="shadow-lg">
-                                        <Pencil className="h-4 w-4 mr-2" />
-                                        แก้ไข
-                                    </Button>
+                                    <div className="flex items-center gap-2">
+                                        <ExportCharacterDialog
+                                            characters={[character]}
+                                            novelTitle={novelId}
+                                            singleCharacter={character}
+                                            trigger={
+                                                <Button variant="outline" className="shadow-lg">
+                                                    <Download className="h-4 w-4 mr-2" />
+                                                    Export
+                                                </Button>
+                                            }
+                                        />
+                                        <Button onClick={() => setSheetOpen(true)} className="shadow-lg">
+                                            <Pencil className="h-4 w-4 mr-2" />
+                                            แก้ไข
+                                        </Button>
+                                    </div>
                                 </div>
 
                                 {character.description && (

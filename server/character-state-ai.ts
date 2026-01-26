@@ -204,7 +204,7 @@ async function callTyphoon(prompt: string): Promise<AIExtractionResult | null> {
                 model: TYPHOON_MODEL,
                 messages: [{ role: "user", content: prompt }],
                 temperature: 0.3,
-                max_tokens: 2048,
+                max_tokens: 30000,
             }),
         });
 

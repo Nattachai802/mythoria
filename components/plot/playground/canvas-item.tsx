@@ -3,8 +3,10 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { User, MapPin, Lightbulb, X, Link as LinkIcon } from "lucide-react";
-import { useCallback } from "react";
+import { User, MapPin, Lightbulb, X, Link as LinkIcon, Pencil, CheckCircle2, XCircle, Clock, StickyNote, Maximize2, Minimize2, ExternalLink } from "lucide-react";
+import { useCallback, useState } from "react";
+import { SceneElementDetails } from "@/db/schema";
+import Link from "next/link";
 
 // For items already on the canvas (moveable)
 export function DraggableCanvasItem({
@@ -13,7 +15,12 @@ export function DraggableCanvasItem({
   onRemoveChild,
   onLinkStart,
   onLinkComplete,
-  isLinkingSource
+  isLinkingSource,
+  elementDetails,
+  onEditChild,
+  ideaNotes,
+  onAddNote,
+  novelId,
 }: {
   item: any;
   onRemove: () => void;
@@ -21,6 +28,11 @@ export function DraggableCanvasItem({
   onLinkStart?: (id: string) => void;
   onLinkComplete?: (id: string) => void;
   isLinkingSource?: boolean;
+  elementDetails?: Map<string, SceneElementDetails>;
+  onEditChild?: (child: any) => void;
+  ideaNotes?: SceneElementDetails[];
+  onAddNote?: (item: any) => void;
+  novelId?: string;
 }) {
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
     id: item.id,
@@ -52,6 +64,7 @@ export function DraggableCanvasItem({
       ref={setNodeRef}
       {...listeners}
       {...attributes}
+      data-canvas-item="true"
       style={{
         position: 'absolute',
         left: item.x,
@@ -75,13 +88,57 @@ export function DraggableCanvasItem({
         isOver={isOver}
         isLinkingSource={isLinkingSource}
         onLinkStart={() => onLinkStart?.(item.id)}
+        elementDetails={elementDetails}
+        onEditChild={onEditChild}
+        ideaNotes={ideaNotes}
+        onAddNote={onAddNote}
+        novelId={novelId}
       />
     </div>
   );
 }
 
+// Helper to get outcome icon
+function OutcomeIcon({ outcome }: { outcome?: string | null }) {
+  if (!outcome || outcome === "unknown") return null;
+  if (outcome === "success") return <CheckCircle2 className="w-3 h-3 text-green-500" />;
+  if (outcome === "failure") return <XCircle className="w-3 h-3 text-red-500" />;
+  if (outcome === "ongoing") return <Clock className="w-3 h-3 text-yellow-500" />;
+  return null;
+}
+
 // The Visual Representation (used for both Canvas and DragOverlay)
-export function CanvasItem({ item, onRemove, onRemoveChild, isDragging, isOverlay, isOver, isLinkingSource, onLinkStart }: any) {
+export function CanvasItem({
+  item,
+  onRemove,
+  onRemoveChild,
+  isDragging,
+  isOverlay,
+  isOver,
+  isLinkingSource,
+  onLinkStart,
+  elementDetails,
+  onEditChild,
+  ideaNotes,
+  onAddNote,
+  novelId,
+}: {
+  item: any;
+  onRemove?: () => void;
+  onRemoveChild?: (id: string) => void;
+  isDragging?: boolean;
+  isOverlay?: boolean;
+  isOver?: boolean;
+  isLinkingSource?: boolean;
+  onLinkStart?: () => void;
+  elementDetails?: Map<string, SceneElementDetails>;
+  onEditChild?: (child: any) => void;
+  ideaNotes?: SceneElementDetails[];
+  onAddNote?: (item: any) => void;
+  novelId?: string;
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
   const Icon = () => {
     if (item.type === 'character') return <User className="w-4 h-4" />;
     if (item.type === 'location') return <MapPin className="w-4 h-4" />;
@@ -95,7 +152,48 @@ export function CanvasItem({ item, onRemove, onRemoveChild, isDragging, isOverla
 
   // If idea, maybe make it wider/bigger to imply container
   const isContainer = item.type === 'idea';
-  const widthClass = isContainer ? 'w-80' : 'w-64';
+
+  // Width class based on card type and expanded state
+  const getWidthClass = () => {
+    if (isExpanded) return 'w-[450px]';
+    if (isContainer) return 'w-80';
+    return 'w-64';
+  };
+  const widthClass = getWidthClass();
+
+  // Get detail page URL for navigation
+  const getDetailPageUrl = () => {
+    if (!novelId) return null;
+    if (item.type === 'character') {
+      return `/dashboard/project/${novelId}/characters/${item.referenceId || item.id}`;
+    }
+    if (item.type === 'location') {
+      return `/dashboard/project/${novelId}/locations`; // Locations don't have individual pages yet
+    }
+    if (item.type === 'idea') {
+      return `/dashboard/project/${novelId}/idea`; // Ideas page
+    }
+    return null;
+  };
+
+  // Helper to get detail for a child
+  const getChildDetail = (child: any) => {
+    if (!elementDetails) return null;
+    // Try to find by canvasItemId + elementId combination
+    const key = `${item.id}-${child.type}-${child.referenceId || child.refId || child.id}`;
+    return elementDetails.get(key);
+  };
+
+  // Helper to get notes for this idea
+  const getIdeaNotes = () => {
+    if (!ideaNotes || item.type !== 'idea') return [];
+    return ideaNotes.filter(note =>
+      note.canvasItemId === item.id &&
+      note.elementType === 'idea_note'
+    );
+  };
+
+  const thisIdeaNotes = getIdeaNotes();
 
   return (
     <Card className={`
@@ -107,17 +205,17 @@ export function CanvasItem({ item, onRemove, onRemoveChild, isDragging, isOverla
         ${isDragging && !isOverlay ? 'opacity-0' : 'opacity-100'}
     `}>
       <div className="p-3">
-        <div className="flex items-start gap-2 mb-2">
+        <div className={`flex items-start gap-2 ${!isExpanded && item.type === 'idea' && item.content ? 'mb-2' : ''}`}>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
+            <div className={`flex items-center gap-2 ${!isExpanded && item.type === 'idea' && item.content ? 'mb-1' : ''}`}>
               <div className={`p-1 rounded-full ${isOverlay ? 'bg-background' : 'bg-muted'}`}>
                 <Icon />
               </div>
               <p className="font-semibold text-sm truncate">{item.title}</p>
             </div>
 
-            {item.type === 'idea' && item.content && (
-              <p className="text-xs text-muted-foreground line-clamp-3 bg-muted/30 p-2 rounded mb-2">
+            {item.type === 'idea' && item.content && !isExpanded && (
+              <p className="text-xs text-muted-foreground line-clamp-3 bg-muted/30 p-2 rounded">
                 {typeof item.content === 'string' ? item.content : 'Rich text content...'}
               </p>
             )}
@@ -156,8 +254,143 @@ export function CanvasItem({ item, onRemove, onRemoveChild, isDragging, isOverla
                 <LinkIcon className="w-3 h-3" />
               </Button>
             )}
+            {/* Add Note button for Ideas */}
+            {isContainer && onAddNote && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-muted-foreground hover:text-yellow-500 shrink-0"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  onAddNote(item);
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                title="เพิ่ม Note"
+              >
+                <StickyNote className="w-3 h-3" />
+              </Button>
+            )}
+            {/* Expand/Collapse button */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-muted-foreground hover:text-primary shrink-0"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setIsExpanded(!isExpanded);
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              title={isExpanded ? "ย่อ" : "ขยาย"}
+            >
+              {isExpanded ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
+            </Button>
           </div>
         </div>
+
+        {/* Expanded Content */}
+        {isExpanded && (
+          <div className={`space-y-1 ${item.type === 'idea' ? '' : 'border-t pt-2 mt-2'}`}>
+            {/* Full content for character */}
+            {item.type === 'character' && (
+              <div className="space-y-2 text-xs">
+                {item.role && (
+                  <div>
+                    <span className="font-semibold text-muted-foreground">บทบาท: </span>
+                    <span>{item.role}</span>
+                  </div>
+                )}
+                {item.personality && (
+                  <div>
+                    <span className="font-semibold text-muted-foreground">บุคลิก: </span>
+                    <span className="whitespace-pre-wrap">{item.personality}</span>
+                  </div>
+                )}
+                {item.abilities && (
+                  <div>
+                    <span className="font-semibold text-muted-foreground">ความสามารถ: </span>
+                    <span className="whitespace-pre-wrap">{item.abilities}</span>
+                  </div>
+                )}
+                {item.backstory && (
+                  <div>
+                    <span className="font-semibold text-muted-foreground">ที่มา: </span>
+                    <span className="whitespace-pre-wrap line-clamp-4">{item.backstory}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Full content for location */}
+            {item.type === 'location' && (
+              <div className="space-y-2 text-xs">
+                {item.locationType && (
+                  <div>
+                    <span className="font-semibold text-muted-foreground">ประเภท: </span>
+                    <span>{item.locationType}</span>
+                  </div>
+                )}
+                {item.description && (
+                  <div>
+                    <span className="font-semibold text-muted-foreground">รายละเอียด: </span>
+                    <span className="whitespace-pre-wrap">{item.description}</span>
+                  </div>
+                )}
+                {item.atmosphere && (
+                  <div>
+                    <span className="font-semibold text-muted-foreground">บรรยากาศ: </span>
+                    <span className="whitespace-pre-wrap">{item.atmosphere}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Full content for idea - show full text */}
+            {item.type === 'idea' && item.content && (
+              <div className="text-xs text-muted-foreground bg-muted/30 p-2 rounded whitespace-pre-wrap mt-0">
+                {typeof item.content === 'string' ? item.content : 'Rich text content...'}
+              </div>
+            )}
+
+            {/* Link to detail page */}
+            {getDetailPageUrl() && (
+              <Link
+                href={getDetailPageUrl()!}
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="flex items-center gap-1 text-xs text-primary hover:underline"
+              >
+                <ExternalLink className="w-3 h-3" />
+                ดูรายละเอียดเต็ม
+              </Link>
+            )}
+          </div>
+        )}
+
+        {/* Sticky Notes for Ideas */}
+        {isContainer && thisIdeaNotes.length > 0 && (
+          <div className="space-y-1 mb-2">
+            {thisIdeaNotes.map((note) => (
+              <div
+                key={note.id}
+                className="bg-yellow-50 border border-yellow-200 rounded p-2 text-xs cursor-pointer hover:bg-yellow-100 transition-colors group/note"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  // Click to edit existing note
+                  if (onAddNote) {
+                    onAddNote({ ...item, existingNoteId: note.id });
+                  }
+                }}
+              >
+                <div className="flex items-start gap-1">
+                  <StickyNote className="w-3 h-3 text-yellow-600 shrink-0 mt-0.5" />
+                  <p className="text-yellow-800 whitespace-pre-wrap line-clamp-3">{note.notes}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Children Area for Ideas */}
         {isContainer && item.children && item.children.length > 0 && (
@@ -171,23 +404,52 @@ export function CanvasItem({ item, onRemove, onRemoveChild, isDragging, isOverla
                 </p>
                 {item.children
                   .filter((c: any) => c.type === 'character')
-                  .map((child: any) => (
-                    <div key={child.id} className="flex items-center gap-2 bg-background p-1.5 rounded border shadow-sm text-xs group/item">
-                      <User className="w-3 h-3 text-blue-500" />
-                      <span className="truncate flex-1">{child.title}</span>
-                      {onRemoveChild && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onRemoveChild(child.id);
-                          }}
-                          className="opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-opacity"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                  .map((child: any) => {
+                    const detail = getChildDetail(child);
+                    const hasDetail = detail && (detail.action || detail.how || detail.goal);
+                    return (
+                      <div key={child.id} className="bg-background p-1.5 rounded border shadow-sm text-xs group/item">
+                        <div className="flex items-center gap-2">
+                          <User className="w-3 h-3 text-blue-500 shrink-0" />
+                          <span className="truncate flex-1 font-medium">{child.title}</span>
+                          <OutcomeIcon outcome={detail?.outcome} />
+                          {onEditChild && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onEditChild({ ...child, canvasItemId: item.id });
+                              }}
+                              className="opacity-0 group-hover/item:opacity-100 hover:text-blue-500 transition-opacity"
+                              title="แก้ไขรายละเอียด"
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                          )}
+                          {onRemoveChild && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onRemoveChild(child.id);
+                              }}
+                              className="opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-opacity"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                        {hasDetail && (
+                          <div className="mt-1 pl-5 text-[10px] text-muted-foreground space-y-0.5">
+                            {detail.action && (
+                              <p className="truncate">📌 {detail.action}{detail.how ? ` • ${detail.how}` : ''}</p>
+                            )}
+                            {detail.goal && (
+                              <p className="truncate text-muted-foreground/70">🎯 {detail.goal}</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
               </div>
             )}
 
@@ -199,23 +461,52 @@ export function CanvasItem({ item, onRemove, onRemoveChild, isDragging, isOverla
                 </p>
                 {item.children
                   .filter((c: any) => c.type === 'location')
-                  .map((child: any) => (
-                    <div key={child.id} className="flex items-center gap-2 bg-background p-1.5 rounded border shadow-sm text-xs group/item">
-                      <MapPin className="w-3 h-3 text-green-500" />
-                      <span className="truncate flex-1">{child.title}</span>
-                      {onRemoveChild && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onRemoveChild(child.id);
-                          }}
-                          className="opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-opacity"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                  .map((child: any) => {
+                    const detail = getChildDetail(child);
+                    const hasDetail = detail && (detail.action || detail.how || detail.goal);
+                    return (
+                      <div key={child.id} className="bg-background p-1.5 rounded border shadow-sm text-xs group/item">
+                        <div className="flex items-center gap-2">
+                          <MapPin className="w-3 h-3 text-green-500 shrink-0" />
+                          <span className="truncate flex-1 font-medium">{child.title}</span>
+                          <OutcomeIcon outcome={detail?.outcome} />
+                          {onEditChild && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onEditChild({ ...child, canvasItemId: item.id });
+                              }}
+                              className="opacity-0 group-hover/item:opacity-100 hover:text-green-500 transition-opacity"
+                              title="แก้ไขรายละเอียด"
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                          )}
+                          {onRemoveChild && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onRemoveChild(child.id);
+                              }}
+                              className="opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-opacity"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                        {hasDetail && (
+                          <div className="mt-1 pl-5 text-[10px] text-muted-foreground space-y-0.5">
+                            {detail.action && (
+                              <p className="truncate">📌 {detail.action}{detail.how ? ` • ${detail.how}` : ''}</p>
+                            )}
+                            {detail.goal && (
+                              <p className="truncate text-muted-foreground/70">🎯 {detail.goal}</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
               </div>
             )}
 

@@ -295,6 +295,8 @@ export const notes = pgTable("notes", {
   linkedToChapterId: text("linked_to_chapter_id").references(() => chapters.id, { onDelete: "set null" }),
   linkedToCharacterId: text("linked_to_character_id").references(() => characters.id, { onDelete: "set null" }),
   linkedToLocationId: text("linked_to_location_id").references(() => locations.id, { onDelete: "set null" }),
+  // AI Summary
+  summary: text("summary"), // AI-generated summary of note content
   // Note Status
   status: text("status").default("draft"), // draft, writing, needs_rewrite, published
   // Plot Hole Checking
@@ -306,6 +308,25 @@ export const notes = pgTable("notes", {
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
+});
+
+// Note Versions - เก็บ history ของ notes (จำกัด 3 versions ล่าสุดต่อ note)
+export const noteVersions = pgTable("note_versions", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  noteId: text("note_id")
+    .notNull()
+    .references(() => notes.id, { onDelete: "cascade" }),
+
+  // Content snapshot
+  title: text("title").notNull(),
+  content: jsonb("content").notNull(),
+  wordCount: integer("word_count").default(0),
+
+  // Metadata
+  versionNumber: integer("version_number").notNull(),
+  saveType: text("save_type").notNull().default("manual"), // "manual" | "auto"
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const tags = pgTable("tags", {
@@ -484,6 +505,7 @@ export const ideas = pgTable("ideas", {
   linkedChapterId: text("linked_chapter_id").references(() => chapters.id, { onDelete: "set null" }),
   linkedCharacterIds: jsonb("linked_character_ids"), // สามารถลิงก์หลายตัวละคร
 
+  isUsed: boolean("is_used").default(false), // Auto-set to true when placed on Playground canvas
   isArchived: boolean("is_archived").default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
@@ -766,6 +788,45 @@ export const locationEntities = pgTable("location_entities", {
 });
 
 // ============================================
+// SCENE ELEMENT DETAILS - ใคร ทำอะไร ที่ไหน อย่างไร
+// ============================================
+
+// Scene Element Details - รายละเอียดของ character/location ใน scene
+export const sceneElementDetails = pgTable("scene_element_details", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+
+  // Link to timeline event (scene)
+  sceneId: text("scene_id")
+    .notNull()
+    .references(() => timelineEvents.id, { onDelete: "cascade" }),
+
+  // Element reference (character or location)
+  elementType: text("element_type").notNull(), // "character" | "location"
+  elementId: text("element_id").notNull(), // character.id or location.id
+
+  // Canvas item reference (for linking to specific idea on canvas)
+  canvasItemId: text("canvas_item_id"), // ID of the canvas item (idea) this belongs to
+
+  // Action Details - ใคร ทำอะไร ที่ไหน อย่างไร
+  action: text("action"),           // ทำอะไร: "สู้กับมอนสเตอร์", "ค้นหาสมบัติ"
+  how: text("how"),                 // อย่างไร: "ใช้ดาบวิเศษ", "ร่ายเวทมนตร์"
+  goal: text("goal"),               // เป้าหมาย/แรงจูงใจ: "เพื่อปกป้องหมู่บ้าน"
+  outcome: text("outcome"),         // ผลลัพธ์: "success" | "failure" | "ongoing" | "unknown"
+  notes: text("notes"),             // หมายเหตุเพิ่มเติม
+
+  // Novel reference for easy querying
+  novelId: text("novel_id")
+    .notNull()
+    .references(() => novels.id, { onDelete: "cascade" }),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+// ============================================
 // AI ANALYSIS TABLES
 // ============================================
 
@@ -905,9 +966,21 @@ export const locationConnectionRelations = relations(locationConnections, ({ one
   }),
 }));
 
-export const timelineEventRelations = relations(timelineEvents, ({ one }) => ({
+export const timelineEventRelations = relations(timelineEvents, ({ one, many }) => ({
   novel: one(novels, {
     fields: [timelineEvents.novelId],
+    references: [novels.id],
+  }),
+  elementDetails: many(sceneElementDetails),
+}));
+
+export const sceneElementDetailsRelations = relations(sceneElementDetails, ({ one }) => ({
+  scene: one(timelineEvents, {
+    fields: [sceneElementDetails.sceneId],
+    references: [timelineEvents.id],
+  }),
+  novel: one(novels, {
+    fields: [sceneElementDetails.novelId],
     references: [novels.id],
   }),
 }));
@@ -1274,6 +1347,7 @@ export type CharacterState = typeof characterStates.$inferSelect;
 export type StateExtractionQueue = typeof stateExtractionQueue.$inferSelect;
 export type Idea = typeof ideas.$inferSelect;
 export type IdeaConnection = typeof ideaConnections.$inferSelect;
+export type SceneElementDetails = typeof sceneElementDetails.$inferSelect;
 
 export type InsertNovel = typeof novels.$inferInsert;
 export type InsertChapter = typeof chapters.$inferInsert;
@@ -1290,6 +1364,7 @@ export type InsertCharacterState = typeof characterStates.$inferInsert;
 export type InsertStateExtractionQueue = typeof stateExtractionQueue.$inferInsert;
 export type InsertIdea = typeof ideas.$inferInsert;
 export type InsertIdeaConnection = typeof ideaConnections.$inferInsert;
+export type InsertSceneElementDetails = typeof sceneElementDetails.$inferInsert;
 export type Power = typeof powers.$inferSelect;
 export type PowerLevel = typeof powerLevels.$inferSelect;
 export type PowerCombination = typeof powerCombinations.$inferSelect;
@@ -1389,4 +1464,7 @@ export const schema = {
   entityRelations,
   locationEntities,
   locationEntityRelations,
+  // Scene Element Details
+  sceneElementDetails,
+  sceneElementDetailsRelations,
 };

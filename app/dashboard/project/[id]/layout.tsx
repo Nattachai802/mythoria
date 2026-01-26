@@ -1,6 +1,6 @@
 import { ReactNode } from "react"
 import { notFound } from "next/navigation"
-import { getNovelById } from "@/server/novel"
+import { getNovelByIdSimple } from "@/server/novel"
 import { ProjectSidebar } from "@/components/project-sidebar"
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
@@ -12,7 +12,6 @@ import {
     BreadcrumbPage,
     BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
-import { syncDiscordIdeas } from '@/server/discord-sync';
 
 
 type Props = {
@@ -23,18 +22,8 @@ type Props = {
 export default async function ProjectLayout({ params, children }: Props) {
     const { id } = await params
 
-    // Query ข้อมูล novel
-    const result = await getNovelById(id)
-
-    try {
-        const syncResult = await syncDiscordIdeas(id)
-        if (syncResult.synced > 0) {
-            console.log(`[Discord sync] Synced ${syncResult.synced} ideas`)
-
-        }
-    } catch (err) {
-        console.error('[Discord sync] Error:', err);
-    }
+    // Query ข้อมูล novel แบบ simple (ใช้แค่ title สำหรับ sidebar)
+    const result = await getNovelByIdSimple(id)
 
     // ถ้าไม่เจอให้แสดง 404
     if (!result.success || !result.novel) {

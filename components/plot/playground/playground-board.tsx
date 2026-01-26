@@ -16,9 +16,14 @@ import {
 import { ResourceSidebar } from "./resource-sidebar";
 import { CanvasItem, DraggableCanvasItem } from "./canvas-item";
 import { updateTimelineCanvas } from "@/server/timeline";
+import { updateIdea } from "@/server/idea"; // For auto-reset isUsed flag
+import { getSceneElementDetails } from "@/server/scene-element-details";
+import { SceneElementDetailDialog } from "./scene-element-detail-dialog";
+import { IdeaNoteDialog } from "./idea-note-dialog";
+import { SceneElementDetails } from "@/db/schema";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Plus, Save, ZoomIn, ZoomOut, Maximize2, Link2, X, Check } from "lucide-react";
+import { Plus, Save, ZoomIn, ZoomOut, Maximize2, Link2, X, Check, Move } from "lucide-react";
 import { CreateIdeaDialog } from "@/components/project/idea/create-idea-dialog";
 
 interface PlaygroundBoardProps {
@@ -77,12 +82,22 @@ function DroppableCanvas({
     children,
     onCanvasRefChange,
     items,
-    zoom
+    zoom,
+    panOffset,
+    isPanning,
+    onMouseDown,
+    onMouseMove,
+    onMouseUp,
 }: {
     children: React.ReactNode;
     onCanvasRefChange: (element: HTMLDivElement | null) => void;
     items: any[];
     zoom: number;
+    panOffset: { x: number; y: number };
+    isPanning: boolean;
+    onMouseDown: (e: React.MouseEvent) => void;
+    onMouseMove: (e: React.MouseEvent) => void;
+    onMouseUp: (e: React.MouseEvent) => void;
 }) {
     const { setNodeRef } = useDroppable({
         id: "canvas-droppable",
@@ -113,23 +128,40 @@ function DroppableCanvas({
         <div
             id="canvas-area"
             ref={combinedRef}
-            className="absolute inset-0 w-full h-full transition-colors border-4 border-transparent"
+            className={`absolute inset-0 w-full h-full transition-colors border-4 border-transparent ${isPanning ? 'cursor-grabbing' : ''}`}
             style={{
                 backgroundImage: 'radial-gradient(#cbd5e1 1px, transparent 1px)',
                 backgroundSize: `${20 * zoom}px ${20 * zoom}px`,
-                touchAction: 'none'
+                backgroundPosition: `${panOffset.x}px ${panOffset.y}px`,
+                touchAction: 'none',
+                overflow: 'hidden'
             }}
+            onMouseDown={onMouseDown}
+            onMouseMove={onMouseMove}
+            onMouseUp={onMouseUp}
+            onMouseLeave={onMouseUp}
         >
             <div
                 style={{
-                    transform: `scale(${zoom})`,
+                    transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
                     transformOrigin: 'top left',
-                    width: `${100 / zoom}%`,
-                    height: `${100 / zoom}%`,
-                    position: 'relative'
+                    position: 'relative',
+                    minWidth: '5000px',
+                    minHeight: '5000px',
                 }}
             >
-                <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
+                <svg
+                    style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '5000px',
+                        height: '5000px',
+                        pointerEvents: 'none',
+                        zIndex: 0,
+                        overflow: 'visible'
+                    }}
+                >
                     {connections}
                 </svg>
                 {children}
@@ -153,8 +185,163 @@ export function PlaygroundBoard({
     const [linkingSourceId, setLinkingSourceId] = useState<string | null>(null);
     const [zoom, setZoom] = useState(1);
 
+    // Scene element details state
+    const [elementDetailsMap, setElementDetailsMap] = useState<Map<string, SceneElementDetails>>(new Map());
+    const [editingChild, setEditingChild] = useState<{
+        child: any;
+        canvasItemId: string;
+    } | null>(null);
+
+    // Idea notes state
+    const [ideaNotes, setIdeaNotes] = useState<SceneElementDetails[]>([]);
+    const [editingNote, setEditingNote] = useState<{
+        item: any;
+        existingNote?: SceneElementDetails;
+    } | null>(null);
+
     const canvasRef = useRef<HTMLDivElement>(null);
     const isFirstMount = useRef(true);
+
+    // Pan state for mouse drag
+    const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+    const [isPanning, setIsPanning] = useState(false);
+    const panStartRef = useRef({ x: 0, y: 0 });
+    const panOffsetStartRef = useRef({ x: 0, y: 0 });
+
+    // Handle mouse pan - middle mouse OR left click on empty canvas
+    const handleMouseDown = useCallback((e: React.MouseEvent) => {
+        const target = e.target as HTMLElement;
+
+        // Middle mouse button (button === 1) - always pan
+        if (e.button === 1) {
+            e.preventDefault();
+            setIsPanning(true);
+            panStartRef.current = { x: e.clientX, y: e.clientY };
+            panOffsetStartRef.current = { ...panOffset };
+            return;
+        }
+
+        // Left click (button === 0) - only on canvas background
+        if (e.button === 0) {
+            // Check if clicking on a card/item (should not pan)
+            const isClickOnItem = target.closest('[data-canvas-item]') !== null;
+            // Check if within canvas area
+            const isInCanvas = target.closest('#canvas-area') !== null;
+
+            console.log('[Pan Debug]', { isInCanvas, isClickOnItem, tagName: target.tagName });
+
+            if (isInCanvas && !isClickOnItem) {
+                e.preventDefault();
+                console.log('[Pan Debug] Starting left click pan');
+                setIsPanning(true);
+                panStartRef.current = { x: e.clientX, y: e.clientY };
+                panOffsetStartRef.current = { ...panOffset };
+            }
+        }
+    }, [panOffset]);
+
+    const handleMouseMove = useCallback((e: React.MouseEvent) => {
+        if (!isPanning) return;
+
+        const dx = e.clientX - panStartRef.current.x;
+        const dy = e.clientY - panStartRef.current.y;
+
+        setPanOffset({
+            x: panOffsetStartRef.current.x + dx,
+            y: panOffsetStartRef.current.y + dy,
+        });
+    }, [isPanning]);
+
+    const handleMouseUp = useCallback((e: React.MouseEvent) => {
+        // Stop panning for both left (0) and middle (1) mouse buttons
+        if (e.button === 0 || e.button === 1) {
+            setIsPanning(false);
+        }
+    }, []);
+
+    // Reset pan
+    const handleResetPan = useCallback(() => {
+        setPanOffset({ x: 0, y: 0 });
+    }, []);
+
+    // Sync initialItems when eventId changes (but not on every render)
+    useEffect(() => {
+        setItems(initialItems);
+        isFirstMount.current = true; // Reset first mount flag
+    }, [eventId]); // Only when eventId changes, not initialItems
+
+    // Fetch element details on mount
+    useEffect(() => {
+        const fetchDetails = async () => {
+            const result = await getSceneElementDetails(eventId);
+            if (result.success && result.data) {
+                const map = new Map<string, SceneElementDetails>();
+                const notes: SceneElementDetails[] = [];
+
+                result.data.forEach(detail => {
+                    if (detail.elementType === 'idea_note') {
+                        notes.push(detail);
+                    } else {
+                        // Key: canvasItemId-elementType-elementId
+                        const key = `${detail.canvasItemId}-${detail.elementType}-${detail.elementId}`;
+                        map.set(key, detail);
+                    }
+                });
+
+                setElementDetailsMap(map);
+                setIdeaNotes(notes);
+            }
+        };
+        fetchDetails();
+    }, [eventId]);
+
+    // Handler for when a detail is saved
+    const handleDetailSaved = useCallback((detail: SceneElementDetails) => {
+        if (detail.elementType === 'idea_note') {
+            // Update idea notes
+            setIdeaNotes(prev => {
+                const existing = prev.findIndex(n => n.id === detail.id);
+                if (existing >= 0) {
+                    const updated = [...prev];
+                    updated[existing] = detail;
+                    return updated;
+                }
+                return [...prev, detail];
+            });
+        } else {
+            setElementDetailsMap(prev => {
+                const newMap = new Map(prev);
+                const key = `${detail.canvasItemId}-${detail.elementType}-${detail.elementId}`;
+                newMap.set(key, detail);
+                return newMap;
+            });
+        }
+    }, []);
+
+    // Handler for when a note is deleted
+    const handleNoteDeleted = useCallback((id: string) => {
+        setIdeaNotes(prev => prev.filter(n => n.id !== id));
+    }, []);
+
+    // Handler to open edit dialog for a child
+    const handleEditChild = useCallback((child: any) => {
+        setEditingChild({
+            child,
+            canvasItemId: child.canvasItemId,
+        });
+    }, []);
+
+    // Handler to add/edit note on idea
+    const handleAddNote = useCallback((item: any) => {
+        // Check if editing existing note
+        if (item.existingNoteId) {
+            const existingNote = ideaNotes.find(n => n.id === item.existingNoteId);
+            setEditingNote({ item, existingNote });
+        } else {
+            setEditingNote({ item });
+        }
+    }, [ideaNotes]);
+
 
     // Auto-save logic
     useEffect(() => {
@@ -355,18 +542,23 @@ export function PlaygroundBoard({
             }
 
             // Otherwise, standard movement
-            setItems((prev) =>
-                prev.map((item) => {
+            setItems((prev) => {
+                const updated = prev.map((item) => {
                     if (item.id === activeData.id) {
+                        const newX = Math.max(0, item.x + delta.x / zoom);
+                        const newY = Math.max(0, item.y + delta.y / zoom);
+                        console.log(`[Drag] Moving item ${item.id} from (${item.x}, ${item.y}) to (${newX}, ${newY})`);
                         return {
                             ...item,
-                            x: Math.max(0, item.x + delta.x / zoom),
-                            y: Math.max(0, item.y + delta.y / zoom),
+                            x: newX,
+                            y: newY,
                         };
                     }
                     return item;
-                })
-            );
+                });
+                console.log('[Drag] Updated items:', updated);
+                return updated;
+            });
             return;
         }
 
@@ -426,9 +618,22 @@ export function PlaygroundBoard({
                 const dropX = activatorEvent.clientX + delta.x;
                 const dropY = activatorEvent.clientY + delta.y;
 
-                // Adjust for zoom level
-                x = Math.max(0, (dropX - rect.left - 100) / zoom);
-                y = Math.max(0, (dropY - rect.top - 40) / zoom);
+                // Adjust for zoom level AND pan offset
+                // Formula: (mouse_pos - canvas_offset - pan_offset - card_center_adjustment) / zoom
+                x = Math.max(0, (dropX - rect.left - panOffset.x - 100) / zoom);
+                y = Math.max(0, (dropY - rect.top - panOffset.y - 40) / zoom);
+
+                console.log('[Drop] Position calc:', {
+                    mouseX: dropX,
+                    mouseY: dropY,
+                    canvasLeft: rect.left,
+                    canvasTop: rect.top,
+                    panOffsetX: panOffset.x,
+                    panOffsetY: panOffset.y,
+                    zoom,
+                    finalX: x,
+                    finalY: y
+                });
             }
 
             const newItem = {
@@ -459,8 +664,20 @@ export function PlaygroundBoard({
         setIsSaving(false);
     };
 
-    const handleRemoveItem = (id: string) => {
+    const handleRemoveItem = async (id: string) => {
+        const removedItem = items.find(item => item.id === id);
+
+        // Remove from canvas
         setItems((prev) => prev.filter((item) => item.id !== id));
+
+        // If it's an idea, reset isUsed to false (undo feature)
+        if (removedItem?.type === 'idea' && removedItem?.referenceId) {
+            await updateIdea(removedItem.referenceId, {
+                canvasX: null,
+                canvasY: null,
+                isUsed: false
+            });
+        }
     };
 
     return (
@@ -552,6 +769,14 @@ export function PlaygroundBoard({
                                 title="Reset Zoom (Ctrl + 0)">
                                 <Maximize2 className="w-3.5 h-3.5" />
                             </Button>
+                            <Button
+                                onClick={handleResetPan}
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7"
+                                title="Reset Pan (Middle mouse to pan)">
+                                <Move className="w-3.5 h-3.5" />
+                            </Button>
                         </div>
 
                         <Button
@@ -581,7 +806,16 @@ export function PlaygroundBoard({
                     </div>
 
                     {/* Droppable Canvas - useDroppable is now INSIDE DndContext */}
-                    <DroppableCanvas onCanvasRefChange={handleCanvasRefChange} items={items} zoom={zoom}>
+                    <DroppableCanvas
+                        onCanvasRefChange={handleCanvasRefChange}
+                        items={items}
+                        zoom={zoom}
+                        panOffset={panOffset}
+                        isPanning={isPanning}
+                        onMouseDown={handleMouseDown}
+                        onMouseMove={handleMouseMove}
+                        onMouseUp={handleMouseUp}
+                    >
                         {items.map((item) => (
                             <DraggableCanvasItem
                                 key={item.id}
@@ -591,6 +825,11 @@ export function PlaygroundBoard({
                                 onLinkStart={handleStartLink}
                                 onLinkComplete={linkingSourceId && linkingSourceId !== item.id ? handleCompleteLink : undefined}
                                 isLinkingSource={linkingSourceId === item.id}
+                                elementDetails={elementDetailsMap}
+                                onEditChild={handleEditChild}
+                                ideaNotes={ideaNotes}
+                                onAddNote={handleAddNote}
+                                novelId={novelId}
                             />
                         ))}
                     </DroppableCanvas>
@@ -611,6 +850,40 @@ export function PlaygroundBoard({
                     </div>
                 ) : null}
             </DragOverlay>
+
+            {/* Scene Element Detail Edit Dialog */}
+            {editingChild && (
+                <SceneElementDetailDialog
+                    open={!!editingChild}
+                    onOpenChange={(open) => !open && setEditingChild(null)}
+                    elementType={editingChild.child.type}
+                    elementId={editingChild.child.referenceId || editingChild.child.refId || editingChild.child.id}
+                    elementName={editingChild.child.title}
+                    sceneId={eventId}
+                    novelId={novelId}
+                    canvasItemId={editingChild.canvasItemId}
+                    existingDetail={elementDetailsMap.get(
+                        `${editingChild.canvasItemId}-${editingChild.child.type}-${editingChild.child.referenceId || editingChild.child.refId || editingChild.child.id}`
+                    )}
+                    onSaved={handleDetailSaved}
+                />
+            )}
+
+            {/* Idea Note Dialog */}
+            {editingNote && (
+                <IdeaNoteDialog
+                    open={!!editingNote}
+                    onOpenChange={(open) => !open && setEditingNote(null)}
+                    ideaId={editingNote.item.referenceId || editingNote.item.id}
+                    ideaTitle={editingNote.item.title}
+                    canvasItemId={editingNote.item.id}
+                    sceneId={eventId}
+                    novelId={novelId}
+                    existingNote={editingNote.existingNote}
+                    onSaved={handleDetailSaved}
+                    onDeleted={handleNoteDeleted}
+                />
+            )}
         </DndContext>
     );
 }

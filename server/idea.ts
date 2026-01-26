@@ -18,6 +18,7 @@ export async function createIdea(data: {
     canvasX?: number;
     canvasY?: number;
     color?: string;
+    isUsed?: boolean; // Auto-detect from canvas position if not provided
 }) {
     try {
         const [newIdea] = await db
@@ -34,6 +35,7 @@ export async function createIdea(data: {
                 canvasX: data.canvasX,
                 canvasY: data.canvasY,
                 color: data.color,
+                isUsed: data.isUsed ?? (data.canvasX !== undefined && data.canvasY !== undefined), // Auto-set if canvas position provided
             })
             .returning();
 
@@ -64,6 +66,7 @@ export async function createIdeaWithoutRevalidate(data: {
     canvasX?: number;
     canvasY?: number;
     color?: string;
+    isUsed?: boolean; // Auto-detect from canvas position if not provided
 }) {
     try {
         const [newIdea] = await db
@@ -80,6 +83,7 @@ export async function createIdeaWithoutRevalidate(data: {
                 canvasX: data.canvasX,
                 canvasY: data.canvasY,
                 color: data.color,
+                isUsed: data.isUsed ?? (data.canvasX !== undefined && data.canvasY !== undefined), // Auto-set if canvas position provided
             })
             .returning();
 
@@ -166,6 +170,7 @@ export async function updateIdea(
         canvasX: number;
         canvasY: number;
         color: string;
+        isUsed: boolean; // Can manually override
         isArchived: boolean;
         connectedIdeaIds: string[];
     }>
@@ -240,7 +245,12 @@ export async function updateIdeaPositions(
             updates.map(({ id, canvasX, canvasY }) =>
                 db
                     .update(ideas)
-                    .set({ canvasX, canvasY, updatedAt: new Date() })
+                    .set({
+                        canvasX,
+                        canvasY,
+                        isUsed: true, // Auto-set to true when placing on canvas
+                        updatedAt: new Date()
+                    })
                     .where(eq(ideas.id, id))
                     .returning()
             )

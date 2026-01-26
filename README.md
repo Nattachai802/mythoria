@@ -1,261 +1,156 @@
 # Mythoria 🖋️✨
 
-**Mythoria** เป็น Web Application สำหรับนักเขียนนิยายที่ต้องการจัดการโปรเจกต์เขียนนิยายอย่างครบวงจร ตั้งแต่การสร้างตัวละคร สร้างโลก วางพล็อต ไปจนถึงการเขียนเนื้อหา พร้อมระบบ AI ช่วยวิเคราะห์
+**The AI-Powered Forge for Your Next Masterpiece.**
+
+**Mythoria** คือแพลตฟอร์มเขียนนิยายยุคใหม่ที่ผสานพลังของการจัดการโปรเจกต์ (Project Management) เข้ากับ AI Agent อัจฉริยะ ช่วยให้นักเขียนสามารถสร้างโลก (World Building), วางพล็อต (Plotting), และเขียนเนื้อหา (Writing) ได้อย่างไร้รอยต่อ 
+
+โดดเด่นด้วยดีไซน์แบบ **"Forge Mode"** ที่เน้นความสวยงาม ดุดัน และใช้งานได้จริง (Industrial Creativity)
+
+![Mythoria Banner](https://placeholder-image.com/mythoria-banner.png)
 
 ---
 
 ## 📑 สารบัญ
 
-- [ฟีเจอร์หลัก](#-ฟีเจอร์หลัก)
-- [เทคโนโลยีที่ใช้](#-เทคโนโลยีที่ใช้)
-- [โครงสร้างฐานข้อมูล](#-โครงสร้างฐานข้อมูล)
-- [โครงสร้างโปรเจกต์](#-โครงสร้างโปรเจกต์)
-- [การติดตั้ง](#-การติดตั้ง)
-- [การใช้งาน](#-การใช้งาน)
+- [🎨 Design Philosophy](#-design-philosophy-forge-mode)
+- [🚀 ฟีเจอร์หลัก](#-ฟีเจอร์หลัก)
+- [🛠️ เทคโนโลยีที่ใช้](#-เทคโนโลยีที่ใช้)
+- [🤖 ระบบ AI & Agents](#-ระบบ-ai--agents)
+- [🗄️ โครงสร้างฐานข้อมูล](#-โครงสร้างฐานข้อมูล)
+- [🏁 การติดตั้ง](#-การติดตั้ง)
+
+---
+
+## 🎨 Design Philosophy: Forge Mode
+
+เราใช้ Design System ที่พัฒนาขึ้นเองในชื่อ **"Forge Mode"** (Industrial Creativity Theme)
+- **Aesthetics**: เน้นรูปทรงเลขาคณิตตัดมุม (Chamfered corners), ลวดลายอุตสาหกรรม (Hazard stripes), และ Typography แบบ Technical
+- **Color System**: ใช้ระบบสี **OKLCH** เพื่อความสดใสและสม่ำเสมอในทุกสภาพแสง (Light/Dark Mode)
+- **Experience**: Micro-interactions, Glassmorphism, และเสียงตอบสนองที่ให้ความรู้สึก Premium
 
 ---
 
 ## 🚀 ฟีเจอร์หลัก
 
-### 📚 จัดการโปรเจกต์
-| ฟีเจอร์ | รายละเอียด |
-|--------|-----------|
-| **Dashboard** | ศูนย์กลางจัดการนิยายทั้งหมด |
-| **สถิติ** | ติดตาม word count, ความคืบหน้า, สถานะบท |
-| **จัดการข้อมูล** | แก้ไข title, description, status, visibility |
+### 🧩 Idea Playground (Visual Plotting)
+พื้นที่วางแผนแบบ Free-form canvas ที่ทรงพลังที่สุด:
+- **Infinite Canvas**: วางไอเดีย, ตัวละคร, ฉาก ได้ไม่จำกัด (Powered by **React Flow**)
+- **Drag & Drop**: ลาก Character/Location จากด้านข้างลงมาใส่ใน Scene ได้ทันทีด้วย **DnD Kit**
+- **Nested Thoughts**: ซ้อนไอเดียลงในไอเดียอื่นเพื่อจัดกลุ่มความคิด
+- **Visual Connections**: ลากเส้นเชื่อมโยงเหตุการณ์เพื่อดู Timeline และความสัมพันธ์
 
-### ✍️ เครื่องมือเขียน
-| ฟีเจอร์ | รายละเอียด |
-|--------|-----------|
-| **Chapter Editor** | Rich text editor (Quill) |
-| **Notes System** | โน้ตประกอบแต่ละ chapter พร้อม Plot Hole Tracking |
-| **Cast Deck** | เลือกตัวละครที่ปรากฏใน note |
+### 🧠 AI Agent Assistant
+ผู้ช่วยอัจฉริยะที่เข้าใจนิยายของคุณ (Powered by **Typhoon v2.1 Thai LLM**):
+- **Plot Hole Detection**: AI Agent จะอ่านเนื้อหาและใช้ Tools ตรวจสอบ Timeline และตรรกะของเรื่องอัตโนมัติ
+- **Consistency Check**: ตรวจสอบว่าตัวละครทำสิ่งที่ขัดแย้งกับนิสัยหรือสถานะปัจจุบันหรือไม่
+- **RAG & Vector Search**: ค้นหาข้อมูลเก่าๆ ในนิยายได้แม่นยำด้วย **LanceDB**
 
-### 👥 ระบบตัวละคร
-| ฟีเจอร์ | รายละเอียด |
-|--------|-----------|
-| **Character Profiles** | ข้อมูลครบ (role, appearance, personality, goals, aliases) |
-| **Relationship Board** | แสดงความสัมพันธ์เป็น network graph |
-| **Life Events** | เหตุการณ์สำคัญในชีวิตตัวละคร |
-| **Faction Timeline** | ตัวละครอยู่กลุ่มไหนเมื่อไหร่ |
-| **Power Manager** | จัดการพลังที่ตัวละครมี |
-
-### 🎯 ระบบพลัง (Power System)
-| ฟีเจอร์ | รายละเอียด |
-|--------|-----------|
-| **Power Definition** | นิยามพลัง + ข้อจำกัด + rarity |
-| **Power Levels** | แต่ละระดับมี pros/cons/changes |
-| **Power Combinations** | รวมพลังหลายอย่าง |
-
-### 🌍 สร้างโลก (World Building)
-| ฟีเจอร์ | รายละเอียด |
-|--------|-----------|
-| **Locations** | สถานที่แบบ hierarchy + map connections + travel time |
-| **Lore Timeline** | ประวัติศาสตร์โลกแบบ visual (ยุคสมัย, กลุ่ม) |
-| **Items/Artifacts** | ไอเทม อาวุธ ของวิเศษ |
-| **Entities** | สิ่งมีชีวิต มอนสเตอร์ + threat level |
-| **Factions** | กลุ่มก๊วนต่างๆ |
-
-### 🧩 วางพล็อต
-| ฟีเจอร์ | รายละเอียด |
-|--------|-----------|
-| **Timeline Board** | วางเหตุการณ์บน timeline |
-| **Idea Playground** | Canvas สำหรับวางไอเดีย (React Flow) |
-| **Idea Connections** | เชื่อมโยงไอเดียถึงกัน |
-
-### 🤖 AI Features
-| ฟีเจอร์ | รายละเอียด |
-|--------|-----------|
-| **Character Analysis** | วิเคราะห์ความสัมพันธ์/เหตุการณ์จากเนื้อหาอัตโนมัติ |
-| **Plot Hole Detection** | ตรวจหาข้อขัดแย้งในเนื้อเรื่อง |
-| **State Extraction** | ดึงสถานะตัวละคร ณ จุดต่างๆ |
-| **Vector Search** | ค้นหาเนื้อหาที่เกี่ยวข้องแบบอัจฉริยะ |
-| **AI Suggestions** | แนะนำข้อมูลที่รอ user review |
+### 📚 Professional Writing Suite
+- **Chapter Editor**: Rich text editor ที่ปรับแต่งมาสำหรับงานเขียนนิยายโดยเฉพาะ
+- **World Building**: ระบบจัดการตัวละคร, สถานที่, ไอเทม, และความสัมพันธ์ที่เชื่อมโยงกันหมด
+- **Timeline Board**: มุมมองเส้นเวลาประวัติศาสตร์ของโลกในนิยาย
 
 ---
 
 ## 🛠️ เทคโนโลยีที่ใช้
 
-### Frontend
-| เทคโนโลยี | เวอร์ชัน |
-|----------|---------|
-| [Next.js](https://nextjs.org/) | 16 (App Router) |
-| [React](https://react.dev/) | 19 |
-| [TypeScript](https://www.typescriptlang.org/) | 5 |
-| [Tailwind CSS](https://tailwindcss.com/) | v4 |
+Project นี้ใช้ Tech Stack ที่ทันสมัยที่สุดในปี 2025:
 
-### UI Components
-| Library | หน้าที่ |
-|---------|--------|
-| [Radix UI](https://www.radix-ui.com/) | Accessible components |
-| [Lucide React](https://lucide.dev/) | Icons |
-| [DnD Kit](https://dndkit.com/) | Drag-and-drop |
-| [React Flow](https://reactflow.dev/) | Node-based visualizations |
-| [Sonner](https://sonner.emilkowal.ski/) | Toast notifications |
+### Frontend (Main App)
+| Technology | Description |
+|------------|-------------|
+| **[Next.js 16](https://nextjs.org/)** | App Router, Server Actions, TurboPack |
+| **[Tailwind CSS v4](https://tailwindcss.com/)** | Styling Engine |
+| **react-flow** | Node-based visualization (Canvas) |
+| **@dnd-kit** | Drag and Drop interactions |
+| **lucide-react** | Beautiful consistency icons |
+| **framer-motion** | Smooth animations |
 
-### Backend
-| เทคโนโลยี | หน้าที่ |
-|----------|--------|
-| [PostgreSQL](https://www.postgresql.org/) | Database |
-| [Drizzle ORM](https://orm.drizzle.team/) | ORM + Migrations |
-| [Better Auth](https://www.better-auth.com/) | Authentication |
-| [Zod](https://zod.dev/) | Validation |
+### Backend (Data & Auth)
+| Technology | Description |
+|------------|-------------|
+| **[PostgreSQL](https://www.postgresql.org/)** | Relational Database |
+| **[Drizzle ORM](https://orm.drizzle.team/)** | TypeScript ORM & Migrations |
+| **[Better Auth](https://www.better-auth.com/)** | Secure Authentication |
 
-### AI Service (Python)
-| เทคโนโลยี | หน้าที่ |
-|----------|--------|
-| [FastAPI](https://fastapi.tiangolo.com/) | REST API |
-| [LanceDB](https://lancedb.com/) | Vector Database |
-| [Gemini AI](https://ai.google.dev/) | AI Analysis |
+### AI Service (Microservice)
+| Technology | Description |
+|------------|-------------|
+| **[FastAPI](https://fastapi.tiangolo.com/)** | High-performance Python API |
+| **[LangChain](https://www.langchain.com/)** | Agent Orchestration & Tool Use |
+| **[LanceDB](https://lancedb.com/)** | Embeddings & Vector Search |
+| **[Typhoon v2.1](https://opentyphoon.ai/)** | Thai Large Language Model |
+
+---
+
+## 🤖 ระบบ AI & Agents
+
+ระบบ AI ของ Mythoria ทำงานแยกเป็น Microservice (`/pythonservice`) เพื่อประสิทธิภาพสูงสุด:
+
+1.  **Agentic Workflow**: AI ไม่ได้แค่ตอบแชท แต่ทำหน้าที่เป็น Agent ที่สามารถเรียกใช้ Tools ได้
+    *   `CheckTimelineConflict`: คำนวณเวลาเดินทางระหว่างสถานที่
+    *   `ValidateCharacterConsistency`: ตรวจสอบสถานะตัวละคร
+2.  **Context-Aware**: ใช้ RAG (Retrieval-Augmented Generation) ดึงข้อมูลที่เกี่ยวข้องจาก Vector DB ก่อนตอบคำถาม
 
 ---
 
 ## 🗄️ โครงสร้างฐานข้อมูล
 
-ระบบมี **30+ tables** แบ่งเป็นกลุ่มหลักๆ:
+ระบบมี **30+ tables** ครอบคลุมทุกมิติของการเขียนนิยาย:
 
-### Authentication
-`user` • `session` • `account` • `verification`
-
-### Core Novel
-`novels` • `chapters` • `notes` • `tags`
-
-### Character System
-`characters` • `characterRelationships` • `relationshipHistory` • `characterLifeEvents` • `characterStates` • `characterFactions` • `characterPowers` • `chapterCharacters` • `noteCharacters` • `aliasCache`
-
-### Power System
-`powers` • `powerLevels` • `powerCombinations`
-
-### World Building
-`locations` • `locationConnections` • `factions` • `items` • `entities` • `locationEntities` • `eras` • `loreEntries` • `loreGroups`
-
-### Plotting
-`timelineEvents` • `ideas` • `ideaConnections`
-
-### AI Analysis
-`characterAnalysisQueue` • `aiSuggestions` • `stateExtractionQueue`
-
----
-
-## 📂 โครงสร้างโปรเจกต์
-
-```
-mythoria/
-├── app/                          # Next.js App Router pages
-│   ├── api/                      # API routes
-│   │   ├── auth/                 # Better Auth
-│   │   ├── novel/                # Novel-related APIs
-│   │   └── upload/               # File upload
-│   ├── dashboard/                # Main interface
-│   │   └── project/[id]/         # Project workspace
-│   │       ├── chapter/          # Chapter editor
-│   │       ├── characters/       # Character management
-│   │       ├── locations/        # Location management
-│   │       ├── powers/           # Power system
-│   │       ├── relationships/    # Relationship board
-│   │       ├── worldbuilding/    # Lore, items, entities
-│   │       └── plot/             # Timeline & Ideas
-│   └── (auth pages)
-│
-├── components/                   # React Components (84+ files)
-│   ├── project/                  # Project-specific
-│   │   ├── character/            # 23 components
-│   │   ├── location/             # 10 components
-│   │   ├── power/                # 7 components
-│   │   ├── worldbuilding/        # 12 components
-│   │   └── ...
-│   └── ui/                       # Shadcn/ui
-│
-├── server/                       # Server Actions (31 files)
-│   ├── novel.ts, chapter.ts, character.ts
-│   ├── power.ts, locations.ts, factions.ts
-│   ├── lore.ts, timeline.ts, idea.ts
-│   └── ai.ts, character-state-*.ts
-│
-├── db/
-│   ├── schema.ts                 # Drizzle schema (1388 lines)
-│   └── drizzle.ts
-│
-├── lib/                          # Utilities
-│
-├── pythonservice/                # AI Service
-│   ├── main.py                   # FastAPI endpoints
-│   ├── ai_agent.py               # Plot analysis
-│   ├── character_analyzer.py
-│   ├── lance_client.py
-│   └── tools/                    # Timeline checker, validator
-│
-└── migrations/                   # Drizzle migrations
-```
+- **Core**: `novels`, `chapters`, `notes`
+- **Character**: `characters`, `relationships`, `life_events`
+- **World**: `locations`, `items`, `lore`, `factions`
+- **Plotting**: `ideas`, `timeline_events`, `connections`
+- **AI**: `analysis_queue`, `suggestions`, `embeddings`
 
 ---
 
 ## 🏁 การติดตั้ง
 
-### ความต้องการ
-- Node.js (LTS ล่าสุด)
-- PostgreSQL
-- Python 3.10+ (สำหรับ AI Service)
-
-### ขั้นตอน
-
-**1. Clone repository**
+### 1. Clone Project
 ```bash
 git clone <repository-url>
 cd mythoria
 ```
 
-**2. ติดตั้ง dependencies**
+### 2. ติดตั้ง Dependencies
 ```bash
+# Frontend & Main Backend
 npm install
-```
 
-**3. ตั้งค่า Environment**
-
-สร้างไฟล์ `.env`:
-```env
-DATABASE_URL="postgresql://user:password@localhost:5432/mythoria"
-BETTER_AUTH_SECRET="your-secret-key"
-```
-
-**4. สร้างฐานข้อมูล**
-```bash
-npm run db:push
-```
-
-**5. ตั้งค่า Python Service** (optional)
-```bash
+# AI Service (Python)
 cd pythonservice
 python -m venv venv
-venv\Scripts\activate  # Windows
+# Windows
+venv\Scripts\activate
+# Mac/Linux
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
----
+### 3. ตั้งค่า Environment Variables
+สร้างไฟล์ `.env` ที่ root และ `pythonservice/.env`:
 
-## 🎮 การใช้งาน
+```env
+# Main .env
+DATABASE_URL="postgresql://..."
+BETTER_AUTH_SECRET="your-secret"
 
-### รัน Development Server
+# Pythonservice .env
+TYPHOON_API_KEY="your-api-key"
+```
+
+### 4. รันโปรแกรม (Development Mode)
 ```bash
-# Next.js only
-npm run dev
-
-# Next.js + Python AI Service
+# รันทั้ง Next.js และ Python Service พร้อมกัน
 npm run dev:all
 ```
 
-เปิด [http://localhost:3000](http://localhost:3000) เพื่อเริ่มใช้งาน
-
-### Database Commands
-| คำสั่ง | หน้าที่ |
-|-------|--------|
-| `npm run db:push` | Push schema to database |
-| `npm run db:generate` | Generate migration |
-| `npm run db:migrate` | Run migrations |
-| `npm run db:studio` | Open Drizzle Studio |
+- Web App: `http://localhost:3000`
+- AI API: `http://localhost:8000`
 
 ---
 
 ## 📄 License
-
 MIT License

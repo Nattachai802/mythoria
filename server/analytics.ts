@@ -3,6 +3,8 @@
 import { db } from "@/db/drizzle";
 import { notes, novels, chapters } from "@/db/schema";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { unstable_cache } from "next/cache";
+import { CACHE_TAGS, CACHE_DURATION } from "@/lib/cache-config";
 
 // Get word count from content
 function getWordCount(content: any): number {
@@ -15,8 +17,8 @@ function getWordCount(content: any): number {
     return text.split(/\s+/).filter(Boolean).length;
 }
 
-// Get writing activity for the past N days
-export async function getWritingActivity(novelId: string, days: number = 90) {
+// Internal function - actual database query for writing activity
+async function _getWritingActivity(novelId: string, days: number = 90) {
     try {
         const startDate = new Date();
         startDate.setDate(startDate.getDate() - days);
@@ -65,11 +67,24 @@ export async function getWritingActivity(novelId: string, days: number = 90) {
             });
         }
 
-        return { success: true, activity };
+        return { success: true as const, activity };
     } catch (error) {
         console.error("Get writing activity error:", error);
-        return { success: false, activity: [] };
+        return { success: false as const, activity: [] };
     }
+}
+
+// Cached version - Get writing activity for the past N days
+export async function getWritingActivity(novelId: string, days: number = 90) {
+    const cachedFn = unstable_cache(
+        () => _getWritingActivity(novelId, days),
+        [`writing-activity-${novelId}-${days}`],
+        {
+            revalidate: CACHE_DURATION.medium, // 60 seconds
+            tags: [CACHE_TAGS.analytics(novelId), CACHE_TAGS.notes(novelId)]
+        }
+    );
+    return cachedFn();
 }
 
 // Get words per day for the past N days
@@ -110,8 +125,8 @@ export async function getWordsPerDay(novelId: string, days: number = 7) {
     }
 }
 
-// Calculate writing streak
-export async function getWritingStreak(novelId: string) {
+// Internal function - actual database query for writing streak
+async function _getWritingStreak(novelId: string) {
     try {
         // Get all notes ordered by date
         const allNotes = await db.query.notes.findMany({
@@ -123,7 +138,7 @@ export async function getWritingStreak(novelId: string) {
         });
 
         if (allNotes.length === 0) {
-            return { success: true, currentStreak: 0, bestStreak: 0, lastWrittenDate: null };
+            return { success: true as const, currentStreak: 0, bestStreak: 0, lastWrittenDate: null };
         }
 
         // Get unique dates
@@ -175,19 +190,32 @@ export async function getWritingStreak(novelId: string) {
         bestStreak = Math.max(bestStreak, tempStreak, currentStreak);
 
         return {
-            success: true,
+            success: true as const,
             currentStreak,
             bestStreak,
             lastWrittenDate: sortedDates[0],
         };
     } catch (error) {
         console.error("Get writing streak error:", error);
-        return { success: false, currentStreak: 0, bestStreak: 0, lastWrittenDate: null };
+        return { success: false as const, currentStreak: 0, bestStreak: 0, lastWrittenDate: null };
     }
 }
 
-// Get analytics summary
-export async function getAnalyticsSummary(novelId: string) {
+// Cached version - Calculate writing streak
+export async function getWritingStreak(novelId: string) {
+    const cachedFn = unstable_cache(
+        () => _getWritingStreak(novelId),
+        [`writing-streak-${novelId}`],
+        {
+            revalidate: CACHE_DURATION.medium, // 60 seconds
+            tags: [CACHE_TAGS.analytics(novelId), CACHE_TAGS.notes(novelId)]
+        }
+    );
+    return cachedFn();
+}
+
+// Internal function - actual database query for analytics summary
+async function _getAnalyticsSummary(novelId: string) {
     try {
         const novel = await db.query.novels.findFirst({
             where: eq(novels.id, novelId),
@@ -240,7 +268,7 @@ export async function getAnalyticsSummary(novelId: string) {
         }
 
         return {
-            success: true,
+            success: true as const,
             summary: {
                 totalWords: novel?.wordCount || 0,
                 targetWords: novel?.targetWordCount || 100000,
@@ -255,6 +283,19 @@ export async function getAnalyticsSummary(novelId: string) {
         };
     } catch (error) {
         console.error("Get analytics summary error:", error);
-        return { success: false, summary: null };
+        return { success: false as const, summary: null };
     }
+}
+
+// Cached version - Get analytics summary
+export async function getAnalyticsSummary(novelId: string) {
+    const cachedFn = unstable_cache(
+        () => _getAnalyticsSummary(novelId),
+        [`analytics-summary-${novelId}`],
+        {
+            revalidate: CACHE_DURATION.medium, // 60 seconds
+            tags: [CACHE_TAGS.analytics(novelId), CACHE_TAGS.notes(novelId), CACHE_TAGS.novel(novelId)]
+        }
+    );
+    return cachedFn();
 }

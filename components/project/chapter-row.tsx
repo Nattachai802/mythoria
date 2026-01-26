@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { CreateNoteDialog } from "@/components/project/create-note-dialog";
 import { ChapterActions } from "@/components/project/chapter-actions";
+import { ChapterSummaryButton } from "@/components/project/chapter-summary-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { updateNoteStatus } from "@/server/note";
 import { NoteStatus, NOTE_STATUS_CONFIG } from "@/lib/note-constants";
@@ -184,6 +185,11 @@ export function ChapterRow({
 
                 {/* Actions */}
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                    <ChapterSummaryButton
+                        chapterId={chapter.id}
+                        novelId={novelId}
+                        initialSummary={chapter.summary}
+                    />
                     <CreateNoteDialog
                         novelId={novelId}
                         chapterId={chapter.id}

@@ -4,6 +4,7 @@ import { CreateCharacterButton } from "@/components/project/character/create-cha
 import { CharacterList } from "@/components/project/character/character-list";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
 import { AIAnalysisButton } from "@/components/project/character/ai-analysis-button";
+import { ExportCharacterDialog } from "@/components/project/character/export-character-dialog";
 
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -50,6 +51,12 @@ export default async function CharactersPage({ params }: CharactersPageProps) {
         </div>
         <div className="flex items-center gap-2">
           <AIAnalysisButton novelId={novelId} />
+          {characters.length > 0 && (
+            <ExportCharacterDialog
+              characters={characters}
+              novelTitle={novelTitle}
+            />
+          )}
           <Link href={`/dashboard/project/${novelId}/relationships`}>
             <Button variant="outline">
               <Network className="w-4 h-4 mr-2" />

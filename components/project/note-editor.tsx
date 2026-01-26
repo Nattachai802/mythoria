@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { updateNote, deleteNote } from "@/server/note"
+import { createNoteVersion } from "@/server/version-history"
 import { checkWordCountSufficiency, WordCountStatus } from "@/server/word-check"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -27,6 +28,9 @@ import { NoteCastDeck } from "@/components/project/note-cast-deck"
 import { ExtractionStatus } from "@/components/project/extraction-status"
 import { CharacterStateEditor } from "@/components/project/character-state-editor"
 import { PlotHoleChecker } from "@/components/project/plot-hole-checker"
+import { VersionHistoryPanel } from "@/components/project/version-history-panel"
+import { NoteSummaryButton } from "@/components/project/note-summary-button"
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
 import {
     Tooltip,
     TooltipContent,
@@ -151,6 +155,13 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                         title: current.title,
                         content: { text: current.content }
                     })
+                    // บันทึก version (auto-save)
+                    const currentWordCount = current.content
+                        .replace(/<[^>]*>/g, ' ')
+                        .replace(/&nbsp;/g, ' ')
+                        .trim()
+                        .split(/\s+/).length
+                    await createNoteVersion(note.id, current.title, { text: current.content }, currentWordCount, "auto")
                     lastSavedDataRef.current = { ...current }
                     setSaveStatus('saved')
                 } catch (error) {
@@ -161,6 +172,44 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
         }, 20000)
         return () => clearInterval(interval)
     }, [note.id])
+
+    // Manual save function
+    const manualSave = useCallback(async () => {
+        const current = currentDataRef.current
+        const last = lastSavedDataRef.current
+
+        if (current.title === last.title && current.content === last.content) {
+            toast.info("ไม่มีการเปลี่ยนแปลง")
+            return
+        }
+
+        setSaveStatus('saving')
+        try {
+            await updateNote(note.id, {
+                title: current.title,
+                content: { text: current.content }
+            })
+            // บันทึก version (manual save)
+            const currentWordCount = current.content
+                .replace(/<[^>]*>/g, ' ')
+                .replace(/&nbsp;/g, ' ')
+                .trim()
+                .split(/\s+/).length
+            await createNoteVersion(note.id, current.title, { text: current.content }, currentWordCount, "manual")
+            lastSavedDataRef.current = { ...current }
+            setSaveStatus('saved')
+            toast.success("บันทึกแล้ว!")
+        } catch (error) {
+            console.error("Manual save failed", error)
+            setSaveStatus('error')
+            toast.error("บันทึกไม่สำเร็จ")
+        }
+    }, [note.id])
+
+    // Keyboard shortcuts - Ctrl+S to save
+    useKeyboardShortcuts({
+        onSave: manualSave,
+    })
 
     // Typewriter mode: center the current line
     useEffect(() => {
@@ -227,6 +276,8 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                 content: { text: content }
             })
             if (result.success) {
+                // บันทึก version (manual save)
+                await createNoteVersion(note.id, title, { text: content }, wordCount, "manual")
                 lastSavedDataRef.current = { title, content }
                 setSaveStatus('saved')
                 toast.success("Saved successfully")
@@ -380,6 +431,16 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                                     </TooltipContent>
                                 </Tooltip>
                             )}
+
+                            {/* Note Summary */}
+                            <NoteSummaryButton
+                                noteId={note.id}
+                                novelId={novelId}
+                                initialSummary={note.summary}
+                            />
+
+                            {/* Version History */}
+                            <VersionHistoryPanel noteId={note.id} novelId={novelId} />
 
                             <AlertDialog>
                                 <AlertDialogTrigger asChild>

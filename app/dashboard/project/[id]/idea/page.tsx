@@ -1,6 +1,7 @@
 import { getIdeasByNovelId } from "@/server/idea";
 import { getChapters } from "@/server/chapter";
-import { getNovelById } from "@/server/novel";
+import { getNovelByIdSimple } from "@/server/novel";
+import { syncDiscordIdeas } from "@/server/discord-sync";
 import { CreateIdeaDialog } from "@/components/project/idea/create-idea-dialog";
 import { IdeasView } from "@/components/project/idea/ideas-view";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
@@ -16,11 +17,17 @@ interface IdeasPageProps {
 export default async function IdeasPage({ params }: IdeasPageProps) {
   const { id: novelId } = await params;
 
-  const [ideasResult, chaptersResult, novelResult] = await Promise.all([
+  // Sync Discord ideas เฉพาะตอนเข้าหน้านี้แทน (ย้ายมาจาก layout)
+  const [ideasResult, chaptersResult, novelResult, syncResult] = await Promise.all([
     getIdeasByNovelId(novelId),
     getChapters(novelId),
-    getNovelById(novelId),
+    getNovelByIdSimple(novelId),
+    syncDiscordIdeas(novelId),
   ]);
+
+  if (syncResult.synced > 0) {
+    console.log(`[Discord sync] Synced ${syncResult.synced} ideas`);
+  }
 
   if (!ideasResult.success) {
     return (

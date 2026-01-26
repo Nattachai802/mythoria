@@ -3,6 +3,8 @@
 import { db } from "@/db/drizzle";
 import { chapters, novels } from "@/db/schema";
 import { eq, desc, and, or, like, asc, sql } from "drizzle-orm";
+import { revalidateTag } from "next/cache";
+import { CACHE_TAGS } from "@/lib/cache-config";
 
 export const createChapter = async (novelId: string, title: string) => {
     try {
@@ -18,6 +20,11 @@ export const createChapter = async (novelId: string, title: string) => {
             content: {},
             status: "draft"
         }).returning();
+
+        // Invalidate cache to show new chapter in UI immediately
+        revalidateTag(CACHE_TAGS.chapters(novelId));
+        revalidateTag(CACHE_TAGS.novel(novelId));
+
         return { success: true, message: "Chapter created successfully", chapter };
     } catch (error) {
         console.error("Create chapter error:", error);

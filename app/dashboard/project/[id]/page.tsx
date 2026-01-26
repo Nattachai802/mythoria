@@ -41,6 +41,8 @@ import { ChapterRow } from "@/components/project/chapter-row"
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb"
 import { VectorSyncButton } from "@/components/project/vector-sync-button"
 import { PlotHoleJobButton } from "@/components/project/plot-hole-job-button"
+import { PublishAssistant } from "@/components/project/publish-assistant"
+import { ExportDialog } from "@/components/project/export-dialog"
 import { cn } from "@/lib/utils"
 
 type Props = {
@@ -269,7 +271,19 @@ export default async function ProjectOverviewPage({ params }: Props) {
                                 </p>
                             </div>
                         </div>
-                        <CreateChapterDialog novelId={id} />
+                        <div className="flex items-center gap-2">
+                            <PublishAssistant
+                                chapters={novel.chapters}
+                                notes={notes as any}
+                                novelTitle={novel.title}
+                            />
+                            <ExportDialog
+                                chapters={novel.chapters}
+                                notes={notes as any}
+                                novelTitle={novel.title}
+                            />
+                            <CreateChapterDialog novelId={id} />
+                        </div>
                     </div>
 
                     {/* Chapters Content */}

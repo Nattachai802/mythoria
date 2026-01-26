@@ -3,11 +3,18 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ============================================================
+   MYTHORIA - FORGE MODE DESIGN SYSTEM v2.0
+   Theme: Industrial Creativity / Tactical Construction
+   ============================================================ */
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-outfit);
+  --font-technical: var(--font-jetbrains);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -41,104 +48,171 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  /* Forge Mode Extended Tokens */
+  --color-forge-gold: var(--forge-gold);
+  --color-forge-amber: var(--forge-amber);
+  --color-forge-yellow: var(--forge-yellow);
+  --color-steel-100: var(--steel-100);
+  --color-steel-200: var(--steel-200);
+  --color-steel-400: var(--steel-400);
+  --color-steel-600: var(--steel-600);
+  --color-steel-800: var(--steel-800);
 }
 
 :root {
-  --radius: 0.75rem;
-  /* Light Mode - Digital Blueish White */
-  --background: oklch(0.985 0.01 240);
-  --foreground: oklch(0.15 0.05 260);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.15 0.05 260);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.15 0.05 260);
-  --primary: oklch(0.55 0.25 260);
-  /* Electric Blue */
-  --primary-foreground: oklch(0.98 0.02 260);
-  --secondary: oklch(0.95 0.05 240);
-  --secondary-foreground: oklch(0.25 0.1 260);
-  --muted: oklch(0.95 0.02 240);
-  --muted-foreground: oklch(0.5 0.05 260);
-  --accent: oklch(0.92 0.05 240);
-  --accent-foreground: oklch(0.25 0.1 260);
-  --destructive: oklch(0.6 0.25 25);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.9 0.05 260);
-  --input: oklch(0.9 0.05 260);
-  --ring: oklch(0.55 0.25 260);
+  --radius: 0.5rem;
 
-  --chart-1: oklch(0.55 0.25 260);
-  /* Blue */
-  --chart-2: oklch(0.65 0.2 200);
-  /* Cyan */
-  --chart-3: oklch(0.45 0.25 290);
-  /* Purple */
-  --chart-4: oklch(0.85 0.15 90);
-  --chart-5: oklch(0.7 0.2 40);
+  /* ========== FORGE MODE - LIGHT THEME ========== */
+  /* Warm Industrial Light */
+  --background: oklch(0.97 0.01 85);
+  --foreground: oklch(0.15 0.02 250);
+  --card: oklch(0.99 0.005 85);
+  --card-foreground: oklch(0.15 0.02 250);
+  --popover: oklch(0.99 0.005 85);
+  --popover-foreground: oklch(0.15 0.02 250);
 
-  --sidebar: oklch(0.985 0.01 240);
-  --sidebar-foreground: oklch(0.15 0.05 260);
-  --sidebar-primary: oklch(0.55 0.25 260);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.95 0.05 240);
-  --sidebar-accent-foreground: oklch(0.15 0.05 260);
-  --sidebar-border: oklch(0.9 0.05 260);
-  --sidebar-ring: oklch(0.55 0.25 260);
+  /* Primary: Forge Gold */
+  --primary: oklch(0.75 0.18 85);
+  --primary-foreground: oklch(0.15 0.02 85);
+
+  /* Secondary: Warm Gray */
+  --secondary: oklch(0.92 0.01 85);
+  --secondary-foreground: oklch(0.25 0.02 250);
+
+  --muted: oklch(0.94 0.01 85);
+  --muted-foreground: oklch(0.45 0.02 250);
+
+  --accent: oklch(0.90 0.02 85);
+  --accent-foreground: oklch(0.20 0.02 250);
+
+  --destructive: oklch(0.55 0.22 25);
+  --destructive-foreground: oklch(0.98 0 0);
+
+  --border: oklch(0.88 0.02 85);
+  --input: oklch(0.92 0.01 85);
+  --ring: oklch(0.75 0.18 85);
+
+  /* Chart Colors - Warm Industrial */
+  --chart-1: oklch(0.75 0.18 85);
+  /* Forge Gold */
+  --chart-2: oklch(0.65 0.15 45);
+  /* Copper */
+  --chart-3: oklch(0.55 0.12 250);
+  /* Steel Blue */
+  --chart-4: oklch(0.70 0.10 140);
+  /* Patina Green */
+  --chart-5: oklch(0.50 0.08 30);
+  /* Rust */
+
+  /* Sidebar */
+  --sidebar: oklch(0.96 0.01 85);
+  --sidebar-foreground: oklch(0.15 0.02 250);
+  --sidebar-primary: oklch(0.75 0.18 85);
+  --sidebar-primary-foreground: oklch(0.15 0.02 85);
+  --sidebar-accent: oklch(0.92 0.02 85);
+  --sidebar-accent-foreground: oklch(0.15 0.02 250);
+  --sidebar-border: oklch(0.88 0.02 85);
+  --sidebar-ring: oklch(0.75 0.18 85);
+
+  /* Forge Mode Extended Colors */
+  --forge-gold: oklch(0.75 0.18 85);
+  /* #F59E0B */
+  --forge-amber: oklch(0.68 0.17 70);
+  /* #D97706 */
+  --forge-yellow: oklch(0.82 0.16 90);
+  /* #FBBF24 */
+  --steel-100: oklch(0.98 0.005 250);
+  /* #FAFAFA */
+  --steel-200: oklch(0.91 0.01 250);
+  /* #E4E4E7 */
+  --steel-400: oklch(0.68 0.02 250);
+  /* #A1A1AA */
+  --steel-600: oklch(0.45 0.02 250);
+  /* #52525B */
+  --steel-800: oklch(0.25 0.02 250);
+  /* #27272A */
 }
 
 .dark {
-  /* Dark Mode - Deep Space Theme */
-  --background: oklch(0.10 0.05 285);
-  /* Deep Purple/Blue Black */
-  --foreground: oklch(0.95 0.02 240);
-  --card: oklch(0.14 0.05 285 / 0.7);
-  /* Translucent Card */
-  --card-foreground: oklch(0.95 0.02 240);
-  --popover: oklch(0.14 0.05 285);
-  --popover-foreground: oklch(0.95 0.02 240);
+  /* ========== FORGE MODE - DARK THEME ========== */
+  /* Carbon Void Background System */
+  --background: oklch(0.12 0.015 250);
+  /* Deep Carbon #0A0A0B → slightly warmer */
+  --foreground: oklch(0.93 0.01 85);
+  /* Warm White */
 
-  --primary: oklch(0.65 0.22 260);
-  /* Electric Blue */
-  --primary-foreground: oklch(1 0 0);
+  /* Card: Carbon Surface with subtle warmth */
+  --card: oklch(0.16 0.015 250);
+  /* #141416 */
+  --card-foreground: oklch(0.93 0.01 85);
 
-  --secondary: oklch(0.25 0.1 290);
-  /* Dark Purple Accent */
-  --secondary-foreground: oklch(0.9 0.05 240);
+  /* Popover: Elevated Steel */
+  --popover: oklch(0.18 0.015 250);
+  /* #1C1C1F */
+  --popover-foreground: oklch(0.93 0.01 85);
 
-  --muted: oklch(0.2 0.05 285);
-  --muted-foreground: oklch(0.7 0.05 260);
+  /* Primary: Forge Gold - The Star of the Show */
+  --primary: oklch(0.75 0.18 85);
+  /* #F59E0B */
+  --primary-foreground: oklch(0.12 0.02 85);
+  /* Dark text on gold */
 
-  --accent: oklch(0.25 0.1 260);
-  --accent-foreground: oklch(0.95 0.05 240);
+  /* Secondary: Molten Amber */
+  --secondary: oklch(0.22 0.02 85);
+  --secondary-foreground: oklch(0.90 0.01 85);
 
-  --destructive: oklch(0.5 0.25 25);
-  --destructive-foreground: oklch(0.985 0 0);
+  /* Muted: Raw Steel tones */
+  --muted: oklch(0.20 0.01 250);
+  --muted-foreground: oklch(0.65 0.02 250);
 
-  --border: oklch(0.3 0.1 260 / 0.5);
-  /* Glowing Borders */
-  --input: oklch(0.2 0.05 285);
-  --ring: oklch(0.65 0.22 260);
+  /* Accent: Hover states */
+  --accent: oklch(0.24 0.02 85);
+  --accent-foreground: oklch(0.93 0.01 85);
 
-  --chart-1: oklch(0.65 0.22 260);
-  /* Electric Blue */
-  --chart-2: oklch(0.75 0.18 200);
-  /* Cyan */
-  --chart-3: oklch(0.6 0.25 290);
-  /* Bright Purple */
-  --chart-4: oklch(0.5 0.2 320);
-  /* Magenta */
-  --chart-5: oklch(0.85 0.1 85);
-  /* Yellow/Gold for stars */
+  /* Destructive: Warning Red */
+  --destructive: oklch(0.55 0.22 25);
+  --destructive-foreground: oklch(0.98 0 0);
 
-  --sidebar: oklch(0.08 0.05 285);
-  /* Slightly darker than bg */
-  --sidebar-foreground: oklch(0.95 0.02 240);
-  --sidebar-primary: oklch(0.65 0.22 260);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.25 0.1 260);
-  --sidebar-accent-foreground: oklch(0.95 0.05 240);
-  --sidebar-border: oklch(0.3 0.1 260 / 0.3);
-  --sidebar-ring: oklch(0.65 0.22 260);
+  /* Borders: Subtle steel lines */
+  --border: oklch(0.28 0.015 250);
+  --input: oklch(0.18 0.015 250);
+  --ring: oklch(0.75 0.18 85);
+  /* Gold ring on focus */
+
+  /* Chart Colors - Industrial Palette */
+  --chart-1: oklch(0.75 0.18 85);
+  /* Forge Gold */
+  --chart-2: oklch(0.68 0.17 70);
+  /* Molten Amber */
+  --chart-3: oklch(0.60 0.12 250);
+  /* Steel Blue */
+  --chart-4: oklch(0.55 0.15 140);
+  /* Industrial Green */
+  --chart-5: oklch(0.50 0.20 30);
+  /* Warning Orange */
+
+  /* Sidebar: Darker than background */
+  --sidebar: oklch(0.10 0.015 250);
+  /* Deeper void */
+  --sidebar-foreground: oklch(0.93 0.01 85);
+  --sidebar-primary: oklch(0.75 0.18 85);
+  /* Gold */
+  --sidebar-primary-foreground: oklch(0.12 0.02 85);
+  --sidebar-accent: oklch(0.22 0.02 85);
+  --sidebar-accent-foreground: oklch(0.93 0.01 85);
+  --sidebar-border: oklch(0.25 0.015 250 / 0.5);
+  --sidebar-ring: oklch(0.75 0.18 85);
+
+  /* Forge Mode Extended Colors - Dark */
+  --forge-gold: oklch(0.75 0.18 85);
+  --forge-amber: oklch(0.68 0.17 70);
+  --forge-yellow: oklch(0.82 0.16 90);
+  --steel-100: oklch(0.98 0.005 250);
+  --steel-200: oklch(0.91 0.01 250);
+  --steel-400: oklch(0.68 0.02 250);
+  --steel-600: oklch(0.45 0.02 250);
+  --steel-800: oklch(0.25 0.02 250);
 }
 
 @layer base {
@@ -150,6 +224,229 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ============================================================
+   FORGE MODE - UTILITY CLASSES
+   ============================================================ */
+
+/* Chamfered Corners - Industrial cut corners */
+.chamfered {
+  clip-path: polygon(8px 0,
+      calc(100% - 8px) 0,
+      100% 8px,
+      100% calc(100% - 8px),
+      calc(100% - 8px) 100%,
+      8px 100%,
+      0 calc(100% - 8px),
+      0 8px);
+}
+
+.chamfered-sm {
+  clip-path: polygon(4px 0,
+      calc(100% - 4px) 0,
+      100% 4px,
+      100% calc(100% - 4px),
+      calc(100% - 4px) 100%,
+      4px 100%,
+      0 calc(100% - 4px),
+      0 4px);
+}
+
+.chamfered-lg {
+  clip-path: polygon(12px 0,
+      calc(100% - 12px) 0,
+      100% 12px,
+      100% calc(100% - 12px),
+      calc(100% - 12px) 100%,
+      12px 100%,
+      0 calc(100% - 12px),
+      0 12px);
+}
+
+/* Hazard Stripes - Warning pattern decoration */
+.hazard-stripe {
+  background: repeating-linear-gradient(-45deg,
+      var(--forge-gold),
+      var(--forge-gold) 10px,
+      transparent 10px,
+      transparent 20px);
+}
+
+.hazard-stripe-subtle {
+  background: repeating-linear-gradient(-45deg,
+      var(--forge-gold),
+      var(--forge-gold) 4px,
+      transparent 4px,
+      transparent 8px);
+  opacity: 0.3;
+}
+
+.hazard-stripe-dark {
+  background: repeating-linear-gradient(-45deg,
+      var(--forge-gold),
+      var(--forge-gold) 8px,
+      oklch(0.12 0.015 250) 8px,
+      oklch(0.12 0.015 250) 16px);
+}
+
+/* Noise Texture Overlay - Industrial surface feel */
+.noise-texture::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  opacity: 0.03;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.noise-texture-strong::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  opacity: 0.06;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Glow Effects - Forge fire glow */
+.glow-gold {
+  box-shadow:
+    0 0 20px oklch(0.75 0.18 85 / 0.2),
+    0 0 40px oklch(0.75 0.18 85 / 0.1);
+}
+
+.glow-gold-strong {
+  box-shadow:
+    0 0 15px oklch(0.75 0.18 85 / 0.3),
+    0 0 30px oklch(0.75 0.18 85 / 0.2),
+    0 0 60px oklch(0.75 0.18 85 / 0.1);
+}
+
+.text-glow-gold {
+  text-shadow: 0 0 10px oklch(0.75 0.18 85 / 0.5);
+}
+
+/* Technical Grid Pattern - Blueprint style */
+.grid-pattern {
+  background-image:
+    linear-gradient(var(--steel-800) 1px, transparent 1px),
+    linear-gradient(90deg, var(--steel-800) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.grid-pattern-subtle {
+  background-image:
+    radial-gradient(circle, var(--steel-600) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+/* Technical Decorations */
+.tech-border-left {
+  border-left: 3px solid var(--forge-gold);
+  padding-left: 1rem;
+}
+
+.tech-corner::before {
+  content: "+";
+  position: absolute;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--steel-600);
+}
+
+/* Loading Animation - Industrial style */
+@keyframes forge-pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes forge-loading {
+  0% {
+    content: "[/////.....]";
+  }
+
+  25% {
+    content: "[./////....]";
+  }
+
+  50% {
+    content: "[../////...]";
+  }
+
+  75% {
+    content: "[.../////..]";
+  }
+
+  100% {
+    content: "[..../////.";
+  }
+}
+
+.animate-forge-pulse {
+  animation: forge-pulse 2s ease-in-out infinite;
+}
+
+/* Progress Bar - Industrial diagonal stripes */
+.progress-industrial {
+  background: repeating-linear-gradient(-45deg,
+      var(--forge-gold),
+      var(--forge-gold) 8px,
+      var(--forge-amber) 8px,
+      var(--forge-amber) 16px);
+}
+
+/* Forge Button Hover Effect */
+.forge-btn-hover {
+  transition: all 150ms ease;
+}
+
+.forge-btn-hover:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px oklch(0.75 0.18 85 / 0.3);
+}
+
+/* Stencil Text Style */
+.text-stencil {
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* Monospace Technical Text */
+.text-technical {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* Industrial Divider */
+.divider-dashed {
+  border-style: dashed;
+  border-color: var(--steel-600);
+}
+
+.divider-industrial {
+  height: 1px;
+  background: linear-gradient(90deg,
+      transparent,
+      var(--steel-600) 20%,
+      var(--steel-600) 80%,
+      transparent);
+}
+
+/* ============================================================
+   QUILL EDITOR - FORGE MODE STYLES
+   ============================================================ */
 
 /* Quill Editor - Paragraph Spacing for Thai Novel Writing */
 .ql-editor {
@@ -188,7 +485,7 @@
   font-style: normal;
 }
 
-/* Dark mode support for Quill */
+/* Dark mode support for Quill - Forge Mode */
 .dark .ql-toolbar {
   border-color: var(--border) !important;
   background: var(--muted);
@@ -221,4 +518,67 @@
 
 .dark .ql-picker-item {
   color: var(--foreground) !important;
+}
+
+/* Quill active state - Forge Gold accent */
+.dark .ql-toolbar button:hover,
+.dark .ql-toolbar button:focus,
+.dark .ql-toolbar button.ql-active {
+  color: var(--forge-gold) !important;
+}
+
+.dark .ql-toolbar button:hover .ql-stroke,
+.dark .ql-toolbar button:focus .ql-stroke,
+.dark .ql-toolbar button.ql-active .ql-stroke {
+  stroke: var(--forge-gold) !important;
+}
+
+.dark .ql-toolbar button:hover .ql-fill,
+.dark .ql-toolbar button:focus .ql-fill,
+.dark .ql-toolbar button.ql-active .ql-fill {
+  fill: var(--forge-gold) !important;
+}
+
+/* ============================================================
+   SCROLLBAR - FORGE MODE
+   ============================================================ */
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--steel-600);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--steel-400);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: var(--steel-800);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: var(--steel-600);
+}
+
+/* ============================================================
+   SELECTION - FORGE MODE
+   ============================================================ */
+
+::selection {
+  background: oklch(0.75 0.18 85 / 0.3);
+  color: inherit;
+}
+
+.dark ::selection {
+  background: oklch(0.75 0.18 85 / 0.4);
 }

@@ -1,0 +1,1 @@
+ALTER TABLE "ideas" ADD COLUMN "is_used" boolean DEFAULT false;
