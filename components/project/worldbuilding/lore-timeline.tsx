@@ -23,7 +23,7 @@ import {
 import {
     Plus, MoreHorizontal, Pencil, Trash2,
     Layers, ChevronDown, ChevronRight as ChevronRightIcon, MapPin,
-    FolderPlus, Clock, X, Sparkles, BookOpen, Download, Search, FilterX
+    FolderPlus, Clock, X, Menu, BookOpen, Download, Search, FilterX, Sparkles
 } from "lucide-react";
 import { deleteLoreEntry } from "@/server/lore";
 import { toast } from "sonner";
@@ -830,9 +830,9 @@ function FloatingLoreFab({ onCreateLore, onCreateGroup, onExport }: { onCreateLo
     }, []);
 
     const menuItems = [
-        { label: "สร้าง Lore ใหม่", action: onCreateLore, icon: "📜", color: "#8b5cf6" },
-        { label: "สร้างกลุ่ม", action: onCreateGroup, icon: "📁", color: "#3b82f6" },
-        { label: "Export JSON", action: onExport, icon: "📥", color: "#10b981" },
+        { label: "สร้าง Lore ใหม่", action: onCreateLore, Icon: BookOpen, color: "text-blue-600" },
+        { label: "สร้างกลุ่ม", action: onCreateGroup, Icon: FolderPlus, color: "text-purple-600" },
+        { label: "Export JSON", action: onExport, Icon: Download, color: "text-emerald-600" },
     ];
 
     return (
@@ -849,10 +849,10 @@ function FloatingLoreFab({ onCreateLore, onCreateGroup, onExport }: { onCreateLo
                         : "opacity-0 scale-95 pointer-events-none translate-y-3"
                     }`}
             >
-                <div className="bg-white rounded-xl shadow-2xl border border-gray-200 backdrop-blur-sm overflow-hidden">
+                <div className="bg-background rounded-xl shadow-2xl border backdrop-blur-sm overflow-hidden">
                     <div className="p-2">
-                        <div className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
-                            สร้างใหม่
+                        <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                            ตัวเลือก
                         </div>
                         <ul className="space-y-1">
                             {menuItems.map((item, idx) => (
@@ -863,20 +863,18 @@ function FloatingLoreFab({ onCreateLore, onCreateGroup, onExport }: { onCreateLo
                                             item.action();
                                         }}
                                         className="group flex items-center gap-3 px-4 py-3 rounded-lg w-full
-                                                   text-sm font-medium text-gray-700 bg-white
-                                                   hover:bg-gray-50 hover:text-violet-700 
-                                                   active:bg-gray-100 active:scale-[0.98]
-                                                   transition-all duration-200 ease-out
-                                                   border border-transparent hover:border-gray-200"
+                                                   text-sm font-medium text-foreground
+                                                   hover:bg-muted
+                                                   active:bg-muted active:scale-[0.98]
+                                                   transition-all duration-200 ease-out"
                                     >
                                         <span
-                                            className="flex-shrink-0 min-w-8 h-8 px-2 rounded-lg bg-gray-100 
-                                                       flex items-center justify-center text-lg
-                                                       group-hover:bg-violet-600 group-hover:text-white
-                                                       transition-all duration-200"
-                                            style={{ backgroundColor: open ? `${item.color}15` : undefined }}
+                                            className={`flex-shrink-0 w-8 h-8 rounded-lg bg-muted 
+                                                       flex items-center justify-center
+                                                       group-hover:bg-primary group-hover:text-primary-foreground
+                                                       transition-all duration-200 ${item.color}`}
                                         >
-                                            {item.icon}
+                                            <item.Icon className="w-4 h-4" />
                                         </span>
                                         <span className="text-left whitespace-nowrap">{item.label}</span>
                                     </button>
@@ -886,35 +884,45 @@ function FloatingLoreFab({ onCreateLore, onCreateGroup, onExport }: { onCreateLo
                     </div>
 
                     {/* ลูกศรชี้ */}
-                    <div className="absolute -bottom-1 right-4 w-3 h-3 bg-white border-r border-b 
-                                    border-gray-200 transform rotate-45 shadow-sm">
+                    <div className="absolute -bottom-1 right-4 w-3 h-3 bg-background border-r border-b 
+                                    border-border transform rotate-45 shadow-sm">
                     </div>
                 </div>
             </div>
 
-            {/* ปุ่มหลักแบบกลม */}
+            {/* ปุ่มหลักแบบสี่เหลี่ยม */}
             <button
                 type="button"
                 aria-expanded={open}
                 aria-label="เมนูสร้าง Lore"
                 onClick={() => setOpen((v) => !v)}
-                className={`relative w-14 h-14 rounded-full shadow-2xl border-2
-                flex items-center justify-center text-white
+                className={`relative w-14 h-14 rounded-xl shadow-xl border-2
+                flex items-center justify-center
                 transition-all duration-300 ease-out active:scale-90 hover:scale-105
                 ${open
-                        ? "bg-rose-500 border-rose-500 shadow-rose-500/30"
-                        : "bg-violet-600 border-violet-600 shadow-violet-600/30 hover:bg-violet-700"
+                        ? "bg-primary border-primary text-primary-foreground shadow-primary/30"
+                        : "bg-primary border-primary text-primary-foreground shadow-primary/20 hover:shadow-primary/40"
                     }`}
             >
-                <span
-                    className={`transition-transform duration-300 ease-out ${open ? "rotate-45" : "rotate-0"}`}
-                >
-                    {open ? <X className="w-6 h-6" /> : <Plus className="w-6 h-6" />}
-                </span>
+                {/* Hamburger → X Animation */}
+                <div className="relative w-5 h-5 flex flex-col justify-center items-center">
+                    <span
+                        className={`absolute h-0.5 w-5 bg-current rounded-full transition-all duration-300 ease-out
+                            ${open ? "rotate-45 translate-y-0" : "-translate-y-1.5"}`}
+                    />
+                    <span
+                        className={`absolute h-0.5 w-5 bg-current rounded-full transition-all duration-300 ease-out
+                            ${open ? "opacity-0 scale-0" : "opacity-100 scale-100"}`}
+                    />
+                    <span
+                        className={`absolute h-0.5 w-5 bg-current rounded-full transition-all duration-300 ease-out
+                            ${open ? "-rotate-45 translate-y-0" : "translate-y-1.5"}`}
+                    />
+                </div>
 
                 {/* Ripple effect */}
                 {open && (
-                    <div className="absolute inset-0 rounded-full bg-rose-500 animate-ping opacity-20" />
+                    <div className="absolute inset-0 rounded-full bg-primary animate-ping opacity-20" />
                 )}
             </button>
         </div>

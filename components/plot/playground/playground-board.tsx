@@ -23,7 +23,7 @@ import { IdeaNoteDialog } from "./idea-note-dialog";
 import { SceneElementDetails } from "@/db/schema";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Plus, Save, ZoomIn, ZoomOut, Maximize2, Link2, X, Check, Move } from "lucide-react";
+import { Plus, Save, ZoomIn, ZoomOut, Maximize2, Link2, X, Check, Move, Download } from "lucide-react";
 import { CreateIdeaDialog } from "@/components/project/idea/create-idea-dialog";
 
 interface PlaygroundBoardProps {
@@ -398,18 +398,51 @@ export function PlaygroundBoard({
         if (!linkingSourceId) return;
         if (linkingSourceId === targetId) return;
 
-        setItems(prev => prev.map(item => {
-            if (item.id === linkingSourceId) {
-                const links = item.links || [];
-                if (links.includes(targetId)) {
-                    toast.info("Already connected");
-                    return item;
-                }
-                toast.success("Connected!");
-                return { ...item, links: [...links, targetId] };
+        setItems(prev => {
+            const sourceItem = prev.find(i => i.id === linkingSourceId);
+            const targetItem = prev.find(i => i.id === targetId);
+
+            // Check if already connected
+            if (sourceItem?.links?.includes(targetId)) {
+                toast.info("Already connected");
+                return prev;
             }
-            return item;
-        }));
+
+            // Get children to copy (characters + others, NOT locations)
+            const childrenToCopy = (sourceItem?.children || [])
+                .filter((c: any) => c.type !== 'location')
+                .map((c: any) => ({
+                    ...c,
+                    id: crypto.randomUUID(), // Generate new ID to avoid conflicts
+                }));
+
+            // Filter out duplicates (same referenceId already exists in target)
+            const existingRefIds = new Set(
+                (targetItem?.children || []).map((c: any) => c.referenceId)
+            );
+            const newChildren = childrenToCopy.filter(
+                (c: any) => !existingRefIds.has(c.referenceId)
+            );
+
+            const copiedCount = newChildren.length;
+
+            return prev.map(item => {
+                // Update source with new link
+                if (item.id === linkingSourceId) {
+                    return { ...item, links: [...(item.links || []), targetId] };
+                }
+                // Update target with copied children
+                if (item.id === targetId && newChildren.length > 0) {
+                    return {
+                        ...item,
+                        children: [...(item.children || []), ...newChildren]
+                    };
+                }
+                return item;
+            });
+        });
+
+        toast.success("เชื่อมต่อแล้ว!");
 
         // DON'T reset linkingSourceId - stay in linking mode for one-to-many
     };
@@ -592,6 +625,7 @@ export function PlaygroundBoard({
                     referenceId: incomingRefId,
                     title: activeData.title,
                     content: activeData.content,
+                    role: activeData.role, // Include role for character color coding
                     // x,y irrelevant for children
                 };
 
@@ -644,11 +678,21 @@ export function PlaygroundBoard({
                 x,
                 y,
                 content: activeData.content,
+                role: activeData.role, // Include role for character color coding
                 children: [], // Initialize children array
                 links: [] // Initialize links
             };
 
             setItems((prev) => [...prev, newItem]);
+
+            // Auto-mark idea as used when placed on canvas
+            if (activeData.type === 'idea' && activeData.id) {
+                updateIdea(activeData.id, {
+                    canvasX: Math.round(x),
+                    canvasY: Math.round(y),
+                    isUsed: true
+                });
+            }
         }
     };
 
@@ -678,6 +722,42 @@ export function PlaygroundBoard({
                 isUsed: false
             });
         }
+    };
+
+    const handleExport = () => {
+        const exportData = {
+            exportedAt: new Date().toISOString(),
+            novelId,
+            eventId,
+            totalItems: items.length,
+            items: items.map(item => ({
+                id: item.id,
+                type: item.type,
+                title: item.title,
+                content: item.content,
+                x: item.x,
+                y: item.y,
+                links: item.links,
+                children: item.children?.map((child: any) => ({
+                    id: child.id,
+                    type: child.type,
+                    title: child.title,
+                    content: child.content,
+                    referenceId: child.referenceId
+                }))
+            }))
+        };
+
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `plot-board-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        toast.success('Export Playground สำเร็จ!');
     };
 
     return (
@@ -788,6 +868,16 @@ export function PlaygroundBoard({
                         >
                             <Save className={`w-3.5 h-3.5 mr-2 ${isSaving ? 'animate-pulse' : ''}`} />
                             {isSaving ? "Saving..." : lastSaved ? "All changes saved" : "Save Layout"}
+                        </Button>
+
+                        <Button
+                            onClick={handleExport}
+                            size="icon"
+                            variant="outline"
+                            className="pointer-events-auto bg-white/80 backdrop-blur hover:bg-white text-foreground border shadow-sm transition-all h-9 w-9"
+                            title="Export to JSON"
+                        >
+                            <Download className="w-4 h-4" />
                         </Button>
                     </div>
 

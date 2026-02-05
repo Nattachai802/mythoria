@@ -16,7 +16,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
-import { MoreVertical, Pencil, Trash2, Lightbulb, BookOpen, Eye } from "lucide-react";
+import { MoreVertical, Pencil, Trash2, Lightbulb, BookOpen, Eye, CheckCircle2 } from "lucide-react";
 import { deleteIdea } from "@/server/idea";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -62,7 +62,10 @@ export function IdeaCard({ idea, novelId, chapterInfo }: IdeaCardProps) {
     return (
         <>
             <Card
-                className="group hover:shadow-lg transition-shadow cursor-pointer"
+                className={`group hover:shadow-lg transition-all cursor-pointer ${idea.isUsed
+                        ? 'opacity-60 bg-muted/50 border-dashed'
+                        : ''
+                    }`}
                 onClick={() => setViewDialogOpen(true)}
             >
                 <CardHeader className="pb-3">
@@ -72,9 +75,17 @@ export function IdeaCard({ idea, novelId, chapterInfo }: IdeaCardProps) {
                                 <Lightbulb className="w-5 h-5 text-yellow-500" />
                             </div>
                             <div className="flex-1 min-w-0">
-                                <h3 className="font-semibold text-lg truncate">
-                                    {idea.title}
-                                </h3>
+                                <div className="flex items-center gap-2">
+                                    <h3 className={`font-semibold text-lg truncate ${idea.isUsed ? 'text-muted-foreground' : ''}`}>
+                                        {idea.title}
+                                    </h3>
+                                    {idea.isUsed && (
+                                        <Badge variant="secondary" className="text-xs bg-green-100 text-green-700 border-green-200 shrink-0">
+                                            <CheckCircle2 className="w-3 h-3 mr-1" />
+                                            ใช้แล้ว
+                                        </Badge>
+                                    )}
+                                </div>
 
                                 {/* Tags */}
                                 <div className="flex gap-1 mt-2 flex-wrap">

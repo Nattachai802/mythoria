@@ -504,6 +504,10 @@ export const ideas = pgTable("ideas", {
   // Optional links (soft links, ไม่กระทบ word count)
   linkedChapterId: text("linked_chapter_id").references(() => chapters.id, { onDelete: "set null" }),
   linkedCharacterIds: jsonb("linked_character_ids"), // สามารถลิงก์หลายตัวละคร
+  linkedPowerIds: jsonb("linked_power_ids"), // ลิงก์กับ Powers
+  linkedLoreIds: jsonb("linked_lore_ids"), // ลิงก์กับ Lore Entries
+  linkedLocationIds: jsonb("linked_location_ids"), // ลิงก์กับ Locations
+  linkedEntityIds: jsonb("linked_entity_ids"), // ลิงก์กับ Entities/Monsters
 
   isUsed: boolean("is_used").default(false), // Auto-set to true when placed on Playground canvas
   isArchived: boolean("is_archived").default(false),

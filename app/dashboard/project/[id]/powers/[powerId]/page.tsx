@@ -1,5 +1,6 @@
 import { getPowerById } from "@/server/power";
 import { getNovelById } from "@/server/novel";
+import { getIdeasByNovelId } from "@/server/idea";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
 import { PowerDetailView } from "@/components/project/power/power-detail-view";
 import { notFound } from "next/navigation";
@@ -14,9 +15,10 @@ interface PowerDetailPageProps {
 export default async function PowerDetailPage({ params }: PowerDetailPageProps) {
     const { id: novelId, powerId } = await params;
 
-    const [powerResult, novelResult] = await Promise.all([
+    const [powerResult, novelResult, ideasResult] = await Promise.all([
         getPowerById(powerId),
         getNovelById(novelId),
+        getIdeasByNovelId(novelId),
     ]);
 
     if (!powerResult.success || !powerResult.data) {
@@ -25,6 +27,7 @@ export default async function PowerDetailPage({ params }: PowerDetailPageProps) 
 
     const power = powerResult.data;
     const novelTitle = novelResult.novel?.title || "Project";
+    const ideas = ideasResult.success ? ideasResult.data : [];
 
     return (
         <div className="p-8">
@@ -40,6 +43,7 @@ export default async function PowerDetailPage({ params }: PowerDetailPageProps) 
             <PowerDetailView
                 power={power}
                 novelId={novelId}
+                ideas={ideas}
             />
         </div>
     );

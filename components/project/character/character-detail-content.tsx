@@ -20,6 +20,7 @@ import {
     Calendar,
     Sparkles,
     Download,
+    Lightbulb,
 } from "lucide-react";
 import { CharacterSheet } from "@/components/project/character/character-sheet";
 import { CharacterRelationships } from "@/components/project/character/character-relationships";
@@ -29,6 +30,7 @@ import { CharacterLifeEvents } from "@/components/project/character/character-li
 import { CharacterTimelineSlider } from "@/components/project/character/character-timeline-slider";
 import { FactionTimelineView } from "@/components/project/character/faction-timeline-view";
 import { ExportCharacterDialog } from "@/components/project/character/export-character-dialog";
+import { CharacterIdeasTab } from "@/components/project/character/character-ideas-tab";
 import { FormattedTextSection } from "@/components/ui/formatted-text-section";
 import { Character } from "@/db/schema";
 import { cn } from "@/lib/utils";
@@ -36,6 +38,7 @@ import { cn } from "@/lib/utils";
 interface CharacterDetailContentProps {
     character: Character;
     novelId: string;
+    ideas?: any[]; // Ideas linked to this character
 }
 
 const ROLE_CONFIG = {
@@ -94,7 +97,8 @@ function InfoSection({ icon, title, children, className }: InfoSectionProps) {
 
 export function CharacterDetailContent({
     character,
-    novelId
+    novelId,
+    ideas = []
 }: CharacterDetailContentProps) {
     const [sheetOpen, setSheetOpen] = useState(false);
     const roleConfig = ROLE_CONFIG[character.role as keyof typeof ROLE_CONFIG] || ROLE_CONFIG.minor;
@@ -245,6 +249,10 @@ export function CharacterDetailContent({
                         <TabsTrigger value="life-events" className="gap-2">
                             <Calendar className="w-4 h-4" />
                             เหตุการณ์สำคัญ
+                        </TabsTrigger>
+                        <TabsTrigger value="ideas" className="gap-2">
+                            <Lightbulb className="w-4 h-4" />
+                            Ideas
                         </TabsTrigger>
                     </TabsList>
 
@@ -398,6 +406,16 @@ export function CharacterDetailContent({
                     {/* Life Events Tab */}
                     <TabsContent value="life-events">
                         <CharacterLifeEvents characterId={character.id} novelId={novelId} />
+                    </TabsContent>
+
+                    {/* Ideas Tab */}
+                    <TabsContent value="ideas">
+                        <CharacterIdeasTab
+                            characterId={character.id}
+                            characterName={character.name}
+                            novelId={novelId}
+                            ideas={ideas}
+                        />
                     </TabsContent>
                 </Tabs>
             </div>

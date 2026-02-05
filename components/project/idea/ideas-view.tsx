@@ -44,13 +44,10 @@ export function IdeasView({ ideas, novelId, chapters = [] }: IdeasViewProps) {
     const [selectedIdea, setSelectedIdea] = useState<Idea | null>(null);
     const [editDialogOpen, setEditDialogOpen] = useState(false);
 
-    // Memoized filtered ideas - exclude used ideas
+    // Memoized filtered ideas - show all ideas (used ones will be grayed out)
     const filteredIdeas = useMemo(() => {
-        // First filter: Remove used ideas (already on canvas)
-        const unusedIdeas = ideas.filter(idea => !idea.isUsed);
-
-        // Second filter: Search query
-        return unusedIdeas.filter((idea) => {
+        // Filter by search query only (no longer hiding used ideas)
+        return ideas.filter((idea) => {
             const query = searchQuery.toLowerCase().trim();
             if (!query) return true;
 

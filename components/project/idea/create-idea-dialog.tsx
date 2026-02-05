@@ -19,7 +19,15 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus } from "lucide-react";
@@ -29,7 +37,7 @@ import { toast } from "sonner";
 const ideaSchema = z.object({
   title: z.string().min(1, "Title is required"),
   content: z.string().min(1, "Content is required"),
-  tags: z.string().optional(),
+  category: z.string().default("general"),
 });
 
 type IdeaFormData = z.infer<typeof ideaSchema>;
@@ -37,34 +45,45 @@ type IdeaFormData = z.infer<typeof ideaSchema>;
 interface CreateIdeaDialogProps {
   novelId: string;
   trigger?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  defaultLinkedCharacterIds?: string[];
+  defaultCategory?: string;
 }
 
-export function CreateIdeaDialog({ novelId, trigger }: CreateIdeaDialogProps) {
-  const [open, setOpen] = useState(false);
+export function CreateIdeaDialog({
+  novelId,
+  trigger,
+  open: controlledOpen,
+  onOpenChange,
+  defaultLinkedCharacterIds,
+  defaultCategory
+}: CreateIdeaDialogProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Use controlled or internal state
+  const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setOpen = onOpenChange || setInternalOpen;
 
   const form = useForm<IdeaFormData>({
     resolver: zodResolver(ideaSchema),
     defaultValues: {
       title: "",
       content: "",
-      tags: "",
+      category: defaultCategory || "general",
     },
   });
 
   const onSubmit = async (data: IdeaFormData) => {
     setIsSubmitting(true);
 
-    // Convert tags string to array
-    const tagsArray = data.tags
-      ? data.tags.split(",").map(tag => tag.trim()).filter(Boolean)
-      : [];
-
     const result = await createIdea({
       title: data.title,
-      content: data.content, // You can replace this with rich text editor content
+      content: data.content,
       novelId,
-      tags: tagsArray,
+      category: data.category,
+      linkedCharacterIds: defaultLinkedCharacterIds,
     });
 
     if (result.success) {
@@ -110,6 +129,35 @@ export function CreateIdeaDialog({ novelId, trigger }: CreateIdeaDialogProps) {
 
             <FormField
               control={form.control}
+              name="category"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Category</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a category" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="general">💭 General</SelectItem>
+                      <SelectItem value="character">👤 Character</SelectItem>
+                      <SelectItem value="power">⚡ Power</SelectItem>
+                      <SelectItem value="lore">📜 Lore</SelectItem>
+                      <SelectItem value="location">🗺️ Location</SelectItem>
+                      <SelectItem value="plot">📖 Plot</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    ประเภทของไอเดียนี้
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
               name="content"
               render={({ field }) => (
                 <FormItem>
@@ -121,26 +169,6 @@ export function CreateIdeaDialog({ novelId, trigger }: CreateIdeaDialogProps) {
                       {...field}
                     />
                   </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="tags"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Tags</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="tag1, tag2, tag3"
-                      {...field}
-                    />
-                  </FormControl>
-                  <p className="text-xs text-muted-foreground">
-                    Separate tags with commas
-                  </p>
                   <FormMessage />
                 </FormItem>
               )}

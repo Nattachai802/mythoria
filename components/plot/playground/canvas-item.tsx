@@ -3,10 +3,11 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { User, MapPin, Lightbulb, X, Link as LinkIcon, Pencil, CheckCircle2, XCircle, Clock, StickyNote, Maximize2, Minimize2, ExternalLink } from "lucide-react";
+import { User, MapPin, Lightbulb, X, Link as LinkIcon, Pencil, CheckCircle2, XCircle, Clock, StickyNote, Maximize2, Minimize2, ExternalLink, Copy } from "lucide-react";
 import { useCallback, useState } from "react";
 import { SceneElementDetails } from "@/db/schema";
 import Link from "next/link";
+import { toast } from "sonner";
 
 // For items already on the canvas (moveable)
 export function DraggableCanvasItem({
@@ -145,6 +146,21 @@ export function CanvasItem({
     return <Lightbulb className="w-4 h-4" />;
   }
 
+  // Helper to get character role-based colors
+  const getCharacterRoleColors = (role?: string) => {
+    switch (role?.toLowerCase()) {
+      case 'protagonist':
+        return { icon: 'text-amber-500', bg: 'bg-amber-50', border: 'border-amber-200' };
+      case 'antagonist':
+        return { icon: 'text-red-500', bg: 'bg-red-50', border: 'border-red-200' };
+      case 'supporting':
+        return { icon: 'text-green-400', bg: 'bg-green-50', border: 'border-green-200' };
+      case 'minor':
+      default:
+        return { icon: 'text-slate-400', bg: 'bg-slate-50', border: 'border-slate-200' };
+    }
+  };
+
   const colorClass =
     item.type === 'character' ? 'border-l-4 border-l-blue-500' :
       item.type === 'location' ? 'border-l-4 border-l-green-500' :
@@ -195,6 +211,47 @@ export function CanvasItem({
 
   const thisIdeaNotes = getIdeaNotes();
 
+  // Copy node data to clipboard in structured format
+  const copyToClipboard = async () => {
+    // Get characters from children
+    const characters = item.children
+      ?.filter((c: any) => c.type === 'character')
+      .map((c: any) => c.title)
+      .join(', ') || '';
+
+    // Get locations and others from children
+    const locations = item.children
+      ?.filter((c: any) => c.type === 'location')
+      .map((c: any) => c.title)
+      .join(', ') || '';
+
+    const others = item.children
+      ?.filter((c: any) => c.type !== 'character' && c.type !== 'location')
+      .map((c: any) => c.title)
+      .join(', ') || '';
+
+    // Get notes
+    const notes = thisIdeaNotes
+      .map((note: any) => note.notes)
+      .join('\n') || '';
+
+    // Build the structured text
+    const content = typeof item.content === 'string' ? item.content : '';
+
+    const clipboardText = `Title: ${item.title}
+Desc: ${content}
+Character: ${characters}
+Other: ${locations}${others ? (locations ? ', ' : '') + others : ''}
+Notes: ${notes}`;
+
+    try {
+      await navigator.clipboard.writeText(clipboardText);
+      toast.success('คัดลอกข้อมูลแล้ว');
+    } catch (err) {
+      toast.error('ไม่สามารถคัดลอกได้');
+    }
+  };
+
   return (
     <Card className={`
         ${widthClass} shadow-lg ${colorClass} 
@@ -214,10 +271,10 @@ export function CanvasItem({
               <p className="font-semibold text-sm truncate">{item.title}</p>
             </div>
 
-            {item.type === 'idea' && item.content && !isExpanded && (
-              <p className="text-xs text-muted-foreground line-clamp-3 bg-muted/30 p-2 rounded">
+            {item.type === 'idea' && item.content && (
+              <div className={`text-xs text-muted-foreground bg-muted/30 p-2 rounded ${isExpanded ? 'whitespace-pre-wrap' : 'line-clamp-3'}`}>
                 {typeof item.content === 'string' ? item.content : 'Rich text content...'}
-              </p>
+              </div>
             )}
           </div>
 
@@ -269,6 +326,23 @@ export function CanvasItem({
                 title="เพิ่ม Note"
               >
                 <StickyNote className="w-3 h-3" />
+              </Button>
+            )}
+            {/* Copy button for Ideas */}
+            {isContainer && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-muted-foreground hover:text-green-500 shrink-0"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  copyToClipboard();
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                title="คัดลอกข้อมูล"
+              >
+                <Copy className="w-3 h-3" />
               </Button>
             )}
             {/* Expand/Collapse button */}
@@ -346,12 +420,7 @@ export function CanvasItem({
               </div>
             )}
 
-            {/* Full content for idea - show full text */}
-            {item.type === 'idea' && item.content && (
-              <div className="text-xs text-muted-foreground bg-muted/30 p-2 rounded whitespace-pre-wrap mt-0">
-                {typeof item.content === 'string' ? item.content : 'Rich text content...'}
-              </div>
-            )}
+
 
             {/* Link to detail page */}
             {getDetailPageUrl() && (
@@ -399,7 +468,7 @@ export function CanvasItem({
             {/* Characters Section */}
             {item.children.some((c: any) => c.type === 'character') && (
               <div className="space-y-1">
-                <p className="text-[10px] uppercase font-bold text-blue-500/80 tracking-wider mb-1 flex items-center gap-1">
+                <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider mb-1 flex items-center gap-1">
                   <User className="w-3 h-3" /> Characters
                 </p>
                 {item.children
@@ -407,10 +476,11 @@ export function CanvasItem({
                   .map((child: any) => {
                     const detail = getChildDetail(child);
                     const hasDetail = detail && (detail.action || detail.how || detail.goal);
+                    const roleColors = getCharacterRoleColors(child.role);
                     return (
-                      <div key={child.id} className="bg-background p-1.5 rounded border shadow-sm text-xs group/item">
+                      <div key={child.id} className={`p-1.5 rounded border shadow-sm text-xs group/item ${roleColors.bg} ${roleColors.border}`}>
                         <div className="flex items-center gap-2">
-                          <User className="w-3 h-3 text-blue-500 shrink-0" />
+                          <User className={`w-3 h-3 shrink-0 ${roleColors.icon}`} />
                           <span className="truncate flex-1 font-medium">{child.title}</span>
                           <OutcomeIcon outcome={detail?.outcome} />
                           {onEditChild && (
@@ -419,7 +489,7 @@ export function CanvasItem({
                                 e.stopPropagation();
                                 onEditChild({ ...child, canvasItemId: item.id });
                               }}
-                              className="opacity-0 group-hover/item:opacity-100 hover:text-blue-500 transition-opacity"
+                              className={`opacity-0 group-hover/item:opacity-100 hover:${roleColors.icon} transition-opacity`}
                               title="แก้ไขรายละเอียด"
                             >
                               <Pencil className="w-3 h-3" />

@@ -1,5 +1,6 @@
 import { getLocationById } from "@/server/locations";
 import { getNovelById } from "@/server/novel";
+import { getIdeasByNovelId } from "@/server/idea";
 import { notFound } from "next/navigation";
 import { LocationDetailContent } from "@/components/project/location/location-detail-content";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
@@ -16,9 +17,10 @@ export default async function LocationDetailPage({
 }: LocationDetailPageProps) {
     const { id: novelId, locationId } = await params;
 
-    const [result, novelResult] = await Promise.all([
+    const [result, novelResult, ideasResult] = await Promise.all([
         getLocationById(locationId),
-        getNovelById(novelId)
+        getNovelById(novelId),
+        getIdeasByNovelId(novelId),
     ]);
 
     if (!result.success || !result.data) {
@@ -27,6 +29,7 @@ export default async function LocationDetailPage({
 
     const location = result.data;
     const novelTitle = novelResult.novel?.title || "Project";
+    const ideas = ideasResult.success ? ideasResult.data : [];
 
     return (
         <div className="p-8">
@@ -38,7 +41,11 @@ export default async function LocationDetailPage({
                     { label: location.name }
                 ]}
             />
-            <LocationDetailContent location={location} novelId={novelId} />
+            <LocationDetailContent
+                location={location}
+                novelId={novelId}
+                ideas={ideas}
+            />
         </div>
     );
 }

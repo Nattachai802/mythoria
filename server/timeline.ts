@@ -13,7 +13,7 @@ export async function getTimeLineEvents(novelId: string) {
             where: (eq(timelineEvents.novelId, novelId)),
             orderBy: [asc(timelineEvents.orderIndex)],
         })
-        return {success: true, events}
+        return { success: true, events }
     } catch (err) {
         console.error("Error fetching timeline events:", err)
         return { success: false, error: "Failed to fetch timeline events" }
@@ -26,21 +26,21 @@ export async function createTimelineEvent(data: InsertTimelineEvent) {
             where: and(
                 eq(timelineEvents.novelId, data.novelId),
                 data.relatedChapterId ?
-                eq(timelineEvents.relatedChapterId, data.relatedChapterId)
-                : undefined
+                    eq(timelineEvents.relatedChapterId, data.relatedChapterId)
+                    : undefined
             ),
         })
 
         const nextOrderIndex = existingEvents.length > 0
-        ? Math.max(...existingEvents.map(e => e.orderIndex)) + 1 :0
+            ? Math.max(...existingEvents.map(e => e.orderIndex)) + 1 : 0
 
         const [newEvent] = await db.insert(timelineEvents).values({
             ...data,
             orderIndex: nextOrderIndex,
         }).returning()
-        
+
         revalidatePath(`/dashboard/project/${data.novelId}`)
-        return {success:true, event: newEvent}
+        return { success: true, event: newEvent }
     } catch (err) {
         console.error("Error creating timeline event:", err)
         return { success: false, error: "Failed to create timeline event" }
@@ -48,7 +48,7 @@ export async function createTimelineEvent(data: InsertTimelineEvent) {
 }
 
 export async function updateTimelineEvent(
-    id: string, 
+    id: string,
     data: Partial<InsertTimelineEvent>
 ) {
     try {
@@ -97,7 +97,7 @@ export async function reorderTimelineEvents(
                     .update(timelineEvents)
                     .set({
                         orderIndex: item.orderIndex,
-                        relatedChapterId: item.relatedChapterId, 
+                        relatedChapterId: item.relatedChapterId,
                         updatedAt: new Date(),
                     })
                     .where(eq(timelineEvents.id, item.id))
@@ -111,9 +111,16 @@ export async function reorderTimelineEvents(
 }
 export async function getTimelineEventById(id: string) {
     try {
+        const fs = require('fs');
+        const path = require('path');
+        const logPath = path.join(process.cwd(), 'debug-event.log');
+        fs.appendFileSync(logPath, `[Server] getTimelineEventById looking for id: "${id}" (len=${id?.length})\n`);
+
         const event = await db.query.timelineEvents.findFirst({
             where: eq(timelineEvents.id, id),
         });
+
+        fs.appendFileSync(logPath, `[Server] getTimelineEventById result found: ${!!event}\n`);
         return { success: true, event };
     } catch (error) {
         console.error("Error fetching timeline event:", error);
@@ -125,12 +132,12 @@ export async function updateTimelineCanvas(id: string, canvasData: any) {
     try {
         await db
             .update(timelineEvents)
-            .set({ 
-                canvasData, 
-                updatedAt: new Date() 
+            .set({
+                canvasData,
+                updatedAt: new Date()
             })
             .where(eq(timelineEvents.id, id));
-            
+
         return { success: true };
     } catch (error) {
         console.error("Error updating canvas:", error);

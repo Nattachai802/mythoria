@@ -15,10 +15,14 @@ export async function createIdea(data: {
     tags?: string[];
     linkedChapterId?: string;
     linkedCharacterIds?: string[];
+    linkedPowerIds?: string[];
+    linkedLoreIds?: string[];
+    linkedLocationIds?: string[];
+    linkedEntityIds?: string[];
     canvasX?: number;
     canvasY?: number;
     color?: string;
-    isUsed?: boolean; // Auto-detect from canvas position if not provided
+    isUsed?: boolean;
 }) {
     try {
         const [newIdea] = await db
@@ -32,6 +36,9 @@ export async function createIdea(data: {
                 tags: data.tags,
                 linkedChapterId: data.linkedChapterId,
                 linkedCharacterIds: data.linkedCharacterIds,
+                linkedPowerIds: data.linkedPowerIds,
+                linkedLoreIds: data.linkedLoreIds,
+                linkedEntityIds: data.linkedEntityIds,
                 canvasX: data.canvasX,
                 canvasY: data.canvasY,
                 color: data.color,
@@ -63,10 +70,14 @@ export async function createIdeaWithoutRevalidate(data: {
     tags?: string[];
     linkedChapterId?: string;
     linkedCharacterIds?: string[];
+    linkedPowerIds?: string[];
+    linkedLoreIds?: string[];
+    linkedLocationIds?: string[];
+    linkedEntityIds?: string[];
     canvasX?: number;
     canvasY?: number;
     color?: string;
-    isUsed?: boolean; // Auto-detect from canvas position if not provided
+    isUsed?: boolean;
 }) {
     try {
         const [newIdea] = await db
@@ -80,6 +91,10 @@ export async function createIdeaWithoutRevalidate(data: {
                 tags: data.tags,
                 linkedChapterId: data.linkedChapterId,
                 linkedCharacterIds: data.linkedCharacterIds,
+                linkedPowerIds: data.linkedPowerIds,
+                linkedLoreIds: data.linkedLoreIds,
+                linkedLocationIds: data.linkedLocationIds,
+                linkedEntityIds: data.linkedEntityIds,
                 canvasX: data.canvasX,
                 canvasY: data.canvasY,
                 color: data.color,
@@ -167,6 +182,10 @@ export async function updateIdea(
         tags: string[];
         linkedChapterId: string | null;
         linkedCharacterIds: string[];
+        linkedPowerIds: string[];
+        linkedLoreIds: string[];
+        linkedLocationIds: string[];
+        linkedEntityIds: string[];
         canvasX: number;
         canvasY: number;
         color: string;

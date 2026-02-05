@@ -3,12 +3,14 @@
 import { useState } from "react";
 import { Power, PowerLevel } from "@/db/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Pencil, Zap, Star, AlertTriangle } from "lucide-react";
+import { Pencil, Zap, Star, AlertTriangle, Lightbulb, BookOpen } from "lucide-react";
 import { PowerLevelDisplay } from "./power-level-display";
 import { PowerLevelDialog } from "./power-level-dialog";
 import { EditPowerDialog } from "./edit-power-dialog";
+import { EntityIdeasTab } from "@/components/project/shared/entity-ideas-tab";
 import { deletePowerLevel } from "@/server/power";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -16,6 +18,7 @@ import { useRouter } from "next/navigation";
 interface PowerDetailViewProps {
     power: Power & { levels?: PowerLevel[] };
     novelId: string;
+    ideas?: any[];
 }
 
 const rarityColors: Record<string, string> = {
@@ -33,7 +36,7 @@ const typeIcons: Record<string, string> = {
     special: "✨",
 };
 
-export function PowerDetailView({ power, novelId }: PowerDetailViewProps) {
+export function PowerDetailView({ power, novelId, ideas = [] }: PowerDetailViewProps) {
     const router = useRouter();
     const [editPowerOpen, setEditPowerOpen] = useState(false);
     const [levelDialogOpen, setLevelDialogOpen] = useState(false);
@@ -138,21 +141,47 @@ export function PowerDetailView({ power, novelId }: PowerDetailViewProps) {
                 </CardContent>
             </Card>
 
-            {/* Power Levels */}
-            <Card>
-                <CardHeader>
-                    <CardTitle className="text-lg">ระดับพลัง (Power Levels)</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <PowerLevelDisplay
-                        levels={levels}
-                        editable={true}
-                        onAddLevel={handleAddLevel}
-                        onEditLevel={handleEditLevel}
-                        onDeleteLevel={handleDeleteLevel}
+            {/* Tabs */}
+            <Tabs defaultValue="overview" className="space-y-6">
+                <TabsList className="bg-muted/50 p-1">
+                    <TabsTrigger value="overview" className="gap-2">
+                        <BookOpen className="w-4 h-4" />
+                        Overview
+                    </TabsTrigger>
+                    <TabsTrigger value="ideas" className="gap-2">
+                        <Lightbulb className="w-4 h-4" />
+                        Ideas
+                    </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="overview">
+                    {/* Power Levels */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="text-lg">ระดับพลัง (Power Levels)</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <PowerLevelDisplay
+                                levels={levels}
+                                editable={true}
+                                onAddLevel={handleAddLevel}
+                                onEditLevel={handleEditLevel}
+                                onDeleteLevel={handleDeleteLevel}
+                            />
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <TabsContent value="ideas">
+                    <EntityIdeasTab
+                        entityType="power"
+                        entityId={power.id}
+                        entityName={power.name}
+                        novelId={novelId}
+                        ideas={ideas}
                     />
-                </CardContent>
-            </Card>
+                </TabsContent>
+            </Tabs>
 
             {/* Edit Power Dialog */}
             <EditPowerDialog
