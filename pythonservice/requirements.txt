@@ -2,6 +2,7 @@ lancedb
 langchain
 langchain-openai
 pydantic
+pythainlp
 google-generativeai
 python-dotenv
 pandas
