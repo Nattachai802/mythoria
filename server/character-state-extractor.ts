@@ -39,16 +39,16 @@ export async function queueNoteForStateExtraction(
     novelId: string
 ): Promise<void> {
     try {
-        // Check if already in queue (pending or processing)
+        // Check if already in queue (pending, processing, or already failed max retries)
         const existing = await db.query.stateExtractionQueue.findFirst({
             where: and(
                 eq(stateExtractionQueue.noteId, noteId),
-                inArray(stateExtractionQueue.status, ["pending", "processing"])
+                inArray(stateExtractionQueue.status, ["pending", "processing", "failed"])
             ),
         });
 
         if (existing) {
-            console.log(`[Queue] Note ${noteId} already in queue, skipping`);
+            console.log(`[Queue] Note ${noteId} already in queue (${existing.status}), skipping`);
             return;
         }
 
@@ -174,15 +174,25 @@ async function processQueueItem(item: {
         let plainText = "";
         if (typeof content === "string") {
             plainText = content;
+        } else if (content?.text) {
+            // Quill editor format: { text: "<p>HTML content</p>" }
+            plainText = content.text
+                .replace(/<[^>]*>/g, " ")   // strip HTML tags
+                .replace(/&nbsp;/g, " ")
+                .replace(/&amp;/g, "&")
+                .replace(/&lt;/g, "<")
+                .replace(/&gt;/g, ">")
+                .replace(/\s+/g, " ")
+                .trim();
         } else if (content?.content) {
-            // TipTap JSON format
+            // TipTap JSON format (fallback)
             plainText = extractPlainTextFromTipTap(content);
-        } else {
+        } else if (content) {
             plainText = JSON.stringify(content);
         }
 
         if (!plainText || plainText.length < 10) {
-            console.log(`[Processor] Note ${item.noteId} has no meaningful content, skipping`);
+            console.log(`[Processor] Note ${item.noteId} has no meaningful content (${plainText.length} chars), skipping`);
             await db
                 .update(stateExtractionQueue)
                 .set({ status: "completed", processedAt: new Date() })

@@ -486,11 +486,6 @@
 }
 
 /* Dark mode support for Quill - Forge Mode */
-.dark .ql-toolbar {
-  border-color: var(--border) !important;
-  background: var(--muted);
-}
-
 .dark .ql-container {
   border-color: var(--border) !important;
 }
@@ -499,44 +494,108 @@
   color: var(--foreground);
 }
 
-.dark .ql-stroke {
+/* ============================================================
+   QUILL BUBBLE THEME - FORGE MODE OVERRIDES
+   ============================================================ */
+
+/* Bubble tooltip container - Light Mode */
+.ql-bubble .ql-tooltip {
+  background: var(--popover) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+  z-index: 50 !important;
+}
+
+/* Arrow color to match background */
+.ql-bubble .ql-tooltip:not(.ql-flip) .ql-tooltip-arrow {
+  border-bottom-color: var(--border) !important;
+}
+
+.ql-bubble .ql-tooltip:not(.ql-flip) .ql-tooltip-arrow::after {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 1px;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 6px solid var(--popover);
+}
+
+.ql-bubble .ql-tooltip.ql-flip .ql-tooltip-arrow {
+  border-top-color: var(--border) !important;
+}
+
+/* Toolbar buttons inside bubble */
+.ql-bubble .ql-toolbar button {
+  width: 28px !important;
+  height: 28px !important;
+}
+
+.ql-bubble .ql-toolbar .ql-stroke {
   stroke: var(--foreground) !important;
 }
 
-.dark .ql-fill {
+.ql-bubble .ql-toolbar .ql-fill {
   fill: var(--foreground) !important;
 }
 
-.dark .ql-picker-label {
+.ql-bubble .ql-toolbar .ql-picker-label {
   color: var(--foreground) !important;
 }
 
-.dark .ql-picker-options {
+.ql-bubble .ql-toolbar .ql-picker-options {
   background: var(--popover) !important;
-  border-color: var(--border) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
 }
 
-.dark .ql-picker-item {
+.ql-bubble .ql-toolbar .ql-picker-item {
   color: var(--foreground) !important;
 }
 
-/* Quill active state - Forge Gold accent */
-.dark .ql-toolbar button:hover,
-.dark .ql-toolbar button:focus,
-.dark .ql-toolbar button.ql-active {
-  color: var(--forge-gold) !important;
-}
-
-.dark .ql-toolbar button:hover .ql-stroke,
-.dark .ql-toolbar button:focus .ql-stroke,
-.dark .ql-toolbar button.ql-active .ql-stroke {
+/* Active / Hover states - Forge Gold accent */
+.ql-bubble .ql-toolbar button:hover .ql-stroke,
+.ql-bubble .ql-toolbar button:focus .ql-stroke,
+.ql-bubble .ql-toolbar button.ql-active .ql-stroke {
   stroke: var(--forge-gold) !important;
 }
 
-.dark .ql-toolbar button:hover .ql-fill,
-.dark .ql-toolbar button:focus .ql-fill,
-.dark .ql-toolbar button.ql-active .ql-fill {
+.ql-bubble .ql-toolbar button:hover .ql-fill,
+.ql-bubble .ql-toolbar button:focus .ql-fill,
+.ql-bubble .ql-toolbar button.ql-active .ql-fill {
   fill: var(--forge-gold) !important;
+}
+
+.ql-bubble .ql-toolbar button:hover,
+.ql-bubble .ql-toolbar button:focus,
+.ql-bubble .ql-toolbar button.ql-active {
+  color: var(--forge-gold) !important;
+}
+
+.ql-bubble .ql-toolbar .ql-picker-label:hover,
+.ql-bubble .ql-toolbar .ql-picker-label.ql-active {
+  color: var(--forge-gold) !important;
+}
+
+/* Dark mode specifics for bubble */
+.dark .ql-bubble .ql-tooltip {
+  background: var(--popover) !important;
+  border-color: var(--border) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 1px 4px rgba(0, 0, 0, 0.2) !important;
+}
+
+.dark .ql-bubble .ql-tooltip:not(.ql-flip) .ql-tooltip-arrow {
+  border-bottom-color: var(--border) !important;
+}
+
+.dark .ql-bubble .ql-tooltip:not(.ql-flip) .ql-tooltip-arrow::after {
+  border-bottom-color: var(--popover);
+}
+
+.dark .ql-bubble .ql-tooltip.ql-flip .ql-tooltip-arrow {
+  border-top-color: var(--border) !important;
 }
 
 /* ============================================================

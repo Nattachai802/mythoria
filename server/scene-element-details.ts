@@ -2,7 +2,7 @@
 
 import { db } from "@/db/drizzle";
 import { sceneElementDetails, InsertSceneElementDetails, SceneElementDetails } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 /**
@@ -253,5 +253,36 @@ export async function batchUpsertSceneElementDetails(
     } catch (error) {
         console.error("Error batch upserting scene element details:", error);
         return { success: false, error: "Failed to batch save element details" };
+    }
+}
+
+/**
+ * Get all idea_notes for a list of idea IDs across ALL scenes in a novel.
+ * Returns a Map<ideaId, string[]> of notes text.
+ */
+export async function getIdeaNotesForIdeas(novelId: string, ideaIds: string[]) {
+    try {
+        if (ideaIds.length === 0) return { success: true, data: new Map<string, string[]>() };
+
+        const notes = await db.query.sceneElementDetails.findMany({
+            where: and(
+                eq(sceneElementDetails.novelId, novelId),
+                eq(sceneElementDetails.elementType, "idea_note"),
+                inArray(sceneElementDetails.elementId, ideaIds),
+            ),
+        });
+
+        const noteMap = new Map<string, string[]>();
+        for (const note of notes) {
+            if (!note.notes) continue;
+            const existing = noteMap.get(note.elementId) || [];
+            existing.push(note.notes);
+            noteMap.set(note.elementId, existing);
+        }
+
+        return { success: true, data: noteMap };
+    } catch (error) {
+        console.error("Error fetching idea notes for ideas:", error);
+        return { success: false, error: "Failed to fetch idea notes" };
     }
 }

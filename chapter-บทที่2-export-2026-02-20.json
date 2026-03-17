@@ -1,0 +1,1467 @@
+{
+  "exportedAt": "2026-02-20T04:21:51.085Z",
+  "chapterTitle": "บทที่2",
+  "totalScenes": 3,
+  "scenes": [
+    {
+      "sceneNumber": 1,
+      "sceneId": "f08f1ec4-2fd2-468e-9400-81c716ff0dda",
+      "sceneTitle": "รวมกลุ่มครั้งแรก",
+      "items": [
+        {
+          "id": "fd73ac18-3d17-4bd0-bce6-6d972abe58ca",
+          "type": "idea",
+          "title": "เจอกันครั้งแรก",
+          "content": "หลังจากการหนีตายมา เรย์กะได้พับกับกลุ่มของโดคุริสึเป็นครั้งแรก",
+          "x": 24.00006103515625,
+          "y": 18.999984741210938,
+          "links": [
+            "5ae5e887-28a8-44e2-ab82-7fe9df334457",
+            "069aaedf-ecbe-4d5a-bd68-bd674255d062"
+          ],
+          "children": [
+            {
+              "id": "931b6dfe-34bc-417a-a620-3e3f9647f062",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "7b0408fe-916d-4fdd-baaa-c4a07f06b221",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "3871444f-c4ae-4036-9be8-e57b6223f1f5",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "f67360bc-2127-4dc6-9639-563c34b0c613",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            }
+          ]
+        },
+        {
+          "id": "5ae5e887-28a8-44e2-ab82-7fe9df334457",
+          "type": "idea",
+          "title": "การหารือ",
+          "content": "ไคโยกับโคคุริสึพูดคุยกันว่าจะเอายังไงต่อ",
+          "x": 868.7998809814453,
+          "y": 160.59991645813,
+          "links": [],
+          "children": [
+            {
+              "id": "7fdd03b7-5e4b-41c2-b10a-c9d8ad68b7f1",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "293f3778-bb91-46d4-8968-beb86f6cfab9",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "9815d424-a2f0-40ed-8b03-610224cd769e",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            }
+          ]
+        },
+        {
+          "id": "069aaedf-ecbe-4d5a-bd68-bd674255d062",
+          "type": "idea",
+          "title": "คืนแห่งการตัดสินใจ (The Night of Decision)",
+          "content": "โดคุริสึตัดสินใจไม่ทดสอบทันทีเพราะเห็นสภาพเรย์กะและเวลาที่ดึกเกินไป เขาพาไปที่กระท่อมร้างเพื่อพัก \n\nโดยที่จะมี โดคุริสึและไคโยเฝ้าให้",
+          "x": 553.2000797816685,
+          "y": 702.057230268206,
+          "links": [
+            "0bc13895-db0e-438c-8564-701074f5856b"
+          ],
+          "children": [
+            {
+              "id": "ea65941d-fdae-41a0-8ec6-e0b57ac728b0",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            },
+            {
+              "id": "77b3bb2e-eaf6-44af-96e6-d3a4742cdf00",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "84c165ed-3de4-4de9-ad7a-d5bfffa4fada",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "0a3f90bc-bf20-4ccb-b50d-1caab00f7865",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            }
+          ]
+        },
+        {
+          "id": "0bc13895-db0e-438c-8564-701074f5856b",
+          "type": "idea",
+          "title": "การตัดสินใจของเรย์กะ",
+          "content": "ช่วงเวลาของการตัดสินใจของเรย์กะ\n",
+          "x": 1047.022201538087,
+          "y": 734.127761840821,
+          "links": [
+            "069aaedf-ecbe-4d5a-bd68-bd674255d062",
+            "45b822ae-c8f9-480e-9f72-6e0da323e952"
+          ],
+          "children": [
+            {
+              "id": "e87ff4bd-495a-44e2-a4e7-95dd0cd3cfdd",
+              "type": "character",
+              "title": "Lin Wei",
+              "referenceId": "84b6cf06-c48d-4889-a358-385a839a4cab"
+            },
+            {
+              "id": "d3cae0ab-987c-49f6-98ae-6f62b3332695",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "08e6e853-bce8-4c98-abcc-c33533fca268",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            }
+          ]
+        },
+        {
+          "id": "45b822ae-c8f9-480e-9f72-6e0da323e952",
+          "type": "idea",
+          "title": "การสอบสัมภาษณ์",
+          "content": "สู้กันตัวต่อตัว หากเรย์กะทำอันตรายโดกุริตสึได้แม้แต่นิดเดียว หรือเอาตัวรอดได้ครบ 3 นาที ถือว่า \"ผ่าน\"",
+          "x": 1513.7777709960938,
+          "y": 735.9556427001953,
+          "links": [
+            "4e1bbe64-dc86-45e1-890b-14f04882c22d"
+          ],
+          "children": [
+            {
+              "id": "12dd12eb-92ff-4d3a-ba41-f0129202bdcd",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "4742e3d0-3451-47f6-8ed1-4979f191df8a",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "8fa09d07-870b-4a59-b6f3-d0469b2e45a8",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "06ae67b9-58b9-4474-92e8-d1cd51ab9bc9",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            }
+          ]
+        },
+        {
+          "id": "4e1bbe64-dc86-45e1-890b-14f04882c22d",
+          "type": "idea",
+          "title": "การทำความรู้จักกันครั้งแรก",
+          "content": "ผ่อนคลายลงเล็กน้อยหลังการต่อสู้ แต่ยังมีความตึงเครียดจางๆ ผสมกับการต้อนรับสมาชิกใหม่อย่างเป็นทางการ",
+          "x": 2136.6224365234375,
+          "y": 774.3555755615234,
+          "links": [
+            "690184b2-5fee-4b74-8356-84be840423c4"
+          ],
+          "children": [
+            {
+              "id": "56d42d16-469a-4d98-8169-290494b98db0",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "0f8ef501-5fb5-4594-8964-3a14f410f1fa",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "b28e9e80-a77a-4fdc-bb8d-7769da1157db",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "3d56fcad-39d1-41be-a70e-2b24b0783f95",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            }
+          ]
+        },
+        {
+          "id": "690184b2-5fee-4b74-8356-84be840423c4",
+          "type": "idea",
+          "title": "ระบบทำการส่งข้อความเตือนครั้งสำคัญ",
+          "content": "ระบบทำการแจ้งเตือนสำคัญให้ผู้เล่นทุกคนทราบ\n[ครบระยะเวลาที่กำหนด]\nภารกิจทุกภารกิจหลังจากนี้จะเปลี่ยนของรางวัลจาก เสบียง และ ยา เป็น coin แทน\n\nเปิดระบบร้านค้า โดยร้านค้าจะทำการแสดงผลในแผนที่ บางร้าน\n\nระบบจะทำการแจ้งเขตที่จะถูกทำลายในอีก 4 วัน",
+          "x": 2639.0001831054688,
+          "y": 726.1998748779297,
+          "links": [],
+          "children": [
+            {
+              "id": "3ef8d8d1-a325-481a-be72-3d64cbb1120c",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "a76da1c8-3efc-46c8-97b6-bc731bee6d7d",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "b0aa6b30-492c-4e17-b7c2-d7a9dfa2e793",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "006e93e2-3069-451c-9478-5090684539c0",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "sceneNumber": 2,
+      "sceneId": "f5349c2c-eba4-4afc-89cc-ff795c04648b",
+      "sceneTitle": "การสำรวจระหว่างทางไปร้านค้า",
+      "items": [
+        {
+          "id": "739385a2-3e8d-4eab-b6dd-0e9051cf7958",
+          "type": "idea",
+          "title": "ระหว่างการเดินทาง",
+          "content": "ทั้งสามคุยกันไปเรื่อยโดยมีโดคุริสึคอยเป็นต้นทาง เรย์กะพยายามทำความเข้าใจ ไคโยเป็นคนเชื่อมสัมพันธ์",
+          "x": 48.79998779296875,
+          "y": 35.800018310546875,
+          "links": [
+            "e32ad73a-0d22-4b44-8083-2d8e8fd48920"
+          ],
+          "children": [
+            {
+              "id": "df612126-d166-4884-8b90-d984f3a3e866",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "98641199-8cb7-4e09-b0ee-fce6832d95d5",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "d80baf6a-4f22-4fec-8a11-c33df8e54698",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "192888df-147d-4ed0-ab73-949588963b4b",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            }
+          ]
+        },
+        {
+          "id": "e32ad73a-0d22-4b44-8083-2d8e8fd48920",
+          "type": "idea",
+          "title": "เป่ายิงฉุบ",
+          "content": "ระหว่างเดินทางเจอมอนสเตอร์ดักทาง ไคโยยื่นมือเป่ายิงฉุบกับโดคุริสึอย่างรู้กัน (กิมมิคประจำทีม) ผลคือไคโยแพ้และต้องออกไปสู้ด้วยท่าทางเซ็งๆ ปล่อยให้โดคุริสึยืนดูอยู่กับเรย์กะสองต่อสอง",
+          "x": 518.39990234375,
+          "y": 74.20002746582031,
+          "links": [
+            "7077c3b4-6126-4877-8a93-ad369552fd6c"
+          ],
+          "children": [
+            {
+              "id": "984134e7-69bc-4fd6-af30-dde2ac4cc963",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "1d616355-166d-411f-a0ea-274c936e8bba",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "bbfe6ca6-4ba7-488f-8d6f-952be66c4ebb",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "97fc803e-a69a-4b82-babd-62eeec65093f",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            }
+          ]
+        },
+        {
+          "id": "7077c3b4-6126-4877-8a93-ad369552fd6c",
+          "type": "idea",
+          "title": "ดาบและชีวิต",
+          "content": "เมื่อไปถึงจุดตั้งร้านค้า พวกเขาพบว่า Elite Monster ที่เฝ้าอยู่คือ \"อัศวินสีซีด (The Pale Knight)\"—มอนสเตอร์ร่างยักษ์ถือดาบสีดำหม่นที่พวกเขาเคยหนีมาแล้วในตอนที่ 4 ซึ่งกำลังสู้กับกลุ่มผู้เล่น(3คน) แต่สถานการณ์ย่ำแย่เพราะพวกเขาประมาทความเร็วและพลังของมันจนกำลังจะเพลี่ยงพล้ำ",
+          "x": 902.199951171875,
+          "y": 48.59996032714844,
+          "links": [
+            "4d8762e4-4ab9-44b1-98d9-68c16c8d40bd"
+          ],
+          "children": [
+            {
+              "id": "f296218b-673e-47df-93d4-0881fe708d38",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "d6b1d57a-5283-43ae-be85-f5e432ca18d2",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "03d76bd4-6e88-49b0-a64d-a01e4acf08fe",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "f0c960cd-bf0a-4d80-b408-8f1e7c1f930a",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            }
+          ]
+        },
+        {
+          "id": "4d8762e4-4ab9-44b1-98d9-68c16c8d40bd",
+          "type": "idea",
+          "title": "การบุกโจมตี",
+          "content": "เมื่อตกลงกันได้แล้ว โคคุริสึจะเข้าโจมตีด้วยอาวุธที่ตนเองถนัด ก่อนที่ไคโยจะใช้เวทน้ำ+น้ำแข็งช่วยเสริมและควบคุมพื้นที่ ในขณะเองก็จะเข้าเสริมคอยควบคุมจังหวะ ใช้กระดูกป้องกัน และเฝ้ามองกลุ่มผู้เล่นที่กำลังล้า ด้วยความที่บอสนั้นได้รับบาดแผลมาบ้างแล้ว ทำให้การโจมตีนั้นง่ายขึ้น จึงสามารถผ่านการโจมตีมาโดยง่าย",
+          "x": 1307.8287615094866,
+          "y": 154.57144601004464,
+          "links": [
+            "65b06fd4-2a60-4f73-a9f2-bcad269d5c73",
+            "ea0e738d-36c5-4a2e-9989-ad30c4ea3b71",
+            "92c53cc5-1c9f-4d8f-8b5b-10f4f02e07e1"
+          ],
+          "children": [
+            {
+              "id": "6a4274f4-051d-4334-bff7-360ef70d088c",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "fd173869-a200-4e78-a576-ca08b93c3734",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "d15f4283-a873-4921-ac20-4d5560f5f32a",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "f962bd7d-f4ff-45ab-87f6-3095d4e1be4d",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            },
+            {
+              "id": "4db0cfd6-07b6-4d11-aa75-c5832349f997",
+              "type": "character",
+              "title": "Elena Volkov",
+              "referenceId": "48fc5d77-bc35-429a-909f-4f47bd4775df"
+            },
+            {
+              "id": "0b16967a-3680-4ca5-b515-e50aecf3b690",
+              "type": "character",
+              "title": "Nawin Srisuk",
+              "referenceId": "951ee746-ae1d-4fa1-af5c-f5b09c57970a"
+            },
+            {
+              "id": "f63370af-8746-4217-ae20-34c8dbdae5fe",
+              "type": "sticky-note",
+              "title": "Note",
+              "content": "ระหว่างการต่อสู้ให้พลังโดคุริสึอัพเป็นเลเวล 2 ทำให้สามารถสร้างอาวุธระยะไกลได้"
+            }
+          ]
+        },
+        {
+          "id": "65b06fd4-2a60-4f73-a9f2-bcad269d5c73",
+          "type": "idea",
+          "title": "มุมมองโดคุริสึ :  การสำรวจร้านค้า",
+          "content": "หลังจากเอาชนะบอสได้เขาเดินไปสำรวจร้านค้าทันที ดูว่าระบบมันทำงานอย่าง มีค่าใช้จ่ายอย่างไร และ ต้องอลกอะไรบ้าง",
+          "x": 2526.5332743326826,
+          "y": 846.4666442871095,
+          "links": [
+            "77b681d8-2c5f-4f38-be48-dcc14464d0df"
+          ],
+          "children": [
+            {
+              "id": "a45012b2-38cd-4181-87b9-69c37203831b",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "9f2cac17-4344-4649-8db1-25ee4f168ef5",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            }
+          ]
+        },
+        {
+          "id": "ea0e738d-36c5-4a2e-9989-ad30c4ea3b71",
+          "type": "idea",
+          "title": "มุมมองไคโย : การเจรจา",
+          "content": "ไคโย เดินไปหาทั้งสองที่ยังบาดเจ็บอยู่ก่อนที่จะสอบถามสารทุกข์สุขดิบ",
+          "x": 2069.9332275390625,
+          "y": 62.66670227050781,
+          "links": [
+            "14776c17-a025-4249-8e4d-c892ef95d0b3"
+          ],
+          "children": [
+            {
+              "id": "d198df52-1744-4958-9d20-31e593c21e51",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "5a79adfa-2b2c-460a-b341-b4e0dfdba78b",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            },
+            {
+              "id": "1839ee93-518f-4474-aa6d-bfb051b85fcb",
+              "type": "character",
+              "title": "Elena Volkov",
+              "referenceId": "48fc5d77-bc35-429a-909f-4f47bd4775df"
+            },
+            {
+              "id": "7dae271b-78c5-47b2-acb9-bc473b38b2c6",
+              "type": "character",
+              "title": "Nawin Srisuk",
+              "referenceId": "951ee746-ae1d-4fa1-af5c-f5b09c57970a"
+            }
+          ]
+        },
+        {
+          "id": "92c53cc5-1c9f-4d8f-8b5b-10f4f02e07e1",
+          "type": "idea",
+          "title": "มุมมองเรย์กะ : การค้นพบ",
+          "content": "หลังจากปราบบอสได้เธอสังเกตเห็นว่าอาวุธของบอสมันไม่ได้สลายหายไปด้วย เธอจังเดินเข้าไปสำรวจใกล้",
+          "x": 1820.1334838867188,
+          "y": 764.6000366210938,
+          "links": [
+            "77b681d8-2c5f-4f38-be48-dcc14464d0df"
+          ],
+          "children": [
+            {
+              "id": "0e8ba4fa-6101-49c5-9362-b29f55218d02",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "0d39f91b-ed74-4305-b843-f37719b8b1b4",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            }
+          ]
+        },
+        {
+          "id": "14776c17-a025-4249-8e4d-c892ef95d0b3",
+          "type": "idea",
+          "title": "การตัดสินใจ",
+          "content": "ผู้เล่นทั้งสองเงียบไปก่อนที่ผู้ชายจะพูดว่าเขายอมรับข้อเสนอ แต่เขาขอเสนออะไรเพิ่มเติมได้ไหม ถ้าหากพวกเราเป็นพันธมิตรทางข้อมูลกันได้ไหม ",
+          "x": 2473.0001831054688,
+          "y": 139.99993896484375,
+          "links": [
+            "216a322d-d658-4bfc-a506-22ade496669c"
+          ],
+          "children": [
+            {
+              "id": "f4fef745-33cc-4b6d-a38c-8b00825719cd",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "29d49531-c452-4159-9eb4-a2f5494b2729",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            },
+            {
+              "id": "a3698372-d62e-43e6-8ac3-1ad37270bca1",
+              "type": "character",
+              "title": "Elena Volkov",
+              "referenceId": "48fc5d77-bc35-429a-909f-4f47bd4775df"
+            },
+            {
+              "id": "a35ab8bb-110f-4bf9-be4f-c9f34753b322",
+              "type": "character",
+              "title": "Nawin Srisuk",
+              "referenceId": "951ee746-ae1d-4fa1-af5c-f5b09c57970a"
+            }
+          ]
+        },
+        {
+          "id": "77b681d8-2c5f-4f38-be48-dcc14464d0df",
+          "type": "idea",
+          "title": "ความหนักอึ้งที่แตกต่าง",
+          "content": "โดคุริสึเดินเข้ามาหาเรย์กะที่กำลังจ้องมองดาบสีดำอยู่ ก่อนที่จะถามขึ้นว่าทำอะไรอยู่ ก่อนที่เรย์กะจะอธิบายว่าร่างของบอสมันหายไปแล้ว แต่ทำไมดาบมันไม่ได้หายไปด้วยล่ะ อีกอย่างดาบเล่มนี้ก็รูปลักษณ์แปลกๆด้วย",
+          "x": 2859.0001220703125,
+          "y": 818.7499389648438,
+          "links": [
+            "216a322d-d658-4bfc-a506-22ade496669c"
+          ],
+          "children": [
+            {
+              "id": "56ddb3bb-ab76-4e56-a713-37d08a801027",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "42ec6586-c632-43c2-b6f4-5e05bd115573",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            },
+            {
+              "id": "c89cd3c9-18b1-4aa0-bf2f-24a66e1296d8",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            }
+          ]
+        },
+        {
+          "id": "216a322d-d658-4bfc-a506-22ade496669c",
+          "type": "idea",
+          "title": "ดาบและสายลม",
+          "content": "ทันที่ที่มือของเรย์กะจับดาบนั้น ละอองแสงสีดำก็ได้เริ่มฟุ้งกระจายออกมาจากดาบเหมือนกับฝุ่นละออง ทว่าบริเวณรอบๆนั้นลมกลับแรงขึ้นอย่างเห็นได้ชัด ลมนั้นหมุนวนเป็นเกลียวรอบตัวเรย์กะ พัดเอาฝุ่นทรายฟุ้งกระจายออกไปเป็นวงกว้าง",
+          "x": 3359.9999389648438,
+          "y": 594.0000305175781,
+          "links": [
+            "bba6e2ab-cc45-4bf9-bb93-d4f8145361e2"
+          ],
+          "children": [
+            {
+              "id": "e6447a2c-4028-418d-82aa-8c0dd1248f07",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "323635f7-4348-4be8-8628-ae2a2880b57c",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            },
+            {
+              "id": "7869b428-da76-4b82-9c3e-3fb05f6400e4",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "0b35511d-637f-4e5e-90a2-30ddf2fc8bdd",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "58797af2-16f5-4582-a16c-935ea066e770",
+              "type": "character",
+              "title": "Elena Volkov",
+              "referenceId": "48fc5d77-bc35-429a-909f-4f47bd4775df"
+            },
+            {
+              "id": "16e6bacc-4c30-41f2-98a8-144ea60a4920",
+              "type": "character",
+              "title": "Nawin Srisuk",
+              "referenceId": "951ee746-ae1d-4fa1-af5c-f5b09c57970a"
+            }
+          ]
+        },
+        {
+          "id": "bba6e2ab-cc45-4bf9-bb93-d4f8145361e2",
+          "type": "idea",
+          "title": "ดาบแห่งสายลม",
+          "content": "ลมที่กรรโชกแรงเริ่มอ่อนลงพร้อมกับที่ละอองฝุ่นสีดำเริ่มไหลซึมเข้ามาในแขนของเรย์กะ ตัวดาบโลหะค่อยๆ สลายกลายเป็นฝุ่นผงสีดำและซึมหายเข้าไปในร่างของเธอจนหมดสิ้น ก่อนที่หน้าต่างระบบสีม่วงขอบทองว่า ได้รับ ดาบ XXX [ไว้คิดชื่ออีกที] [ระดับขั้นต้น]",
+          "x": 3841.7777099609375,
+          "y": 618.4444580078125,
+          "links": [
+            "26f125b0-3922-433f-91f3-ec6f1e5135ff"
+          ],
+          "children": [
+            {
+              "id": "2dc171d9-e790-4016-ba8f-4ef7aae74d08",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "abf8c688-f55f-4318-bd0d-3dd02ab8bb7b",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            },
+            {
+              "id": "4e1f836d-afd8-4c72-9c52-909646306a79",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "b79df642-856a-4f8d-a485-8f8869db168d",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "f32f61d0-a864-4955-acc6-f625713e33ab",
+              "type": "character",
+              "title": "Elena Volkov",
+              "referenceId": "48fc5d77-bc35-429a-909f-4f47bd4775df"
+            },
+            {
+              "id": "6c89beac-6752-4605-bf85-2a2eb47dda9e",
+              "type": "character",
+              "title": "Nawin Srisuk",
+              "referenceId": "951ee746-ae1d-4fa1-af5c-f5b09c57970a"
+            }
+          ]
+        },
+        {
+          "id": "26f125b0-3922-433f-91f3-ec6f1e5135ff",
+          "type": "idea",
+          "title": "พันธสัญญาต่างตอบแทน",
+          "content": "เมื่อทั้งสามคนคุยกันเสร็จก็ได้เดินไปหา นาวินและลีน่าที่ยืนรออยู่ ไคโยบอกว่าเขายอมรับข้อเสนอ แต่พวกเขาเสนอว่า เราจะแลกเปลี่ยนกันที่ตรงที่ร้านค้าเท่านั้น วันเว้นวัน เวลา 6 โมงเย็น โดยที่เราจะมารอเพื่อแลกเปลี่ยนข้อมูลกัน จะทำแบบนี้ไปก่อนจนกว่าจะมีการเปลี่ยนแปลง(ไม่จำเป็นต้องมาทุกคน) และ พวกเขาขอสิทธิ์ที่จะดูร้านค้านี้ก่อนเป็นกลุ่มแรก",
+          "x": 4360,
+          "y": 618.75,
+          "links": [
+            "f439cc36-fefb-4a83-ba05-e5a0a02b7385"
+          ],
+          "children": [
+            {
+              "id": "2694dc17-71a4-48d4-8848-b1db2d39501b",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "15d30ff8-7b62-4bcd-9992-646aec39b561",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            },
+            {
+              "id": "c968f9af-c64d-4e6e-b459-93fdffea4cf2",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "5c8c8a9d-c8ee-43e0-99e8-197a23169274",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "73769277-7039-4149-93f5-a1a04f492fb2",
+              "type": "character",
+              "title": "Elena Volkov",
+              "referenceId": "48fc5d77-bc35-429a-909f-4f47bd4775df"
+            },
+            {
+              "id": "5863effa-4208-4dea-ad41-f78b22895848",
+              "type": "character",
+              "title": "Nawin Srisuk",
+              "referenceId": "951ee746-ae1d-4fa1-af5c-f5b09c57970a"
+            }
+          ]
+        },
+        {
+          "id": "f439cc36-fefb-4a83-ba05-e5a0a02b7385",
+          "type": "idea",
+          "title": "All in",
+          "content": "หลังจากกลุ่มของนาวินแยกตัวออกไป โดคุริสึก็บอกกับเพื่อนในกลุ่มว่า ในนั้นมันมีสินค้าแปลกๆอยู่ที่เหมือนจะสามารถซื้อของแปลกๆได้อยู่นะ ตรงของพิเศษจากการปราบบอสคือ[คัมภีร์พันธสัญญา : สมาชิกคนที่ 4] ",
+          "x": 4968.999918619792,
+          "y": 735.4166259765625,
+          "links": [
+            "8a1c58d3-a05c-45b1-8bbb-d8281dba6ce1"
+          ],
+          "children": [
+            {
+              "id": "6ab417bc-16c5-4a5a-b326-d6dedf611777",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "73ea64b3-5af7-45ba-9c06-fd81b83cbcbf",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            },
+            {
+              "id": "dcf26482-3cdc-41be-b930-a1db635c6885",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "cd3604c7-fa22-4af8-a187-6b90be9a440a",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            }
+          ]
+        },
+        {
+          "id": "8a1c58d3-a05c-45b1-8bbb-d8281dba6ce1",
+          "type": "idea",
+          "title": "การตัดสินใจ",
+          "content": "ตอนที่กำลังเลือกว่่าจะซื้ออะไรดี เรย์กะก็พูดขึ้นมาว่าเหมือนใบเพิ่มช่องจะจำกัดเวลานะ แล้วตอนนี้เวลาก็เริ่มลดลงเรื่อยๆแล้ว",
+          "x": 6084.457135881695,
+          "y": 1103.638188680013,
+          "links": [],
+          "children": [
+            {
+              "id": "d0c0c9a6-e9a8-40e8-8f09-c250a961046e",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "940dd4f7-c53e-4760-9b6a-6228606ed810",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            },
+            {
+              "id": "448567c4-6d7a-4e31-a5a1-724b272cc480",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "fc0c398f-e7d4-408c-83aa-2170b151c2fd",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "sceneNumber": 3,
+      "sceneId": "30b6ca39-680f-468e-8e9c-03563e9b676c",
+      "sceneTitle": "การเดินทางกลับและเป้าหมายถัดไป",
+      "items": [
+        {
+          "id": "3ef5a7bd-9a58-4610-8382-433ca7f02d2c",
+          "type": "idea",
+          "title": "การเดินทางกลับ",
+          "content": "หลังจากที่ทำการซื้อของทั้งหมดเสร็จเรียบร้อยแล้ว ทั้งสามก็ตั้งเป้าที่จะเดินทางกลับเพราะรู้ว่าอยู่ที่นี่ต่อมันอันตรายเกินไปหน่อย",
+          "x": 0,
+          "y": 125.19999694824219,
+          "links": [
+            "3932a0a9-96dd-4c60-bb14-07210b3baf93"
+          ],
+          "children": [
+            {
+              "id": "6f17e8db-8d83-49d2-b753-ba15850fde1b",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "93193f14-066a-47bf-9c6b-f9569f817f23",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "6d89ff95-4c64-42af-94e5-32a4258d7e24",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "162961ed-9647-45a4-a410-e85553b5bd13",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            }
+          ]
+        },
+        {
+          "id": "3932a0a9-96dd-4c60-bb14-07210b3baf93",
+          "type": "idea",
+          "title": "ฝันวันวาน",
+          "content": "ทั้งสามคนตัดสินใจว่าด้วยระยะทางในตอนนี้มันยังไกลมาก อีกอย่างวันนี้พวกเขาก็เหนื่อยมากแล้วจากเรื่องราวต่างๆที่เกิดขึ้น อีกอย่างการเดินทางในตอนกลางคืนก็อันตรายเกินไป พวกเขาเลยตัดสินใจที่จะหาที่พักผ่อนชั่วคราว(ไม่ใช่เรื่องยากเพราะมันเป็นซากเมืองแค่หาในจุดที่ปลอดภัยก็พอ)",
+          "x": 580.7152136600379,
+          "y": 257.84233786843043,
+          "links": [
+            "c7747420-c9a1-4015-8ef7-f185443c1a5b"
+          ],
+          "children": [
+            {
+              "id": "bda76778-642c-4f62-a31d-ff02173fe6a8",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "57a9a257-5f15-4105-9c67-528d7d7c795b",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "1e04e5c9-93cd-483c-8d01-cec413d28a40",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "e31b087d-ce12-4340-ba08-78a8535ebe1d",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            },
+            {
+              "id": "11424ec3-970b-4a03-b2f5-cd37c4caeaa9",
+              "type": "sticky-note",
+              "title": "Note",
+              "content": "เป็นร่างคราวๆตอนิงอาจจะปลี่ยน"
+            }
+          ]
+        },
+        {
+          "id": "c7747420-c9a1-4015-8ef7-f185443c1a5b",
+          "type": "idea",
+          "title": "ความเงียบที่รู้ทัน",
+          "content": "ไคโยที่เฝ้ายามอยู่ก็ได้เห็นอาการสะดุ้งตื่นของโคคุริสึ เขาไม่ได้เข้าไปถามหรืออะไรแค่ดูอยู่ห่างๆเฉยๆ ก่อนที่โดคุริสึจะเดินมาหาเพื่อบอกให้เปลี่ยนตัว ขาตบไหล่โดคุริสึเบาๆ ก่อนจะล้มตัวลงนอนข้างกองไฟ ปล่อยให้โดคุริสึนั่งจมอยู่กับความคิดและเงาอดีตเพียงลำพังท่ามกลางเสียงลม",
+          "x": 1216.763615926107,
+          "y": 438.6483769272313,
+          "links": [
+            "dd4d8d52-875e-4e40-8304-6f62728f5599"
+          ],
+          "children": [
+            {
+              "id": "dee2010d-5552-4eb4-9f8f-fa2f747f3973",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "f4f018a0-82db-4d2b-8da2-a685b27678d6",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "18d0373b-a6c8-4f1a-917f-af4bfdc0c901",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "5c005bfb-49a2-40e8-967a-9e3fa289f2db",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            }
+          ]
+        },
+        {
+          "id": "dd4d8d52-875e-4e40-8304-6f62728f5599",
+          "type": "idea",
+          "title": "เช้าวันใหม่กับสื่งที่เปลี่ยนแปลงไป",
+          "content": "หลังจากที่ทุกคนตื่นขึ้นแล้ว ไคโยกับโดคุริสึเลยฝึกซ้อมกันโดยที่ชวนเรย์กะมาด้วยโดยให้เหตุผลว่า ฝึกเพื่อให้รู้จังหวะของกันและกันได้ หลังจากฝึกกันไปสักระยะก็พักผ่อนแบ่งอาหารที่ซื้อมาให้กันและกัน",
+          "x": 1702.8462571364194,
+          "y": 598.3333587646488,
+          "links": [
+            "ee1af815-3b30-4622-960a-b7d2c6eb2927"
+          ],
+          "children": [
+            {
+              "id": "221916bc-f5be-418a-919f-2b01fa376464",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "69cfe8e3-0ccd-41b5-84e9-ab4578b3442f",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "ca6751a5-1cc4-4ee6-96c1-04bba266fa15",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "5873d834-9724-491e-8d52-e606ba8d4240",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            }
+          ]
+        },
+        {
+          "id": "ee1af815-3b30-4622-960a-b7d2c6eb2927",
+          "type": "idea",
+          "title": "ทางกลับฐาน",
+          "content": "หลังจากที่ทุกคนพักผ่อนและกินอะไรเรียบร้อยแล้ว ไคโย ก็ได้ชวนทุกคนให้กลับไปตั้งหลักที่ฐานก่อนที่จะทำอะไรต่อ ทั้งสองเองก็เห็นด้วยเลยตัดสินใจที่จะเดินกลับกัน",
+          "x": 2204.9120935217143,
+          "y": 534.0259326312798,
+          "links": [
+            "4b747de4-8022-4ad7-9afc-832fee986197",
+            "34b9252b-0ebd-4037-99f9-19b6f2f8735e"
+          ],
+          "children": [
+            {
+              "id": "87ae6349-db15-4285-be0b-2c2715a19ebd",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "4bd861fd-11d8-40cc-8c97-b10059f31b87",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "da8742d8-9fa8-46ca-8948-d2689ec94dbe",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "cfb6536b-8e53-4389-a935-44df9784fb2c",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            },
+            {
+              "id": "d7d44dcd-7673-45b6-9472-ed91f3ba47b0",
+              "type": "sticky-note",
+              "title": "Note",
+              "content": "เปิดปมเรื่องลมแรงขึ้นซึ่งเกิดจากการปราบบอสในเขตนั้น"
+            }
+          ]
+        },
+        {
+          "id": "34b9252b-0ebd-4037-99f9-19b6f2f8735e",
+          "type": "idea",
+          "title": "เสียงคำรามปริศนา",
+          "content": "ระหว่างที่ทั้งสามกำลังรีบเดินฝ่าลมกลับฐาน ลมที่พัดแรงขึ้นเรื่อยๆ ทันใดนั้นเอง เสียงคำรามทุ้มต่ำก็ดังขึ้นสนั่นทั่วเขต เสียงประหลาดที่ไม่เคยมีใครรู้จักหรือได้ยินมาก่อน",
+          "x": 2756.675280286122,
+          "y": 655.6363469904124,
+          "links": [
+            "6dadb2df-35a0-4c57-b653-97aab2eb3d7a"
+          ],
+          "children": [
+            {
+              "id": "afe042ac-c45c-4ccf-b29f-e1c7ad8c8983",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "518ba10d-7a75-4d68-9ce2-77422f663f74",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "ea98a5bb-9aab-478e-863f-7ff25d68f229",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "bcc70703-651c-462b-80f2-61f9242fa43e",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            }
+          ]
+        },
+        {
+          "id": "6dadb2df-35a0-4c57-b653-97aab2eb3d7a",
+          "type": "idea",
+          "title": "พื่นที่สงบและสรุปเรื่องราว",
+          "content": "หลังจากการเดินทางที่แสนยาวนานทั้งสามคนก็ได้กลับมาที่ฐานได้แล้วสักที ",
+          "x": 3255.714285714287,
+          "y": 788.2858058384489,
+          "links": [
+            "44e5478c-c43f-4ef8-bc48-7ca72a57a6e4"
+          ],
+          "children": [
+            {
+              "id": "3c34a0f6-a728-440b-82ff-70c65ffddb00",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "3736f47b-1c4b-4dc9-a92a-a53b2b588ff4",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "187b8650-77de-444c-b2bd-b4a3c7b977f9",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "af571723-864f-4232-b63a-2f8f09a1e8ee",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            }
+          ]
+        },
+        {
+          "id": "44e5478c-c43f-4ef8-bc48-7ca72a57a6e4",
+          "type": "idea",
+          "title": "เรียบเรียงข้อมูล",
+          "content": "ทั้งสามคนนำข้อมูลที่มีกันอยู่มาแลกเปลี่ยนกันเพื่อกำหนดทิศทางหลังจากนี้ว่าควรจะเริ่มตรงไหนดี",
+          "x": 3759.077054537261,
+          "y": 749.8461679311903,
+          "links": [
+            "9c4c0edf-9300-468c-a67a-9705de37efbe"
+          ],
+          "children": [
+            {
+              "id": "4425e821-ec46-44a2-aace-0968fae76b45",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "ac315482-236d-4f7e-858a-ed8f8be87ddc",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "72fe53e5-5cdf-4e48-a028-de73a41892f2",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "e9b09363-8de2-4f15-9bfc-9e80cea61f4c",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            },
+            {
+              "id": "788b7f5c-db9f-422d-ac97-07f30907e9b7",
+              "type": "sticky-note",
+              "title": "Note",
+              "content": "ให้โดคุริสึบอกด้วยว่าเหมือนพลังในโลกนี้จะสามารถอัพเลเวลให้มันได้"
+            }
+          ]
+        },
+        {
+          "id": "9c4c0edf-9300-468c-a67a-9705de37efbe",
+          "type": "idea",
+          "title": "ความเชื่อใจในมิตรภาพ",
+          "content": "หลังจากที่เรย์กะแยกตัวไปนอนหลับด้วยความเหนื่อยล้า โดคุริสึนั่งพิงกรอบประตูหน้ากระท่อมเพื่อเฝ้ายาม ไคโยที่บอกว่ายังไม่ง่วงเดินตามออกมานั่งลงข้างๆ พร้อมกับโยนฟืนกิ่งเล็กๆ เข้ากองไฟเล่น\nบรรยากาศผ่อนคลายเมื่อครู่หายไป ไคโยเปลี่ยนสีหน้าเป็นจริงจังและเริ่มเปิดประเด็นที่ค้างคาใจทันที",
+          "x": 4288.00001878005,
+          "y": 978.1538508488586,
+          "links": [
+            "799952bb-7a99-4423-a309-3c3efe637a3e"
+          ],
+          "children": [
+            {
+              "id": "2cb7ecb8-de64-4401-a05a-769396f0f96b",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "ff1722f9-9276-4ca0-9b4e-c66357f337ac",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "f572e77f-6c75-4193-bf0c-6e49d73a0196",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            }
+          ]
+        },
+        {
+          "id": "db5d3496-e1fa-48ad-9149-50a2ed3821b3",
+          "type": "idea",
+          "title": "[Interlude] ผู้พิพากษาหลังม่าน",
+          "content": "ความสว่างจ้าของหลอดไฟนีออน หลิน เว่ย ลืมตาตื่นขึ้นมาในห้องทำงานอัยการของเธอที่ควรจะกลายเป็นอดีตไปแล้ว เธอกวาดตามองรอบห้องด้วยความสับสน ร่างกายที่เคยบาดเจ็บสาหัสกลับไร้รอยขีดข่วน\n\n",
+          "x": 4305.714285714285,
+          "y": 1705.7143293108259,
+          "links": [],
+          "children": [
+            {
+              "id": "76fe93e2-c29e-4715-a673-635ccca7f176",
+              "type": "character",
+              "title": "Lin Wei",
+              "referenceId": "84b6cf06-c48d-4889-a358-385a839a4cab"
+            },
+            {
+              "id": "71011c04-56b1-4450-abe1-2e648ff0cc1b",
+              "type": "character",
+              "title": "Bartender",
+              "referenceId": "703783c6-35a3-4d97-99e9-498601bd7af1"
+            }
+          ]
+        },
+        {
+          "id": "799952bb-7a99-4423-a309-3c3efe637a3e",
+          "type": "idea",
+          "title": "การเดินทางตามนัดหมาย",
+          "content": "หลังจากที่ทำอะไรระหว่างวีนเรียบร้อย พวกเขาก็เตรียมเดินทางไปตามนัดหมายที่คุยกันไว้กับกลุ่มของนาวินเมื่อสองวันก่อน",
+          "x": 4934.400024414066,
+          "y": 1104.000030517579,
+          "links": [
+            "2a027868-61ff-4c65-88d5-0be8ca5a17fc"
+          ],
+          "children": [
+            {
+              "id": "ea469cc0-4dab-44a3-aaa5-26e9eb53ce01",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "1f35883b-ee7d-4242-a333-c59576cde0e6",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "bff8255d-8f3b-4c92-bb47-c92f0b1c208d",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            },
+            {
+              "id": "1f29c8b4-bd02-4919-9ba2-09b516c464ff",
+              "type": "sticky-note",
+              "title": "Note",
+              "content": "ต้องมีการปูด้วยว่าลมนั้นแรงนะแต่กลับไม่ได้สร้างบาดแผลให้พวกเขาเลย"
+            },
+            {
+              "id": "60eed834-14e5-4d80-9e76-fd99e23971ff",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            }
+          ]
+        },
+        {
+          "id": "2a027868-61ff-4c65-88d5-0be8ca5a17fc",
+          "type": "idea",
+          "title": "การแลกเปลี่ยนข้อมูล",
+          "content": "หลังจากที่พวกเขาเดินมาถึงก็ได้พบกับนาวินที่ยืนรออยู่คนเดียว ไคโยจึงเสนอว่าให้เขาไปคนเดียว โดคุริสึกับเรย์กะรักษาระยะห่างอยู่ใกล้ๆ เขาคิดว่าฝั่งนั้นเองก็คงมีคนระวังอยู่เหมือนกัน",
+          "x": 5350,
+          "y": 1304.6666208902996,
+          "links": [
+            "eb17afd1-0a3b-4f4f-8543-4828357769e1"
+          ],
+          "children": [
+            {
+              "id": "ae39be3c-aa39-4248-9619-2465a3eef931",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "3aa4e5b0-8e4a-4f09-8522-a8497fe4fac1",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "0c776a48-730e-4b84-8ca5-58a149c6d1a4",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            },
+            {
+              "id": "2dc285e2-18af-4312-b6d7-44ee7d8bf42b",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "a2672dc7-7f2c-4ee4-8aab-cc5097f0a468",
+              "type": "character",
+              "title": "Elena Volkov",
+              "referenceId": "48fc5d77-bc35-429a-909f-4f47bd4775df"
+            },
+            {
+              "id": "71864e2e-b107-4f7e-924e-bf06230eb535",
+              "type": "character",
+              "title": "Nawin Srisuk",
+              "referenceId": "951ee746-ae1d-4fa1-af5c-f5b09c57970a"
+            },
+            {
+              "id": "9f2e15b1-38d3-452c-95fc-dd8721876474",
+              "type": "sticky-note",
+              "title": "Note",
+              "content": "ไคโยแนะนำว่าให้ทำให้อีกฝ่ายเชื่อใจก่อนเพื่อสร้างความสบายใจ"
+            }
+          ]
+        },
+        {
+          "id": "eb17afd1-0a3b-4f4f-8543-4828357769e1",
+          "type": "idea",
+          "title": "แลกเปลี่ยนข้อมูล",
+          "content": "เมื่อนาวินเห็นโดคุริสึเขาก็โบกมือทักถทายก่อนที่จะถามหา ไคโย โดคุริสึบอกแค่ว่าไม่ต้องสนใจหรอก นาวินไม่ได้พูดอะไรก่อนที่จะบอกว่าให้ตามเขามา ตรงนี้มันอันตรายเกินไป",
+          "x": 5760.666707356774,
+          "y": 1606.999994913738,
+          "links": [
+            "3a171d4b-e628-4343-be7d-6acde45f296b"
+          ],
+          "children": [
+            {
+              "id": "114191c1-3ca5-4af7-b2d8-aa88b5f026f2",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "49b9a216-f934-4e70-bb93-124d4f652003",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "aef6e1da-7182-4375-8594-4fa6a279152b",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            },
+            {
+              "id": "404e3bba-fba3-46b3-a4f7-a80e66cbd5ee",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "7387be85-4800-42cb-a591-313381935d86",
+              "type": "character",
+              "title": "Elena Volkov",
+              "referenceId": "48fc5d77-bc35-429a-909f-4f47bd4775df"
+            },
+            {
+              "id": "34137149-18cd-4594-8777-a7613b6ccf50",
+              "type": "character",
+              "title": "Nawin Srisuk",
+              "referenceId": "951ee746-ae1d-4fa1-af5c-f5b09c57970a"
+            },
+            {
+              "id": "0da0294f-37c5-42cf-8dcd-ce51730490fd",
+              "type": "sticky-note",
+              "title": "Note",
+              "content": "ให้นาวินเปิดเผยพลัง ส่วนโดคุริสึเปิดเผยแค่พลังเลือดกับวาร์ปที่ใช้สู้บอสไป"
+            },
+            {
+              "id": "7dccefe5-b114-4387-b5a8-7ca949bd540b",
+              "type": "sticky-note",
+              "title": "Note",
+              "content": "ทั้งหมดทีี่แลกกันเป็นเพัยงสมมุติฐาน"
+            }
+          ]
+        },
+        {
+          "id": "535ef4eb-78b8-4888-b441-dd12bb43658c",
+          "type": "idea",
+          "title": "ถูกยึดครอง",
+          "content": "เมื่อเดินทางเข้าใกล้ฐานขึ้นเรื่อยๆปหวกว่ายในป่าที่คุ้นเคย ในตอนที่ความเหนื่อยล้ากำลังจะหายไป โดคุริสึกับรู้สึกถึงอะไรแปลกๆได้ เหมือนว่ามีคนกำลังอยู่ในกระท่อมเล็กๆกลางป่านั้น",
+          "x": 0,
+          "y": 0,
+          "links": [],
+          "children": []
+        },
+        {
+          "id": "3a171d4b-e628-4343-be7d-6acde45f296b",
+          "type": "idea",
+          "title": "เปลี่ยนรอบการพบเจอ",
+          "content": "ก่อนที่แยกย้ายกันกลับโดคุริสึได้เสนอให้นาวินเปลี่ยนเวลานัดพบกันในครั้งถัดไป\n",
+          "x": 6270.818204012784,
+          "y": 1914.8181596235795,
+          "links": [
+            "b48638ae-8618-466e-b0b1-f69c659fe51c",
+            "0fe20105-1426-4394-ae41-f7f50d14cdc0"
+          ],
+          "children": [
+            {
+              "id": "a2f02996-3790-4d43-a023-5e99e8dafbb3",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "305b5b8f-9111-45a8-af55-55da1a379c1f",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "8c73ab4a-909f-4302-a128-68fcb06efa94",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            },
+            {
+              "id": "5be2cc67-4d36-4256-ac9b-60c89b723da2",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            },
+            {
+              "id": "7fadcf9d-3065-4f18-885d-5184baf19675",
+              "type": "character",
+              "title": "Elena Volkov",
+              "referenceId": "48fc5d77-bc35-429a-909f-4f47bd4775df"
+            },
+            {
+              "id": "b26ce686-69f5-457e-bb7f-ca11625400fc",
+              "type": "character",
+              "title": "Nawin Srisuk",
+              "referenceId": "951ee746-ae1d-4fa1-af5c-f5b09c57970a"
+            }
+          ]
+        },
+        {
+          "id": "b48638ae-8618-466e-b0b1-f69c659fe51c",
+          "type": "idea",
+          "title": "การเดินทางกลับ",
+          "content": "ส่วนนี้ไม่มีอะไรมากมายจะเป็นการปิดจบวันด้วยการเดินทางกลับและระหว่างทางก็จะเป็นการเล่าเรื่อิงราวไปด้วย",
+          "x": 6686.181773792614,
+          "y": 1940.3636252663352,
+          "links": [],
+          "children": [
+            {
+              "id": "4e0301d0-cf1f-4365-b23a-f089ab7a0288",
+              "type": "character",
+              "title": "Dokuritsu Shita",
+              "referenceId": "3903a5c0-9f5a-44e5-8cb8-b86b278009e5"
+            },
+            {
+              "id": "e5fc2c0f-581e-4719-8591-93b2268c37fc",
+              "type": "character",
+              "title": "Kaiyo takeda",
+              "referenceId": "882c3981-b6cc-48e4-9790-676d870bdfce"
+            },
+            {
+              "id": "5be7e1a8-368e-4315-bd1f-a862cd28be8d",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            },
+            {
+              "id": "e893149a-1440-4791-ad6a-632cbe60ce60",
+              "type": "character",
+              "title": "Eris Reika",
+              "referenceId": "25e4a4f7-f8a5-4f44-8a92-850c890464d5"
+            }
+          ]
+        },
+        {
+          "id": "0fe20105-1426-4394-ae41-f7f50d14cdc0",
+          "type": "idea",
+          "title": "บุคคลต้องสงสัย",
+          "content": "ในตอนที่พวกโดคุริสึเดินทางกลับแต่นาวินกลับยืนอยู่ที่เดิม",
+          "x": 6849,
+          "y": 2525,
+          "links": [],
+          "children": [
+            {
+              "id": "5bcb6450-572b-43fd-9e43-f7ec6526d2dd",
+              "type": "building",
+              "title": "เขตที่ 3: เมืองแห่งสายลมอัปยศ (City of Disgraced Winds)",
+              "referenceId": "906ad7a4-1a22-43ce-8407-175a57e49ed6"
+            },
+            {
+              "id": "66a25ba4-69d6-4980-a23a-6364878dd9de",
+              "type": "character",
+              "title": "Elena Volkov",
+              "referenceId": "48fc5d77-bc35-429a-909f-4f47bd4775df"
+            },
+            {
+              "id": "8740cf42-a769-414a-a958-243078602a5e",
+              "type": "character",
+              "title": "Nawin Srisuk",
+              "referenceId": "951ee746-ae1d-4fa1-af5c-f5b09c57970a"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

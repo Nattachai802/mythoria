@@ -48,9 +48,10 @@ interface NoteVersion {
 interface VersionHistoryPanelProps {
     noteId: string
     novelId: string
+    children?: React.ReactNode
 }
 
-export function VersionHistoryPanel({ noteId, novelId }: VersionHistoryPanelProps) {
+export function VersionHistoryPanel({ noteId, novelId, children }: VersionHistoryPanelProps) {
     const router = useRouter()
     const [open, setOpen] = useState(false)
     const [versions, setVersions] = useState<NoteVersion[]>([])
@@ -148,9 +149,13 @@ export function VersionHistoryPanel({ noteId, novelId }: VersionHistoryPanelProp
         <>
             <Sheet open={open} onOpenChange={setOpen}>
                 <SheetTrigger asChild>
-                    <Button variant="ghost" size="icon" title="Version History">
-                        <History className="h-4 w-4" />
-                    </Button>
+                    {children ? (
+                        children
+                    ) : (
+                        <Button variant="ghost" size="icon" title="Version History">
+                            <History className="h-4 w-4" />
+                        </Button>
+                    )}
                 </SheetTrigger>
                 <SheetContent className="w-[400px] sm:w-[540px]">
                     <SheetHeader>

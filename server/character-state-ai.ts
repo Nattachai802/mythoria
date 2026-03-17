@@ -4,17 +4,23 @@ import { db } from "@/db/drizzle";
 import { characters, locations } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { GoogleGenAI } from "@google/genai";
+import OpenAI from "openai";
 
 // API Configuration
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "AIzaSyA7O91TiZA3oB48B2NbRlgs5jNkwIx-wQo";
 const GEMINI_MODEL = "gemini-2.5-flash";
 
 const TYPHOON_API_KEY = "sk-p92ZcqcevSS7i0ANIJXKyCp4g6MvqsgsEDy1ZuQJNuRgmpzN";
-const TYPHOON_API_URL = "https://api.opentyphoon.ai/v1/chat/completions";
-const TYPHOON_MODEL = "typhoon-v2.1-12b-instruct";
+const TYPHOON_MODEL = "typhoon-v2.5-30b-a3b-instruct";
 
 // Initialize Gemini client
 const geminiClient = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+
+// Initialize Typhoon client (using OpenAI SDK)
+const typhoonClient = new OpenAI({
+    apiKey: TYPHOON_API_KEY,
+    baseURL: "https://api.opentyphoon.ai/v1",
+});
 
 // Rate limit tracking
 let lastGeminiRateLimitRetry = 0;
@@ -159,7 +165,7 @@ async function callGemini(prompt: string): Promise<AIExtractionResult | null> {
             contents: prompt,
             config: {
                 temperature: 0.3,
-                maxOutputTokens: 2048,
+                maxOutputTokens: 8192,
             },
         });
 
@@ -194,44 +200,23 @@ async function callTyphoon(prompt: string): Promise<AIExtractionResult | null> {
             return null;
         }
 
-        const response = await fetch(TYPHOON_API_URL, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${TYPHOON_API_KEY}`,
-            },
-            body: JSON.stringify({
-                model: TYPHOON_MODEL,
-                messages: [{ role: "user", content: prompt }],
-                temperature: 0.3,
-                max_tokens: 30000,
-            }),
+        const response = await typhoonClient.chat.completions.create({
+            model: TYPHOON_MODEL,
+            messages: [
+                {
+                    role: "system",
+                    content: "You are a helpful assistant that extracts character states from novel content. Always respond in valid JSON format."
+                },
+                {
+                    role: "user",
+                    content: prompt
+                }
+            ],
+            max_tokens: 8192,
+            temperature: 0.3,
         });
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error("[Typhoon] API Error:", response.status, errorText);
-
-            // Handle rate limit (429)
-            if (response.status === 429) {
-                // Check Retry-After header first
-                const retryAfter = response.headers.get("Retry-After");
-                if (retryAfter) {
-                    const delaySeconds = parseInt(retryAfter, 10);
-                    if (!isNaN(delaySeconds)) {
-                        lastTyphoonRateLimitRetry = Date.now() + (delaySeconds * 1000);
-                        console.log(`[Typhoon] Rate limited, will retry after ${delaySeconds}s`);
-                    }
-                } else {
-                    // Default backoff of 60 seconds
-                    lastTyphoonRateLimitRetry = Date.now() + 60000;
-                }
-            }
-            return null;
-        }
-
-        const data = await response.json();
-        const content = data.choices?.[0]?.message?.content;
+        const content = response.choices?.[0]?.message?.content;
 
         if (!content) {
             console.error("[Typhoon] No content in response");
@@ -239,8 +224,15 @@ async function callTyphoon(prompt: string): Promise<AIExtractionResult | null> {
         }
 
         return parseAIResponse(content, "Typhoon");
-    } catch (error) {
-        console.error("[Typhoon] Error:", error);
+    } catch (error: any) {
+        console.error("[Typhoon] Error:", error?.message || error);
+
+        // Handle rate limit errors
+        if (error?.status === 429 || error?.message?.includes("429")) {
+            console.log("[Typhoon] Rate limited, applying 60s backoff");
+            lastTyphoonRateLimitRetry = Date.now() + 60000;
+        }
+
         return null;
     }
 }

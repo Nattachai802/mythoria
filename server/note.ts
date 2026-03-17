@@ -2,11 +2,11 @@
 
 import { db } from "@/db/drizzle";
 import { notes, InsertNote } from "@/db/schema";
-import { eq, desc, and, or, like } from "drizzle-orm";
+import { eq, desc, and, or, like, gt, lt, ne, asc } from "drizzle-orm";
 import { syncChapterCharactersFromNotes } from "./analysis-helper";
 import { recalculateNovelWordCountFromNotes } from "./word-count";
 import { queueNoteForStateExtraction } from "./character-state-extractor";
-import { revalidateTag, unstable_cache } from "next/cache";
+import { revalidateTag, revalidatePath, unstable_cache } from "next/cache";
 import { CACHE_TAGS, CACHE_DURATION } from "@/lib/cache-config";
 import { NoteStatus } from "@/lib/note-constants";
 
@@ -198,5 +198,132 @@ export const updateNoteStatus = async (noteId: string, status: NoteStatus) => {
     } catch (error) {
         console.error("Update note status error:", error);
         return { success: false, message: "Failed to update status" };
+    }
+};
+
+/**
+ * ค้นหา note ถัดไปใน chapter เดียวกัน (เรียงตาม createdAt)
+ * ถ้าไม่มี → สร้างใหม่แล้ว return URL ให้ client navigate เอง
+ *
+ * หมายเหตุ:
+ * - ไม่เรียก createNote() เพื่อหลีก queueNoteForStateExtraction ที่ช้า (background AI jobs)
+ * - return redirectUrl แทนการใช้ redirect() เพื่อให้ client ทำ SPA navigation ที่เร็วกว่า
+ */
+export const getOrCreateNextNote = async (
+    currentNoteId: string,
+    novelId: string,
+    linkedToChapterId: string | null
+): Promise<{ success: boolean; message?: string; redirectUrl?: string }> => {
+    console.log("[getOrCreateNextNote] Called with:", { currentNoteId, novelId, linkedToChapterId });
+    try {
+        // 1. ดึง note ปัจจุบันเพื่อเอา createdAt
+        const currentNote = await db.query.notes.findFirst({
+            where: eq(notes.id, currentNoteId),
+            columns: { id: true, createdAt: true },
+        });
+
+        if (!currentNote) {
+            console.log("[getOrCreateNextNote] Current note not found!");
+            return { success: false, message: "Note not found" };
+        }
+        console.log("[getOrCreateNextNote] Current note createdAt:", currentNote.createdAt);
+
+        // 2. ถ้า note ผูกกับ chapter → หา note ถัดไปใน chapter เดียวกันที่สร้างทีหลัง
+        if (linkedToChapterId) {
+            console.log("[getOrCreateNextNote] Looking for next note in chapter:", linkedToChapterId);
+            const nextNote = await db.query.notes.findFirst({
+                where: and(
+                    eq(notes.novelId, novelId),
+                    eq(notes.linkedToChapterId, linkedToChapterId),
+                    gt(notes.createdAt, currentNote.createdAt),
+                    ne(notes.id, currentNoteId) // ป้องกัน timestamp precision ทำให้เจอ note ตัวเอง
+                ),
+                orderBy: [asc(notes.createdAt)],
+                columns: { id: true },
+            });
+
+            if (nextNote) {
+                const url = `/dashboard/project/${novelId}/note/${nextNote.id}`;
+                console.log("[getOrCreateNextNote] Found next note, redirecting to:", url);
+                return {
+                    success: true,
+                    redirectUrl: url,
+                };
+            }
+            console.log("[getOrCreateNextNote] No next note found in chapter, creating new one...");
+        }
+
+        // 3. ไม่มีตอนถัดไป → INSERT โดยตรง (ไม่เรียก createNote เพื่อหลีก background jobs ที่ช้า)
+        const [newNote] = await db.insert(notes).values({
+            title: "ตอนใหม่",
+            content: { text: "" },
+            novelId,
+            type: "general",
+            ...(linkedToChapterId ? { linkedToChapterId } : {}),
+        } as InsertNote).returning({ id: notes.id });
+
+        if (!newNote) {
+            console.log("[getOrCreateNextNote] Failed to create new note!");
+            return { success: false, message: "Failed to create next note" };
+        }
+
+        // Revalidate cache ให้ notes list อัปเดต
+        revalidateTag(CACHE_TAGS.notes(novelId), "default");
+
+        const url = `/dashboard/project/${novelId}/note/${newNote.id}`;
+        console.log("[getOrCreateNextNote] Created new note, redirecting to:", url);
+        return {
+            success: true,
+            redirectUrl: url,
+        };
+    } catch (error) {
+        console.error("getOrCreateNextNote error:", error);
+        return { success: false, message: "Failed to navigate to next note" };
+    }
+};
+
+/**
+ * ค้นหา note ก่อนหน้าใน chapter เดียวกัน (เรียงตาม createdAt)
+ * ถ้าไม่มี → return error (ไม่สร้างใหม่เหมือน next)
+ */
+export const getPreviousNote = async (
+    currentNoteId: string,
+    novelId: string,
+    linkedToChapterId: string | null
+): Promise<{ success: boolean; message?: string; redirectUrl?: string }> => {
+    try {
+        const currentNote = await db.query.notes.findFirst({
+            where: eq(notes.id, currentNoteId),
+            columns: { id: true, createdAt: true },
+        });
+
+        if (!currentNote) {
+            return { success: false, message: "Note not found" };
+        }
+
+        if (linkedToChapterId) {
+            const prevNote = await db.query.notes.findFirst({
+                where: and(
+                    eq(notes.novelId, novelId),
+                    eq(notes.linkedToChapterId, linkedToChapterId),
+                    lt(notes.createdAt, currentNote.createdAt),
+                    ne(notes.id, currentNoteId)
+                ),
+                orderBy: [desc(notes.createdAt)],
+                columns: { id: true },
+            });
+
+            if (prevNote) {
+                return {
+                    success: true,
+                    redirectUrl: `/dashboard/project/${novelId}/note/${prevNote.id}`,
+                };
+            }
+        }
+
+        return { success: false, message: "ไม่มีตอนก่อนหน้า" };
+    } catch (error) {
+        console.error("getPreviousNote error:", error);
+        return { success: false, message: "Failed to navigate to previous note" };
     }
 };

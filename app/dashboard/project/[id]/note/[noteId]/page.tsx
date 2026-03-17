@@ -26,7 +26,7 @@ export default async function NotePage({ params }: Props) {
     const novelTitle = novelResult.novel?.title || "Project";
 
     return (
-        <div className="container mx-auto py-6 max-w-4xl">
+        <div className="container mx-auto px-4 py-2">
             <ProjectBreadcrumb
                 novelId={id}
                 novelTitle={novelTitle}

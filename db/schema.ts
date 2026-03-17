@@ -519,6 +519,7 @@ export const ideas = pgTable("ideas", {
 });
 
 // Idea Connections - สำหรับเชื่อม ideas กันบน canvas
+// connectionType: "related" = Red String (plot flow), "ancestor" = Motivation/Reasoning chain
 export const ideaConnections = pgTable("idea_connections", {
   id: text("id").primaryKey().default(sql`gen_random_uuid()`),
   sourceIdeaId: text("source_idea_id")
@@ -527,6 +528,7 @@ export const ideaConnections = pgTable("idea_connections", {
   targetIdeaId: text("target_idea_id")
     .notNull()
     .references(() => ideas.id, { onDelete: "cascade" }),
+  connectionType: text("connection_type").default("related").notNull(), // "related" | "ancestor"
   label: text("label"), // optional label for the connection
   novelId: text("novel_id")
     .notNull()
@@ -888,6 +890,64 @@ export const aiSuggestions = pgTable("ai_suggestions", {
   reviewedAt: timestamp("reviewed_at"),
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const driveSettings = pgTable("drive_settings", {
+  id : text("id").primaryKey().default(sql`gen_random_uuid()`),
+  novelId : text("novel_id")
+  .notNull()
+  .unique()
+  .references(() => novels.id, {onDelete: "cascade"}),
+  rootFolderId : text("root_folder_id"),
+  isEnabled : boolean("is_enabled").default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow()
+    .$onUpdate(() => new Date()).notNull(),
+})
+
+export const driveSync = pgTable("drive_sync", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  noteId: text("note_id")
+    .notNull()
+    .references(() => notes.id, { onDelete: "cascade" }),
+  novelId: text("novel_id")
+    .notNull()
+    .references(() => novels.id, { onDelete: "cascade" }),
+  googleDocId: text("google_doc_id").notNull(), 
+  googleDriveFolderId: text("drive_folder_id"),
+  lastSyncedAt: timestamp("last_synced_at"),
+  
+  baseContent: jsonb("base_content"),              
+  formatSnapshot: jsonb("format_snapshot"),        
+  
+  lastLocalModifiedAt: timestamp("last_local_modified_at"),
+  lastRemoteModifiedAt: timestamp("last_remote_modified_at"),
+  syncStatus: text("sync_status").default("synced"), 
+  conflictData: jsonb("conflict_data"),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// ============================================
+// GOOGLE DRIVE OAUTH CREDENTIALS
+// แยกออกจาก better-auth เพื่อรองรับ Google account ที่ต่าง email กับ login
+// ============================================
+
+export const driveCredentials = pgTable("drive_credentials", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: text("user_id")
+    .notNull()
+    .unique() // 1 user = 1 drive account เท่านั้น
+    .references(() => user.id, { onDelete: "cascade" }),
+  googleEmail: text("google_email").notNull(), // แสดงให้ user รู้ว่า connect ด้วย account อะไร
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
 });
 
 // ============================================
@@ -1382,6 +1442,10 @@ export type AISuggestion = typeof aiSuggestions.$inferSelect;
 export type InsertCharacterAnalysisQueue = typeof characterAnalysisQueue.$inferInsert;
 export type InsertAISuggestion = typeof aiSuggestions.$inferInsert;
 
+// Drive Credentials Types
+export type DriveCredentials = typeof driveCredentials.$inferSelect;
+export type InsertDriveCredentials = typeof driveCredentials.$inferInsert;
+
 // World Building Types
 export type Item = typeof items.$inferSelect;
 export type LoreEntry = typeof loreEntries.$inferSelect;
@@ -1471,4 +1535,7 @@ export const schema = {
   // Scene Element Details
   sceneElementDetails,
   sceneElementDetailsRelations,
+  driveSettings,
+  driveSync,
+  driveCredentials,
 };

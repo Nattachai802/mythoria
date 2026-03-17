@@ -49,6 +49,7 @@ interface CreateIdeaDialogProps {
   onOpenChange?: (open: boolean) => void;
   defaultLinkedCharacterIds?: string[];
   defaultCategory?: string;
+  onIdeaCreated?: (idea: any) => void;
 }
 
 export function CreateIdeaDialog({
@@ -57,7 +58,8 @@ export function CreateIdeaDialog({
   open: controlledOpen,
   onOpenChange,
   defaultLinkedCharacterIds,
-  defaultCategory
+  defaultCategory,
+  onIdeaCreated
 }: CreateIdeaDialogProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -88,6 +90,7 @@ export function CreateIdeaDialog({
 
     if (result.success) {
       toast.success("Idea created successfully");
+      onIdeaCreated?.(result.data);
       setOpen(false);
       form.reset();
     } else {

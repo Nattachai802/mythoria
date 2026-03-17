@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 
 const TYPHOON_API_KEY = "sk-p92ZcqcevSS7i0ANIJXKyCp4g6MvqsgsEDy1ZuQJNuRgmpzN";
 const TYPHOON_API_URL = "https://api.opentyphoon.ai/v1/chat/completions";
-const MODEL_NAME = "typhoon-v2.1-12b-instruct";
+const MODEL_NAME = "typhoon-v2.5-30b-a3b-instruct";
 
 /**
  * Generate Thai aliases for an English name
@@ -55,7 +55,7 @@ Output Example: ["อลิซ", "อลิส", "น้องเอล"]`
                     }
                 ],
                 temperature: 0.3,
-                max_tokens: 80,
+                max_tokens: 512,
             }),
         });
 

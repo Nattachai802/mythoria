@@ -3,13 +3,9 @@
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { TimelineEvent, Character, Location } from "@/db/schema"
-import { Card } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
-    Clock,
     GripVertical,
     MapPin,
     Swords,
@@ -18,57 +14,52 @@ import {
     Lightbulb,
     Heart,
     ArrowRight,
-    Film
+    Film,
+    CheckCircle2,
+    Circle
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
-import { useTransition } from "react"
+import { useTransition, useState } from "react"
 import { updateTimelineEvent } from "@/server/timeline"
 import { toast } from "sonner"
 
-// Event type configuration
+// Event type configuration - minimal colors
 const EVENT_TYPES = {
     scene: {
         label: "Scene",
         icon: Film,
-        color: "bg-slate-500/20 text-slate-600 dark:text-slate-400 border-slate-500/30",
-        accent: "border-l-slate-500"
+        color: "text-slate-400",
     },
     action: {
         label: "Action",
         icon: Swords,
-        color: "bg-red-500/20 text-red-600 dark:text-red-400 border-red-500/30",
-        accent: "border-l-red-500"
+        color: "text-red-400",
     },
     dialogue: {
         label: "Dialogue",
         icon: MessageSquare,
-        color: "bg-blue-500/20 text-blue-600 dark:text-blue-400 border-blue-500/30",
-        accent: "border-l-blue-500"
+        color: "text-blue-400",
     },
     flashback: {
         label: "Flashback",
         icon: History,
-        color: "bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30",
-        accent: "border-l-amber-500"
+        color: "text-amber-400",
     },
     revelation: {
         label: "Revelation",
         icon: Lightbulb,
-        color: "bg-purple-500/20 text-purple-600 dark:text-purple-400 border-purple-500/30",
-        accent: "border-l-purple-500"
+        color: "text-purple-400",
     },
     emotional: {
         label: "Emotional",
         icon: Heart,
-        color: "bg-pink-500/20 text-pink-600 dark:text-pink-400 border-pink-500/30",
-        accent: "border-l-pink-500"
+        color: "text-pink-400",
     },
     transition: {
         label: "Transition",
         icon: ArrowRight,
-        color: "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
-        accent: "border-l-emerald-500"
+        color: "text-emerald-400",
     },
 } as const
 
@@ -83,6 +74,7 @@ interface EventCardProps {
 export function EventCard({ event, characters = [], locations = [] }: EventCardProps) {
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
+    const [isHovered, setIsHovered] = useState(false)
 
     const {
         attributes,
@@ -105,142 +97,195 @@ export function EventCard({ event, characters = [], locations = [] }: EventCardP
     const typeConfig = EVENT_TYPES[eventType] || EVENT_TYPES.scene
     const TypeIcon = typeConfig.icon
 
-    // Get related characters (max 4 shown)
+    // Get related characters (max 3 shown for minimal look)
     const relatedCharacterIds = (event.relatedCharacterIds as string[]) || []
     const relatedCharacters = characters.filter(c => relatedCharacterIds.includes(c.id))
-    const displayedCharacters = relatedCharacters.slice(0, 4)
-    const remainingCount = relatedCharacters.length - 4
+    const displayedCharacters = relatedCharacters.slice(0, 3)
+    const remainingCount = relatedCharacters.length - 3
 
     // Get related location (first one)
     const relatedLocationIds = (event.relatedLocationIds as string[]) || []
     const relatedLocation = locations.find(l => relatedLocationIds.includes(l.id))
 
     // Handle completion toggle
-    const handleToggleComplete = (checked: boolean) => {
+    const handleToggleComplete = (e: React.MouseEvent) => {
+        e.stopPropagation()
         startTransition(async () => {
-            const result = await updateTimelineEvent(event.id, { isCompleted: checked })
-            if (!result.success) {
-                toast.error("Failed to update event")
+            const result = await updateTimelineEvent(event.id, { isCompleted: !event.isCompleted })
+            if (result.success) {
+                toast.success(result.event?.isCompleted ? "Scene completed ✓" : "Scene marked as draft")
+            } else {
+                toast.error("Failed to update")
             }
         })
+    }
+
+    const handleClick = () => {
+        if (!isDragging) {
+            router.push(`/dashboard/project/${event.novelId}/plot/${event.id}`)
+        }
     }
 
     return (
         <div
             ref={setNodeRef}
             style={style}
-            className="relative w-full flex justify-center group"
+            className={cn(
+                "relative w-full py-2",
+                // Fade-in animation on mount
+                "animate-in fade-in slide-in-from-bottom-4 duration-500",
+            )}
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
         >
-            {/* Connector dot on timeline */}
-            <div className={cn(
-                "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 z-0",
-                event.isCompleted
-                    ? "bg-emerald-500 border-emerald-500"
-                    : "bg-background border-muted-foreground/40",
-                isDragging && "bg-primary border-primary"
-            )} />
-
-            {/* Event Card */}
-            <Card className={cn(
-                "relative ml-8 w-full overflow-hidden cursor-grab active:cursor-grabbing transition-all duration-200",
-                "bg-card hover:shadow-lg border-l-4",
-                typeConfig.accent,
-                event.isCompleted && "opacity-60",
-                isDragging && "shadow-xl ring-2 ring-primary/20 rotate-1 scale-105"
-            )}>
-                {/* Horizontal connector line */}
-                <div className="absolute top-1/2 -left-4 w-4 h-0.5 bg-muted-foreground/30 -translate-y-1/2" />
-
-                {/* Drag Handle */}
+            {/* Film Frame Card */}
+            <div
+                className={cn(
+                    "relative overflow-hidden cursor-pointer",
+                    "transition-all duration-300 ease-out",
+                    // Film frame - สีครีมอ่อนแบบ vintage
+                    "bg-[#f5f5f0] border border-zinc-200/60",
+                    // Hover state
+                    isHovered && !isDragging && [
+                        "bg-[#eeede8]",
+                        "shadow-md shadow-primary/10",
+                        "scale-[1.01]",
+                    ],
+                    // Drag state
+                    isDragging && "shadow-2xl ring-2 ring-primary/30 scale-105"
+                )}
+                onClick={handleClick}
+            >
+                {/* Status Indicator Strip (Left Edge) */}
                 <div
-                    {...attributes}
-                    {...listeners}
-                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 hover:bg-muted rounded transition-opacity cursor-grab z-10"
-                    onPointerDown={(e) => {
-                        e.stopPropagation()
-                        listeners?.onPointerDown?.(e)
-                    }}
-                >
-                    <GripVertical className="h-3 w-3 text-muted-foreground" />
-                </div>
+                    className={cn(
+                        "absolute left-0 top-0 bottom-0 transition-all duration-300",
+                        isHovered ? "w-1" : "w-0.5",
+                        event.isCompleted
+                            ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]"
+                            : "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.3)]"
+                    )}
+                />
 
-                {/* Card Content - Compact */}
-                <div className="p-2">
-                    {/* Header: Checkbox + Title */}
-                    <div className="flex items-center gap-2 pr-5">
-                        <Checkbox
-                            checked={event.isCompleted || false}
-                            onCheckedChange={handleToggleComplete}
-                            disabled={isPending}
-                            className="h-3.5 w-3.5"
-                            onClick={(e) => e.stopPropagation()}
-                        />
-
-                        <div
-                            className="flex-1 min-w-0 cursor-pointer"
-                            onClick={() => {
-                                if (!isDragging) {
-                                    router.push(`/dashboard/project/${event.novelId}/plot/${event.id}`)
-                                }
-                            }}
+                {/* Content */}
+                <div className="pl-3 pr-2 py-3">
+                    {/* Title Row */}
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                        <h4
+                            className={cn(
+                                "font-medium text-sm leading-snug",
+                                "text-zinc-800 transition-all duration-200",
+                                isHovered && !event.isCompleted && "text-primary",
+                                event.isCompleted && "text-zinc-400 line-through"
+                            )}
                         >
-                            <h4 className={cn(
-                                "font-medium text-xs leading-snug text-foreground/90 hover:text-primary transition-colors truncate",
-                                event.isCompleted && "line-through text-muted-foreground"
-                            )}>
-                                {event.title}
-                            </h4>
+                            {event.title}
+                        </h4>
+
+                        {/* Actions (Fade in on Hover) */}
+                        <div className={cn(
+                            "flex items-center gap-0.5 transition-all duration-200",
+                            isHovered ? "opacity-100 translate-x-0" : "opacity-0 translate-x-2"
+                        )}>
+                            {/* Status Toggle */}
+                            <button
+                                onClick={handleToggleComplete}
+                                disabled={isPending}
+                                className={cn(
+                                    "p-1 rounded hover:bg-zinc-200/60 transition-colors",
+                                    event.isCompleted ? "text-emerald-500" : "text-amber-500"
+                                )}
+                                title={event.isCompleted ? "Mark as Draft" : "Mark as Done"}
+                            >
+                                {event.isCompleted ? (
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                ) : (
+                                    <Circle className="w-3.5 h-3.5" />
+                                )}
+                            </button>
+
+                            {/* Drag Handle */}
+                            <div
+                                {...attributes}
+                                {...listeners}
+                                className="p-1 rounded hover:bg-zinc-200/60 cursor-grab active:cursor-grabbing text-zinc-500"
+                                onPointerDown={(e) => {
+                                    e.stopPropagation()
+                                    listeners?.onPointerDown?.(e)
+                                }}
+                            >
+                                <GripVertical className="w-3.5 h-3.5" />
+                            </div>
                         </div>
                     </div>
 
-                    {/* Compact Metadata Row */}
-                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                        {/* Event Type Badge */}
-                        <Badge variant="outline" className={cn("text-[9px] h-4 gap-0.5 font-medium border px-1", typeConfig.color)}>
-                            <TypeIcon className="h-2.5 w-2.5" />
-                            {typeConfig.label}
-                        </Badge>
+                    {/* Metadata Footer */}
+                    <div className="flex items-center justify-between text-xs">
+                        {/* Left: Type & Location */}
+                        <div className="flex items-center gap-2 text-zinc-600">
+                            {/* Event Type */}
+                            <div className={cn("flex items-center gap-1 transition-colors", typeConfig.color)}>
+                                <TypeIcon className="w-3 h-3" />
+                                <span className="text-[9px] uppercase tracking-wide font-medium">
+                                    {typeConfig.label}
+                                </span>
+                            </div>
 
-                        {/* Location - Compact */}
-                        {relatedLocation && (
-                            <Badge variant="outline" className="text-[9px] h-4 gap-0.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 px-1">
-                                <MapPin className="h-2.5 w-2.5" />
-                                <span className="truncate max-w-[60px]">{relatedLocation.name}</span>
-                            </Badge>
-                        )}
+                            {/* Location */}
+                            {relatedLocation && (
+                                <>
+                                    <span className="text-zinc-400">·</span>
+                                    <div className="flex items-center gap-1 max-w-[80px]">
+                                        <MapPin className="w-3 h-3 shrink-0" />
+                                        <span className="truncate text-[9px]">
+                                            {relatedLocation.name}
+                                        </span>
+                                    </div>
+                                </>
+                            )}
+                        </div>
 
-                        {/* Characters Count - Compact */}
+                        {/* Right: Character Avatars */}
                         {displayedCharacters.length > 0 && (
-                            <TooltipProvider delayDuration={100}>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <div className="flex -space-x-1">
-                                            {displayedCharacters.slice(0, 3).map((char) => (
-                                                <Avatar key={char.id} className="h-4 w-4 border border-background">
+                            <div className="flex -space-x-1.5">
+                                {displayedCharacters.map((char) => (
+                                    <TooltipProvider key={char.id} delayDuration={100}>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <Avatar className={cn(
+                                                    "h-5 w-5 border-2 border-[#f5f5f0] ring-1 ring-zinc-300/40",
+                                                    "transition-transform duration-200",
+                                                    isHovered && "scale-110"
+                                                )}>
                                                     {char.image ? (
                                                         <AvatarImage src={char.image} alt={char.name} />
                                                     ) : null}
-                                                    <AvatarFallback className="text-[8px] bg-gradient-to-br from-primary/20 to-primary/10 text-primary font-medium">
+                                                    <AvatarFallback className="text-[8px] bg-primary/20 text-primary">
                                                         {char.name.slice(0, 1).toUpperCase()}
                                                     </AvatarFallback>
                                                 </Avatar>
-                                            ))}
-                                            {relatedCharacters.length > 3 && (
-                                                <div className="h-4 w-4 rounded-full bg-muted border border-background flex items-center justify-center text-[8px] text-muted-foreground">
-                                                    +{relatedCharacters.length - 3}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="bottom" className="text-xs">
-                                        {relatedCharacters.map(c => c.name).join(", ")}
-                                    </TooltipContent>
-                                </Tooltip>
-                            </TooltipProvider>
+                                            </TooltipTrigger>
+                                            <TooltipContent side="bottom" className="text-xs">
+                                                {char.name}
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
+                                ))}
+                                {remainingCount > 0 && (
+                                    <div className={cn(
+                                        "h-5 w-5 rounded-full bg-zinc-300 border-2 border-[#f5f5f0]",
+                                        "flex items-center justify-center text-[8px] text-zinc-600 font-semibold",
+                                        "transition-transform duration-200",
+                                        isHovered && "scale-110"
+                                    )}>
+                                        +{remainingCount}
+                                    </div>
+                                )}
+                            </div>
                         )}
                     </div>
                 </div>
-            </Card>
+            </div>
         </div>
     )
 }

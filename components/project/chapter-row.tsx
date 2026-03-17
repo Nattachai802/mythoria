@@ -20,6 +20,7 @@ import {
 import { CreateNoteDialog } from "@/components/project/create-note-dialog";
 import { ChapterActions } from "@/components/project/chapter-actions";
 import { ChapterSummaryButton } from "@/components/project/chapter-summary-button";
+import { ChapterDriveSyncButton } from "@/components/project/chapter-drive-sync-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { updateNoteStatus } from "@/server/note";
 import { NoteStatus, NOTE_STATUS_CONFIG } from "@/lib/note-constants";
@@ -27,8 +28,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 const NOTES_PER_PAGE = 10;
-const LINES_PER_PAGE = 35;
-const CHARS_PER_LINE = 55;
+const CHARS_PER_PAGE = 1500;
 
 // Status icon mapping
 const STATUS_ICONS = {
@@ -40,31 +40,23 @@ const STATUS_ICONS = {
 
 /**
  * Calculate page count for a note's content
+ * ใช้สูตรเดียวกับ note-editor.tsx: charsWithSpaces / 1500 (A4 standard)
  */
-// Helper to estimate page count from HTML content
 function estimatePageCount(content: { text?: string } | null): number {
     if (!content?.text) return 0;
 
-    const htmlContent = content.text;
-
-    // Count explicit line breaks and block elements
-    const blockTags = htmlContent.match(/<(p|div|h[1-6]|li|br)[^>]*>/gi) || [];
-    let lines = blockTags.length;
-
-    // Get plain text
-    const plainText = htmlContent
-        .replace(/<[^>]*>/g, '')
+    const plainText = content.text
+        .replace(/<[^>]*>/g, ' ')
         .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/\s+/g, ' ')
         .trim();
 
-    // Estimate wrapped lines
-    const estimatedWrapLines = Math.max(0, Math.floor(plainText.length / CHARS_PER_LINE) - lines);
-    lines += estimatedWrapLines;
+    if (!plainText) return 0;
 
-    // Minimum 1 line if there's content
-    lines = Math.max(plainText.length > 0 ? 1 : 0, lines);
-
-    return Math.max(1, Math.ceil(lines / LINES_PER_PAGE));
+    return Math.max(1, Math.ceil(plainText.length / CHARS_PER_PAGE));
 }
 
 interface ChapterRowProps {
@@ -189,6 +181,11 @@ export function ChapterRow({
                         chapterId={chapter.id}
                         novelId={novelId}
                         initialSummary={chapter.summary}
+                    />
+                    <ChapterDriveSyncButton 
+                        novelId={novelId} 
+                        chapterId={chapter.id} 
+                        notes={chapterNotes} 
                     />
                     <CreateNoteDialog
                         novelId={novelId}

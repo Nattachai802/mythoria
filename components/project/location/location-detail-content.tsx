@@ -148,202 +148,200 @@ export function LocationDetailContent({
                     </div>
                 </div>
 
-            </Card>
+                {/* Tabs */}
+                <Tabs defaultValue="overview" className="space-y-6">
+                    <TabsList className="bg-muted/50 p-1">
+                        <TabsTrigger value="overview" className="gap-2">
+                            <BookOpen className="w-4 h-4" />
+                            Overview
+                        </TabsTrigger>
+                        <TabsTrigger value="ideas" className="gap-2">
+                            <Lightbulb className="w-4 h-4" />
+                            Ideas
+                        </TabsTrigger>
+                    </TabsList>
 
-            {/* Tabs */}
-            <Tabs defaultValue="overview" className="space-y-6">
-                <TabsList className="bg-muted/50 p-1">
-                    <TabsTrigger value="overview" className="gap-2">
-                        <BookOpen className="w-4 h-4" />
-                        Overview
-                    </TabsTrigger>
-                    <TabsTrigger value="ideas" className="gap-2">
-                        <Lightbulb className="w-4 h-4" />
-                        Ideas
-                    </TabsTrigger>
-                </TabsList>
+                    <TabsContent value="overview" className="space-y-6">
+                        {/* Content Grid */}
+                        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                            {/* Atmosphere Card */}
+                            {loc.atmosphere && (
+                                <Card className="md:col-span-2 lg:col-span-1 border-l-4 border-l-purple-500">
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="flex items-center gap-2 text-lg">
+                                            <Sparkles className="h-5 w-5 text-purple-500" />
+                                            บรรยากาศ
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <p className="text-muted-foreground italic leading-relaxed">
+                                            "{loc.atmosphere}"
+                                        </p>
+                                    </CardContent>
+                                </Card>
+                            )}
 
-                <TabsContent value="overview" className="space-y-6">
-                    {/* Content Grid */}
-                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                        {/* Atmosphere Card */}
-                        {loc.atmosphere && (
-                            <Card className="md:col-span-2 lg:col-span-1 border-l-4 border-l-purple-500">
-                                <CardHeader className="pb-2">
-                                    <CardTitle className="flex items-center gap-2 text-lg">
-                                        <Sparkles className="h-5 w-5 text-purple-500" />
-                                        บรรยากาศ
+                            {/* Landmarks Card */}
+                            {loc.landmarks && loc.landmarks.length > 0 && (
+                                <Card className="border-l-4 border-l-blue-500">
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="flex items-center gap-2 text-lg">
+                                            <Landmark className="h-5 w-5 text-blue-500" />
+                                            จุดสังเกต
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <ul className="space-y-2">
+                                            {(loc.landmarks as string[]).map((l: string, i: number) => (
+                                                <li key={i} className="flex items-center gap-2 text-sm">
+                                                    <span className="w-2 h-2 rounded-full bg-blue-500" />
+                                                    {l}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </CardContent>
+                                </Card>
+                            )}
+
+                            {/* Resources Card */}
+                            {loc.resources && loc.resources.length > 0 && (
+                                <Card className="border-l-4 border-l-emerald-500">
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="flex items-center gap-2 text-lg">
+                                            <Gem className="h-5 w-5 text-emerald-500" />
+                                            ทรัพยากร
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="flex flex-wrap gap-2">
+                                            {(loc.resources as string[]).map((r: string, i: number) => (
+                                                <Badge key={i} className="bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30">
+                                                    💎 {r}
+                                                </Badge>
+                                            ))}
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            )}
+
+                            {/* Dangers Card */}
+                            {loc.dangers && loc.dangers.length > 0 && (
+                                <Card className="border-l-4 border-l-red-500">
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="flex items-center gap-2 text-lg">
+                                            <AlertTriangle className="h-5 w-5 text-red-500" />
+                                            อันตราย
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <ul className="space-y-2">
+                                            {(loc.dangers as string[]).map((d: string, i: number) => (
+                                                <li key={i} className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
+                                                    <AlertTriangle className="h-3 w-3" />
+                                                    {d}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </CardContent>
+                                </Card>
+                            )}
+
+                            {/* Secrets Card */}
+                            {loc.secrets && (
+                                <Card className="border-l-4 border-l-purple-500 bg-purple-500/5">
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="flex items-center gap-2 text-lg">
+                                            <Lock className="h-5 w-5 text-purple-500" />
+                                            ความลับ
+                                        </CardTitle>
+                                        <CardDescription>ข้อมูลลับที่ตัวละครอาจค้นพบ</CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <p className="text-sm text-muted-foreground italic">
+                                            🔒 {loc.secrets}
+                                        </p>
+                                    </CardContent>
+                                </Card>
+                            )}
+
+                            {/* History Card */}
+                            {loc.history && (
+                                <Card className="md:col-span-2 border-l-4 border-l-amber-500">
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="flex items-center gap-2 text-lg">
+                                            <History className="h-5 w-5 text-amber-500" />
+                                            ประวัติสถานที่
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <p className="text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                                            {loc.history}
+                                        </p>
+                                    </CardContent>
+                                </Card>
+                            )}
+                        </div>
+
+                        <Separator className="my-8" />
+
+                        {/* Characters Section */}
+                        <div className="grid gap-6 md:grid-cols-2">
+                            <LocationCharacters locationId={location.id} novelId={novelId} />
+
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <Globe className="h-5 w-5" />
+                                        ตัวละครที่ปรากฏ (AI)
                                     </CardTitle>
+                                    <CardDescription>ข้อมูลจากการวิเคราะห์โน้ตอัตโนมัติ</CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <p className="text-muted-foreground italic leading-relaxed">
-                                        "{loc.atmosphere}"
-                                    </p>
+                                    <LocationPresence locationId={location.id} novelId={novelId} />
                                 </CardContent>
                             </Card>
-                        )}
+                        </div>
 
-                        {/* Landmarks Card */}
-                        {loc.landmarks && loc.landmarks.length > 0 && (
-                            <Card className="border-l-4 border-l-blue-500">
-                                <CardHeader className="pb-2">
-                                    <CardTitle className="flex items-center gap-2 text-lg">
-                                        <Landmark className="h-5 w-5 text-blue-500" />
-                                        จุดสังเกต
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <ul className="space-y-2">
-                                        {(loc.landmarks as string[]).map((l: string, i: number) => (
-                                            <li key={i} className="flex items-center gap-2 text-sm">
-                                                <span className="w-2 h-2 rounded-full bg-blue-500" />
-                                                {l}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </CardContent>
-                            </Card>
-                        )}
+                        <Separator className="my-8" />
 
-                        {/* Resources Card */}
-                        {loc.resources && loc.resources.length > 0 && (
-                            <Card className="border-l-4 border-l-emerald-500">
-                                <CardHeader className="pb-2">
-                                    <CardTitle className="flex items-center gap-2 text-lg">
-                                        <Gem className="h-5 w-5 text-emerald-500" />
-                                        ทรัพยากร
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="flex flex-wrap gap-2">
-                                        {(loc.resources as string[]).map((r: string, i: number) => (
-                                            <Badge key={i} className="bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30">
-                                                💎 {r}
-                                            </Badge>
-                                        ))}
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        )}
-
-                        {/* Dangers Card */}
-                        {loc.dangers && loc.dangers.length > 0 && (
-                            <Card className="border-l-4 border-l-red-500">
-                                <CardHeader className="pb-2">
-                                    <CardTitle className="flex items-center gap-2 text-lg">
-                                        <AlertTriangle className="h-5 w-5 text-red-500" />
-                                        อันตราย
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <ul className="space-y-2">
-                                        {(loc.dangers as string[]).map((d: string, i: number) => (
-                                            <li key={i} className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
-                                                <AlertTriangle className="h-3 w-3" />
-                                                {d}
-                                            </li>
-                                        ))}
-                                    </ul>
-                                </CardContent>
-                            </Card>
-                        )}
-
-                        {/* Secrets Card */}
-                        {loc.secrets && (
-                            <Card className="border-l-4 border-l-purple-500 bg-purple-500/5">
-                                <CardHeader className="pb-2">
-                                    <CardTitle className="flex items-center gap-2 text-lg">
-                                        <Lock className="h-5 w-5 text-purple-500" />
-                                        ความลับ
-                                    </CardTitle>
-                                    <CardDescription>ข้อมูลลับที่ตัวละครอาจค้นพบ</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <p className="text-sm text-muted-foreground italic">
-                                        🔒 {loc.secrets}
-                                    </p>
-                                </CardContent>
-                            </Card>
-                        )}
-
-                        {/* History Card */}
-                        {loc.history && (
-                            <Card className="md:col-span-2 border-l-4 border-l-amber-500">
-                                <CardHeader className="pb-2">
-                                    <CardTitle className="flex items-center gap-2 text-lg">
-                                        <History className="h-5 w-5 text-amber-500" />
-                                        ประวัติสถานที่
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <p className="text-muted-foreground whitespace-pre-wrap leading-relaxed">
-                                        {loc.history}
-                                    </p>
-                                </CardContent>
-                            </Card>
-                        )}
-                    </div>
-
-                    <Separator className="my-8" />
-
-                    {/* Characters Section */}
-                    <div className="grid gap-6 md:grid-cols-2">
-                        <LocationCharacters locationId={location.id} novelId={novelId} />
-
+                        {/* Related Events */}
                         <Card>
                             <CardHeader>
-                                <CardTitle className="flex items-center gap-2">
-                                    <Globe className="h-5 w-5" />
-                                    ตัวละครที่ปรากฏ (AI)
-                                </CardTitle>
-                                <CardDescription>ข้อมูลจากการวิเคราะห์โน้ตอัตโนมัติ</CardDescription>
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <CardTitle>Related Events</CardTitle>
+                                        <CardDescription>เหตุการณ์ที่เกิดขึ้นในสถานที่นี้</CardDescription>
+                                    </div>
+                                    <Button variant="outline" size="sm">
+                                        Link Event
+                                    </Button>
+                                </div>
                             </CardHeader>
                             <CardContent>
-                                <LocationPresence locationId={location.id} novelId={novelId} />
+                                <p className="text-muted-foreground text-sm text-center py-8">
+                                    ยังไม่มีเหตุการณ์ที่เชื่อมโยง
+                                </p>
                             </CardContent>
                         </Card>
-                    </div>
+                    </TabsContent>
 
-                    <Separator className="my-8" />
-
-                    {/* Related Events */}
-                    <Card>
-                        <CardHeader>
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <CardTitle>Related Events</CardTitle>
-                                    <CardDescription>เหตุการณ์ที่เกิดขึ้นในสถานที่นี้</CardDescription>
-                                </div>
-                                <Button variant="outline" size="sm">
-                                    Link Event
-                                </Button>
-                            </div>
-                        </CardHeader>
-                        <CardContent>
-                            <p className="text-muted-foreground text-sm text-center py-8">
-                                ยังไม่มีเหตุการณ์ที่เชื่อมโยง
-                            </p>
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-
-                <TabsContent value="ideas">
-                    <EntityIdeasTab
-                        entityType="location"
-                        entityId={location.id}
-                        entityName={location.name}
-                        novelId={novelId}
-                        ideas={ideas}
-                    />
-                </TabsContent>
-            </Tabs >
-        </div >
+                    <TabsContent value="ideas">
+                        <EntityIdeasTab
+                            entityType="location"
+                            entityId={location.id}
+                            entityName={location.name}
+                            novelId={novelId}
+                            ideas={ideas}
+                        />
+                    </TabsContent>
+                </Tabs>
+            </div>
 
             <EditLocationDialog
                 location={location}
                 open={editDialogOpen}
                 onOpenChange={setEditDialogOpen}
             />
-            </>
-            );
+        </>
+    );
 }

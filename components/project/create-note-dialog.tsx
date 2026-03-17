@@ -30,9 +30,10 @@ export function CreateNoteDialog({ novelId, chapterId, trigger }: CreateNoteDial
                 type: "general"
             })
 
-            if (result.success) {
+            if (result.success && result.note) {
                 toast.success("Note created successfully")
-                router.refresh()
+                // Navigate ไปหน้า note ใหม่เลย (SPA navigation ไม่ต้อง reload)
+                router.push(`/dashboard/project/${novelId}/note/${result.note.id}`)
             } else {
                 toast.error(result.message)
             }

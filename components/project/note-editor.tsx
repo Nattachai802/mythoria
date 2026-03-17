@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { Save, ArrowLeft, Trash2, Maximize2, Minimize2, FileText, CheckCircle2, AlertCircle, PanelRightClose, PanelRightOpen, AlignCenter, Cloud, CloudOff, Loader2 } from "lucide-react"
+import { Save, ArrowLeft, Trash2, Maximize2, Minimize2, FileText, CheckCircle2, AlertCircle, PanelRightClose, PanelRightOpen, AlignCenter, Cloud, CloudOff, Loader2, ChevronLeft, ChevronRight, X, MoreHorizontal, Sparkles, History } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
-import { updateNote, deleteNote } from "@/server/note"
+import { updateNote, deleteNote, getOrCreateNextNote, getPreviousNote } from "@/server/note"
 import { createNoteVersion } from "@/server/version-history"
 import { checkWordCountSufficiency, WordCountStatus } from "@/server/word-check"
 import { cn } from "@/lib/utils"
@@ -24,12 +24,14 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { NoteCastDeck } from "@/components/project/note-cast-deck"
 import { ExtractionStatus } from "@/components/project/extraction-status"
 import { CharacterStateEditor } from "@/components/project/character-state-editor"
 import { PlotHoleChecker } from "@/components/project/plot-hole-checker"
 import { VersionHistoryPanel } from "@/components/project/version-history-panel"
 import { NoteSummaryButton } from "@/components/project/note-summary-button"
+import { DriveSyncButton } from "@/components/project/drive-sync-button"
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
 import {
     Tooltip,
@@ -38,14 +40,12 @@ import {
     TooltipTrigger,
 } from "@/components/ui/tooltip"
 
-import 'react-quill-new/dist/quill.snow.css';
+import 'react-quill-new/dist/quill.bubble.css';
 
 const ReactQuill = dynamic(() => import("react-quill-new"), { ssr: false });
 
-/**
- * A4 Page Configuration
- */
-const LINES_PER_PAGE = 35;
+// A4 page: ~1500 characters (including spaces) per page
+const CHARS_PER_PAGE = 1500;
 
 type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error';
 
@@ -61,59 +61,60 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
     const [content, setContent] = useState(note.content?.text || "")
     const [isFocusMode, setIsFocusMode] = useState(false)
     const [isTypewriterMode, setIsTypewriterMode] = useState(true)
-    const [showSidebar, setShowSidebar] = useState(true)
+    const [showSidebar, setShowSidebar] = useState(false)
     const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
     const [showZenControls, setShowZenControls] = useState(false)
     const [wordStatus, setWordStatus] = useState<WordCountStatus | null>(null)
+    const [isNavigating, setIsNavigating] = useState(false)
 
     const editorContainerRef = useRef<HTMLDivElement>(null)
     const currentDataRef = useRef({ title, content })
     const lastSavedDataRef = useRef({ title: note.title, content: note.content?.text || "" })
 
-    // Word count calculation
-    const wordCount = useMemo(() => {
-        const text = content
+    // Document statistics calculation
+    const stats = useMemo(() => {
+        if (!content) return { words: 0, charsWithSpaces: 0, charsWithoutSpaces: 0, pages: 1 };
+
+        const plainText = content
             .replace(/<[^>]*>/g, ' ')
             .replace(/&nbsp;/g, ' ')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/\s+/g, ' ') // Normalize spaces
             .trim();
 
-        if (!text) return 0;
+        const charsWithSpaces = plainText.length;
+        const plainTextNoSpace = plainText.replace(/\s+/g, '');
+        const charsWithoutSpaces = plainTextNoSpace.length;
 
-        if (typeof Intl !== 'undefined' && 'Segmenter' in Intl) {
-            try {
-                const segmenter = new Intl.Segmenter('th', { granularity: 'word' });
-                let count = 0;
-                for (const segment of segmenter.segment(text)) {
-                    if (segment.isWordLike) {
-                        count++;
+        let words = 0;
+        if (plainText) {
+            if (typeof Intl !== 'undefined' && 'Segmenter' in Intl) {
+                try {
+                    const segmenter = new Intl.Segmenter('th', { granularity: 'word' });
+                    for (const segment of segmenter.segment(plainText)) {
+                        if (segment.isWordLike) {
+                            words++;
+                        }
                     }
+                } catch (e) {
+                    words = plainText.split(' ').filter(Boolean).length;
                 }
-                return count;
-            } catch (e) {
-                // Fallback if something goes wrong
+            } else {
+                words = plainText.split(' ').filter(Boolean).length;
             }
         }
 
-        return text.replace(/\s+/g, ' ').trim().split(' ').length;
+        // ประเมินหน้ากระดาษ A4 มาตรฐาน (ประมาณ 1500 ตัวอักษรรวมช่องว่าง ต่อ 1 หน้า แบบไม่แน่นเกินไปเหมาะกับนิยาย)
+        const charsPerPage = 1500;
+        const pages = Math.max(1, Math.ceil(charsWithSpaces / charsPerPage));
+
+        return { words, charsWithSpaces, charsWithoutSpaces, pages };
     }, [content]);
 
-    const lineCount = useMemo(() => {
-        if (!content) return 0;
-        const blockTags = content.match(/<(p|br|li|h[1-6])[^>]*>/gi) || [];
-        let lines = blockTags.length;
-        const plainText = content
-            .replace(/<[^>]*>/g, '')
-            .replace(/&nbsp;/g, ' ')
-            .trim();
-        const CHARS_PER_LINE = 55;
-        const estimatedWrapLines = Math.max(0, Math.floor(plainText.length / CHARS_PER_LINE) - lines);
-        lines += estimatedWrapLines;
-        return Math.max(plainText.length > 0 ? 1 : 0, lines);
-    }, [content]);
-
-    const pageCount = useMemo(() => {
-        return Math.max(1, Math.ceil(lineCount / LINES_PER_PAGE));
-    }, [lineCount]);
+    const wordCount = stats.words;
+    const pageCount = stats.pages;
 
     // Track unsaved changes
     useEffect(() => {
@@ -205,6 +206,63 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
             toast.error("บันทึกไม่สำเร็จ")
         }
     }, [note.id])
+
+    // Navigate to next note (or create one if not exists)
+    // Server action return redirectUrl → client ทำ SPA navigation เอง (เร็วกว่า server redirect)
+    const handleNextNote = async () => {
+        console.log("[NextNote] Button clicked!", { noteId: note.id, novelId, linkedToChapterId: note.linkedToChapterId })
+        setIsNavigating(true)
+        try {
+            // Timeout 10s เพื่อไม่ให้ค้างตลอด
+            console.log("[NextNote] Calling getOrCreateNextNote...")
+            const result = await Promise.race([
+                getOrCreateNextNote(note.id, novelId, note.linkedToChapterId ?? null),
+                new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error("timeout")), 10000)
+                )
+            ])
+            console.log("[NextNote] Server action result:", JSON.stringify(result))
+            if (result.success && result.redirectUrl) {
+                console.log("[NextNote] Navigating to:", result.redirectUrl)
+                router.push(result.redirectUrl)
+            } else {
+                console.log("[NextNote] No redirectUrl or failed:", result.message)
+                toast.error(result.message || "ไม่สามารถไปตอนถัดไปได้")
+                setIsNavigating(false)
+            }
+        } catch (error) {
+            console.error("[NextNote] Error:", error)
+            toast.error(error instanceof Error && error.message === "timeout"
+                ? "ประมวลผลนานเกินไป กรุณาลองใหม่"
+                : "เกิดข้อผิดพลาด")
+            setIsNavigating(false)
+        }
+    }
+
+    // Navigate to previous note in the same chapter
+    const handlePrevNote = async () => {
+        setIsNavigating(true)
+        try {
+            const result = await Promise.race([
+                getPreviousNote(note.id, novelId, note.linkedToChapterId ?? null),
+                new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error("timeout")), 10000)
+                )
+            ])
+            if (result.success && result.redirectUrl) {
+                router.push(result.redirectUrl)
+            } else {
+                toast.info(result.message || "ไม่มีตอนก่อนหน้า")
+                setIsNavigating(false)
+            }
+        } catch (error) {
+            console.error("[PrevNote] Error:", error)
+            toast.error(error instanceof Error && error.message === "timeout"
+                ? "ประมวลผลนานเกินไป กรุณาลองใหม่"
+                : "เกิดข้อผิดพลาด")
+            setIsNavigating(false)
+        }
+    }
 
     // Keyboard shortcuts - Ctrl+S to save
     useKeyboardShortcuts({
@@ -308,7 +366,7 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
     }
 
     const modules = useMemo(() => ({
-        toolbar: isFocusMode ? false : [
+        toolbar: [
             [{ 'header': [1, 2, 3, false] }],
             ['bold', 'italic', 'underline', 'strike'],
             [{ 'list': 'ordered' }, { 'list': 'bullet' }],
@@ -318,7 +376,7 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
         clipboard: {
             matchVisual: true,
         },
-    }), [isFocusMode])
+    }), [])
 
     // Save status indicator component
     const SaveStatusIndicator = () => {
@@ -342,150 +400,75 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
     return (
         <TooltipProvider>
             <div className={cn(
-                "flex flex-col gap-4 transition-all duration-300 bg-background",
+                "flex flex-col transition-all duration-300 bg-background",
                 isFocusMode
                     ? "fixed inset-0 z-50 p-0 h-screen w-screen"
                     : "h-[calc(100vh-4rem)]"
             )}>
-                {/* Header - Hidden in Zen Mode, shows on hover */}
+                {/* Single Header Row — Title + Stats + Actions */}
                 <div className={cn(
-                    "flex flex-col gap-2 border-b pb-3 transition-all duration-300",
-                    isFocusMode && "fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-sm px-4 py-2 border-b",
+                    "flex items-center gap-2 border-b px-2 py-1.5 transition-all duration-300 shrink-0",
+                    isFocusMode && "fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-sm border-b",
                     isFocusMode && !showZenControls && "opacity-0 -translate-y-full pointer-events-none",
-                    isFocusMode && showZenControls && "opacity-100 translate-y-0",
-                    !isFocusMode && "px-0"
+                    isFocusMode && showZenControls && "opacity-100 translate-y-0"
                 )}>
-                    {/* Row 1: Back + Title + Actions */}
-                    <div className="flex items-center gap-3">
-                        <Button variant="ghost" size="icon" className="shrink-0 -ml-2" asChild>
-                            <Link href={`/dashboard/project/${novelId}`}>
-                                <ArrowLeft className="h-4 w-4" />
-                            </Link>
-                        </Button>
-
-                        <Input
-                            value={title}
-                            onChange={(e) => setTitle(e.target.value)}
-                            className="flex-1 text-lg font-semibold border-none shadow-none focus-visible:ring-0 px-0 h-auto bg-transparent"
-                            placeholder="Untitled Note"
-                        />
-
-                        <div className="flex items-center gap-1 shrink-0">
-                            {/* Save Status */}
-                            <SaveStatusIndicator />
-
-                            {/* Typewriter Mode Toggle */}
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button
-                                        variant={isTypewriterMode ? "secondary" : "ghost"}
-                                        size="icon"
-                                        onClick={() => setIsTypewriterMode(!isTypewriterMode)}
-                                    >
-                                        <AlignCenter className="h-4 w-4" />
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                    <p>{isTypewriterMode ? "Disable" : "Enable"} Typewriter Mode</p>
-                                </TooltipContent>
-                            </Tooltip>
-
-                            {/* Focus/Zen Mode Toggle */}
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={() => setIsFocusMode(!isFocusMode)}
-                                    >
-                                        {isFocusMode ? (
-                                            <Minimize2 className="h-4 w-4" />
-                                        ) : (
-                                            <Maximize2 className="h-4 w-4" />
-                                        )}
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                    <p>{isFocusMode ? "Exit Zen Mode" : "Enter Zen Mode"}</p>
-                                </TooltipContent>
-                            </Tooltip>
-
-                            {/* Sidebar Toggle (only outside focus mode) */}
-                            {!isFocusMode && (
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={() => setShowSidebar(!showSidebar)}
-                                        >
-                                            {showSidebar ? (
-                                                <PanelRightClose className="h-4 w-4" />
-                                            ) : (
-                                                <PanelRightOpen className="h-4 w-4" />
-                                            )}
-                                        </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                        <p>{showSidebar ? "Hide" : "Show"} Side Panel</p>
-                                    </TooltipContent>
-                                </Tooltip>
-                            )}
-
-                            {/* Note Summary */}
-                            <NoteSummaryButton
-                                noteId={note.id}
-                                novelId={novelId}
-                                initialSummary={note.summary}
-                            />
-
-                            {/* Version History */}
-                            <VersionHistoryPanel noteId={note.id} novelId={novelId} />
-
-                            <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive">
-                                        <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                            This action cannot be undone. This will permanently delete your note.
-                                        </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                                            Delete
-                                        </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
-
-                            <Button variant="ghost" size="icon" onClick={handleSave} disabled={loading}>
-                                <Save className="h-4 w-4" />
+                    {/* Left: Previous Note + Title */}
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="shrink-0 h-7 w-7 text-muted-foreground hover:text-foreground"
+                                onClick={handlePrevNote}
+                                disabled={isNavigating}
+                            >
+                                {isNavigating ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                    <ArrowLeft className="h-3.5 w-3.5" />
+                                )}
                             </Button>
-                        </div>
-                    </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                            <p>ตอนก่อนหน้า</p>
+                        </TooltipContent>
+                    </Tooltip>
 
-                    {/* Row 2: Stats bar - Minimal (hidden in zen mode) */}
+                    <Input
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        className="flex-1 text-sm font-semibold border-none shadow-none focus-visible:ring-0 focus-visible:border-b-primary px-1 h-7 bg-transparent min-w-[120px] max-w-[300px] border-b border-b-transparent hover:border-b-muted-foreground/30 focus:border-b-primary transition-colors"
+                        placeholder="Untitled Note"
+                    />
+
+                    {/* Center: Stats (inline, compact) */}
                     {!isFocusMode && (
-                        <div className="flex items-center gap-4 text-xs text-muted-foreground px-1">
-                            <div className="flex items-center gap-2">
-                                <span>{wordCount.toLocaleString()} คำ</span>
-                                <span className="opacity-30">·</span>
-                                <span className="flex items-center gap-1">
-                                    <FileText className="h-3 w-3 opacity-50" />
-                                    {pageCount}
-                                </span>
-                            </div>
+                        <div className="hidden sm:flex items-center gap-2 text-[11px] text-muted-foreground shrink-0">
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <div className="flex items-center gap-1.5 cursor-help hover:text-foreground/70 transition-colors">
+                                        <span>{wordCount.toLocaleString()} คำ</span>
+                                        <span className="opacity-30">·</span>
+                                        <FileText className="h-3 w-3 opacity-50" />
+                                        <span>{pageCount}</span>
+                                    </div>
+                                </TooltipTrigger>
+                                <TooltipContent align="center" className="flex flex-col gap-1 text-xs">
+                                    <div className="flex justify-between gap-4">
+                                        <span className="text-muted-foreground">ตัวอักษร (รวมช่องว่าง):</span>
+                                        <span className="font-semibold">{stats.charsWithSpaces.toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex justify-between gap-4">
+                                        <span className="text-muted-foreground">ตัวอักษร (ไม่รวมช่องว่าง):</span>
+                                        <span className="font-semibold">{stats.charsWithoutSpaces.toLocaleString()}</span>
+                                    </div>
+                                </TooltipContent>
+                            </Tooltip>
 
                             {wordStatus && (
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1.5">
                                     <div className={cn(
-                                        "flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium",
+                                        "flex items-center gap-1",
                                         wordStatus.hasEnoughWords
                                             ? "text-emerald-600 dark:text-emerald-400"
                                             : "text-amber-600 dark:text-amber-400"
@@ -500,7 +483,7 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                                     <Progress
                                         value={Math.min(100, wordStatus.percentComplete)}
                                         className={cn(
-                                            "w-16 h-1",
+                                            "w-12 h-1",
                                             wordStatus.hasEnoughWords
                                                 ? "[&>div]:bg-emerald-500"
                                                 : "[&>div]:bg-amber-500"
@@ -510,60 +493,237 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                             )}
 
                             <ExtractionStatus noteId={note.id} />
-
-                            <div className="ml-auto">
-                                <PlotHoleChecker
-                                    novelId={novelId}
-                                    noteId={note.id}
-                                    content={content}
-                                />
-                            </div>
                         </div>
                     )}
+
+                    {/* Right: Action buttons */}
+                    <div className="flex items-center gap-0.5 shrink-0">
+                        <SaveStatusIndicator />
+
+                        {/* More Options Menu (Less frequently used actions) */}
+                        {!isFocusMode && (
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0">
+                                        <MoreHorizontal className="h-3.5 w-3.5" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent align="end" className="w-56 p-2 space-y-1">
+                                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                        ตัวเลือกเพิ่มเติม
+                                    </div>
+                                    <div className="flex flex-col gap-1">
+                                        {/* Plot Hole Checker is a component with its own Collapsible, fits well here */}
+                                        <div className="px-1">
+                                            <PlotHoleChecker
+                                                novelId={novelId}
+                                                noteId={note.id}
+                                                content={content}
+                                            />
+                                        </div>
+
+                                        <NoteSummaryButton
+                                            noteId={note.id}
+                                            novelId={novelId}
+                                            initialSummary={note.summary}
+                                        >
+                                            <Button variant="ghost" className="w-full justify-start h-8 px-2 text-xs font-normal">
+                                                <Sparkles className="h-4 w-4 mr-2" />
+                                                สรุปตอน (AI Summary)
+                                            </Button>
+                                        </NoteSummaryButton>
+
+                                        <VersionHistoryPanel noteId={note.id} novelId={novelId}>
+                                            <Button variant="ghost" className="w-full justify-start h-8 px-2 text-xs font-normal">
+                                                <History className="h-4 w-4 mr-2" />
+                                                ประวัติการแก้ไข
+                                            </Button>
+                                        </VersionHistoryPanel>
+
+                                        <DriveSyncButton noteId={note.id} novelId={novelId} />
+
+                                        <div className="h-px bg-border my-1 mx-2" />
+
+                                        <AlertDialog>
+                                            <AlertDialogTrigger asChild>
+                                                <Button variant="ghost" className="w-full justify-start h-8 px-2 text-xs font-normal text-muted-foreground hover:text-destructive hover:bg-destructive/10">
+                                                    <Trash2 className="h-4 w-4 mr-2" />
+                                                    ลบตอนนี้
+                                                </Button>
+                                            </AlertDialogTrigger>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader>
+                                                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                        This action cannot be undone. This will permanently delete your note.
+                                                    </AlertDialogDescription>
+                                                </AlertDialogHeader>
+                                                <AlertDialogFooter>
+                                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                    <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                                        Delete
+                                                    </AlertDialogAction>
+                                                </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
+                                    </div>
+                                </PopoverContent>
+                            </Popover>
+                        )}
+
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant={isTypewriterMode ? "secondary" : "ghost"}
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={() => setIsTypewriterMode(!isTypewriterMode)}
+                                >
+                                    <AlignCenter className="h-3.5 w-3.5" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p>{isTypewriterMode ? "ปิด Typewriter Mode" : "เปิด Typewriter Mode"}</p>
+                            </TooltipContent>
+                        </Tooltip>
+
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={() => setIsFocusMode(!isFocusMode)}
+                                >
+                                    {isFocusMode ? (
+                                        <Minimize2 className="h-3.5 w-3.5" />
+                                    ) : (
+                                        <Maximize2 className="h-3.5 w-3.5" />
+                                    )}
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p>{isFocusMode ? "ออก Zen Mode" : "เข้า Zen Mode"}</p>
+                            </TooltipContent>
+                        </Tooltip>
+
+                        {!isFocusMode && (
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7"
+                                        onClick={() => setShowSidebar(!showSidebar)}
+                                    >
+                                        {showSidebar ? (
+                                            <PanelRightClose className="h-3.5 w-3.5" />
+                                        ) : (
+                                            <PanelRightOpen className="h-3.5 w-3.5" />
+                                        )}
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                    <p>{showSidebar ? "ซ่อน Sidebar" : "เปิด Sidebar"}</p>
+                                </TooltipContent>
+                            </Tooltip>
+                        )}
+
+
+
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={handleNextNote}
+                                    disabled={isNavigating}
+                                >
+                                    {isNavigating ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                        <ChevronRight className="h-3.5 w-3.5" />
+                                    )}
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p>ตอนถัดไป</p>
+                            </TooltipContent>
+                        </Tooltip>
+
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleSave} disabled={loading}>
+                            <Save className="h-3.5 w-3.5" />
+                        </Button>
+                    </div>
                 </div>
 
-                {/* Main content area */}
+                {/* Main content area — Editor takes full width */}
                 <div className={cn(
-                    "flex-1 flex gap-4 overflow-hidden transition-all duration-300",
+                    "flex-1 overflow-hidden relative transition-all duration-300",
                     isFocusMode && "pt-0"
                 )}>
-                    {/* Editor */}
+                    {/* Editor — always full width */}
                     <div
                         ref={editorContainerRef}
                         className={cn(
-                            "flex-1 h-full overflow-hidden flex flex-col transition-all duration-300",
+                            "h-full overflow-hidden flex flex-col transition-all duration-300",
                             isFocusMode && "max-w-4xl mx-auto w-full px-2 md:px-4 pt-4"
                         )}
                     >
                         <ReactQuill
-                            theme="snow"
+                            theme="bubble"
                             value={content}
                             onChange={setContent}
                             modules={modules}
                             className={cn(
-                                "h-full flex flex-col [&>.ql-container]:flex-1 [&>.ql-container]:overflow-y-auto [&>.ql-container]:text-base",
-                                isFocusMode && "[&>.ql-toolbar]:hidden [&>.ql-container]:border-none [&>.ql-editor]:text-lg [&>.ql-editor]:leading-relaxed"
+                                "h-full flex flex-col [&>.ql-container]:flex-1 [&>.ql-container]:overflow-y-auto [&>.ql-container]:text-base [&>.ql-container]:border-none",
+                                "[&>.ql-editor]:px-4 [&>.ql-editor]:py-3",
+                                isFocusMode && "[&>.ql-editor]:text-lg [&>.ql-editor]:leading-relaxed"
                             )}
                             placeholder="Start writing your scene..."
                         />
                     </div>
 
-                    {/* Collapsible Sidebar */}
+                    {/* Sidebar Overlay — slides over content from the right */}
                     {!isFocusMode && (
-                        <div className={cn(
-                            "shrink-0 flex flex-col gap-4 overflow-hidden transition-all duration-300 ease-in-out",
-                            showSidebar ? "w-80 opacity-100" : "w-0 opacity-0 pointer-events-none"
-                        )}>
-                            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-                                <NoteCastDeck
-                                    noteId={note.id}
-                                    novelId={novelId}
-                                    linkedChapterId={note.linkedToChapterId}
-                                    content={content}
+                        <>
+                            {/* Backdrop */}
+                            {showSidebar && (
+                                <div
+                                    className="absolute inset-0 bg-background/40 backdrop-blur-[1px] z-10 transition-opacity duration-300"
+                                    onClick={() => setShowSidebar(false)}
                                 />
-                                <CharacterStateEditor noteId={note.id} />
+                            )}
+                            {/* Drawer */}
+                            <div className={cn(
+                                "absolute top-0 right-0 h-full w-80 bg-background border-l shadow-xl z-20 transition-transform duration-300 ease-in-out flex flex-col",
+                                showSidebar ? "translate-x-0" : "translate-x-full"
+                            )}>
+                                {/* Drawer header */}
+                                <div className="flex items-center justify-between px-3 py-2 border-b shrink-0">
+                                    <span className="text-xs font-medium text-muted-foreground">Side Panel</span>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6"
+                                        onClick={() => setShowSidebar(false)}
+                                    >
+                                        <X className="h-3.5 w-3.5" />
+                                    </Button>
+                                </div>
+                                {/* Drawer content */}
+                                <div className="flex-1 overflow-y-auto space-y-4 p-3">
+                                    <NoteCastDeck
+                                        noteId={note.id}
+                                        novelId={novelId}
+                                        linkedChapterId={note.linkedToChapterId}
+                                        content={content}
+                                    />
+                                    <CharacterStateEditor noteId={note.id} />
+                                </div>
                             </div>
-                        </div>
+                        </>
                     )}
                 </div>
             </div>

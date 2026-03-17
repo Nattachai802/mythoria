@@ -17,12 +17,14 @@ interface NoteSummaryButtonProps {
     noteId: string;
     novelId: string;
     initialSummary?: string | null;
+    children?: React.ReactNode;
 }
 
 export function NoteSummaryButton({
     noteId,
     novelId,
     initialSummary,
+    children,
 }: NoteSummaryButtonProps) {
     const [summary, setSummary] = useState(initialSummary || "");
     const [isGenerating, setIsGenerating] = useState(false);
@@ -76,17 +78,21 @@ export function NoteSummaryButton({
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
-                <Button
-                    size="icon"
-                    variant="ghost"
-                    className={cn(
-                        "h-8 w-8",
-                        summary && "text-amber-500 hover:text-amber-600"
-                    )}
-                    title={summary ? "ดู/แก้ไข Summary" : "สร้าง Summary ด้วย AI"}
-                >
-                    <Sparkles className="h-4 w-4" />
-                </Button>
+                {children ? (
+                    children
+                ) : (
+                    <Button
+                        size="icon"
+                        variant="ghost"
+                        className={cn(
+                            "h-8 w-8",
+                            summary && "text-amber-500 hover:text-amber-600"
+                        )}
+                        title={summary ? "ดู/แก้ไข Summary" : "สร้าง Summary ด้วย AI"}
+                    >
+                        <Sparkles className="h-4 w-4" />
+                    </Button>
+                )}
             </PopoverTrigger>
             <PopoverContent className="w-80" align="end">
                 <div className="space-y-3">

@@ -2,7 +2,7 @@
 
 import { db } from "@/db/drizzle";
 import { ideas, ideaConnections, Idea } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
 import { CACHE_TAGS, CACHE_DURATION } from "@/lib/cache-config";
 
@@ -290,12 +290,19 @@ export async function createIdeaConnection(data: {
     sourceIdeaId: string;
     targetIdeaId: string;
     novelId: string;
+    connectionType?: string; // "related" | "ancestor"
     label?: string;
 }) {
     try {
         const [connection] = await db
             .insert(ideaConnections)
-            .values(data)
+            .values({
+                sourceIdeaId: data.sourceIdeaId,
+                targetIdeaId: data.targetIdeaId,
+                novelId: data.novelId,
+                connectionType: data.connectionType || "related",
+                label: data.label,
+            })
             .returning();
 
         revalidatePath(`/dashboard/project/${data.novelId}/idea`);
@@ -318,6 +325,118 @@ export async function getIdeaConnectionsByNovelId(novelId: string) {
     } catch (error) {
         console.error("Error fetching idea connections:", error);
         return { success: false, error: "Failed to fetch connections" };
+    }
+}
+
+// Get ancestor ideas for a specific idea (ideas that motivated/caused this idea)
+// "ไอเดียนี้เกิดจากอะไร?"
+export async function getAncestorIdeas(ideaId: string) {
+    try {
+        const connections = await db
+            .select({
+                connectionId: ideaConnections.id,
+                ancestorIdeaId: ideaConnections.targetIdeaId,
+                label: ideaConnections.label,
+                createdAt: ideaConnections.createdAt,
+            })
+            .from(ideaConnections)
+            .where(
+                and(
+                    eq(ideaConnections.sourceIdeaId, ideaId),
+                    eq(ideaConnections.connectionType, "ancestor")
+                )
+            );
+
+        // Fetch full ancestor idea details
+        if (connections.length === 0) {
+            return { success: true, data: [] };
+        }
+
+        const ancestorIds = connections.map(c => c.ancestorIdeaId);
+        const ancestorIdeas = await db
+            .select()
+            .from(ideas)
+            .where(inArray(ideas.id, ancestorIds));
+
+        // Merge connection data with idea data
+        const result = connections.map(conn => {
+            const idea = ancestorIdeas.find(i => i.id === conn.ancestorIdeaId);
+            return {
+                connectionId: conn.connectionId,
+                label: conn.label,
+                idea: idea || null,
+            };
+        });
+
+        return { success: true, data: result };
+    } catch (error) {
+        console.error("Error fetching ancestor ideas:", error);
+        return { success: false, error: "Failed to fetch ancestor ideas" };
+    }
+}
+
+// Get descendant ideas for a specific idea (ideas caused by this idea)
+// "ไอเดียนี้ส่งผลให้เกิดอะไรบ้าง?"
+export async function getDescendantIdeas(ideaId: string) {
+    try {
+        const connections = await db
+            .select({
+                connectionId: ideaConnections.id,
+                descendantIdeaId: ideaConnections.sourceIdeaId,
+                label: ideaConnections.label,
+                createdAt: ideaConnections.createdAt,
+            })
+            .from(ideaConnections)
+            .where(
+                and(
+                    eq(ideaConnections.targetIdeaId, ideaId),
+                    eq(ideaConnections.connectionType, "ancestor")
+                )
+            );
+
+        if (connections.length === 0) {
+            return { success: true, data: [] };
+        }
+
+        const descendantIds = connections.map(c => c.descendantIdeaId);
+        const descendantIdeas = await db
+            .select()
+            .from(ideas)
+            .where(inArray(ideas.id, descendantIds));
+
+        const result = connections.map(conn => {
+            const idea = descendantIdeas.find(i => i.id === conn.descendantIdeaId);
+            return {
+                connectionId: conn.connectionId,
+                label: conn.label,
+                idea: idea || null,
+            };
+        });
+
+        return { success: true, data: result };
+    } catch (error) {
+        console.error("Error fetching descendant ideas:", error);
+        return { success: false, error: "Failed to fetch descendant ideas" };
+    }
+}
+
+// Get all ancestor-type connections for a novel (for canvas visualization)
+export async function getAncestorConnectionsByNovelId(novelId: string) {
+    try {
+        const connections = await db
+            .select()
+            .from(ideaConnections)
+            .where(
+                and(
+                    eq(ideaConnections.novelId, novelId),
+                    eq(ideaConnections.connectionType, "ancestor")
+                )
+            );
+
+        return { success: true, data: connections };
+    } catch (error) {
+        console.error("Error fetching ancestor connections:", error);
+        return { success: false, error: "Failed to fetch ancestor connections" };
     }
 }
 
