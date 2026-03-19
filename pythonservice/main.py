@@ -733,6 +733,36 @@ async def check_all_notes_stream(novel_id: str):
         }
     )
 
+# ============================================
+# STYLOMETRY ANALYSIS ENDPOINTS
+# ============================================
+
+from stylometry import analyze_single_chapter_style
+
+class StyleAnalyzeRequest(BaseModel):
+    novel_id: str
+    chapter_text: str
+    character_names: list[str] = []
+
+@app.post("/analyze-chapter-style")
+async def analyze_chapter_style_endpoint(request: StyleAnalyzeRequest):
+    """Analyze writing style, author voice, and mood for a single chapter"""
+    try:
+        content_text = extract_plain_text(request.chapter_text)
+        if not content_text.strip():
+            return {"success": False, "error": "Empty chapter text"}
+            
+        result = analyze_single_chapter_style(
+            text=content_text,
+            character_names=request.character_names
+        )
+        return {"success": True, "style_metrics": result}
+    except Exception as e:
+        print(f"[AnalyzeStyle] Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
 
 if __name__ == "__main__":
     import uvicorn
