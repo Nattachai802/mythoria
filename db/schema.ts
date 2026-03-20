@@ -950,6 +950,26 @@ export const driveCredentials = pgTable("drive_credentials", {
     .notNull(),
 });
 
+// Note Stylometry Analysis Results (For individual scenes/episodes)
+export const noteStylometry = pgTable("note_stylometry", {
+    id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+    noteId: text("note_id")
+        .notNull()
+        .references(() => notes.id, { onDelete: "cascade" }),
+    novelId: text("novel_id")
+        .notNull()
+        .references(() => novels.id, { onDelete: "cascade" }),
+
+    // Detailed Metrics (JSONB)
+    pacingAndMood: jsonb("pacing_and_mood"),
+    authorNarrationStyle: jsonb("author_narration_style"),
+    characterDialogueVibes: jsonb("character_dialogue_vibes"),
+    lexicalRichness: jsonb("lexical_richness"),
+    chapterAnatomy: jsonb("chapter_anatomy"),
+
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // ============================================
 // RELATIONS
 // ============================================
@@ -981,6 +1001,10 @@ export const chapterRelations = relations(chapters, ({ one, many }) => ({
   chapterTags: many(chapterTags),
   notes: many(notes),
   characters: many(chapterCharacters),
+    chapterStylometry: one(chapterStylometry, {
+        fields: [chapters.id],
+        references: [chapterStylometry.chapterId],
+    }),
 }));
 
 export const characterRelations = relations(characters, ({ one, many }) => ({
@@ -1397,6 +1421,45 @@ export const locationEntityRelations = relations(locationEntities, ({ one }) => 
 
 export type User = typeof user.$inferSelect;
 export type Novel = typeof novels.$inferSelect;
+// ============================================
+// STYLOMETRY ANALYTICS MAPPING
+// ============================================
+
+export const chapterStylometry = pgTable("chapter_stylometry", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  chapterId: text("chapter_id")
+    .notNull()
+    .unique()
+    .references(() => chapters.id, { onDelete: "cascade" }),
+  novelId: text("novel_id")
+    .notNull()
+    .references(() => novels.id, { onDelete: "cascade" }),
+  
+  // Data retrieved from Python API
+  pacingAndMood: jsonb("pacing_and_mood"),
+  authorNarrationStyle: jsonb("author_narration_style"),
+  characterDialogueVibes: jsonb("character_dialogue_vibes"),
+  lexicalRichness: jsonb("lexical_richness"),
+  chapterAnatomy: jsonb("chapter_anatomy"),
+  
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+export const chapterStylometryRelations = relations(chapterStylometry, ({ one }) => ({
+  chapter: one(chapters, {
+    fields: [chapterStylometry.chapterId],
+    references: [chapters.id],
+  }),
+  novel: one(novels, {
+    fields: [chapterStylometry.novelId],
+    references: [novels.id],
+  }),
+}));
+
 export type Chapter = typeof chapters.$inferSelect;
 export type Character = typeof characters.$inferSelect;
 export type Location = typeof locations.$inferSelect;
@@ -1467,6 +1530,8 @@ export const schema = {
   verification,
   novels,
   chapters,
+  chapterStylometry,
+  noteStylometry,
   characters,
   characterRelationships,
   locations,
@@ -1481,6 +1546,7 @@ export const schema = {
   userRelations,
   novelRelations,
   chapterRelations,
+  chapterStylometryRelations,
   characterRelations,
   locationRelations,
   locationConnectionRelations,

@@ -43,6 +43,8 @@ import { VectorSyncButton } from "@/components/project/vector-sync-button"
 import { PlotHoleJobButton } from "@/components/project/plot-hole-job-button"
 import { PublishAssistant } from "@/components/project/publish-assistant"
 import { ExportDialog } from "@/components/project/export-dialog"
+import { StylometryBulkAnalyzeButton } from "@/components/project/stylometry-bulk-analyze-button"
+import { getNovelStylometry } from "@/server/stylometry"
 import { cn } from "@/lib/utils"
 
 type Props = {
@@ -81,13 +83,14 @@ export default async function ProjectOverviewPage({ params }: Props) {
     const { id } = await params
 
     // Parallel fetching with light queries
-    const [novelResult, notesResult, ideasCountResult, streakResult, summaryResult, activityResult] = await Promise.all([
+    const [novelResult, notesResult, ideasCountResult, streakResult, summaryResult, activityResult, stylometryResult] = await Promise.all([
         getNovelByIdLight(id),
         getNotes(id),
         getIdeasCount(id),
         getWritingStreak(id),
         getAnalyticsSummary(id),
         getWritingActivity(id, 14), // Last 14 days for mini calendar
+        getNovelStylometry(id),
     ])
 
     if (!novelResult.success || !novelResult.novel) {
@@ -100,6 +103,19 @@ export default async function ProjectOverviewPage({ params }: Props) {
     const streak = streakResult
     const analytics = summaryResult.summary
     const activityData = activityResult.activity || []
+    const analyzedNoteIds = new Set((stylometryResult.data || []).map((s: any) => s.noteId))
+
+    // Filtering for Stylometry dashboard selection
+    const filterableNotes = notes.filter(n => {
+        // Must have title and not be "Untitled Note"
+        const hasTitle = n.title && n.title.toLowerCase() !== "untitled note" && n.title.trim() !== ""
+        // Must be linked to a chapter
+        const isLinked = !!n.linkedToChapterId
+        // Must not be already analyzed
+        const isNotAnalyzed = !analyzedNoteIds.has(n.id)
+
+        return hasTitle && isLinked && isNotAnalyzed
+    })
 
     // Calculate stats
     const totalWords = novel.wordCount || 0
@@ -252,6 +268,26 @@ export default async function ProjectOverviewPage({ params }: Props) {
                             </div>
                             <p className="text-xs text-muted-foreground mb-2">วิเคราะห์ความสอดคล้องของเนื้อเรื่อง</p>
                             <PlotHoleJobButton novelId={id} />
+                        </div>
+
+                        {/* Stylometry Bulk Analyze Card */}
+                        <div className="p-3 rounded-lg bg-gradient-to-br from-indigo-500/10 to-violet-500/10 border border-indigo-200/50 dark:border-indigo-800/50">
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                    <div className="p-1.5 rounded-md bg-indigo-500/20">
+                                        <BarChart3 className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                                    </div>
+                                    <span className="text-sm font-medium">วิเคราะห์ลีลาการเขียน</span>
+                                </div>
+                            </div>
+                            <p className="text-xs text-muted-foreground mb-2">ประมวลผลสไตล์และอารมณ์ (รายโน้ต)</p>
+                            <StylometryBulkAnalyzeButton 
+                                novelId={id} 
+                                notes={filterableNotes.map(n => ({ id: n.id, title: n.title, linkedToChapterId: n.linkedToChapterId }))} 
+                                chapters={novel.chapters.map((c: any) => ({ id: c.id, title: c.title }))}
+                                totalNotesCount={notes.filter(n => !!n.linkedToChapterId).length}
+                                analyzedCount={analyzedNoteIds.size}
+                            />
                         </div>
                     </div>
                 </div>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { Save, ArrowLeft, Trash2, Maximize2, Minimize2, FileText, CheckCircle2, AlertCircle, PanelRightClose, PanelRightOpen, AlignCenter, Cloud, CloudOff, Loader2, ChevronLeft, ChevronRight, X, MoreHorizontal, Sparkles, History } from "lucide-react"
+import { Save, ArrowLeft, Trash2, Maximize2, Minimize2, FileText, CheckCircle2, AlertCircle, PanelRightClose, PanelRightOpen, AlignCenter, Cloud, CloudOff, Loader2, ChevronLeft, ChevronRight, X, MoreHorizontal, Sparkles, History, BarChart } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
@@ -66,6 +66,7 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
     const [showZenControls, setShowZenControls] = useState(false)
     const [wordStatus, setWordStatus] = useState<WordCountStatus | null>(null)
     const [isNavigating, setIsNavigating] = useState(false)
+    const [isAnalyzing, setIsAnalyzing] = useState(false)
 
     const editorContainerRef = useRef<HTMLDivElement>(null)
     const currentDataRef = useRef({ title, content })
@@ -263,6 +264,28 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
             setIsNavigating(false)
         }
     }
+
+    const handleAnalyze = async () => {
+        setIsAnalyzing(true);
+        try {
+            await manualSave();
+            
+            const res = await fetch(`/api/novel/${novelId}/note/${note.id}/stylometry`, {
+                method: 'POST',
+            });
+            const data = await res.json();
+            
+            if (data.success) {
+                toast.success("วิเคราะห์อารมณ์และลีลาการเขียนสำเร็จ");
+            } else {
+                toast.error(data.error || "เกิดข้อผิดพลาดในการวิเคราะห์");
+            }
+        } catch (e) {
+            toast.error("เชื่อมต่อระบบวิเคราะห์ล้มเหลว");
+        } finally {
+            setIsAnalyzing(false);
+        }
+    };
 
     // Keyboard shortcuts - Ctrl+S to save
     useKeyboardShortcuts({
@@ -513,6 +536,16 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                                         ตัวเลือกเพิ่มเติม
                                     </div>
                                     <div className="flex flex-col gap-1">
+                                        <Button 
+                                            variant="ghost" 
+                                            className="w-full justify-start h-8 px-2 text-xs font-normal"
+                                            onClick={handleAnalyze}
+                                            disabled={isAnalyzing}
+                                        >
+                                            <BarChart className="h-4 w-4 mr-2" />
+                                            {isAnalyzing ? "กำลังวิเคราะห์..." : "วิเคราะห์ลีลาการเขียน"}
+                                        </Button>
+                                        
                                         {/* Plot Hole Checker is a component with its own Collapsible, fits well here */}
                                         <div className="px-1">
                                             <PlotHoleChecker

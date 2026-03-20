@@ -15,6 +15,7 @@ import {
     MessageSquareText,
     Zap,
     Globe,
+    BarChart3,
 } from "lucide-react"
 
 import {
@@ -57,6 +58,7 @@ export function ProjectSidebar({ projectId, projectTitle, chapters = [] }: Proje
         { title: "Ideas", href: `/dashboard/project/${projectId}/idea`, icon: MessageSquareText },
         { title: "World Building", href: `/dashboard/project/${projectId}/worldbuilding`, icon: Globe },
         { title: "Powers", href: `/dashboard/project/${projectId}/powers`, icon: Zap },
+        { title: "Analytics", href: `/dashboard/project/${projectId}/analytics`, icon: BarChart3 },
     ]
 
     const publishedChapters = chapters.filter(c => c.status === "published")

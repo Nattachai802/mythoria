@@ -583,8 +583,8 @@ def analyze_single_chapter_style(text: str, character_names: List[str] = None) -
         character_names = []
         
     # 1. แยกแยะบทบรรยาย และ บทสนทนา
-    extractor = DialogExtractor()
-    extracted = extractor.extract(text, character_names)
+    extractor = DialogExtractor(character_names)
+    extracted = extractor.extract(text)
     
     dialogues_list = [d["text"] for d in extracted if d["is_dialog"]]
     dialogue_text = "\n".join(dialogues_list)
@@ -605,8 +605,10 @@ def analyze_single_chapter_style(text: str, character_names: List[str] = None) -
     char_vibes = particle_analyzer.analyze(dialogue_text)
     
     # 5. วิเคราะห์คลังคำศัพท์ (Lexical Richness) ของผู้แต่ง
+    import string
     all_tokens = word_tokenize(text, engine="newmm", keep_whitespace=False)
-    filtered_tokens = [t for t in all_tokens if t.strip() and t not in punct_analyzer.punct_tags.values()]
+    exclude_chars = set(punct_analyzer.PUNCT_MAP.keys()) | set(string.punctuation)
+    filtered_tokens = [t for t in all_tokens if t.strip() and t not in exclude_chars]
     unique_tokens = set(filtered_tokens)
     
     total_words = len(filtered_tokens)

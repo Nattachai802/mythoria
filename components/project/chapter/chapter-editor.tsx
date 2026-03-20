@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Save, BarChart3 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import dynamic from "next/dynamic";
@@ -56,6 +56,7 @@ export function ChapterEditor({ chapter, novelId }: ChapterEditorProps) {
     const [title, setTitle] = useState(chapter.title);
     const [content, setContent] = useState(chapter.content?.text || ""); // Assuming content structure
     const [isSaving, setIsSaving] = useState(false);
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
 
     // Calculate word count
     const wordCount = useMemo(() => countWords(content), [content]);
@@ -75,6 +76,30 @@ export function ChapterEditor({ chapter, novelId }: ChapterEditorProps) {
             toast.error("Failed to save");
         }
         setIsSaving(false);
+    };
+
+    const handleAnalyze = async () => {
+        setIsAnalyzing(true);
+        try {
+            // Save first to get latest content
+            await handleSave();
+            
+            const res = await fetch(`/api/novel/${novelId}/chapter/${chapter.id}/stylometry`, {
+                method: 'POST',
+            });
+            const data = await res.json();
+            
+            if (data.success) {
+                toast.success("วิเคราะห์อารมณ์และลีลาการเขียนสำเร็จ");
+                console.log("Stylometry metrics:", data.data);
+            } else {
+                toast.error(data.error || "เกิดข้อผิดพลาดในการวิเคราะห์");
+            }
+        } catch (e) {
+            toast.error("เชื่อมต่อระบบวิเคราะห์ล้มเหลว");
+        } finally {
+            setIsAnalyzing(false);
+        }
     };
 
     const modules = useMemo(() => ({
@@ -110,7 +135,11 @@ export function ChapterEditor({ chapter, novelId }: ChapterEditorProps) {
                     <div className="text-sm text-muted-foreground">
                         {wordCount.toLocaleString()} words
                     </div>
-                    <Button onClick={handleSave} disabled={isSaving}>
+                    <Button variant="outline" onClick={handleAnalyze} disabled={isAnalyzing || isSaving} className="bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200">
+                        <BarChart3 className="h-4 w-4 mr-2" />
+                        {isAnalyzing ? "กำลังวิเคราะห์..." : "วิเคราะห์ลีลาการเขียน"}
+                    </Button>
+                    <Button onClick={handleSave} disabled={isSaving || isAnalyzing}>
                         <Save className="h-4 w-4 mr-2" />
                         {isSaving ? "Saving..." : "Save"}
                     </Button>

@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { ActivityCalendar } from "@/components/analytics/activity-calendar";
 import { WordsChart } from "@/components/analytics/words-chart";
+import { StylometryDashboard } from "@/components/analytics/stylometry-dashboard";
+import { getNovelStylometry } from "@/server/stylometry";
 
 interface AnalyticsPageProps {
     params: Promise<{ id: string }>;
@@ -24,12 +26,13 @@ interface AnalyticsPageProps {
 export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
     const { id: novelId } = await params;
 
-    const [novelResult, activityResult, wordsResult, streakResult, summaryResult] = await Promise.all([
+    const [novelResult, activityResult, wordsResult, streakResult, summaryResult, stylometryResult] = await Promise.all([
         getNovelByIdSimple(novelId),
         getWritingActivity(novelId, 90),
         getWordsPerDay(novelId, 7),
         getWritingStreak(novelId),
         getAnalyticsSummary(novelId),
+        getNovelStylometry(novelId),
     ]);
 
     if (!novelResult.success || !novelResult.novel) {
@@ -41,6 +44,7 @@ export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
     const wordsPerDay = wordsResult.data || [];
     const streak = streakResult;
     const summary = summaryResult.summary;
+    const stylometryData = stylometryResult.success ? stylometryResult.data : [];
 
     return (
         <div className="p-8 space-y-8">
@@ -199,6 +203,10 @@ export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
                     </CardContent>
                 </Card>
             </div>
+
+            <hr className="my-8" />
+            
+            <StylometryDashboard data={stylometryData as any} />
         </div>
     );
 }
