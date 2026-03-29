@@ -52,9 +52,17 @@ export function ChapterDriveSyncButton({ novelId, chapterId, notes }: ChapterDri
                         body: JSON.stringify({ noteId: note.id }),
                     });
 
-                    if (!syncRes.ok) throw new Error();
+                    if (!syncRes.ok) {
+                        const errData = await syncRes.json().catch(() => ({}));
+                        if (errData.code === "auth_expired") {
+                            // Stop everything — token expired for all notes
+                            throw new Error("auth_expired");
+                        }
+                        throw new Error(errData.error || "Failed");
+                    }
                     successCount++;
-                } catch {
+                } catch (err: any) {
+                    if (err.message === "auth_expired") throw err; // bubble up
                     failCount++;
                 }
             }
@@ -67,7 +75,16 @@ export function ChapterDriveSyncButton({ novelId, chapterId, notes }: ChapterDri
 
         } catch (error: any) {
             console.error(error);
-            if (error.message.includes("connected")) {
+            if (error.message === "auth_expired") {
+                toast.error("Token ของ Google Drive หมดอายุแล้ว กรุณาเชื่อมต่อใหม่อีกครั้ง", {
+                    id: toastId,
+                    duration: 8000,
+                    action: {
+                        label: "เชื่อมต่อ Drive ใหม่",
+                        onClick: () => window.open(`/dashboard/settings`, "_blank")
+                    }
+                });
+            } else if (error.message?.includes("connected")) {
                 toast.error("คุณจะต้องเชื่อมต่อ Google Drive ในหน้ารายละเอียดของนิยายก่อน", {
                     id: toastId,
                     duration: 5000,

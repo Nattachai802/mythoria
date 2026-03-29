@@ -966,6 +966,7 @@ export const noteStylometry = pgTable("note_stylometry", {
     characterDialogueVibes: jsonb("character_dialogue_vibes"),
     lexicalRichness: jsonb("lexical_richness"),
     chapterAnatomy: jsonb("chapter_anatomy"),
+    fingerprintAnalysis: jsonb("fingerprint_analysis"), // { similarity_score, status, alerts, is_anomaly }
 
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });

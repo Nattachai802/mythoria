@@ -57,7 +57,38 @@ export async function POST(
 
     const { style_metrics } = result;
 
-    // 4. Save to Database (noteStylometry table)
+    // 4. Author Fingerprint Analysis (Against previous work)
+    let fingerprintAnalysis = null;
+    try {
+        // Fetch previous stylometry analysis for this novel
+        const historyData = await db.query.noteStylometry.findMany({
+            where: eq(noteStylometry.novelId, novelId),
+            orderBy: (stylometry, { asc }) => [asc(stylometry.createdAt)],
+        });
+
+        if (historyData.length > 0) {
+            const fingerprintResponse = await fetch("http://localhost:8000/analyze-fingerprint", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    history: historyData,
+                    current_metrics: style_metrics
+                })
+            });
+
+            if (fingerprintResponse.ok) {
+                const fpResult = await fingerprintResponse.json();
+                if (fpResult.success) {
+                    fingerprintAnalysis = fpResult.fingerprint_analysis;
+                }
+            }
+        }
+    } catch (fpError) {
+        console.error("[Fingerprint Analysis Error]:", fpError);
+        // Don't fail the whole request if fingerprinting fails
+    }
+
+    // 5. Save to Database (noteStylometry table)
     const existing = await db.query.noteStylometry.findFirst({
         where: eq(noteStylometry.noteId, noteId)
     });
@@ -70,6 +101,7 @@ export async function POST(
               characterDialogueVibes: style_metrics.character_dialogue_vibes,
               lexicalRichness: style_metrics.lexical_richness,
               chapterAnatomy: style_metrics.chapter_anatomy,
+              fingerprintAnalysis: fingerprintAnalysis,
           })
           .where(and(eq(noteStylometry.id, existing.id), eq(noteStylometry.novelId, novelId)));
     } else {
@@ -81,10 +113,11 @@ export async function POST(
             characterDialogueVibes: style_metrics.character_dialogue_vibes,
             lexicalRichness: style_metrics.lexical_richness,
             chapterAnatomy: style_metrics.chapter_anatomy,
+            fingerprintAnalysis: fingerprintAnalysis,
         });
     }
 
-    return NextResponse.json({ success: true, data: style_metrics });
+    return NextResponse.json({ success: true, data: { ...style_metrics, fingerprintAnalysis } });
 
   } catch (error: any) {
     console.error("[Note Stylometry Error]:", error);

@@ -1,26 +1,117 @@
 "use client";
 
+import { useState, useMemo, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { BarChart3, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface StylometryData {
     id: string;
-    chapterId: string;
+    noteId: string;
     chapterTitle: string;
-    orderIndex: number;
     pacingAndMood: any;
     authorNarrationStyle: any;
     characterDialogueVibes: any;
     lexicalRichness: any;
     chapterAnatomy: any;
+    createdAt: string | Date;
+    fingerprintAnalysis?: {
+        similarity_score: number;
+        status: string;
+        is_anomaly: boolean;
+        feature_details: Array<{ feature: string; z_score: number; status: string }>;
+        alerts: Array<{ feature: string; z_score: number; message: string }>;
+    };
 }
 
 interface StylometryDashboardProps {
     data: StylometryData[];
 }
 
+const FEATURES = [
+    {
+        key: "ttr",
+        label: "ความหลากหลายของคลังคำ (TTR)",
+        shortLabel: "คลังคำ TTR",
+        unit: "%",
+        color: "#8b5cf6",
+        extract: (d: StylometryData) => d.lexicalRichness?.type_token_ratio_percentage ?? null,
+    },
+    {
+        key: "punct",
+        label: "ความหนาแน่นของเครื่องหมาย",
+        shortLabel: "เครื่องหมาย",
+        unit: "/1k",
+        color: "#0ea5e9",
+        extract: (d: StylometryData) => d.pacingAndMood?.total_density_per_1k ?? null,
+    },
+    {
+        key: "sentlen",
+        label: "ความยาวประโยคเฉลี่ย",
+        shortLabel: "ยาวประโยค",
+        unit: "คำ",
+        color: "#f59e0b",
+        extract: (d: StylometryData) => d.chapterAnatomy?.avg_words_per_sentence ?? null,
+    },
+    {
+        key: "dialogue",
+        label: "สัดส่วนบทสนทนา",
+        shortLabel: "บทสนทนา",
+        unit: "%",
+        color: "#10b981",
+        extract: (d: StylometryData) => d.chapterAnatomy?.dialogue_ratio_percentage ?? null,
+    },
+    {
+        key: "particle",
+        label: "ความหนาแน่นของคำลงท้าย",
+        shortLabel: "คำลงท้าย",
+        unit: "/1k",
+        color: "#ec4899",
+        extract: (d: StylometryData) => {
+            const total = d.lexicalRichness?.total_words ?? 0;
+            const particles = d.characterDialogueVibes?.total_particles ?? 0;
+            return total > 0 ? Math.round((particles / total) * 1000 * 10) / 10 : null;
+        },
+    },
+];
+
+function computeZScores(data: StylometryData[], feat: typeof FEATURES[0]) {
+    const vals = data.map(d => feat.extract(d));
+    const valid = vals.filter((v): v is number => v !== null);
+    if (valid.length < 2) return vals.map(() => ({ z: 0, raw: null as number | null }));
+    const mean = valid.reduce((a, b) => a + b, 0) / valid.length;
+    const std = Math.sqrt(valid.reduce((a, b) => a + (b - mean) ** 2, 0) / valid.length) || 0.001;
+    return vals.map(v => ({
+        z: v !== null ? parseFloat(((v - mean) / std).toFixed(2)) : 0,
+        raw: v,
+    }));
+}
+
 export function StylometryDashboard({ data }: StylometryDashboardProps) {
+    const [visibleFeatures, setVisibleFeatures] = useState<Set<string>>(
+        new Set(FEATURES.map(f => f.key))
+    );
+    const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+    const svgRef = useRef<SVGSVGElement>(null);
+
+    const toggleFeature = (key: string) => {
+        setVisibleFeatures(prev => {
+            const next = new Set(prev);
+            if (next.has(key)) {
+                if (next.size === 1) return next; // keep at least one
+                next.delete(key);
+            } else {
+                next.add(key);
+            }
+            return next;
+        });
+    };
+
+    const featureZScores = useMemo(
+        () => FEATURES.map(f => ({ key: f.key, scores: computeZScores(data, f) })),
+        [data]
+    );
+
     if (!data || data.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center p-12 mt-8 text-center border rounded-lg border-dashed bg-muted/20">
@@ -33,191 +124,309 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
         );
     }
 
+    // ─── SVG layout ───────────────────────────────────────────────────────────
+    const svgW = 900;
+    const svgH = 280;
+    const padL = 44, padR = 20, padT = 28, padB = 40;
+    const chartW = svgW - padL - padR;
+    const chartH = svgH - padT - padB;
+
+    // Y from -3 SD to +3 SD
+    const yMin = -3, yMax = 3, yRange = yMax - yMin;
+    const toX = (i: number) => padL + (data.length < 2 ? chartW / 2 : (i / (data.length - 1)) * chartW);
+    const toY = (z: number) => padT + chartH - ((Math.max(yMin, Math.min(yMax, z)) - yMin) / yRange) * chartH;
+
+    const yTicks = [-2, -1, 0, 1, 2];
+
+    const buildPath = (scores: { z: number; raw: number | null }[]) => {
+        const pts = scores.map((s, i) => ({ x: toX(i), y: toY(s.z), valid: s.raw !== null }));
+        return pts.reduce((acc, p, i) => {
+            if (!p.valid) return acc;
+            if (i === 0 || !pts[i - 1].valid) return acc + `M${p.x},${p.y}`;
+            const prev = pts[i - 1];
+            const cpX = (prev.x + p.x) / 2;
+            return acc + ` C${cpX},${prev.y} ${cpX},${p.y} ${p.x},${p.y}`;
+        }, "");
+    };
+
+    const hoverX = hoveredIdx !== null ? toX(hoveredIdx) : null;
+
     return (
-        <div className="space-y-8 mt-4">
-            <div className="flex items-center justify-between border-b pb-4">
+        <div className="space-y-8 mt-4 pb-20">
+            {/* Header */}
+            <div className="flex items-start justify-between border-b pb-4">
                 <div>
                     <h2 className="text-2xl font-bold">วิเคราะห์ลีลาการเขียน (Stylometry)</h2>
                     <p className="text-muted-foreground mt-1 text-sm">
-                        ภาพรวมสไตล์การเล่าเรื่อง, อารมณ์, และการใช้คำศัพท์เปรียบเทียบแต่ละตอน
+                        เปรียบเทียบคุณลักษณะการเขียนรายตอน — เห็นชัดว่าตอนไหนเปลี่ยนไปจากสไตล์ปกติของคุณ
                     </p>
                 </div>
-                <div className="text-sm px-4 py-2 bg-purple-50 text-purple-700 rounded-lg flex gap-2 items-center">
+                <div className="text-sm px-4 py-2 bg-purple-50 text-purple-700 rounded-lg flex gap-2 items-center shrink-0 ml-4">
                     <Info className="w-4 h-4" />
-                    วิเคราะห์แล้ว {data.length} ตอน
+                    {data.length} ตอน
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card className="col-span-1 md:col-span-2">
-                    <CardHeader>
-                        <CardTitle>ความหลากหลายของคำศัพท์ (Lexical Richness / TTR)</CardTitle>
-                        <CardDescription>กราฟแสดงสัดส่วนคำศัพท์ไม่ซ้ำ (Unique Words) เปรียบเทียบกับจำนวนคำทั้งหมดของแต่ละตอน ยิ่งสูงยิ่งใช้ศัพท์หลากหลาย</CardDescription>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                        {(() => {
-                            const ttrValues = data.map(i => i.lexicalRichness?.type_token_ratio_percentage || 0);
-                            const maxTTR = Math.max(...ttrValues);
-                            const minTTR = Math.min(...ttrValues);
-                            const maxIdx = ttrValues.indexOf(maxTTR);
-                            const minIdx = ttrValues.indexOf(minTTR);
-                            
-                            const svgW = 1000;
-                            const svgH = 180;
-                            const padL = 48, padR = 24, padT = 20, padB = 24;
-                            const chartW = svgW - padL - padR;
-                            const chartH = svgH - padT - padB;
-                            const range = (maxTTR - minTTR) || 1;
-                            
-                            const toX = (idx: number) => padL + (idx / (data.length - 1 || 1)) * chartW;
-                            const toY = (val: number) => padT + chartH - ((val - minTTR) / range) * chartH;
+            {/* ── Main Multi-line Chart ── */}
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle>Style Profile ตลอดทั้งเรื่อง</CardTitle>
+                    <CardDescription>
+                        แกน Y = ค่าเบี่ยงเบน (Z-Score) จากค่าเฉลี่ยสไตล์ของคุณ — เส้นที่ขึ้น/ลงแรงคือตอนที่เปลี่ยนไปมากกว่าปกติ
+                    </CardDescription>
 
-                            const points = data.map((item, idx) => ({
-                                x: toX(idx),
-                                y: toY(item.lexicalRichness?.type_token_ratio_percentage || 0),
-                                ttr: item.lexicalRichness?.type_token_ratio_percentage || 0,
-                                title: item.chapterTitle,
-                                id: item.id,
-                            }));
-
-                            // Smooth cubic bezier path
-                            const pathD = points.reduce((acc, p, i) => {
-                                if (i === 0) return `M${p.x},${p.y}`;
-                                const prev = points[i - 1];
-                                const cpX = (prev.x + p.x) / 2;
-                                return acc + ` C${cpX},${prev.y} ${cpX},${p.y} ${p.x},${p.y}`;
-                            }, '');
-                            
-                            const areaD = pathD + ` L${points[points.length-1].x},${padT + chartH} L${padL},${padT + chartH} Z`;
-
+                    {/* Feature toggles */}
+                    <div className="flex flex-wrap gap-2 mt-3">
+                        {FEATURES.map(f => {
+                            const active = visibleFeatures.has(f.key);
                             return (
-                                <div className="relative rounded-xl overflow-hidden bg-muted/30 border border-border/50 p-4">
-                                    <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full" style={{ height: 180 }}>
-                                        <defs>
-                                            <linearGradient id="ttr-line-gradient" x1="0" y1="0" x2="1" y2="0">
-                                                <stop offset="0%" stopColor="hsl(252,87%,73%)" />
-                                                <stop offset="100%" stopColor="hsl(199,89%,60%)" />
-                                            </linearGradient>
-                                            <linearGradient id="ttr-area-gradient" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="0%" stopColor="hsl(252,87%,73%)" stopOpacity="0.18" />
-                                                <stop offset="100%" stopColor="hsl(252,87%,73%)" stopOpacity="0" />
-                                            </linearGradient>
-                                            <filter id="glow">
-                                                <feGaussianBlur stdDeviation="2" result="blur" />
-                                                <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-                                            </filter>
-                                        </defs>
+                                <button
+                                    key={f.key}
+                                    onClick={() => toggleFeature(f.key)}
+                                    className={cn(
+                                        "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all select-none",
+                                        active
+                                            ? "text-white shadow border-transparent"
+                                            : "bg-muted/50 text-muted-foreground border-border opacity-50 hover:opacity-80"
+                                    )}
+                                    style={active ? { backgroundColor: f.color, borderColor: f.color } : {}}
+                                >
+                                    <span
+                                        className="w-2 h-2 rounded-full shrink-0"
+                                        style={{ backgroundColor: active ? "white" : f.color }}
+                                    />
+                                    {f.shortLabel}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </CardHeader>
 
-                                        {/* Y-axis grid lines */}
-                                        {[0, 0.5, 1].map((pct) => {
-                                            const y = padT + chartH * (1 - pct);
-                                            const val = minTTR + pct * range;
+                <CardContent className="pt-0">
+                    <div
+                        className="relative rounded-xl border border-border/40 bg-muted/10 overflow-hidden select-none"
+                    >
+                        <svg
+                            ref={svgRef}
+                            viewBox={`0 0 ${svgW} ${svgH}`}
+                            className="w-full block"
+                            style={{ aspectRatio: `${svgW} / ${svgH}` }}
+                            onMouseMove={e => {
+                                const rect = svgRef.current?.getBoundingClientRect();
+                                if (!rect) return;
+                                const relX = (e.clientX - rect.left) / rect.width * svgW;
+                                const idx = Math.round((relX - padL) / (chartW / (data.length - 1 || 1)));
+                                setHoveredIdx(Math.max(0, Math.min(data.length - 1, idx)));
+                            }}
+                            onMouseLeave={() => setHoveredIdx(null)}
+                        >
+                            <defs>
+                                <clipPath id="chart-clip">
+                                    <rect x={padL} y={padT} width={chartW} height={chartH} />
+                                </clipPath>
+                            </defs>
+
+                            {/* Anomaly zones ±1.96 */}
+                            <rect x={padL} y={padT} width={chartW} height={toY(3) - toY(yMax)} fill="hsl(0,80%,55%)" fillOpacity="0.04" />
+                            <rect x={padL} y={toY(yMin)} width={chartW} height={toY(yMin) - toY(-2)} fill="hsl(0,80%,55%)" fillOpacity="0.04" />
+
+                            {/* Normal band -1 to +1 */}
+                            <rect
+                                x={padL} y={toY(1)} width={chartW} height={toY(-1) - toY(1)}
+                                fill="hsl(142,60%,50%)" fillOpacity="0.07"
+                            />
+
+                            {/* Y-axis ticks */}
+                            {yTicks.map(z => {
+                                const y = toY(z);
+                                const isMid = z === 0;
+                                const isThreshold = Math.abs(z) === 2;
+                                return (
+                                    <g key={z}>
+                                        <line
+                                            x1={padL} y1={y} x2={svgW - padR} y2={y}
+                                            stroke={isMid ? "hsl(142,55%,45%)" : isThreshold ? "hsl(0,70%,55%)" : "currentColor"}
+                                            strokeWidth={isMid ? 1 : 0.5}
+                                            strokeDasharray={isMid ? "4 6" : isThreshold ? "3 4" : "2 6"}
+                                            opacity={isMid ? 0.5 : isThreshold ? 0.35 : 0.2}
+                                            className={isMid ? "" : "text-muted-foreground"}
+                                        />
+                                        <text x={padL - 6} y={y + 4} textAnchor="end" fontSize="9"
+                                            fill={isMid ? "hsl(142,55%,45%)" : isThreshold ? "hsl(0,65%,55%)" : "hsl(0,0%,60%)"}
+                                            fontWeight={isMid ? "700" : "400"}>
+                                            {z > 0 ? `+${z}` : z}
+                                        </text>
+                                    </g>
+                                );
+                            })}
+
+                            {/* Labels */}
+                            <text x={padL + 4} y={toY(1) - 4} fontSize="8" fill="hsl(142,55%,45%)" opacity="0.7">โซนปกติ</text>
+                            <text x={padL + 4} y={toY(2) - 4} fontSize="8" fill="hsl(0,65%,55%)" opacity="0.7">ผิดปกติ (&gt;2 SD)</text>
+
+                            {/* Hover crosshair */}
+                            {hoverX !== null && (
+                                <line x1={hoverX} y1={padT} x2={hoverX} y2={padT + chartH}
+                                    stroke="currentColor" strokeWidth="0.7" strokeDasharray="3 4"
+                                    className="text-muted-foreground/40" />
+                            )}
+
+                            {/* Lines per feature */}
+                            {FEATURES.filter(f => visibleFeatures.has(f.key)).map(f => {
+                                const scores = featureZScores.find(s => s.key === f.key)!.scores;
+                                const path = buildPath(scores);
+                                return (
+                                    <g key={f.key} clipPath="url(#chart-clip)">
+                                        {/* Glow */}
+                                        <path d={path} fill="none" stroke={f.color} strokeWidth="5" opacity="0.12" strokeLinecap="round" />
+                                        {/* Main line */}
+                                        <path d={path} fill="none" stroke={f.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity="0.9" />
+                                        {/* Dots */}
+                                        {scores.map((s, i) => {
+                                            if (s.raw === null) return null;
+                                            const isHover = hoveredIdx === i;
+                                            const isAnomaly = Math.abs(s.z) >= 1.96;
+                                            const isDrift = Math.abs(s.z) >= 1.0;
                                             return (
-                                                <g key={pct}>
-                                                    <line x1={padL} y1={y} x2={svgW - padR} y2={y} stroke="currentColor" strokeWidth="0.5" strokeDasharray="4 6" className="text-muted-foreground/20" />
-                                                    <text x={padL - 6} y={y + 4} textAnchor="end" fontSize="10" className="fill-muted-foreground/50 font-mono">{val.toFixed(0)}%</text>
-                                                </g>
+                                                <circle
+                                                    key={i}
+                                                    cx={toX(i)} cy={toY(s.z)}
+                                                    r={isHover ? 6 : isAnomaly ? 5 : isDrift ? 4 : 3}
+                                                    fill={f.color}
+                                                    stroke="white"
+                                                    strokeWidth={isHover || isAnomaly ? 2 : 1}
+                                                    opacity={isHover ? 1 : isAnomaly ? 0.9 : 0.7}
+                                                />
                                             );
                                         })}
+                                    </g>
+                                );
+                            })}
 
-                                        {/* Area fill */}
-                                        <path d={areaD} fill="url(#ttr-area-gradient)" />
+                            {/* X-axis chapter labels */}
+                            {data.map((d, i) => (
+                                <text
+                                    key={i}
+                                    x={toX(i)} y={padT + chartH + 16}
+                                    textAnchor="middle" fontSize="9"
+                                    fill={hoveredIdx === i ? "hsl(252,80%,55%)" : "hsl(0,0%,60%)"}
+                                    fontWeight={hoveredIdx === i ? "700" : "400"}
+                                >
+                                    {i + 1}
+                                </text>
+                            ))}
+                        </svg>
 
-                                        {/* Main line with gradient stroke */}
-                                        <path d={pathD} fill="none" stroke="url(#ttr-line-gradient)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" filter="url(#glow)" />
-
-                                        {/* All dots */}
-                                        {points.map((p, i) => (
-                                            <circle key={p.id} cx={p.x} cy={p.y} r="3" fill="hsl(252,87%,73%)" opacity="0.5">
-                                                <title>{`${p.title}: ${p.ttr}%`}</title>
-                                            </circle>
-                                        ))}
-
-                                        {/* Max highlight */}
-                                        <circle cx={points[maxIdx].x} cy={points[maxIdx].y} r="6" fill="hsl(142,72%,50%)" opacity="0.9" filter="url(#glow)">
-                                            <title>{`สูงสุด: ${points[maxIdx].title} (${maxTTR}%)`}</title>
-                                        </circle>
-                                        <text x={points[maxIdx].x} y={points[maxIdx].y - 10} textAnchor="middle" fontSize="10" fill="hsl(142,72%,50%)" fontWeight="600">{maxTTR}%</text>
-
-                                        {/* Min highlight */}
-                                        <circle cx={points[minIdx].x} cy={points[minIdx].y} r="6" fill="hsl(0,72%,65%)" opacity="0.9" filter="url(#glow)">
-                                            <title>{`ต่ำสุด: ${points[minIdx].title} (${minTTR}%)`}</title>
-                                        </circle>
-                                        <text x={points[minIdx].x} y={points[minIdx].y + 18} textAnchor="middle" fontSize="10" fill="hsl(0,72%,65%)" fontWeight="600">{minTTR}%</text>
-                                    </svg>
-                                    
-                                    <div className="flex items-center justify-between mt-1 px-1">
-                                        <span className="text-[10px] text-muted-foreground/50 tracking-widest uppercase"># 1</span>
-                                        <div className="flex items-center gap-4">
-                                            <span className="flex items-center gap-1.5 text-[10px] text-emerald-500"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />สูงสุด</span>
-                                            <span className="flex items-center gap-1.5 text-[10px] text-rose-400"><span className="w-2 h-2 rounded-full bg-rose-400 inline-block" />ต่ำสุด</span>
-                                        </div>
-                                        <span className="text-[10px] text-muted-foreground/50 tracking-widest uppercase"># {data.length}</span>
+                        {/* Hover Tooltip */}
+                        {hoveredIdx !== null && (() => {
+                            const chapter = data[hoveredIdx];
+                            return (
+                                <div className="absolute top-3 right-3 bg-background/95 backdrop-blur border border-border rounded-xl shadow-lg p-3 min-w-[200px] pointer-events-none">
+                                    <div className="font-semibold text-sm mb-2 truncate max-w-[180px]">
+                                        {hoveredIdx + 1}. {chapter.chapterTitle}
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        {FEATURES.filter(f => visibleFeatures.has(f.key)).map(f => {
+                                            const s = featureZScores.find(x => x.key === f.key)!.scores[hoveredIdx];
+                                            const isAnomaly = Math.abs(s.z) >= 1.96;
+                                            const isDrift = Math.abs(s.z) >= 1.0;
+                                            return (
+                                                <div key={f.key} className="flex items-center justify-between gap-3">
+                                                    <div className="flex items-center gap-1.5 min-w-0">
+                                                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: f.color }} />
+                                                        <span className="text-[10px] text-muted-foreground truncate">{f.shortLabel}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5 shrink-0 text-right">
+                                                        <span className="text-[10px] text-muted-foreground font-mono">
+                                                            {s.raw?.toFixed(1)}{f.unit}
+                                                        </span>
+                                                        <span className={cn(
+                                                            "text-[10px] font-bold font-mono",
+                                                            isAnomaly ? "text-red-500" : isDrift ? "text-amber-500" : "text-emerald-500"
+                                                        )}>
+                                                            ({s.z > 0 ? "+" : ""}{s.z.toFixed(2)})
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             );
                         })()}
-                    </CardContent>
-                </Card>
+                    </div>
 
-                <Card className="col-span-1">
+                    {/* Legend */}
+                    <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 mt-3 text-[10px] text-muted-foreground">
+                        <span>แกน Y = ค่าเบี่ยงเบน (SD) จากค่าเฉลี่ย</span>
+                        <span className="flex items-center gap-1"><span className="w-3 h-px bg-emerald-500/40 border-b border-dashed border-emerald-500/50 inline-block" />โซนปกติ (0 ±1)</span>
+                        <span className="flex items-center gap-1 text-red-400/70"><span className="w-3 h-px bg-red-400/50 border-b border-dashed border-red-400/50 inline-block" />ผิดปกติ (±2)</span>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Bottom 2-col */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Card>
                     <CardHeader>
-                        <CardTitle>จังหวะการเดินเรื่อง (Showing vs Telling)</CardTitle>
-                        <CardDescription>ดุลยภาพระหว่างบทบรรยายและบทสนทนา</CardDescription>
+                        <CardTitle>สัดส่วนบรรยาย vs สนทนา</CardTitle>
+                        <CardDescription>ดุลยภาพระหว่างบทบรรยายและบทสนทนาในแต่ละตอน</CardDescription>
                     </CardHeader>
                     <CardContent>
-                       <div className="space-y-5">
+                        <div className="space-y-4">
                             {data.map((item) => {
-                               const dialogRatio = item.chapterAnatomy?.dialogue_ratio_percentage || 0;
-                               const narrationRatio = item.chapterAnatomy?.narration_ratio_percentage || 0;
-                               return (
-                                   <div key={item.id} className="space-y-1.5">
+                                const dialogRatio = item.chapterAnatomy?.dialogue_ratio_percentage || 0;
+                                const narrationRatio = item.chapterAnatomy?.narration_ratio_percentage || 0;
+                                return (
+                                    <div key={item.id} className="space-y-1.5">
                                         <div className="flex justify-between text-sm">
-                                            <span className="font-medium truncate max-w-[150px]" title={item.chapterTitle}>{item.chapterTitle}</span>
-                                            <span className="text-xs text-muted-foreground">{item.chapterAnatomy?.genre_prediction_hint?.split(' ')[0] || "N/A"}</span>
+                                            <span className="font-medium truncate max-w-[160px]" title={item.chapterTitle}>{item.chapterTitle}</span>
+                                            <span className="text-xs text-muted-foreground shrink-0 ml-2">
+                                                บรรยาย {narrationRatio}% / สนทนา {dialogRatio}%
+                                            </span>
                                         </div>
-                                        <div className="h-3 w-full bg-slate-100 rounded-full flex overflow-hidden">
-                                            <div className="bg-blue-400 h-full" style={{ width: `${narrationRatio}%` }} title={`บรรยาย ${narrationRatio}%`} />
-                                            <div className="bg-emerald-400 h-full" style={{ width: `${dialogRatio}%` }} title={`สนทนา ${dialogRatio}%`} />
+                                        <div className="h-2.5 w-full bg-slate-100 rounded-full flex overflow-hidden">
+                                            <div className="bg-blue-400 h-full" style={{ width: `${narrationRatio}%` }} />
+                                            <div className="bg-emerald-400 h-full" style={{ width: `${dialogRatio}%` }} />
                                         </div>
-                                   </div>
-                               )
-                           })}
-                       </div>
-                       <div className="flex gap-4 mt-6 text-sm text-muted-foreground justify-center">
-                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-sm bg-blue-400" /> บทบรรยาย</div>
-                            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-sm bg-emerald-400" /> บทสนทนา</div>
-                       </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        <div className="flex gap-4 mt-5 text-xs text-muted-foreground justify-center">
+                            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-blue-400" />บทบรรยาย</span>
+                            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-emerald-400" />บทสนทนา</span>
+                        </div>
                     </CardContent>
                 </Card>
 
-                <Card className="col-span-1">
+                <Card>
                     <CardHeader>
-                        <CardTitle>อารมณ์และบรรยากาศ (Pacing & Mood)</CardTitle>
-                        <CardDescription>การประเมินจากเครื่องหมายวรรคตอนและน้ำเสียง</CardDescription>
+                        <CardTitle>อารมณ์และบรรยากาศรายตอน</CardTitle>
+                        <CardDescription>น้ำเสียงภาพรวมและบรรยากาศตัวละครที่ระบบประเมิน</CardDescription>
                     </CardHeader>
                     <CardContent>
-                       <div className="space-y-4">
+                        <div className="space-y-3">
                             {data.map((item) => {
-                               const mood = item.pacingAndMood?.vibe || "ไม่มีข้อมูล";
-                               const charVibe = item.characterDialogueVibes?.vibe || "ไม่มีข้อมูล";
-                               return (
-                                   <div key={item.id} className="p-3 rounded-lg border bg-card text-card-foreground shadow-sm">
+                                const mood = item.pacingAndMood?.vibe || "ไม่มีข้อมูล";
+                                const charVibe = item.characterDialogueVibes?.vibe || "ไม่มีข้อมูล";
+                                return (
+                                    <div key={item.id} className="p-3 rounded-lg border bg-card shadow-sm">
                                         <h4 className="font-medium text-sm mb-2">{item.chapterTitle}</h4>
                                         <div className="grid grid-cols-2 gap-2 text-xs">
                                             <div>
-                                                <span className="text-muted-foreground block mb-1">ภาพรวมของตอน</span>
-                                                <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 font-medium text-slate-700">{mood.split('(')[0]}</span>
+                                                <span className="text-muted-foreground block mb-1">ภาพรวมตอน</span>
+                                                <span className="inline-flex rounded-md bg-slate-100 px-2 py-1 font-medium text-slate-700">{mood.split('(')[0].trim()}</span>
                                             </div>
                                             <div>
                                                 <span className="text-muted-foreground block mb-1">บรรยากาศตัวละคร</span>
-                                                <span className="inline-flex items-center rounded-md bg-purple-50 px-2 py-1 font-medium text-purple-700">{charVibe.split('(')[0]}</span>
+                                                <span className="inline-flex rounded-md bg-purple-50 px-2 py-1 font-medium text-purple-700">{charVibe.split('(')[0].trim()}</span>
                                             </div>
                                         </div>
-                                   </div>
-                               )
-                           })}
-                       </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </CardContent>
                 </Card>
             </div>

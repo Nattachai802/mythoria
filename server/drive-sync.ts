@@ -157,16 +157,43 @@ export async function syncNoteToDrive(noteId: string, forceContent?: string) {
     // ==========================================
 
     const localModifiedAt = new Date(note.updatedAt).getTime();
-    const lastSyncedAtTime = syncRecord.lastSyncedAt ? new Date(syncRecord.lastSyncedAt).getTime() : 0;
     
     // 1. Get Remote Metadata
     let remoteModifiedAtStr: string | null | undefined = null;
+    let isRemoteMissing = false;
+
     try {
-        remoteModifiedAtStr = await getDocMetadata(syncRecord.googleDocId);
-    } catch (e) {
+        const meta = await getDocMetadata(syncRecord.googleDocId);
+        if (meta.trashed) {
+            isRemoteMissing = true;
+            console.log("Document is in trash. Recreating...");
+        } else {
+            remoteModifiedAtStr = meta.modifiedTime;
+        }
+    } catch (e: any) {
         console.warn("Could not get Google Doc metadata", e);
+        if (e.code === 404 || e.status === 404) {
+            isRemoteMissing = true;
+            console.log("Document not found (404). Recreating...");
+        }
     }
-    
+
+    if (isRemoteMissing) {
+        // Recreate the document since it was deleted by the user in Drive
+        const newDocId = await createDoc(note.title, settings.rootFolderId);
+        if (!newDocId) {
+            throw new Error("Failed to re-create Google Doc");
+        }
+        await db.update(driveSync)
+            .set({ googleDocId: newDocId, lastSyncedAt: null }) // Reset sync time to force push
+            .where(eq(driveSync.id, syncRecord.id));
+        
+        syncRecord.googleDocId = newDocId;
+        syncRecord.lastSyncedAt = null; // Forces local to look newer
+        remoteModifiedAtStr = null;
+    }
+
+    const lastSyncedAtTime = syncRecord.lastSyncedAt ? new Date(syncRecord.lastSyncedAt).getTime() : 0;
     const remoteModifiedAt = remoteModifiedAtStr ? new Date(remoteModifiedAtStr).getTime() : 0;
 
     // Buffer 5 วินาที เคลียร์ความคลาดเคลื่อนของเวลาเซิร์ฟเวอร์

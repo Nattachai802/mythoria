@@ -56,6 +56,7 @@ class AuthorFingerprint:
     def analyze_drift(self, metrics: Dict[str, float], threshold: float = 0.80) -> Dict[str, Any]:
         similarity = self.calculate_similarity(metrics)
         alerts = []
+        feature_details = []
         
         if self.stats:
             for feature in self.FEATURE_CONFIG:
@@ -64,18 +65,26 @@ class AuthorFingerprint:
                 mean, std = self.stats[key]["mean"], self.stats[key]["std"]
                 z = (val - mean) / std
                 
+                # Full details for every feature
+                feature_details.append({
+                    "feature": feature["label"],
+                    "z_score": round(z, 2),
+                    "status": "Stable" if abs(z) <= 1.0 else ("Drifting" if abs(z) <= 1.96 else "Anomaly")
+                })
+                
                 if abs(z) > 1.96:
                     direction = "เพิ่มขึ้น" if z > 0 else "ลดลง"
                     alerts.append({
                         "feature": feature["label"],
                         "z_score": round(z, 2),
-                        "message": f"ค่า {feature['label']} {direction} ผิดปกติ ({round(abs(z), 1)} เท่าของความเหวี่ยงปกติ)"
+                        "message": f"ค่า {feature['label']} {direction} ผิดปกติ ({round(abs(z), 1)} SD)"
                     })
 
         return {
             "similarity_score": similarity,
             "status": "Stable" if similarity >= threshold else "Drifting",
             "alerts": alerts,
+            "feature_details": feature_details,
             "is_anomaly": similarity < threshold
         }
 

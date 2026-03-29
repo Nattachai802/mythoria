@@ -18,6 +18,8 @@ from lance_client import (
     search_similar,
     count_by_novel_id,
 )
+from author_fingerprint_discovery import AuthorFingerprint
+from stylometry import analyze_single_chapter_style
 
 load_dotenv()
 
@@ -761,6 +763,66 @@ async def analyze_chapter_style_endpoint(request: StyleAnalyzeRequest):
         print(f"[AnalyzeStyle] Error: {e}")
         import traceback
         traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+class FingerprintRequest(BaseModel):
+    history: list[dict]
+    current_metrics: dict
+
+
+@app.post("/analyze-fingerprint")
+async def analyze_fingerprint_endpoint(request: FingerprintRequest):
+    """Analyze author writing style drift based on history and current metrics"""
+    try:
+        # Extract metrics from history list
+        history_metrics = [AuthorFingerprint.extract_metrics(h) for h in request.history]
+        
+        # Initialize analyzer with history
+        fingerprint = AuthorFingerprint(history=history_metrics)
+        
+        # Extract current metrics
+        current = AuthorFingerprint.extract_metrics(request.current_metrics)
+        
+        # Analyze drift
+        result = fingerprint.analyze_drift(current)
+        
+        return {"success": True, "fingerprint_analysis": result}
+    except Exception as e:
+        print(f"[Fingerprint] Error: {e}")
+        return {"success": False, "error": str(e)}
+
+
+class BulkFingerprintRequest(BaseModel):
+    items: list[dict]
+
+
+@app.post("/analyze-fingerprint-bulk")
+async def analyze_fingerprint_bulk_endpoint(request: BulkFingerprintRequest):
+    """Analyze author writing style drift for a sequence of items"""
+    try:
+        results = []
+        history_pool = []
+        
+        # In bulk mode, we analyze each item against all items BEFORE it in the list
+        for i, item in enumerate(request.items):
+            current_metrics = AuthorFingerprint.extract_metrics(item)
+            
+            # Analyze against history pool
+            fingerprint = AuthorFingerprint(history=history_pool)
+            analysis = fingerprint.analyze_drift(current_metrics)
+            
+            results.append({
+                "id": item.get("id"),
+                "fingerprint_analysis": analysis
+            })
+            
+            # Add current to pool for NEXT item
+            history_pool.append(current_metrics)
+            
+        return {"success": True, "results": results}
+    except Exception as e:
+        print(f"[BulkFingerprint] Error: {e}")
         return {"success": False, "error": str(e)}
 
 

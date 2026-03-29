@@ -124,7 +124,10 @@ export async function updateDocContent(docId: string, html: string) {
 export async function getDocMetadata(docId: string) {
   const response = await drive.files.get({
     fileId: docId,
-    fields: 'modifiedTime',
+    fields: 'modifiedTime, trashed',
   });
-  return response.data.modifiedTime;
+  return {
+    modifiedTime: response.data.modifiedTime,
+    trashed: response.data.trashed,
+  };
 }
