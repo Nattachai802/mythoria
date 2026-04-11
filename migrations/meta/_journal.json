@@ -71,6 +71,13 @@
       "when": 1773415647880,
       "tag": "0009_lively_piledriver",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1775743139170,
+      "tag": "0010_blushing_chameleon",
+      "breakpoints": true
     }
   ]
 }

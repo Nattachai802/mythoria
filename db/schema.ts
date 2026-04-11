@@ -971,6 +971,21 @@ export const noteStylometry = pgTable("note_stylometry", {
     createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// AI Reviews Table
+export const aiChapterReviews = pgTable("ai_chapter_reviews", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  noteId: text("note_id")
+    .notNull()
+    .references(() => notes.id, { onDelete: "cascade" }),
+  novelId: text("novel_id")
+    .notNull()
+    .references(() => novels.id, { onDelete: "cascade" }),
+  persona: integer("persona").notNull(),
+  personaName: text("persona_name").notNull(), // e.g. "🥰 แฟนคลับเบอร์หนึ่ง"
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // ============================================
 // RELATIONS
 // ============================================
@@ -1092,6 +1107,7 @@ export const noteRelations = relations(notes, ({ one, many }) => ({
     references: [locations.id],
   }),
   characters: many(noteCharacters),
+  aiReviews: many(aiChapterReviews),
 }));
 
 export const tagRelations = relations(tags, ({ one, many }) => ({
@@ -1342,6 +1358,17 @@ export const aiSuggestionRelations = relations(aiSuggestions, ({ one }) => ({
   }),
 }));
 
+export const aiChapterReviewRelations = relations(aiChapterReviews, ({ one }) => ({
+  note: one(notes, {
+    fields: [aiChapterReviews.noteId],
+    references: [notes.id],
+  }),
+  novel: one(novels, {
+    fields: [aiChapterReviews.novelId],
+    references: [novels.id],
+  }),
+}));
+
 // World Building Relations
 export const itemRelations = relations(items, ({ one }) => ({
   novel: one(novels, {
@@ -1476,6 +1503,7 @@ export type StateExtractionQueue = typeof stateExtractionQueue.$inferSelect;
 export type Idea = typeof ideas.$inferSelect;
 export type IdeaConnection = typeof ideaConnections.$inferSelect;
 export type SceneElementDetails = typeof sceneElementDetails.$inferSelect;
+export type AIChapterReview = typeof aiChapterReviews.$inferSelect;
 
 export type InsertNovel = typeof novels.$inferInsert;
 export type InsertChapter = typeof chapters.$inferInsert;
@@ -1505,6 +1533,7 @@ export type CharacterAnalysisQueue = typeof characterAnalysisQueue.$inferSelect;
 export type AISuggestion = typeof aiSuggestions.$inferSelect;
 export type InsertCharacterAnalysisQueue = typeof characterAnalysisQueue.$inferInsert;
 export type InsertAISuggestion = typeof aiSuggestions.$inferInsert;
+export type InsertAIChapterReview = typeof aiChapterReviews.$inferInsert;
 
 // Drive Credentials Types
 export type DriveCredentials = typeof driveCredentials.$inferSelect;
@@ -1544,6 +1573,7 @@ export const schema = {
   factions,
   characterFactions,
   aliasCache,
+  aiChapterReviews,
   userRelations,
   novelRelations,
   chapterRelations,
@@ -1582,6 +1612,7 @@ export const schema = {
   characterAnalysisQueueRelations,
   aiSuggestions,
   aiSuggestionRelations,
+  aiChapterReviewRelations,
   relationshipHistory,
   relationshipHistoryRelations,
   characterLifeEvents,

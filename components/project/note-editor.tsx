@@ -32,6 +32,7 @@ import { PlotHoleChecker } from "@/components/project/plot-hole-checker"
 import { VersionHistoryPanel } from "@/components/project/version-history-panel"
 import { NoteSummaryButton } from "@/components/project/note-summary-button"
 import { DriveSyncButton } from "@/components/project/drive-sync-button"
+import { AIReviewPanel } from "@/components/project/ai-review-panel"
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
 import {
     Tooltip,
@@ -754,6 +755,7 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                                         content={content}
                                     />
                                     <CharacterStateEditor noteId={note.id} />
+                                    <AIReviewPanel noteId={note.id} novelId={novelId} />
                                 </div>
                             </div>
                         </>

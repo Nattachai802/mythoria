@@ -40,7 +40,7 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-3">
             <Button variant="ghost" asChild className="hidden sm:flex">
-              <Link href="/sign-in">Sign In</Link>
+              <Link href="/login">Sign In</Link>
             </Button>
             <Button asChild className="bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700">
               <Link href="/dashboard">
@@ -106,46 +106,46 @@ export default function Home() {
           <div className="text-center mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold mb-4">Everything You Need to Write</h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              From initial idea to final draft, Mythoria gives you powerful tools to craft your best work.
+              From initial idea to final draft, Mythoria gives you powerful, state-of-the-art tools to craft your best work.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <FeatureCard
-              icon={<Users className="w-6 h-6" />}
-              title="Character Builder"
-              description="Create complex characters with detailed traits, backstories, relationships, and track their development."
+              icon={<Brain className="w-6 h-6" />}
+              title="Author Fingerprint & Stylometry"
+              description="AI analyzes your vocabulary richness, sentence length, and pacing to ensure your unique writing style never drifts off course."
               gradient="from-pink-500 to-rose-500"
             />
             <FeatureCard
               icon={<GitBranch className="w-6 h-6" />}
-              title="Plot Visualization"
-              description="Visualize your story structure with interactive timeline and plot boards. Never lose track of your narrative."
-              gradient="from-violet-500 to-purple-500"
-            />
-            <FeatureCard
-              icon={<Map className="w-6 h-6" />}
-              title="World Building"
-              description="Build immersive worlds with locations, lore, and interconnected elements all linked to your story."
-              gradient="from-emerald-500 to-teal-500"
-            />
-            <FeatureCard
-              icon={<Lightbulb className="w-6 h-6" />}
-              title="Ideas Vault"
-              description="Capture and organize your creative sparks. Tag, categorize, and link ideas to chapters instantly."
-              gradient="from-amber-500 to-orange-500"
-            />
-            <FeatureCard
-              icon={<Brain className="w-6 h-6" />}
-              title="AI Assistant"
-              description="Get intelligent suggestions, plot hole detection, and character consistency checks powered by AI."
+              title="Two-Way Google Drive Sync"
+              description="Automatically sync your chapters to Google Docs. Edit anywhere—our smart 3-way merge engine handles conflicts seamlessly."
               gradient="from-blue-500 to-cyan-500"
             />
             <FeatureCard
               icon={<Layers className="w-6 h-6" />}
-              title="Note System"
-              description="Rich text editor with auto-save, version history, and seamless organization across chapters."
+              title="Immersive Writing Studio"
+              description="Write without distractions using Zen Mode and Typewriter Mode. Track every change with detailed version history."
               gradient="from-indigo-500 to-violet-500"
+            />
+            <FeatureCard
+              icon={<Map className="w-6 h-6" />}
+              title="Deep World Building"
+              description="Create rich Characters, Locations, Items, and Powers. Keep all your lore interconnected and accessible instantly."
+              gradient="from-emerald-500 to-teal-500"
+            />
+            <FeatureCard
+              icon={<Lightbulb className="w-6 h-6" />}
+              title="Interactive Ideas Board"
+              description="A visual kanban board for your creative sparks. Attach entities, tag storylines, and link ideas directly to your chapters."
+              gradient="from-amber-500 to-orange-500"
+            />
+            <FeatureCard
+              icon={<PenTool className="w-6 h-6" />}
+              title="Drag & Drop Organization"
+              description="Restructure your entire novel effortlessly. Drag and drop chapters, reorder folders, and keep your narrative flowing perfectly."
+              gradient="from-violet-500 to-purple-500"
             />
           </div>
         </div>
@@ -157,25 +157,25 @@ export default function Home() {
           <div className="text-center mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold mb-4">How It Works</h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Get started in minutes and bring your stories to life.
+              A comprehensive workflow built specifically for novelists and worldbuilders.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <StepCard
               number={1}
-              title="Create Your Project"
-              description="Start a new novel project, set your goals, and outline your story structure."
+              title="Build Your Universe"
+              description="Map out your Characters, Locations, and Powers. Brainstorm on the Ideas board before you even write a single word."
             />
             <StepCard
               number={2}
-              title="Build Your World"
-              description="Add characters, locations, and ideas. Let AI help you maintain consistency."
+              title="Write & Analyze"
+              description="Draft your chapters in Zen Mode. Let our Stylometry AI run Author Fingerprint checks to keep your tone consistent."
             />
             <StepCard
               number={3}
-              title="Write & Publish"
-              description="Write your chapters with our distraction-free editor and track your progress."
+              title="Sync & Collaborate"
+              description="Push your drafts securely to Google Drive. Edit from your phone, and let Mythoria merge changes automatically."
             />
           </div>
         </div>
