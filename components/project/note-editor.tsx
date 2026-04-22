@@ -33,6 +33,7 @@ import { VersionHistoryPanel } from "@/components/project/version-history-panel"
 import { NoteSummaryButton } from "@/components/project/note-summary-button"
 import { DriveSyncButton } from "@/components/project/drive-sync-button"
 import { AIReviewPanel } from "@/components/project/ai-review-panel"
+import { NotePlotPanel } from "@/components/project/note-plot-panel"
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
 import {
     Tooltip,
@@ -753,6 +754,11 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                                         novelId={novelId}
                                         linkedChapterId={note.linkedToChapterId}
                                         content={content}
+                                    />
+                                    <NotePlotPanel
+                                        noteId={note.id}
+                                        novelId={novelId}
+                                        linkedChapterId={note.linkedToChapterId}
                                     />
                                     <CharacterStateEditor noteId={note.id} />
                                     <AIReviewPanel noteId={note.id} novelId={novelId} />

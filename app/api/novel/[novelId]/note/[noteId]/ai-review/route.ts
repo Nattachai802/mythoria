@@ -39,37 +39,36 @@ async function fetchBatchReviews(provider: "groq" | "typhoon", personas: any[], 
   const personaInstructions = personas.map(p => `ID ${p.id}: ${p.name} - สไตล์: ${p.desc} (ความยาว 2-4 ประโยค)`).join('\n');
   const systemPrompt = JSON_PROMPT + personaInstructions;
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: `เนื้อหานิยาย:\n\n${text}` },
-      ],
-      temperature: 0.8,
-      max_tokens: 8192,
-      response_format: { type: "json_object" }
-    })
-  });
-
-  if (!res.ok) {
-    console.error(`AI API Error from ${provider}:`, await res.text());
-    return [];
-  }
-
-  const data = await res.json();
-  let rawText = data.choices?.[0]?.message?.content?.trim() ?? "[]";
-
   try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `เนื้อหานิยาย:\n\n${text}` },
+        ],
+        temperature: 0.8,
+        max_tokens: 8192,
+        response_format: { type: "json_object" }
+      })
+    });
+
+    if (!res.ok) {
+      console.error(`AI API Error from ${provider}:`, await res.text());
+      return null;
+    }
+
+    const data = await res.json();
+    let rawText = data.choices?.[0]?.message?.content?.trim() ?? "[]";
+
     const cleanText = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
     const parsed = JSON.parse(cleanText);
     return Array.isArray(parsed) ? parsed : (parsed.reviews || parsed.data || []);
   } catch (e) {
-    console.error(`JSON Parse Error from ${provider}:`, e);
-    // Fallback logic incase it completely refuses JSON array
-    return personas.map(p => ({ id: p.id, content: "เกิดข้อผิดพลาดในการดึงคอมเมนต์ (AI รูปแบบผิดพลาด)" }));
+    console.error(`Fetch or JSON Parse Error from ${provider}:`, e);
+    return null;
   }
 }
 
@@ -97,12 +96,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ nov
 
     const truncated = plainText.slice(0, 4000);
 
-    const [groqAns, typhoonAns] = await Promise.all([
+    let [groqAns, typhoonAns] = await Promise.all([
       fetchBatchReviews("groq", PERSONAS_MAPPING.groq, truncated),
       fetchBatchReviews("typhoon", PERSONAS_MAPPING.typhoon, truncated)
     ]);
 
-    const allAns = [...groqAns, ...typhoonAns];
+    // Provider Fallback: หาก Typhoon ล่มหรือไม่สามารถแกะ JSON ได้, ให้ Groq มารับช่วงต่อ
+    if (!typhoonAns) {
+      console.warn("⚠️ Typhoon API failed. Falling back to Groq for Typhoon's personas...");
+      typhoonAns = await fetchBatchReviews("groq", PERSONAS_MAPPING.typhoon, truncated);
+    }
+
+    // หากของค่ายไหนพินาศ (ทำ fallback แล้วก็ยังไม่ได้) ให้กลายเป็น Array ว่างเพื่อไปดึงข้อความ Default ถัดไป
+    const allAns = [...(groqAns || []), ...(typhoonAns || [])];
 
     const allPersonas = [...PERSONAS_MAPPING.groq, ...PERSONAS_MAPPING.typhoon];
     const finalResults = allPersonas.map(p => {
