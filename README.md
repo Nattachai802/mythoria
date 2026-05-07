@@ -2,116 +2,206 @@
 
 **The AI-Powered Forge for Your Next Masterpiece.**
 
-**Mythoria** คือแพลตฟอร์มเขียนนิยายยุคใหม่ที่ผสานพลังของการจัดการโปรเจกต์ (Project Management) เข้ากับ AI Agent อัจฉริยะ ช่วยให้นักเขียนสามารถสร้างโลก (World Building), วางพล็อต (Plotting), และเขียนเนื้อหา (Writing) ได้อย่างไร้รอยต่อ
-
-โดดเด่นด้วยดีไซน์แบบ **"Forge Mode"** ที่เน้นความสวยงาม ดุดัน และใช้งานได้จริง (Industrial Creativity)
-
-![Mythoria Banner](https://placeholder-image.com/mythoria-banner.png)
+**Mythoria** คือแพลตฟอร์มเขียนนิยายยุคใหม่ที่รวมพลัง Project Management + AI อัจฉริยะ + World Building เข้าไว้ในที่เดียว ออกแบบมาสำหรับนักเขียนที่ต้องการเครื่องมือจริงจัง ไม่ใช่แค่ Text Editor ทั่วไป
 
 ---
 
 ## 📑 สารบัญ
 
-- [🎨 Design Philosophy](#-design-philosophy-forge-mode)
+- [🎨 Design Philosophy](#-design-philosophy)
 - [🚀 ฟีเจอร์หลัก](#-ฟีเจอร์หลัก)
-- [🛠️ เทคโนโลยีที่ใช้](#-เทคโนโลยีที่ใช้)
-- [🤖 ระบบ AI &amp; Agents](#-ระบบ-ai--agents)
+- [🤖 ระบบ AI](#-ระบบ-ai)
+- [🛠️ Tech Stack](#-tech-stack)
 - [🗄️ โครงสร้างฐานข้อมูล](#-โครงสร้างฐานข้อมูล)
 - [🏁 การติดตั้ง](#-การติดตั้ง)
 
 ---
 
-## 🎨 Design Philosophy: Forge Mode
+## 🎨 Design Philosophy
 
-เราใช้ Design System ที่พัฒนาขึ้นเองในชื่อ **"Forge Mode"** (Industrial Creativity Theme)
+ใช้ Design System ที่พัฒนาขึ้นเองในชื่อ **"Forge Mode"** (Industrial Creativity Theme)
 
-- **Aesthetics**: เน้นรูปทรงเลขาคณิตตัดมุม (Chamfered corners), ลวดลายอุตสาหกรรม (Hazard stripes), และ Typography แบบ Technical
-- **Color System**: ใช้ระบบสี **OKLCH** เพื่อความสดใสและสม่ำเสมอในทุกสภาพแสง (Light/Dark Mode)
-- **Experience**: Micro-interactions, Glassmorphism, และเสียงตอบสนองที่ให้ความรู้สึก Premium
+- **Aesthetics**: รูปทรงเลขาคณิตตัดมุม, ลวดลายอุตสาหกรรม, Typography แบบ Technical
+- **Color System**: ระบบสี **OKLCH** เพื่อความสม่ำเสมอใน Light/Dark Mode ทุกสภาพแสง
+- **Experience**: Micro-interactions, Glassmorphism, และ Keyboard Shortcuts ที่รู้สึก Premium
 
 ---
 
 ## 🚀 ฟีเจอร์หลัก
 
+### ✍️ Note Editor (Writing Studio)
+
+Editor ที่ออกแบบมาเพื่อการเขียนนิยายโดยเฉพาะ:
+
+- **Rich Text Editor**: Powered by **Quill.js** พร้อม Toolbar ที่ปรับแต่งแล้ว
+- **Smart Sidebar**: Panel ด้านข้างแบบ Collapsible พร้อมข้อมูลทุกอย่างที่ต้องใช้ขณะเขียน
+  - **NoteCastDeck**: แสดงตัวละครที่ปรากฏในตอนนั้นๆ
+  - **NotePlotPanel**: แสดง Timeline Events และ Idea ที่เชื่อมกับ Chapter พร้อมระบบ Mark Active
+  - **Plot Summary**: สรุป Note ด้วย AI อัตโนมัติ
+- **Version History**: บันทึกและเปรียบเทียบประวัติการแก้ไข ย้อนกลับได้ทุก Version
+- **Note Navigation**: กด Next/Prev เพื่อสลับไปยังตอนถัดไปได้ทันที สร้างตอนใหม่อัตโนมัติถ้ายังไม่มี
+- **Word Count Tracking**: นับคำแบบ Real-time และคำนวณยอดรวมทั้งนิยายอัตโนมัติ
+- **Note Status**: จัดการสถานะตอน (Draft, In Progress, Done, Published) พร้อม Progress Bar
+
+### 📖 Chapter & Project Management
+
+- **Chapter List**: จัดการบท Drag & Drop เรียงลำดับ, กำหนด Status ของแต่ละบท
+- **Chapter Summary**: สรุปเนื้อหาใน Chapter ด้วย AI หนึ่งคลิก
+- **Export Dialog**: Export นิยายเป็น **PDF** หรือ **TXT** พร้อมปรับแต่ง:
+  - หน้าปก (ชื่อเรื่อง, ผู้แต่ง, วันที่)
+  - Font Size ระดับ 11pt สำหรับ PDF
+  - เรียง Note ตาม createdAt (เก่า→ใหม่)
+- **Global Search**: ค้นหา Note/Chapter/ตัวละคร/สถานที่ ทั่วทั้งโปรเจกต์
+
 ### 🧩 Idea Playground (Visual Plotting)
 
-พื้นที่วางแผนแบบ Free-form canvas ที่ทรงพลังที่สุด:
+Canvas ที่ทรงพลังที่สุดสำหรับวางแผนพล็อต:
 
 - **Infinite Canvas**: วางไอเดีย, ตัวละคร, ฉาก ได้ไม่จำกัด (Powered by **React Flow**)
-- **Drag & Drop**: ลาก Character/Location จากด้านข้างลงมาใส่ใน Scene ได้ทันทีด้วย **DnD Kit**
+- **Drag & Drop**: ลาก Character/Location จาก Sidebar ลงใน Scene ได้ทันที (**DnD Kit**)
 - **Nested Thoughts**: ซ้อนไอเดียลงในไอเดียอื่นเพื่อจัดกลุ่มความคิด
-- **Visual Connections**: ลากเส้นเชื่อมโยงเหตุการณ์เพื่อดู Timeline และความสัมพันธ์
+- **Visual Connections**: ลากเส้นเชื่อมโยงเหตุการณ์เพื่อดู Timeline
 
-### 🧠 AI Agent Assistant
+### 🌍 World Building
 
-ผู้ช่วยอัจฉริยะที่เข้าใจนิยายของคุณ (Powered by **Typhoon v2.1 Thai LLM**):
+ระบบสร้างโลก (World Building) ครบจบในที่เดียว:
 
-- **Plot Hole Detection**: AI Agent จะอ่านเนื้อหาและใช้ Tools ตรวจสอบ Timeline และตรรกะของเรื่องอัตโนมัติ
-- **Consistency Check**: ตรวจสอบว่าตัวละครทำสิ่งที่ขัดแย้งกับนิสัยหรือสถานะปัจจุบันหรือไม่
-- **RAG & Vector Search**: ค้นหาข้อมูลเก่าๆ ในนิยายได้แม่นยำด้วย **LanceDB**
+- **Characters**: โปรไฟล์ตัวละครพร้อม Attribute, Power, Life Events, และ Character State (สถานะ ณ ปัจจุบัน)
+- **Relationships**: แผนที่ความสัมพันธ์ระหว่างตัวละคร (Graph Visualization)
+- **Locations**: สร้างสถานที่แบบ Tree (ประเทศ → เมือง → อาคาร) พร้อม Location Connections
+- **Items**: ไอเทมพร้อม Attribute และ Lore ย่อย
+- **Factions**: กลุ่ม/องค์กรในนิยาย
+- **Lore & Lore Groups**: บันทึกประวัติศาสตร์, กฎของโลก, และเรื่องราวพื้นหลัง
+- **Eras**: ยุคสมัยในนิยาย Timeline ประวัติศาสตร์
+- **Timeline Events**: เหตุการณ์สำคัญในแต่ละ Chapter พร้อม Scene Element Details
 
-### 📚 Professional Writing Suite
+### 🗂️ Active Plot Marker
 
-- **Chapter Editor**: Rich text editor ที่ปรับแต่งมาสำหรับงานเขียนนิยายโดยเฉพาะ
-- **World Building**: ระบบจัดการตัวละคร, สถานที่, ไอเทม, และความสัมพันธ์ที่เชื่อมโยงกันหมด
-- **Timeline Board**: มุมมองเส้นเวลาประวัติศาสตร์ของโลกในนิยาย
+ระบบ Mark Plot ที่กำลังใช้งาน (ใหม่!):
 
----
+- กด ⊙ ที่ **Idea** ในแต่ละ Event เพื่อ Mark ว่ากำลังเขียนถึงไอเดียนั้น
+- Idea ที่ถูก Mark จะเปลี่ยนเป็นสีทอง มีกรอบเน้น
+- แสดง **"ใช้งานแล้วใน: ..."** ว่า Idea นั้นเคยถูกใช้ไปในตอนไหนบ้างแล้ว
+- ข้อมูลบันทึกลง Database ติดไปกับ Note นั้นๆ
 
-## 🛠️ เทคโนโลยีที่ใช้
+### 📊 Analytics Dashboard
 
-Project นี้ใช้ Tech Stack ที่ทันสมัยที่สุดในปี 2025:
+- **Writing Statistics**: กราฟ Word Count รายวัน, ประมาณวันเสร็จ
+- **Character Activity**: วิเคราะห์การปรากฏตัวของตัวละครในแต่ละ Chapter
+- **Plot Coverage**: ดูว่า Plot Event ไหนยังไม่ได้เขียน
 
-### Frontend (Main App)
+### 🔗 Google Drive Integration
 
-| Technology                                         | Description                           |
-| -------------------------------------------------- | ------------------------------------- |
-| **[Next.js 16](https://nextjs.org/)**           | App Router, Server Actions, TurboPack |
-| **[Tailwind CSS v4](https://tailwindcss.com/)** | Styling Engine                        |
-| **react-flow**                               | Node-based visualization (Canvas)     |
-| **@dnd-kit**                                 | Drag and Drop interactions            |
-| **lucide-react**                             | Beautiful consistency icons           |
-| **framer-motion**                            | Smooth animations                     |
+- **Sync Chapter**: Sync เนื้อหา Chapter ขึ้น Google Drive อัตโนมัติ
+- **Conflict Resolution**: จัดการ Conflict ระหว่าง Local กับ Drive version
+- **Chapter Drive Sync Button**: Sync รายบท หรือ Sync ทั้งโปรเจกต์
 
-### Backend (Data & Auth)
+### 🤝 Discord Integration
 
-| Technology                                         | Description                 |
-| -------------------------------------------------- | --------------------------- |
-| **[PostgreSQL](https://www.postgresql.org/)**   | Relational Database         |
-| **[Drizzle ORM](https://orm.drizzle.team/)**    | TypeScript ORM & Migrations |
-| **[Better Auth](https://www.better-auth.com/)** | Secure Authentication       |
-
-### AI Service (Microservice)
-
-| Technology                                      | Description                    |
-| ----------------------------------------------- | ------------------------------ |
-| **[FastAPI](https://fastapi.tiangolo.com/)** | High-performance Python API    |
-| **[LangChain](https://www.langchain.com/)**  | Agent Orchestration & Tool Use |
-| **[LanceDB](https://lancedb.com/)**          | Embeddings & Vector Search     |
-| **[Typhoon v2.1](https://opentyphoon.ai/)**  | Thai Large Language Model      |
+- **Discord Sync**: โพสต์ Update นิยายเข้า Discord Channel อัตโนมัติ
 
 ---
 
-## 🤖 ระบบ AI & Agents
+## 🤖 ระบบ AI
 
-ระบบ AI ของ Mythoria ทำงานแยกเป็น Microservice (`/pythonservice`) เพื่อประสิทธิภาพสูงสุด:
+### 1. AI Reader Group Chat
 
-1. **Agentic Workflow**: AI ไม่ได้แค่ตอบแชท แต่ทำหน้าที่เป็น Agent ที่สามารถเรียกใช้ Tools ได้
-   * `CheckTimelineConflict`: คำนวณเวลาเดินทางระหว่างสถานที่
-   * `ValidateCharacterConsistency`: ตรวจสอบสถานะตัวละคร
-2. **Context-Aware**: ใช้ RAG (Retrieval-Augmented Generation) ดึงข้อมูลที่เกี่ยวข้องจาก Vector DB ก่อนตอบคำถาม
+จำลอง **"ห้องแชทกลุ่มนักอ่าน"** ที่มี AI 5 คนที่มีบุคลิกต่างกัน ช่วยรีวิวเนื้อหา:
+
+- **Mixed LLM**: ใช้ **Groq (Llama)** สำหรับนักอ่านบางตัว และ **Typhoon v2.1** สำหรับนักอ่านที่ต้องการ Thai Language
+- **RAG Context**: ดึง Context จาก Vector DB ก่อนรีวิว เพื่อให้ Feedback สอดคล้องกับนิยายทั้งเรื่อง
+- **Streaming Response**: แสดงผลแบบ Real-time
+
+### 2. AI Agent: Plot Hole Checker
+
+Agent อัจฉริยะที่ใช้ Tool Calling ตรวจสอบ:
+
+- `CheckTimelineConflict`: ตรวจเวลาเดินทาง/การปรากฏตัวของตัวละครในสถานที่ต่างๆ
+- `ValidateCharacterConsistency`: ตรวจสอบสถานะตัวละครว่าขัดแย้งกับพฤติกรรมหรือไม่
+- บันทึก Plot Hole Issues ลง Database พร้อม `plot_hole_count`
+
+### 3. Character State Extractor
+
+- วิเคราะห์ Note ใหม่แล้วสกัด **"สถานะตัวละคร"** ออกมา (ตำแหน่ง, อารมณ์, สถานะสุขภาพ, ความสัมพันธ์ใหม่)
+- ทำงาน Background หลังบันทึก Note
+- เก็บ Character State History ทุก Snapshot
+
+### 4. Stylometry Analysis
+
+- วิเคราะห์ **ลายมือเขียน (Writing Style)** ของนักเขียน
+- ตรวจว่าสไตล์การเขียนสม่ำเสมอตลอดทั้งเรื่องหรือไม่
+- **Bulk Analyze**: วิเคราะห์ทุก Note ในนิยายพร้อมกัน
+
+### 5. AI Summary (Note & Chapter)
+
+- **Note Summary**: สรุปตอนที่กำลังเขียน
+- **Chapter Summary**: รวบรวมสรุปทุก Note ใน Chapter
+- ใช้ Typhoon v2.1 เพื่อความเข้าใจภาษาไทยได้ดี
+
+### 6. Publish Assistant
+
+- ผู้ช่วย AI ช่วยวางแผนการ Publish นิยาย
+- วิเคราะห์ความพร้อมของเนื้อหา, แนะนำกลยุทธ์การ Publish
+
+### 7. Word Checker
+
+- ตรวจสอบคำที่ใช้บ่อย/น้อยเกินไป
+- ช่วยหาคำที่ใช้ซ้ำซาก และแนะนำทางเลือก
+
+### 8. Vector Search & RAG (Python Microservice)
+
+- **LanceDB**: เก็บ Embeddings ของ Note/Chapter ทั้งหมด
+- **FastAPI**: Service ที่ให้ Next.js ดึง Context ก่อนส่งให้ AI
+- Similarity Search แบบ Semantic บนเนื้อหาทั้งเรื่อง
+
+---
+
+## 🛠️ Tech Stack
+
+### Frontend & Backend (Next.js Monolith)
+
+| Technology | Description |
+|---|---|
+| **Next.js 16** | App Router, Server Actions, TurboPack |
+| **Tailwind CSS v4** | Styling Engine (CSS-first config) |
+| **React Flow (@xyflow/react)** | Canvas visualization |
+| **@dnd-kit** | Drag & Drop interactions |
+| **Quill.js / react-quill-new** | Rich Text Editor |
+| **Lucide React** | Icon system |
+| **Framer Motion** | Animations |
+| **Sonner** | Toast notifications |
+| **Better Auth** | Authentication (Email, OAuth) |
+| **Drizzle ORM** | TypeScript ORM + Migrations |
+| **PostgreSQL / Neon** | Database |
+| **Resend + React Email** | Transactional Email |
+| **Google Drive API** | Cloud Sync |
+
+### AI / Microservice (Python)
+
+| Technology | Description |
+|---|---|
+| **FastAPI** | High-performance Python API |
+| **LangChain** | Agent Orchestration & Tool Use |
+| **LanceDB** | Embeddings & Vector Search |
+| **Typhoon v2.1** | Thai Large Language Model |
+| **Groq API** | Llama-based fast inference |
 
 ---
 
 ## 🗄️ โครงสร้างฐานข้อมูล
 
-ระบบมี **30+ tables** ครอบคลุมทุกมิติของการเขียนนิยาย:
+ระบบมี **45+ tables** ครอบคลุมทุกมิติของการเขียนนิยาย:
 
-- **Core**: `novels`, `chapters`, `notes`
-- **Character**: `characters`, `relationships`, `life_events`
-- **World**: `locations`, `items`, `lore`, `factions`
-- **Plotting**: `ideas`, `timeline_events`, `connections`
-- **AI**: `analysis_queue`, `suggestions`, `embeddings`
+| กลุ่ม | Tables |
+|---|---|
+| **Core** | `novels`, `chapters`, `notes` |
+| **Characters** | `characters`, `relationships`, `life_events`, `character_states` |
+| **World** | `locations`, `location_connections`, `items`, `factions`, `eras` |
+| **Lore** | `lore`, `lore_groups`, `entities` |
+| **Plotting** | `ideas`, `timeline_events`, `scene_element_details`, `connections` |
+| **AI** | `analysis_queue`, `suggestions`, `note_summaries`, `chapter_summaries` |
+| **Sync** | `version_history`, `drive_sync_states` |
+| **Auth** | `users`, `sessions`, `accounts`, `verifications` |
 
 ---
 
@@ -120,51 +210,81 @@ Project นี้ใช้ Tech Stack ที่ทันสมัยที่ส
 ### 1. Clone Project
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Nattachai802/mythoria.git
 cd mythoria
 ```
 
 ### 2. ติดตั้ง Dependencies
 
 ```bash
-# Frontend & Main Backend
-npm install (อย่าลืมใส่ --legacy-peer-deps)
+# Frontend & Backend
+npm install
 
-# AI Service (Python)
+# Python AI Service
 cd pythonservice
 python -m venv venv
-# Windows
-venv\Scripts\activate
-# Mac/Linux
-source venv/bin/activate
+venv\Scripts\activate        # Windows
+# หรือ source venv/bin/activate  # Mac/Linux
 pip install -r requirements.txt
 ```
 
 ### 3. ตั้งค่า Environment Variables
 
-สร้างไฟล์ `.env` ที่ root และ `pythonservice/.env`:
+สร้างไฟล์ `.env` ที่ root:
 
 ```env
-# Main .env
+# Database
 DATABASE_URL="postgresql://..."
-BETTER_AUTH_SECRET="your-secret"
 
-# Pythonservice .env
-TYPHOON_API_KEY="your-api-key"
+# Auth
+BETTER_AUTH_SECRET="your-secret"
+BETTER_AUTH_URL="http://localhost:3000"
+
+# AI APIs
+TYPHOON_API_KEY="your-typhoon-key"
+GROQ_API_KEY="your-groq-key"
+
+# Google Drive (Optional)
+GOOGLE_CLIENT_ID="..."
+GOOGLE_CLIENT_SECRET="..."
+
+# Email (Optional)
+RESEND_API_KEY="..."
+
+# Discord (Optional)
+DISCORD_BOT_TOKEN="..."
 ```
 
-### 4. รันโปรแกรม (Development Mode)
+สร้างไฟล์ `pythonservice/.env`:
+
+```env
+TYPHOON_API_KEY="your-typhoon-key"
+DATABASE_URL="postgresql://..."
+```
+
+### 4. Setup Database
 
 ```bash
-# รันทั้ง Next.js และ Python Service พร้อมกัน
-npm run dev:all
+npm run db:push
 ```
 
-- Web App: `http://localhost:3000`
-- AI API: `http://localhost:8000`
+### 5. รันโปรแกรม
+
+```bash
+# รันทั้ง Next.js + Python Service พร้อมกัน
+npm run dev:all
+
+# หรือรันแยก
+npm run dev          # Next.js (port 3000)
+npm run dev:python   # Python Service (port 8000)
+```
+
+- **Web App**: `http://localhost:3000`
+- **AI Service**: `http://localhost:8000`
+- **DB Studio**: `npm run db:studio`
 
 ---
 
 ## 📄 License
 
-MIT License
+MIT License © 2025 Nattachai802
