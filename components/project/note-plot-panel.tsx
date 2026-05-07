@@ -10,7 +10,8 @@ import { TimelineEvent, Idea, SceneElementDetails } from "@/db/schema"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { User, MapPin } from "lucide-react"
+import { User, MapPin, Target, Eye } from "lucide-react"
+import { getNote, updateNote, getNotes } from "@/server/note"
 
 interface NotePlotPanelProps {
     noteId: string
@@ -58,20 +59,60 @@ export function NotePlotPanel({ noteId, novelId, linkedChapterId }: NotePlotPane
     const [expandedEventId, setExpandedEventId] = useState<string | null>(null)
     const [selectedIdeaSummary, setSelectedIdeaSummary] = useState<{ idea: Idea, event: TimelineEvent } | null>(null)
 
+    // Active plots for this note
+    const [activePlotIds, setActivePlotIds] = useState<string[]>([])
+    const [isUpdatingActive, setIsUpdatingActive] = useState(false)
+
+    // Plot usage map (plotId -> Note[])
+    const [plotUsageMap, setPlotUsageMap] = useState<Record<string, { noteId: string, title: string, chapterTitle?: string }[]>>({})
+    const [currentNoteInfo, setCurrentNoteInfo] = useState<{ noteId: string, title: string, chapterTitle?: string } | null>(null)
+
     useEffect(() => {
         async function loadAll() {
             setLoading(true)
             try {
                 if (!linkedChapterId) return
 
-                // 1. Load timeline events for this chapter
-                const eventsResult = await getTimeLineEvents(novelId)
+                // 1. Load timeline events for this chapter & current note data & all notes
+                const [eventsResult, noteResult, allNotesResult] = await Promise.all([
+                    getTimeLineEvents(novelId),
+                    getNote(noteId),
+                    getNotes(novelId)
+                ])
+
                 let chapterEvents: TimelineEvent[] = []
                 if (eventsResult.success && eventsResult.events) {
                     chapterEvents = eventsResult.events
                         .filter(e => e.relatedChapterId === linkedChapterId)
                         .sort((a, b) => a.orderIndex - b.orderIndex)
                     setEvents(chapterEvents)
+                }
+
+                if (noteResult.success && noteResult.note) {
+                    setActivePlotIds((noteResult.note.activePlotIds as string[]) || [])
+                }
+
+                if (allNotesResult.success && allNotesResult.notes) {
+                    const usage: Record<string, { noteId: string, title: string, chapterTitle?: string }[]> = {}
+                    for (const n of allNotesResult.notes) {
+                        const info = {
+                            noteId: n.id,
+                            title: n.title || "ไม่มีชื่อตอน",
+                            chapterTitle: n.linkedChapter?.title || undefined
+                        }
+                        
+                        if (n.id === noteId) {
+                            setCurrentNoteInfo(info)
+                        }
+
+                        if (Array.isArray(n.activePlotIds)) {
+                            for (const pid of n.activePlotIds) {
+                                if (!usage[pid]) usage[pid] = []
+                                usage[pid].push(info)
+                            }
+                        }
+                    }
+                    setPlotUsageMap(usage)
                 }
 
                 // 2. Load all ideas in novel → build lookup map
@@ -117,7 +158,49 @@ export function NotePlotPanel({ noteId, novelId, linkedChapterId }: NotePlotPane
         }
 
         loadAll()
-    }, [novelId, linkedChapterId])
+    }, [novelId, linkedChapterId, noteId])
+
+    const toggleActivePlot = async (e: React.MouseEvent, targetId: string) => {
+        e.stopPropagation()
+        if (isUpdatingActive) return
+        
+        setIsUpdatingActive(true)
+        const isCurrentlyActive = activePlotIds.includes(targetId)
+        const newActiveIds = isCurrentlyActive 
+            ? activePlotIds.filter(id => id !== targetId)
+            : [...activePlotIds, targetId]
+            
+        setActivePlotIds(newActiveIds)
+        
+        // Optimistic update for plot usage map
+        setPlotUsageMap(prev => {
+            const newMap = { ...prev }
+            if (isCurrentlyActive) {
+                // Remove
+                if (newMap[targetId]) {
+                    newMap[targetId] = newMap[targetId].filter(u => u.noteId !== noteId)
+                }
+            } else {
+                // Add
+                if (!newMap[targetId]) newMap[targetId] = []
+                if (currentNoteInfo && !newMap[targetId].some(u => u.noteId === noteId)) {
+                    newMap[targetId].push(currentNoteInfo)
+                }
+            }
+            return newMap
+        })
+        
+        try {
+            await updateNote(noteId, { activePlotIds: newActiveIds })
+        } catch (error) {
+            console.error("Failed to update active plots:", error)
+            // Revert on failure
+            setActivePlotIds(activePlotIds)
+            // Note: Not reverting plotUsageMap for simplicity unless necessary
+        } finally {
+            setIsUpdatingActive(false)
+        }
+    }
 
     if (loading) {
         return (
@@ -189,9 +272,9 @@ export function NotePlotPanel({ noteId, novelId, linkedChapterId }: NotePlotPane
                                         </div>
 
                                         {/* Event Card */}
-                                        <button
+                                        <div
                                             onClick={() => setExpandedEventId(isEventExpanded ? null : event.id)}
-                                            className="w-full text-left bg-background border rounded-md p-2 text-sm shadow-sm hover:bg-muted/30 transition-colors"
+                                            className="w-full text-left bg-background border rounded-md p-2 text-sm shadow-sm transition-colors cursor-pointer hover:bg-muted/30"
                                         >
                                             {/* Header row */}
                                             <div className="flex items-start justify-between gap-1.5">
@@ -201,13 +284,13 @@ export function NotePlotPanel({ noteId, novelId, linkedChapterId }: NotePlotPane
                                                 </div>
                                                 <div className="flex items-center gap-1 shrink-0">
                                                     {linkedIdeas.length > 0 && (
-                                                        <span className="flex items-center gap-0.5 text-[10px] text-amber-500">
+                                                        <span className="flex items-center gap-0.5 text-[10px] text-amber-500 mr-1">
                                                             <Lightbulb className="w-2.5 h-2.5" />
                                                             {linkedIdeas.length}
                                                         </span>
                                                     )}
                                                     <ChevronDown className={cn(
-                                                        "w-3 h-3 text-muted-foreground transition-transform",
+                                                        "w-3 h-3 text-muted-foreground transition-transform ml-0.5",
                                                         isEventExpanded && "rotate-180"
                                                     )} />
                                                 </div>
@@ -257,6 +340,8 @@ export function NotePlotPanel({ noteId, novelId, linkedChapterId }: NotePlotPane
                                                             </p>
                                                             {linkedIdeas.map(idea => {
                                                                 const detail = eventAllDetailsMap.get(event.id)?.find(d => d.elementType === "idea_note" && d.elementId === idea.id)
+                                                                const isIdeaActive = activePlotIds.includes(idea.id)
+                                                                
                                                                 return (
                                                                     <div
                                                                         key={idea.id}
@@ -264,12 +349,29 @@ export function NotePlotPanel({ noteId, novelId, linkedChapterId }: NotePlotPane
                                                                             e.stopPropagation()
                                                                             setSelectedIdeaSummary({ idea, event })
                                                                         }}
-                                                                        className="rounded p-1.5 text-xs bg-muted/40 border-l-2 cursor-pointer hover:bg-muted/80 transition-colors"
+                                                                        className={cn(
+                                                                            "rounded p-1.5 text-xs bg-muted/40 border-l-2 cursor-pointer transition-colors relative group",
+                                                                            isIdeaActive ? "ring-1 ring-amber-500/30 bg-amber-500/5" : "hover:bg-muted/80"
+                                                                        )}
                                                                         style={{ borderLeftColor: idea.color ?? "#3b82f6" }}
                                                                     >
-                                                                        <p className="font-medium text-foreground leading-tight">
-                                                                            {idea.title}
-                                                                        </p>
+                                                                        <div className="flex items-start justify-between gap-2">
+                                                                            <p className="font-medium text-foreground leading-tight flex-1">
+                                                                                {idea.title}
+                                                                            </p>
+                                                                            <button 
+                                                                                onClick={(e) => toggleActivePlot(e, idea.id)}
+                                                                                className={cn(
+                                                                                    "p-1 rounded-sm transition-opacity opacity-0 group-hover:opacity-100 shrink-0",
+                                                                                    isIdeaActive 
+                                                                                        ? "text-amber-500 bg-amber-500/10 opacity-100" 
+                                                                                        : "text-muted-foreground/50 hover:bg-muted hover:text-foreground"
+                                                                                )}
+                                                                                title="Mark as active"
+                                                                            >
+                                                                                <Target className="w-3 h-3" />
+                                                                            </button>
+                                                                        </div>
                                                                         {idea.summary && (
                                                                             <p className="text-muted-foreground mt-0.5 leading-relaxed line-clamp-2">
                                                                                 {idea.summary}
@@ -281,6 +383,20 @@ export function NotePlotPanel({ noteId, novelId, linkedChapterId }: NotePlotPane
                                                                                 {detail.outcome && <span><span className="font-medium">Status:</span> {detail.outcome}</span>}
                                                                             </div>
                                                                         )}
+
+                                                                        {/* Idea Usage Map */}
+                                                                        {plotUsageMap[idea.id] && plotUsageMap[idea.id].length > 0 && (
+                                                                            <div className="mt-1.5 pt-1.5 border-t border-border/40">
+                                                                                <p className="text-[9px] text-muted-foreground/80 mb-1">ใช้งานแล้วใน:</p>
+                                                                                <div className="flex flex-wrap gap-1">
+                                                                                    {plotUsageMap[idea.id].map(usage => (
+                                                                                        <span key={usage.noteId} className="text-[9px] bg-background px-1 py-0.5 rounded text-muted-foreground/70 border truncate max-w-[120px]">
+                                                                                            {usage.chapterTitle ? `${usage.chapterTitle} - ` : ''}{usage.title}
+                                                                                        </span>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
                                                                     </div>
                                                                 )
                                                             })}
@@ -288,7 +404,7 @@ export function NotePlotPanel({ noteId, novelId, linkedChapterId }: NotePlotPane
                                                     )}
                                                 </div>
                                             )}
-                                        </button>
+                                        </div>
                                     </div>
                                 )
                             })}

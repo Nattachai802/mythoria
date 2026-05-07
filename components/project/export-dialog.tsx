@@ -27,12 +27,14 @@ interface Note {
     title: string;
     content: { text?: string } | null;
     linkedToChapterId: string | null;
+    createdAt?: string | Date;
 }
 
 interface ExportDialogProps {
     chapters: Chapter[];
     notes: Note[];
     novelTitle: string;
+    authorName?: string;
     trigger?: React.ReactNode;
 }
 
@@ -68,6 +70,7 @@ export function ExportDialog({
     chapters,
     notes,
     novelTitle,
+    authorName,
     trigger,
 }: ExportDialogProps) {
     const [open, setOpen] = useState(false);
@@ -80,7 +83,15 @@ export function ExportDialog({
     // จัดกลุ่ม notes ตาม chapter
     const notesByChapter = useMemo(() => {
         const map = new Map<string, Note[]>();
-        for (const note of notes) {
+        
+        // เรียงลำดับ notes ตามวันที่สร้าง (เก่าสุดไปใหม่สุด)
+        const sortedNotes = [...notes].sort((a, b) => {
+            const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return dateA - dateB;
+        });
+
+        for (const note of sortedNotes) {
             if (note.linkedToChapterId) {
                 const existing = map.get(note.linkedToChapterId) || [];
                 existing.push(note);
@@ -127,6 +138,9 @@ export function ExportDialog({
 
             const chapterNotes = notesByChapter.get(chapter.id) || [];
             for (const note of chapterNotes) {
+                if (note.title) {
+                    content += `\n[ ${note.title} ]\n`;
+                }
                 const text = note.content?.text || "";
                 content += htmlToPlainText(text);
                 content += "\n\n";
@@ -179,17 +193,27 @@ export function ExportDialog({
         
         body {
             font-family: 'Sarabun', sans-serif;
-            font-size: 14pt;
+            font-size: 11pt;
             line-height: 1.8;
             padding: 2cm;
             max-width: 21cm;
             margin: 0 auto;
+            color: #1a1a1a;
         }
         
+        .cover-page {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            page-break-after: always;
+            text-align: center;
+        }
+
         h1 {
             font-size: 24pt;
             text-align: center;
-            margin-bottom: 2cm;
             font-weight: 700;
         }
         
@@ -199,12 +223,23 @@ export function ExportDialog({
             margin-top: 1.5cm;
             margin-bottom: 0.5cm;
             page-break-before: always;
-            border-bottom: 1px solid #ccc;
+            border-bottom: 2px solid #333;
             padding-bottom: 0.3cm;
+            text-align: center;
         }
         
-        .chapter-title:first-of-type {
-            page-break-before: avoid;
+        .note-title {
+            font-size: 15pt;
+            font-weight: 700;
+            margin-top: 1cm;
+            margin-bottom: 0.5cm;
+            color: #444;
+            text-decoration: underline;
+            text-underline-offset: 4px;
+        }
+        
+        .note-container {
+            margin-bottom: 1.5cm;
         }
         
         p {
@@ -221,7 +256,10 @@ export function ExportDialog({
     </style>
 </head>
 <body>
-    <h1>${novelTitle}</h1>
+    <div class="cover-page">
+        <h1>${novelTitle}</h1>
+        ${authorName ? `<div style="margin-top: 1cm; font-size: 14pt; color: #444;">โดย ${authorName}</div>` : ''}
+    </div>
     ${(() => {
                 const sortedChapters = [...chapters]
                     .filter((c) => selectedChapters.has(c.id))
@@ -229,19 +267,22 @@ export function ExportDialog({
 
                 return sortedChapters.map((chapter) => {
                     const chapterNotes = notesByChapter.get(chapter.id) || [];
-                    const chapterContent = chapterNotes
-                        .map((note) => htmlToPlainText(note.content?.text || ""))
-                        .join("\n\n");
-
-                    const paragraphs = chapterContent
-                        .split("\n\n")
-                        .filter(Boolean)
-                        .map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`)
+                    const notesHtml = chapterNotes
+                        .map((note) => {
+                            const noteTitle = note.title ? `<div class="note-title">${note.title}</div>` : '';
+                            const text = htmlToPlainText(note.content?.text || "");
+                            const paragraphs = text
+                                .split("\n\n")
+                                .filter(Boolean)
+                                .map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`)
+                                .join("");
+                            return `<div class="note-container">${noteTitle}${paragraphs}</div>`;
+                        })
                         .join("");
 
                     return `
                 <div class="chapter-title">บทที่ ${chapter.orderIndex}: ${chapter.title}</div>
-                ${paragraphs}
+                ${notesHtml}
             `;
                 }).join("");
             })()}

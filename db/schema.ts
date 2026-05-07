@@ -303,6 +303,8 @@ export const notes = pgTable("notes", {
   plotHoleCheckedAt: timestamp("plot_hole_checked_at"), // เวลาที่ตรวจสอบล่าสุด
   plotHoleCount: integer("plot_hole_count").default(0), // จำนวน plot holes ที่พบ
   plotHoleIssues: jsonb("plot_hole_issues"), // รายละเอียดปัญหา [{type, description}]
+  // Active Plots
+  activePlotIds: jsonb("active_plot_ids"), // array of marked plot/idea IDs for this note
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()

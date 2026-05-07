@@ -317,6 +317,7 @@ export default async function ProjectOverviewPage({ params }: Props) {
                                 chapters={novel.chapters}
                                 notes={notes as any}
                                 novelTitle={novel.title}
+                                authorName={(novel as any).user?.name}
                             />
                             <CreateChapterDialog novelId={id} />
                         </div>

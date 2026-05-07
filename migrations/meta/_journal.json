@@ -78,6 +78,13 @@
       "when": 1775743139170,
       "tag": "0010_blushing_chameleon",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1778178801489,
+      "tag": "0011_mute_mastermind",
+      "breakpoints": true
     }
   ]
 }

@@ -104,6 +104,9 @@ const _getNovelByIdLight = async (id: string) => {
                 locations: {
                     columns: { id: true }
                 },
+                user: {
+                    columns: { name: true }
+                }
             }
         });
 

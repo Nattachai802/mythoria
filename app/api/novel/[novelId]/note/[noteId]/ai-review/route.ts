@@ -31,13 +31,61 @@ const JSON_PROMPT = `
 สวมบทบาทนักอ่านตาม ID ต่อไปนี้:
 `;
 
-async function fetchBatchReviews(provider: "groq" | "typhoon", personas: any[], text: string) {
+async function fetchStoryContext(novelId: string, query: string, currentNoteId: string) {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 seconds
+
+    const response = await fetch("http://localhost:8000/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query,
+        novel_id: novelId,
+        limit: 10, // Fetch more to account for filtering
+      }),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) return "";
+
+    const data = await response.json();
+    if (!Array.isArray(data)) return "";
+
+    // Filter out current note and irrelevant types
+    const validTypes = ["character", "location", "chapter", "note"];
+    const filteredResults = data.filter((item: any) => 
+      item.id !== currentNoteId && validTypes.includes(item.content_type)
+    ).slice(0, 5); // Take top 5 after filtering
+
+    console.log(`[RAG] Fetched ${filteredResults.length} context items for AI Review.`);
+
+    if (filteredResults.length === 0) return "";
+
+    const contextStr = filteredResults
+      .map((item: any) => `[${item.content_type}] ${item.title}: ${item.content}`)
+      .join("\n");
+    
+    return contextStr;
+  } catch (error) {
+    console.error("[RAG] Context Search Error:", error);
+    return "";
+  }
+}
+
+async function fetchBatchReviews(provider: "groq" | "typhoon", personas: any[], text: string, contextString: string = "") {
   const url = provider === "groq" ? GROQ_API_URL : TYPHOON_API_URL;
   const key = provider === "groq" ? GROQ_API_KEY : TYPHOON_API_KEY;
   const model = provider === "groq" ? "meta-llama/llama-4-scout-17b-16e-instruct" : "typhoon-v2.5-30b-a3b-instruct";
 
   const personaInstructions = personas.map(p => `ID ${p.id}: ${p.name} - สไตล์: ${p.desc} (ความยาว 2-4 ประโยค)`).join('\n');
   const systemPrompt = JSON_PROMPT + personaInstructions;
+
+  const userContent = contextString 
+    ? `=== ข้อมูลบริบทอ้างอิง ===\n${contextString}\n\n=== เนื้อหานิยาย ===\n${text}`
+    : `เนื้อหานิยาย:\n\n${text}`;
 
   try {
     const res = await fetch(url, {
@@ -47,7 +95,7 @@ async function fetchBatchReviews(provider: "groq" | "typhoon", personas: any[], 
         model,
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `เนื้อหานิยาย:\n\n${text}` },
+          { role: "user", content: userContent },
         ],
         temperature: 0.8,
         max_tokens: 8192,
@@ -64,10 +112,29 @@ async function fetchBatchReviews(provider: "groq" | "typhoon", personas: any[], 
     let rawText = data.choices?.[0]?.message?.content?.trim() ?? "[]";
 
     const cleanText = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
-    const parsed = JSON.parse(cleanText);
+    
+    let parsed;
+    try {
+      parsed = JSON.parse(cleanText);
+    } catch (parseError) {
+      console.warn(`[JSON Parse Error] ${provider} failed. Attempting regex extraction...`);
+      // Fallback regex extraction for array
+      const arrayMatch = cleanText.match(/\[[\s\S]*\]/);
+      if (arrayMatch) {
+        try {
+          parsed = JSON.parse(arrayMatch[0]);
+        } catch (e2) {
+          console.error(`[Regex Fallback Error] ${provider} failed again:`, e2);
+          return null;
+        }
+      } else {
+         return null;
+      }
+    }
+    
     return Array.isArray(parsed) ? parsed : (parsed.reviews || parsed.data || []);
   } catch (e) {
-    console.error(`Fetch or JSON Parse Error from ${provider}:`, e);
+    console.error(`Fetch Error from ${provider}:`, e);
     return null;
   }
 }
@@ -94,17 +161,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ nov
     const plainText = rawHtml.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
     if (plainText.length < 50) return NextResponse.json({ success: false, error: "เนื้อหาสั้นเกินไป" }, { status: 400 });
 
-    const truncated = plainText.slice(0, 4000);
+    const truncated = plainText.slice(0, 3000);
+
+    const searchQuery = `${note.title || ""} ${plainText.slice(0, 500)}`.trim();
+    const contextString = await fetchStoryContext(novelId, searchQuery, noteId);
 
     let [groqAns, typhoonAns] = await Promise.all([
-      fetchBatchReviews("groq", PERSONAS_MAPPING.groq, truncated),
-      fetchBatchReviews("typhoon", PERSONAS_MAPPING.typhoon, truncated)
+      fetchBatchReviews("groq", PERSONAS_MAPPING.groq, truncated, contextString),
+      fetchBatchReviews("typhoon", PERSONAS_MAPPING.typhoon, truncated, contextString)
     ]);
 
     // Provider Fallback: หาก Typhoon ล่มหรือไม่สามารถแกะ JSON ได้, ให้ Groq มารับช่วงต่อ
     if (!typhoonAns) {
       console.warn("⚠️ Typhoon API failed. Falling back to Groq for Typhoon's personas...");
-      typhoonAns = await fetchBatchReviews("groq", PERSONAS_MAPPING.typhoon, truncated);
+      typhoonAns = await fetchBatchReviews("groq", PERSONAS_MAPPING.typhoon, truncated, contextString);
     }
 
     // หากของค่ายไหนพินาศ (ทำ fallback แล้วก็ยังไม่ได้) ให้กลายเป็น Array ว่างเพื่อไปดึงข้อความ Default ถัดไป
