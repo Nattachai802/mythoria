@@ -212,18 +212,36 @@ export async function syncNoteToDrive(noteId: string, forceContent?: string) {
         }
     }
 
+    // ==========================================
+    // COORDINATOR LOGIC (Phase 2 & 3)
+    // ==========================================
+
+    // Helper: fetch modifiedTime หลัง push เสร็จ เพื่อป้องกัน race condition
+    // ที่ทำให้รอบถัดไปเข้าใจผิดว่า remote ยังใหม่กว่าอยู่
+    async function fetchRemoteModifiedAtAfterPush(): Promise<Date> {
+        try {
+            const updatedMeta = await getDocMetadata(syncRecord!.googleDocId);
+            if (updatedMeta.modifiedTime) {
+                return new Date(updatedMeta.modifiedTime);
+            }
+        } catch (e) {
+            console.warn("[DRIVE_SYNC] Could not fetch updated modifiedTime after push, using now()", e);
+        }
+        return new Date();
+    }
+
     if (!forceContent) {
-        // [Phase 2 & 3] Conflict! ทั้งคู่แก้มา
+        // ── CASE 1: ทั้งสองฝั่งแก้มา → ลอง 3-Way Merge ──
         if (isLocalNewer && isRemoteNewer) {
-            console.log("Both newer. Attempting Auto-Merge (3-Way Merge)...");
-            
+            console.log("[DRIVE_SYNC] Both sides modified. Attempting 3-Way Auto-Merge...");
+
             const docContent = await getDocContent(syncRecord.googleDocId);
             const { googleDocToHtml, diffAndMerge } = await import("./drive-converter");
-            
+
             const remoteHtml = googleDocToHtml(docContent);
             const localHtml = htmlContent;
             let baseHtml = "";
-            
+
             if (syncRecord.baseContent) {
                 if (typeof syncRecord.baseContent === "string") {
                     baseHtml = syncRecord.baseContent;
@@ -235,94 +253,97 @@ export async function syncNoteToDrive(noteId: string, forceContent?: string) {
             const { mergedText, hasConflict } = diffAndMerge(baseHtml, localHtml, remoteHtml);
 
             if (hasConflict) {
-                console.warn("SYNC CONFLICT DETECTED!");
-                return { 
-                    success: false, 
-                    conflict: true, 
+                console.warn("[DRIVE_SYNC] CONFLICT DETECTED — returning for manual resolution.");
+                return {
+                    success: false,
+                    conflict: true,
                     docId: syncRecord.googleDocId,
                     localContent: localHtml,
-                    remoteContent: remoteHtml 
+                    remoteContent: remoteHtml,
                 };
-            } else {
-                console.log("Merge Successful! Pushing to DB and Drive.");
-                // push merged to drive
-                await updateDocContent(syncRecord.googleDocId, mergedText);
-
-                // save to db
-                const updatedContent = { text: mergedText };
-                await db.update(notes)
-                    .set({
-                        content: updatedContent,
-                        updatedAt: new Date()
-                    })
-                    .where(eq(notes.id, noteId));
-
-                await db.update(driveSync)
-                    .set({ 
-                        lastSyncedAt: new Date(),
-                        lastRemoteModifiedAt: new Date(remoteModifiedAt),
-                        lastLocalModifiedAt: new Date(),
-                        baseContent: updatedContent,
-                        syncStatus: "synced"
-                    })
-                    .where(eq(driveSync.id, syncRecord.id));
-
-                return { success: true, merged: true, docId: syncRecord.googleDocId };
             }
-        } 
-        
+
+            // Merge สำเร็จ → push merged ขึ้น Drive
+            console.log("[DRIVE_SYNC] Merge successful. Pushing merged content to Drive...");
+            await updateDocContent(syncRecord.googleDocId, mergedText);
+
+            // FIX: fetch modifiedTime ใหม่หลัง push เสมอ
+            // ถ้าใช้ remoteModifiedAt (ก่อน push) จะทำให้รอบถัดไปเห็นว่า
+            // remote ใหม่กว่า lastSyncedAt อยู่ดี → วนซ้ำไม่สิ้นสุด
+            const newRemoteModifiedAt = await fetchRemoteModifiedAtAfterPush();
+
+            const mergedDbContent = { text: mergedText };
+            const now = new Date();
+
+            await db.update(notes)
+                .set({ content: mergedDbContent, updatedAt: now })
+                .where(eq(notes.id, noteId));
+
+            await db.update(driveSync)
+                .set({
+                    lastSyncedAt: now,
+                    lastRemoteModifiedAt: newRemoteModifiedAt, // ← ใช้เวลา *หลัง* push
+                    lastLocalModifiedAt: now,
+                    baseContent: mergedDbContent,
+                    syncStatus: "synced",
+                })
+                .where(eq(driveSync.id, syncRecord.id));
+
+            return { success: true, merged: true, docId: syncRecord.googleDocId };
+        }
+
+        // ── CASE 2: Remote ใหม่กว่า → Pull ──
         if (isRemoteNewer && !isLocalNewer) {
-            // ==========================================
-            // FAST-FORWARD PULL
-            // ==========================================
-        console.log("Drive is newer. Pulling to local...");
-        const docContent = await getDocContent(syncRecord.googleDocId);
-        
-        // TODO: ใน Phase 2 เราจะเรียก restoreFromSnapshot ที่นี่
-        // ตอนนี้เอา Plain text/HTML กลับมาก่อนแบบหยาบๆ 
-        const { googleDocToHtml } = await import("./drive-converter");
-        const pulledHtml = googleDocToHtml(docContent);
+            console.log("[DRIVE_SYNC] Drive is newer. Pulling to local...");
 
-        // เซฟลง Database
-        const updatedContent = { text: pulledHtml };
-        await db.update(notes)
-            .set({ 
-                content: updatedContent,
-                updatedAt: new Date() 
-            })
-            .where(eq(notes.id, noteId));
+            const docContent = await getDocContent(syncRecord.googleDocId);
+            const { googleDocToHtml } = await import("./drive-converter");
+            const pulledHtml = googleDocToHtml(docContent);
 
-        await db.update(driveSync)
-            .set({ 
-                lastSyncedAt: new Date(),
-                lastRemoteModifiedAt: new Date(remoteModifiedAt),
-                syncStatus: "synced",
-                baseContent: updatedContent
-            })
-            .where(eq(driveSync.id, syncRecord.id));
+            const pulledDbContent = { text: pulledHtml };
+            const now = new Date();
 
-        return { success: true, pulled: true, docId: syncRecord.googleDocId };
+            await db.update(notes)
+                .set({ content: pulledDbContent, updatedAt: now })
+                .where(eq(notes.id, noteId));
+
+            // Pull ไม่ต้อง push กลับ → remoteModifiedAt ยังถูกต้องอยู่
+            await db.update(driveSync)
+                .set({
+                    lastSyncedAt: now,
+                    lastRemoteModifiedAt: new Date(remoteModifiedAt),
+                    syncStatus: "synced",
+                    baseContent: pulledDbContent,
+                })
+                .where(eq(driveSync.id, syncRecord.id));
+
+            return { success: true, pulled: true, docId: syncRecord.googleDocId };
+        }
     }
-}
 
+    // ── CASE 3: Local ใหม่กว่า หรือ Force Override → Push ──
     // ==========================================
-    // FAST-FORWARD PUSH (หรือกรณี Force Resolve ทับทั้งผอง)
+    // FAST-FORWARD PUSH
     // ==========================================
     if (forceContent) {
-        console.log("Force Override with explicit content!");
+        console.log("[DRIVE_SYNC] Force Override with explicit content!");
     } else {
-        console.log("Local is newer or equal. Pushing to Drive...");
+        console.log("[DRIVE_SYNC] Local is newer or equal. Pushing to Drive...");
     }
-    
+
     if (htmlContent && syncRecord?.googleDocId) {
         await updateDocContent(syncRecord.googleDocId, htmlContent);
-        
+
+        // FIX: fetch modifiedTime ใหม่หลัง push เสมอ
+        const newRemoteModifiedAt = await fetchRemoteModifiedAtAfterPush();
+
         await db.update(driveSync)
-            .set({ 
+            .set({
                 lastSyncedAt: new Date(),
+                lastRemoteModifiedAt: newRemoteModifiedAt, // ← ใช้เวลา *หลัง* push
                 lastLocalModifiedAt: new Date(localModifiedAt),
                 baseContent: note.content,
-                syncStatus: "synced"
+                syncStatus: "synced",
             })
             .where(eq(driveSync.id, syncRecord.id));
     }
