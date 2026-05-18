@@ -207,14 +207,39 @@ Agent อัจฉริยะที่ใช้ Tool Calling ตรวจสอ
 
 ## 🏁 การติดตั้ง
 
-### 1. Clone Project
+คุณสามารถเลือกติดตั้งได้ 2 วิธี: **ผ่าน VS Code DevContainers (แนะนำสุดๆ ง่ายมาก)** หรือ **ติดตั้งเองแบบ Manual**
+
+### วิธีที่ 1: ติดตั้งผ่าน VS Code DevContainers (⭐️ แนะนำ)
+
+วิธีนี้จะจำลองสภาพแวดล้อม (Node.js, PostgreSQL, Python) ทั้งหมดให้อัตโนมัติ ทำให้คุณสามารถทำงานข้ามคอมพิวเตอร์หลายเครื่องได้โดยไม่ต้องเสียเวลา Setup ระบบใหม่เลย
+
+1. **เตรียมเครื่องมือ**: ติดตั้ง [Docker Desktop](https://www.docker.com/products/docker-desktop/) และโปรแกรม [VS Code](https://code.visualstudio.com/)
+2. **ลง Extension**: ใน VS Code ให้ไปที่หน้า Extensions แล้วติดตั้ง **Dev Containers** (ของ Microsoft)
+3. **เปิดโปรเจกต์**:
+   ```bash
+   git clone https://github.com/Nattachai802/mythoria.git
+   cd mythoria
+   ```
+4. เปิดโฟลเดอร์โปรเจกต์นี้ใน VS Code
+5. หน้าต่างมุมขวาล่างจะเด้งถาม ให้กดปุ่ม **Reopen in Container** (หรือกด `F1` แล้วพิมพ์ `Dev Containers: Reopen in Container`)
+6. ปล่อยให้ระบบดาวน์โหลดและติดตั้งทุกอย่างให้**อัตโนมัติ** (รัน `npm install`, รัน Database, รัน `db:push` ให้เสร็จสรรพ)
+7. เมื่อ Terminal แจ้งว่าโหลดเสร็จเรียบร้อย คุณสามารถสั่งรันเซิร์ฟเวอร์ได้ทันที:
+   ```bash
+   npm run dev:all
+   ```
+
+---
+
+### วิธีที่ 2: ติดตั้งแบบ Manual (สำหรับรันบนเครื่องโดยตรง)
+
+#### 1. Clone Project
 
 ```bash
 git clone https://github.com/Nattachai802/mythoria.git
 cd mythoria
 ```
 
-### 2. ติดตั้ง Dependencies
+#### 2. ติดตั้ง Dependencies
 
 ```bash
 # Frontend & Backend
@@ -228,13 +253,13 @@ venv\Scripts\activate        # Windows
 pip install -r requirements.txt
 ```
 
-### 3. ตั้งค่า Environment Variables
+#### 3. ตั้งค่า Environment Variables
 
 สร้างไฟล์ `.env` ที่ root:
 
 ```env
 # Database
-DATABASE_URL="postgresql://..."
+DATABASE_URL="postgresql://postgres:1234@localhost:5432/mythoria_db"
 
 # Auth
 BETTER_AUTH_SECRET="your-secret"
@@ -262,13 +287,13 @@ TYPHOON_API_KEY="your-typhoon-key"
 DATABASE_URL="postgresql://..."
 ```
 
-### 4. Setup Database
+#### 4. Setup Database
 
 ```bash
 npm run db:push
 ```
 
-### 5. รันโปรแกรม
+#### 5. รันโปรแกรม
 
 ```bash
 # รันทั้ง Next.js + Python Service พร้อมกัน

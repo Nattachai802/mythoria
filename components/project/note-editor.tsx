@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { Save, ArrowLeft, Trash2, Maximize2, Minimize2, FileText, CheckCircle2, AlertCircle, PanelRightClose, PanelRightOpen, AlignCenter, Cloud, CloudOff, Loader2, ChevronLeft, ChevronRight, X, MoreHorizontal, Sparkles, History, BarChart } from "lucide-react"
+import { Save, ArrowLeft, Trash2, Maximize2, Minimize2, FileText, CheckCircle2, AlertCircle, PanelRightClose, PanelRightOpen, AlignCenter, Cloud, CloudOff, Loader2, ChevronLeft, ChevronRight, X, MoreHorizontal, Sparkles, History, BarChart, BookOpen } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
@@ -34,6 +34,7 @@ import { NoteSummaryButton } from "@/components/project/note-summary-button"
 import { DriveSyncButton } from "@/components/project/drive-sync-button"
 import { AIReviewPanel } from "@/components/project/ai-review-panel"
 import { NotePlotPanel } from "@/components/project/note-plot-panel"
+import { NoteReferencePanel } from "@/components/project/note-reference-panel"
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
 import {
     Tooltip,
@@ -64,6 +65,9 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
     const [isFocusMode, setIsFocusMode] = useState(false)
     const [isTypewriterMode, setIsTypewriterMode] = useState(true)
     const [showSidebar, setShowSidebar] = useState(false)
+    const [showReference, setShowReference] = useState(false)
+    const [referenceWidth, setReferenceWidth] = useState(400)
+    const [isDragging, setIsDragging] = useState(false)
     const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved')
     const [showZenControls, setShowZenControls] = useState(false)
     const [wordStatus, setWordStatus] = useState<WordCountStatus | null>(null)
@@ -127,6 +131,38 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
             setSaveStatus('unsaved')
         }
     }, [title, content])
+
+    // Resizer logic
+    const handleDragStart = (e: React.MouseEvent) => {
+        e.preventDefault()
+        setIsDragging(true)
+    }
+
+    useEffect(() => {
+        if (!isDragging) return
+
+        const handleMouseMove = (e: MouseEvent) => {
+            // Constrain width between 250px and 60% of window width
+            const newWidth = Math.max(250, Math.min(e.clientX, window.innerWidth * 0.6))
+            setReferenceWidth(newWidth)
+        }
+        
+        const handleMouseUp = () => {
+            setIsDragging(false)
+        }
+
+        document.addEventListener('mousemove', handleMouseMove)
+        document.addEventListener('mouseup', handleMouseUp)
+        
+        // Disable text selection while dragging
+        document.body.style.userSelect = 'none'
+        
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove)
+            document.removeEventListener('mouseup', handleMouseUp)
+            document.body.style.userSelect = ''
+        }
+    }, [isDragging])
 
     // Check word count sufficiency (debounced)
     useEffect(() => {
@@ -298,7 +334,20 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
     useEffect(() => {
         if (!isTypewriterMode) return
 
+        let lastInteraction = 'keyboard'
+
+        const handleMouseDown = () => {
+            lastInteraction = 'mouse'
+        }
+
+        const handleKeyDown = () => {
+            lastInteraction = 'keyboard'
+        }
+
         const handleSelectionChange = () => {
+            // ไม่ทำการเลื่อนหน้าจอหากมาจากการคลิกเมาส์
+            if (lastInteraction === 'mouse') return
+
             try {
                 const container = editorContainerRef.current?.querySelector('.ql-editor')
                 if (!container) return
@@ -331,8 +380,13 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
             timeout = setTimeout(handleSelectionChange, 50)
         }
 
+        document.addEventListener('mousedown', handleMouseDown)
+        document.addEventListener('keydown', handleKeyDown)
         document.addEventListener('selectionchange', debouncedHandler)
+        
         return () => {
+            document.removeEventListener('mousedown', handleMouseDown)
+            document.removeEventListener('keydown', handleKeyDown)
             document.removeEventListener('selectionchange', debouncedHandler)
             clearTimeout(timeout)
         }
@@ -609,6 +663,22 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                         <Tooltip>
                             <TooltipTrigger asChild>
                                 <Button
+                                    variant={showReference ? "secondary" : "ghost"}
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={() => setShowReference(!showReference)}
+                                >
+                                    <BookOpen className="h-3.5 w-3.5" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p>{showReference ? "ปิดหน้าต่างอ้างอิง" : "เปิดหน้าต่างอ้างอิง"}</p>
+                            </TooltipContent>
+                        </Tooltip>
+
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
                                     variant={isTypewriterMode ? "secondary" : "ghost"}
                                     size="icon"
                                     className="h-7 w-7"
@@ -695,15 +765,38 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
 
                 {/* Main content area — Editor takes full width */}
                 <div className={cn(
-                    "flex-1 overflow-hidden relative transition-all duration-300",
-                    isFocusMode && "pt-0"
+                    "flex-1 overflow-hidden relative transition-all duration-300 bg-muted flex",
+                    isFocusMode && "pt-0",
+                    isDragging && "cursor-col-resize"
                 )}>
+                    {/* Reference Panel */}
+                    {!isFocusMode && showReference && (
+                        <>
+                            <div 
+                                className="hidden sm:flex flex-col bg-background relative z-0 shrink-0 transition-none"
+                                style={{ width: referenceWidth }}
+                            >
+                                <NoteReferencePanel novelId={novelId} currentNoteId={note.id} linkedChapterId={note.linkedToChapterId} />
+                            </div>
+                            
+                            {/* Resizer Handle */}
+                            <div 
+                                className={cn(
+                                    "hidden sm:flex w-1.5 bg-border hover:bg-primary/50 cursor-col-resize z-10 transition-colors shrink-0",
+                                    isDragging && "bg-primary"
+                                )}
+                                onMouseDown={handleDragStart}
+                            />
+                        </>
+                    )}
+
                     {/* Editor — always full width */}
                     <div
                         ref={editorContainerRef}
                         className={cn(
-                            "h-full overflow-hidden flex flex-col transition-all duration-300",
-                            isFocusMode && "max-w-4xl mx-auto w-full px-2 md:px-4 pt-4"
+                            "h-full overflow-hidden flex flex-col transition-all duration-300 w-full flex-1 bg-background shadow-md",
+                            !showReference && "max-w-3xl mx-auto",
+                            isFocusMode && "!max-w-4xl px-4 md:px-8 pt-4 shadow-none bg-transparent"
                         )}
                     >
                         <ReactQuill
@@ -713,8 +806,8 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                             modules={modules}
                             className={cn(
                                 "h-full flex flex-col [&>.ql-container]:flex-1 [&>.ql-container]:overflow-y-auto [&>.ql-container]:text-base [&>.ql-container]:border-none",
-                                "[&>.ql-editor]:px-4 [&>.ql-editor]:py-3",
-                                isFocusMode && "[&>.ql-editor]:text-lg [&>.ql-editor]:leading-relaxed"
+                                "[&>.ql-editor]:px-6 [&>.ql-editor]:py-6 sm:[&>.ql-editor]:px-10",
+                                isFocusMode && "[&>.ql-editor]:text-lg [&>.ql-editor]:leading-relaxed [&>.ql-editor]:px-4 sm:[&>.ql-editor]:px-12"
                             )}
                             placeholder="Start writing your scene..."
                         />

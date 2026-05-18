@@ -1,0 +1,25 @@
+{
+  "name": "Mythoria Dev",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspace",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "bradlc.vscode-tailwindcss",
+        "ms-python.python",
+        "mtxr.sqltools"
+      ]
+    }
+  },
+  "forwardPorts": [3000, 5432, 8000],
+  
+  // คำสั่งที่ให้รันอัตโนมัติเมื่อ Container ถูกสร้างเสร็จ
+  // 1. ลงไลบรารี Node
+  // 2. จำลองสภาพแวดล้อม Python (venv) ให้ pythonservice
+  // 3. ใช้ Drizzle ดัน Schema เข้า Database
+  "postCreateCommand": "npm install && cd pythonservice && python3 -m venv venv && ./venv/bin/pip install -r requirements.txt || true && cd .. && npm run db:push",
+  
+  "remoteUser": "node"
+}
