@@ -636,6 +636,27 @@ export const characterPowers = pgTable("character_powers", {
     .notNull(),
 });
 
+// Character Design Elements (Moodboard/Design Board)
+export const characterDesignElements = pgTable("character_design_elements", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  characterId: text("character_id")
+    .notNull()
+    .references(() => characters.id, { onDelete: "cascade" }),
+  novelId: text("novel_id")
+    .notNull()
+    .references(() => novels.id, { onDelete: "cascade" }),
+  type: text("type").notNull(), // 'color', 'hairstyle', 'clothing', 'accessory', 'other'
+  value: text("value").notNull(), // hex color or image URL
+  name: text("name"), // e.g. "Crimson Red" or "Formal Suit"
+  position: integer("position").default(0), // for ordering in the UI
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
 // ============================================
 // WORLD BUILDING TABLES
 // ============================================
@@ -1035,6 +1056,18 @@ export const characterRelations = relations(characters, ({ one, many }) => ({
   targetRelationships: many(characterRelationships, { relationName: "target" }),
   factions: many(characterFactions),
   chapters: many(chapterCharacters),
+  designElements: many(characterDesignElements),
+}));
+
+export const characterDesignElementRelations = relations(characterDesignElements, ({ one }) => ({
+  character: one(characters, {
+    fields: [characterDesignElements.characterId],
+    references: [characters.id],
+  }),
+  novel: one(novels, {
+    fields: [characterDesignElements.novelId],
+    references: [novels.id],
+  }),
 }));
 
 export const locationRelations = relations(locations, ({ one, many }) => ({
@@ -1527,10 +1560,12 @@ export type Power = typeof powers.$inferSelect;
 export type PowerLevel = typeof powerLevels.$inferSelect;
 export type PowerCombination = typeof powerCombinations.$inferSelect;
 export type CharacterPower = typeof characterPowers.$inferSelect;
+export type CharacterDesignElement = typeof characterDesignElements.$inferSelect;
 export type InsertPower = typeof powers.$inferInsert;
 export type InsertPowerLevel = typeof powerLevels.$inferInsert;
 export type InsertPowerCombination = typeof powerCombinations.$inferInsert;
 export type InsertCharacterPower = typeof characterPowers.$inferInsert;
+export type InsertCharacterDesignElement = typeof characterDesignElements.$inferInsert;
 export type CharacterAnalysisQueue = typeof characterAnalysisQueue.$inferSelect;
 export type AISuggestion = typeof aiSuggestions.$inferSelect;
 export type InsertCharacterAnalysisQueue = typeof characterAnalysisQueue.$inferInsert;
@@ -1635,6 +1670,8 @@ export const schema = {
   // Scene Element Details
   sceneElementDetails,
   sceneElementDetailsRelations,
+  characterDesignElements,
+  characterDesignElementRelations,
   driveSettings,
   driveSync,
   driveCredentials,

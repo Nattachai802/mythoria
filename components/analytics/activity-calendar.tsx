@@ -89,35 +89,35 @@ export function ActivityCalendar({ activity }: ActivityCalendarProps) {
     const dayLabels = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
 
     return (
-        <div className="space-y-4">
-            <div className="flex gap-1">
+        <div className="space-y-6 flex flex-col h-full justify-center">
+            <div className="flex gap-3">
                 {/* Day labels */}
-                <div className="flex flex-col gap-1 pr-2 text-xs text-muted-foreground">
+                <div className="flex flex-col gap-2 pr-4 text-sm text-muted-foreground mt-1">
                     {[0, 1, 2, 3, 4, 5, 6].map((day) => (
-                        <div key={day} className="h-3 flex items-center">
+                        <div key={day} className="h-6 flex items-center">
                             {day % 2 === 1 ? dayLabels[day] : ''}
                         </div>
                     ))}
                 </div>
 
                 {/* Calendar grid */}
-                <div className="flex gap-1 overflow-x-auto pb-2">
+                <div className="flex gap-2 overflow-x-auto pb-2 w-full">
                     {weeks.map((week, weekIndex) => (
-                        <div key={weekIndex} className="flex flex-col gap-1">
+                        <div key={weekIndex} className="flex flex-col gap-2">
                             {week.map((day) => (
                                 day.count === -1 ? (
-                                    <div key={day.date || `empty-${day.dayOfWeek}`} className="w-3 h-3" />
+                                    <div key={day.date || `empty-${day.dayOfWeek}`} className="w-6 h-6" />
                                 ) : (
                                     <Tooltip key={day.date}>
                                         <TooltipTrigger asChild>
                                             <div
                                                 className={cn(
-                                                    "w-3 h-3 rounded-sm cursor-pointer transition-colors hover:ring-2 hover:ring-foreground/20",
+                                                    "w-6 h-6 rounded-md cursor-pointer transition-colors hover:ring-2 hover:ring-foreground/20",
                                                     intensityColors[getIntensity(day.words)]
                                                 )}
                                             />
                                         </TooltipTrigger>
-                                        <TooltipContent side="top" className="text-xs">
+                                        <TooltipContent side="top" className="text-sm">
                                             <p className="font-medium">{day.words.toLocaleString()} words</p>
                                             <p className="text-muted-foreground">
                                                 {new Date(day.date).toLocaleDateString('th-TH', {
@@ -136,12 +136,12 @@ export function ActivityCalendar({ activity }: ActivityCalendarProps) {
             </div>
 
             {/* Legend */}
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-3 text-sm text-muted-foreground pt-2">
                 <span>น้อย</span>
                 {intensityColors.map((color, index) => (
                     <div
                         key={index}
-                        className={cn("w-3 h-3 rounded-sm", color)}
+                        className={cn("w-4 h-4 rounded-md", color)}
                     />
                 ))}
                 <span>มาก</span>

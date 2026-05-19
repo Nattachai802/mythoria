@@ -15,11 +15,12 @@
   },
   "forwardPorts": [3000, 5432, 8000],
   
-  // คำสั่งที่ให้รันอัตโนมัติเมื่อ Container ถูกสร้างเสร็จ
+  // คำสั่งที่ให้รันอัตโนมัติเมื่อ Container ถูกสร้างเสร็จ (ทำงานเรียงลำดับ)
   // 1. ลงไลบรารี Node
-  // 2. จำลองสภาพแวดล้อม Python (venv) ให้ pythonservice
-  // 3. ใช้ Drizzle ดัน Schema เข้า Database
-  "postCreateCommand": "npm install && cd pythonservice && python3 -m venv venv && ./venv/bin/pip install -r requirements.txt || true && cd .. && npm run db:push",
+  // 2. จำลองสภาพแวดล้อม Python และติดตั้งแพ็กเกจ
+  // 3. ดึงข้อมูลตัวอย่างจากไฟล์ backup.sql เข้า Database (ถ้ามีไฟล์)
+  // 4. อัปเดต Schema ล่าสุดผ่าน Drizzle
+  "postCreateCommand": "npm install && cd pythonservice && python3 -m venv venv && ./venv/bin/pip install -r requirements.txt || true && cd .. && if [ -f backup.sql ]; then psql \"postgresql://postgres:1234@localhost:5432/mythoria_db\" -f backup.sql || true; fi && npm run db:push",
   
   "remoteUser": "node"
 }
