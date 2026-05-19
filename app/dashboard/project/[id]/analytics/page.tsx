@@ -148,60 +148,62 @@ export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
                 </CardContent>
             </Card>
 
-            {/* Activity Calendar */}
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <Calendar className="w-5 h-5" />
-                        Writing Activity (Last 90 Days)
-                    </CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <ActivityCalendar activity={activity} />
-                </CardContent>
-            </Card>
-
-            {/* Project Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card>
-                    <CardContent className="pt-6 flex items-center gap-4">
-                        <div className="p-3 rounded-xl bg-indigo-500/20">
-                            <BookOpen className="w-6 h-6 text-indigo-500" />
-                        </div>
-                        <div>
-                            <p className="text-3xl font-bold">{summary?.totalWords?.toLocaleString() || 0}</p>
-                            <p className="text-sm text-muted-foreground">Total Words</p>
-                        </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {/* Activity Calendar */}
+                <Card className="lg:col-span-2 flex flex-col">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Calendar className="w-5 h-5" />
+                            Writing Activity (Last 90 Days)
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex-1 flex items-center justify-center">
+                        <ActivityCalendar activity={activity} />
                     </CardContent>
                 </Card>
 
-                <Card>
-                    <CardContent className="pt-6 flex items-center gap-4">
-                        <div className="p-3 rounded-xl bg-teal-500/20">
-                            <FileText className="w-6 h-6 text-teal-500" />
-                        </div>
-                        <div>
-                            <p className="text-3xl font-bold">{summary?.totalNotes || 0}</p>
-                            <p className="text-sm text-muted-foreground">Total Notes</p>
-                        </div>
-                    </CardContent>
-                </Card>
+                {/* Project Stats */}
+                <div className="flex flex-col gap-4">
+                    <Card className="flex-1">
+                        <CardContent className="pt-6 flex items-center gap-4 h-full">
+                            <div className="p-3 rounded-xl bg-indigo-500/20">
+                                <BookOpen className="w-6 h-6 text-indigo-500" />
+                            </div>
+                            <div>
+                                <p className="text-3xl font-bold">{summary?.totalWords?.toLocaleString() || 0}</p>
+                                <p className="text-sm text-muted-foreground">Total Words</p>
+                            </div>
+                        </CardContent>
+                    </Card>
 
-                <Card>
-                    <CardContent className="pt-6 flex items-center gap-4">
-                        <div className="p-3 rounded-xl bg-amber-500/20">
-                            <Target className="w-6 h-6 text-amber-500" />
-                        </div>
-                        <div>
-                            <p className="text-3xl font-bold">
-                                {summary?.targetWords
-                                    ? Math.round((summary.totalWords / summary.targetWords) * 100)
-                                    : 0}%
-                            </p>
-                            <p className="text-sm text-muted-foreground">Goal Progress</p>
-                        </div>
-                    </CardContent>
-                </Card>
+                    <Card className="flex-1">
+                        <CardContent className="pt-6 flex items-center gap-4 h-full">
+                            <div className="p-3 rounded-xl bg-teal-500/20">
+                                <FileText className="w-6 h-6 text-teal-500" />
+                            </div>
+                            <div>
+                                <p className="text-3xl font-bold">{summary?.totalNotes || 0}</p>
+                                <p className="text-sm text-muted-foreground">Total Notes</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="flex-1">
+                        <CardContent className="pt-6 flex items-center gap-4 h-full">
+                            <div className="p-3 rounded-xl bg-amber-500/20">
+                                <Target className="w-6 h-6 text-amber-500" />
+                            </div>
+                            <div>
+                                <p className="text-3xl font-bold">
+                                    {summary?.targetWords
+                                        ? Math.round((summary.totalWords / summary.targetWords) * 100)
+                                        : 0}%
+                                </p>
+                                <p className="text-sm text-muted-foreground">Goal Progress</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
             </div>
 
             <hr className="my-8" />

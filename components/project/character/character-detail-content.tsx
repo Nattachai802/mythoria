@@ -21,6 +21,7 @@ import {
     Sparkles,
     Download,
     Lightbulb,
+    Palette,
 } from "lucide-react";
 import { CharacterSheet } from "@/components/project/character/character-sheet";
 import { CharacterRelationships } from "@/components/project/character/character-relationships";
@@ -31,6 +32,7 @@ import { CharacterTimelineSlider } from "@/components/project/character/characte
 import { FactionTimelineView } from "@/components/project/character/faction-timeline-view";
 import { ExportCharacterDialog } from "@/components/project/character/export-character-dialog";
 import { CharacterIdeasTab } from "@/components/project/character/character-ideas-tab";
+import { CharacterDesignBoard } from "@/components/project/character/character-design-board";
 import { FormattedTextSection } from "@/components/ui/formatted-text-section";
 import { Character } from "@/db/schema";
 import { cn } from "@/lib/utils";
@@ -254,6 +256,10 @@ export function CharacterDetailContent({
                             <Lightbulb className="w-4 h-4" />
                             Ideas
                         </TabsTrigger>
+                        <TabsTrigger value="design" className="gap-2">
+                            <Palette className="w-4 h-4" />
+                            Design
+                        </TabsTrigger>
                     </TabsList>
 
                     {/* Profile Tab */}
@@ -416,6 +422,11 @@ export function CharacterDetailContent({
                             novelId={novelId}
                             ideas={ideas}
                         />
+                    </TabsContent>
+
+                    {/* Design Tab */}
+                    <TabsContent value="design">
+                        <CharacterDesignBoard characterId={character.id} novelId={novelId} />
                     </TabsContent>
                 </Tabs>
             </div>

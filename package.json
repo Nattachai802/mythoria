@@ -4,8 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "dev:python": "cd pythonservice && venv\\Scripts\\python -m uvicorn main:app --reload --port 8000",
-    "dev:all": "pg_ctl start & concurrently \"npm run dev\" \"npm run dev:python\"",
+    "dev:python:linux": "cd pythonservice && venv/bin/python -m uvicorn main:app --reload --port 8000",
+    "dev:python:windows": "cd pythonservice && venv/Scripts/python -m uvicorn main:app --reload --port 8000",
+    "dev:all:linux": "concurrently \"npm run dev\" \"npm run dev:python:linux\"",
+    "dev:all:windows": "concurrently \"npm run dev\" \"npm run dev:python:windows\"",
     "db:start": "pg_ctl start",
     "db:stop": "pg_ctl stop",
     "build": "next build",
