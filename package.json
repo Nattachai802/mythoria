@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "dev:python:linux": "cd pythonservice && venv/bin/python -m uvicorn main:app --reload --port 8000",
-    "dev:python:windows": "cd pythonservice && venv/Scripts/python -m uvicorn main:app --reload --port 8000",
+    "dev:python:windows": "cd pythonservice && venv\\Scripts\\python -m uvicorn main:app --reload --port 8000",
     "dev:all:linux": "concurrently --restart-tries -1 \"npm run dev\" \"npm run dev:python:linux\"",
     "dev:all:windows": "concurrently --restart-tries -1 \"npm run dev\" \"npm run dev:python:windows\"",
     "db:start": "pg_ctl start",

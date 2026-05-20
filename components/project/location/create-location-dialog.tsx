@@ -54,9 +54,11 @@ type LocationFormData = z.infer<typeof locationSchema>;
 
 interface CreateLocationDialogProps {
     novelId: string;
+    defaultParentId?: string;
+    trigger?: React.ReactNode;
 }
 
-export function CreateLocationDialog({ novelId }: CreateLocationDialogProps) {
+export function CreateLocationDialog({ novelId, defaultParentId, trigger }: CreateLocationDialogProps) {
     const [open, setOpen] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [locations, setLocations] = useState<any[]>([]);
@@ -81,7 +83,7 @@ export function CreateLocationDialog({ novelId }: CreateLocationDialogProps) {
             type: "",
             description: "",
             image: "",
-            parentLocationId: "",
+            parentLocationId: defaultParentId || "",
             atmosphere: "",
             climate: "",
             inhabitants: "",
@@ -92,9 +94,10 @@ export function CreateLocationDialog({ novelId }: CreateLocationDialogProps) {
     // Fetch locations when dialog opens
     useEffect(() => {
         if (open) {
+            form.setValue("parentLocationId", defaultParentId || "");
             fetchLocations();
         }
-    }, [open]);
+    }, [open, defaultParentId]);
 
     const fetchLocations = async () => {
         const result = await getLocationsByNovelId(novelId);
@@ -151,7 +154,17 @@ export function CreateLocationDialog({ novelId }: CreateLocationDialogProps) {
         if (result.success) {
             toast.success("Location created successfully");
             setOpen(false);
-            form.reset();
+            form.reset({
+                name: "",
+                type: "",
+                description: "",
+                image: "",
+                parentLocationId: defaultParentId || "",
+                atmosphere: "",
+                climate: "",
+                inhabitants: "",
+                secrets: "",
+            });
             // Reset array fields
             setHighlights([]);
             setLandmarks([]);
@@ -167,10 +180,12 @@ export function CreateLocationDialog({ novelId }: CreateLocationDialogProps) {
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Create Location
-                </Button>
+                {trigger || (
+                    <Button>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Create Location
+                    </Button>
+                )}
             </DialogTrigger>
             <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>

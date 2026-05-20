@@ -22,7 +22,9 @@ from embeddings import generate_embedding
 load_dotenv()
 
 # Typhoon API Configuration
-TYPHOON_API_KEY = os.getenv("TYPHOON_API_KEY", "sk-p92ZcqcevSS7i0ANIJXKyCp4g6MvqsgsEDy1ZuQJNuRgmpzN")
+TYPHOON_API_KEY = os.getenv("TYPHOON_API_KEY")
+if not TYPHOON_API_KEY:
+    raise RuntimeError("TYPHOON_API_KEY is not set. Please add it to your .env file.")
 
 # Initialize Typhoon LLM
 llm = ChatOpenAI(

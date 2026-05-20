@@ -4,7 +4,7 @@ import { db } from "@/db/drizzle";
 import { aliasCache } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
-const TYPHOON_API_KEY = "sk-p92ZcqcevSS7i0ANIJXKyCp4g6MvqsgsEDy1ZuQJNuRgmpzN";
+const TYPHOON_API_KEY = process.env.TYPHOON_API_KEY;
 const TYPHOON_API_URL = "https://api.opentyphoon.ai/v1/chat/completions";
 const MODEL_NAME = "typhoon-v2.5-30b-a3b-instruct";
 

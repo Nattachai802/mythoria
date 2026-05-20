@@ -7,20 +7,20 @@ import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
 
 // API Configuration
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "AIzaSyA7O91TiZA3oB48B2NbRlgs5jNkwIx-wQo";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = "gemini-2.5-flash";
 
-const TYPHOON_API_KEY = "sk-p92ZcqcevSS7i0ANIJXKyCp4g6MvqsgsEDy1ZuQJNuRgmpzN";
+const TYPHOON_API_KEY = process.env.TYPHOON_API_KEY;
 const TYPHOON_MODEL = "typhoon-v2.5-30b-a3b-instruct";
 
-// Initialize Gemini client
-const geminiClient = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+// Initialize Gemini client (lazily — key must be set via env)
+const geminiClient = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
 
 // Initialize Typhoon client (using OpenAI SDK)
-const typhoonClient = new OpenAI({
+const typhoonClient = TYPHOON_API_KEY ? new OpenAI({
     apiKey: TYPHOON_API_KEY,
     baseURL: "https://api.opentyphoon.ai/v1",
-});
+}) : null;
 
 // Rate limit tracking
 let lastGeminiRateLimitRetry = 0;
@@ -152,6 +152,11 @@ ${content}
 
 async function callGemini(prompt: string): Promise<AIExtractionResult | null> {
     try {
+        if (!geminiClient) {
+            console.error("[Gemini] GEMINI_API_KEY is not set in environment variables.");
+            return null;
+        }
+
         // Check if we're in rate limit cooldown
         const now = Date.now();
         if (lastGeminiRateLimitRetry > now) {
@@ -192,6 +197,11 @@ async function callGemini(prompt: string): Promise<AIExtractionResult | null> {
 
 async function callTyphoon(prompt: string): Promise<AIExtractionResult | null> {
     try {
+        if (!typhoonClient) {
+            console.error("[Typhoon] TYPHOON_API_KEY is not set in environment variables.");
+            return null;
+        }
+
         // Check if we're in rate limit cooldown
         const now = Date.now();
         if (lastTyphoonRateLimitRetry > now) {
