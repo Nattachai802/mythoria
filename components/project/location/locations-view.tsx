@@ -1,9 +1,14 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Map, List } from "lucide-react";
-import { LocationMap } from "./location-map";
+import { Map, List, Loader2 } from "lucide-react";
 import { LocationHierarchyView } from "./location-hierarchy-view";
+
+const LocationMap = dynamic(
+    () => import("./location-map").then(m => ({ default: m.LocationMap })),
+    { ssr: false, loading: () => <div className="flex items-center justify-center h-96"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div> }
+);
 
 interface LocationsViewProps {
     locations: any[];
