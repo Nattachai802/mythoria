@@ -10,7 +10,6 @@ import { toast } from "sonner";
 import dynamic from "next/dynamic";
 import { updateChapter } from "@/server/chapter";
 import { CastDeck } from "./cast-deck";
-import 'react-quill-new/dist/quill.snow.css';
 import { cn } from "@/lib/utils";
 
 const ReactQuill = dynamic(() => import("react-quill-new"), { ssr: false });

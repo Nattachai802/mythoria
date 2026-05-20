@@ -25,6 +25,8 @@ const nextConfig: NextConfig = {
       "@radix-ui/react-tooltip",
       "motion",
       "date-fns",
+      "@xyflow/react",
+      "fuse.js",
     ],
   },
 };
