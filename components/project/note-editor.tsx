@@ -25,16 +25,9 @@ import {
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { NoteCastDeck } from "@/components/project/note-cast-deck"
+// Static imports (always needed)
 import { ExtractionStatus } from "@/components/project/extraction-status"
-import { CharacterStateEditor } from "@/components/project/character-state-editor"
-import { PlotHoleChecker } from "@/components/project/plot-hole-checker"
-import { VersionHistoryPanel } from "@/components/project/version-history-panel"
-import { NoteSummaryButton } from "@/components/project/note-summary-button"
 import { DriveSyncButton } from "@/components/project/drive-sync-button"
-import { AIReviewPanel } from "@/components/project/ai-review-panel"
-import { NotePlotPanel } from "@/components/project/note-plot-panel"
-import { NoteReferencePanel } from "@/components/project/note-reference-panel"
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
 import {
     Tooltip,
@@ -42,6 +35,16 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip"
+
+// Dynamic imports — only loaded when user opens panels/sidebar
+const NoteCastDeck = dynamic(() => import("@/components/project/note-cast-deck").then(m => ({ default: m.NoteCastDeck })), { ssr: false })
+const CharacterStateEditor = dynamic(() => import("@/components/project/character-state-editor").then(m => ({ default: m.CharacterStateEditor })), { ssr: false })
+const PlotHoleChecker = dynamic(() => import("@/components/project/plot-hole-checker").then(m => ({ default: m.PlotHoleChecker })), { ssr: false })
+const VersionHistoryPanel = dynamic(() => import("@/components/project/version-history-panel").then(m => ({ default: m.VersionHistoryPanel })), { ssr: false })
+const NoteSummaryButton = dynamic(() => import("@/components/project/note-summary-button").then(m => ({ default: m.NoteSummaryButton })), { ssr: false })
+const AIReviewPanel = dynamic(() => import("@/components/project/ai-review-panel").then(m => ({ default: m.AIReviewPanel })), { ssr: false })
+const NotePlotPanel = dynamic(() => import("@/components/project/note-plot-panel").then(m => ({ default: m.NotePlotPanel })), { ssr: false })
+const NoteReferencePanel = dynamic(() => import("@/components/project/note-reference-panel").then(m => ({ default: m.NoteReferencePanel })), { ssr: false })
 
 import 'react-quill-new/dist/quill.bubble.css';
 

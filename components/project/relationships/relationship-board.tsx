@@ -1,8 +1,14 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { Character } from "@/db/schema";
-import { RelationshipFlow } from "./relationship-flow";
+import { Loader2 } from "lucide-react";
+
+const RelationshipFlow = dynamic(
+    () => import("./relationship-flow").then(m => ({ default: m.RelationshipFlow })),
+    { ssr: false, loading: () => <div className="flex items-center justify-center h-96"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div> }
+);
 import { Button } from "@/components/ui/button";
 import { Plus, Trash2, RefreshCw, Users, UserPlus } from "lucide-react";
 import {
