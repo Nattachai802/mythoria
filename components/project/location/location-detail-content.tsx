@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import {
     Pencil,
+    Plus,
     MapPin,
     ArrowLeft,
     Sparkles,
@@ -24,10 +25,12 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { EditLocationDialog } from "@/components/project/location/edit-location-dialog";
+import { CreateLocationDialog } from "@/components/project/location/create-location-dialog";
 import { LocationCharacters } from "@/components/project/location/location-characters";
 import { LocationPresence } from "@/components/project/location/location-presence";
 import { EntityIdeasTab } from "@/components/project/shared/entity-ideas-tab";
 import { Location } from "@/db/schema";
+import { validateLocationDepth } from "@/server/locations";
 
 interface LocationDetailContentProps {
     location: Location;
@@ -54,6 +57,15 @@ export function LocationDetailContent({
     ideas = []
 }: LocationDetailContentProps) {
     const [editDialogOpen, setEditDialogOpen] = useState(false);
+    const [canAddSubLocation, setCanAddSubLocation] = useState(false);
+
+    useEffect(() => {
+        const checkDepth = async () => {
+            const result = await validateLocationDepth(location.id);
+            setCanAddSubLocation(result.valid);
+        };
+        checkDepth();
+    }, [location.id]);
 
     const typeConfig = TYPE_CONFIG[location.type || ""] || { color: "bg-gray-500", icon: "📍", gradient: "from-gray-500/20 to-gray-600/5" };
     const loc = location as any; // For new fields
@@ -284,11 +296,27 @@ export function LocationDetailContent({
                             {/* Sub-locations (พื้นที่รอง) Card */}
                             <Card className="md:col-span-2 lg:col-span-3 border-l-4 border-l-cyan-500">
                                 <CardHeader className="pb-2">
-                                    <CardTitle className="flex items-center gap-2 text-lg">
-                                        <MapPin className="h-5 w-5 text-cyan-500" />
-                                        พื้นที่รอง (Sub-locations)
-                                    </CardTitle>
-                                    <CardDescription>สถานที่ย่อยที่อยู่ภายใต้สถานที่นี้</CardDescription>
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <CardTitle className="flex items-center gap-2 text-lg">
+                                                <MapPin className="h-5 w-5 text-cyan-500" />
+                                                พื้นที่รอง (Sub-locations)
+                                            </CardTitle>
+                                            <CardDescription>สถานที่ย่อยที่อยู่ภายใต้สถานที่นี้</CardDescription>
+                                        </div>
+                                        {canAddSubLocation && (
+                                            <CreateLocationDialog
+                                                novelId={novelId}
+                                                defaultParentId={location.id}
+                                                trigger={
+                                                    <Button size="sm" variant="outline">
+                                                        <Plus className="h-4 w-4 mr-2" />
+                                                        เพิ่มพื้นที่รอง
+                                                    </Button>
+                                                }
+                                            />
+                                        )}
+                                    </div>
                                 </CardHeader>
                                 <CardContent>
                                     {loc.childLocations && loc.childLocations.length > 0 ? (

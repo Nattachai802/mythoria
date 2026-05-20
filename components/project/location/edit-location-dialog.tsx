@@ -31,10 +31,11 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { updateLocation } from "@/server/locations";
+import { updateLocation, getLocationsByNovelId, validateLocationDepth } from "@/server/locations";
 import { toast } from "sonner";
 import { Location } from "@/db/schema";
 import { X, Plus, Sparkles, AlertTriangle, MapPin, Users, Gem, Lock } from "lucide-react";
+import { ImageUpload } from "@/components/ui/image-upload";
 
 const locationSchema = z.object({
     name: z.string().min(1, "Name is required"),
@@ -63,6 +64,8 @@ export function EditLocationDialog({
     onOpenChange,
 }: EditLocationDialogProps) {
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [allLocations, setAllLocations] = useState<any[]>([]);
+    const [validParents, setValidParents] = useState<any[]>([]);
     const [highlights, setHighlights] = useState<string[]>((location as any).highlights || []);
     const [landmarks, setLandmarks] = useState<string[]>((location as any).landmarks || []);
     const [dangers, setDangers] = useState<string[]>((location as any).dangers || []);
@@ -87,6 +90,47 @@ export function EditLocationDialog({
             secrets: (location as any).secrets || "",
         },
     });
+
+    // Fetch locations in the same project to populate Parent Location list
+    useEffect(() => {
+        if (open && location.novelId) {
+            fetchLocations();
+        }
+    }, [open, location.novelId]);
+
+    const fetchLocations = async () => {
+        const result = await getLocationsByNovelId(location.novelId);
+        if (result.success && result.data) {
+            setAllLocations(result.data);
+            
+            // Build a list of descendants to prevent circular reference
+            const descendants = new Set<string>();
+            const getDescendants = (locId: string) => {
+                const children = result.data.filter((l: any) => l.parentLocationId === locId);
+                children.forEach((child: any) => {
+                    descendants.add(child.id);
+                    getDescendants(child.id);
+                });
+            };
+            getDescendants(location.id);
+
+            // Filter parent locations that are valid (not self, not descendants, parent depth < 2)
+            const canBeParents = result.data.filter((loc: any) => {
+                if (loc.id === location.id) return false;
+                if (descendants.has(loc.id)) return false;
+
+                let depth = 0;
+                let current = loc;
+                while (current.parentLocationId && depth < 3) {
+                    current = result.data.find((l: any) => l.id === current.parentLocationId);
+                    if (!current) break;
+                    depth++;
+                }
+                return depth < 2;
+            });
+            setValidParents(canBeParents);
+        }
+    };
 
     // Reset form when location changes
     useEffect(() => {
@@ -119,6 +163,40 @@ export function EditLocationDialog({
     };
 
     const onSubmit = async (data: LocationFormData) => {
+        // Validate hierarchy depth when parentLocationId is changed
+        if (data.parentLocationId && data.parentLocationId !== location.parentLocationId) {
+            const validation = await validateLocationDepth(data.parentLocationId);
+            if (!validation.valid) {
+                toast.error(validation.error || "Cannot add sub-location here");
+                return;
+            }
+
+            // Calculate the max depth of the current location's subtree
+            const getSubtreeDepth = (locId: string): number => {
+                const children = allLocations.filter((l: any) => l.parentLocationId === locId);
+                if (children.length === 0) return 0;
+                let maxChildDepth = 0;
+                for (const child of children) {
+                    maxChildDepth = Math.max(maxChildDepth, getSubtreeDepth(child.id));
+                }
+                return 1 + maxChildDepth;
+            };
+
+            // Calculate candidate parent's depth
+            let parentDepth = 0;
+            let current = allLocations.find(l => l.id === data.parentLocationId);
+            while (current && current.parentLocationId) {
+                current = allLocations.find(l => l.id === current.parentLocationId);
+                parentDepth++;
+            }
+
+            const totalSubtreeDepth = parentDepth + 1 + getSubtreeDepth(location.id);
+            if (totalSubtreeDepth > 2) {
+                toast.error("การเปลี่ยนสถานที่หลักจะทำให้ระดับชั้นของกลุ่มสถานที่ย่อยเกินขีดจำกัดสูงสุด (3 ระดับ)");
+                return;
+            }
+        }
+
         setIsSubmitting(true);
         const result = await updateLocation(location.id, {
             ...data,
@@ -164,6 +242,39 @@ export function EditLocationDialog({
                                             <FormControl>
                                                 <Input placeholder="Location name" {...field} />
                                             </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+
+                                <FormField
+                                    control={form.control}
+                                    name="parentLocationId"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Parent Location (Optional)</FormLabel>
+                                            <Select
+                                                onValueChange={(value) => field.onChange(value === 'none' ? '' : value)}
+                                                value={field.value || 'none'}
+                                            >
+                                                <FormControl>
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="None (Root location)" />
+                                                    </SelectTrigger>
+                                                </FormControl>
+                                                <SelectContent>
+                                                    <SelectItem value="none">None (Root location)</SelectItem>
+                                                    {validParents.map((loc) => (
+                                                        <SelectItem key={loc.id} value={loc.id}>
+                                                            {loc.name}
+                                                            {loc.parentLocation && ` (in ${loc.parentLocation.name})`}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            <FormDescription>
+                                                Select a parent to make this a sub-location (max 3 levels)
+                                            </FormDescription>
                                             <FormMessage />
                                         </FormItem>
                                     )}
@@ -222,9 +333,13 @@ export function EditLocationDialog({
                                     name="image"
                                     render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel>Image URL</FormLabel>
+                                            <FormLabel>Location Image</FormLabel>
                                             <FormControl>
-                                                <Input placeholder="https://..." {...field} />
+                                                <ImageUpload
+                                                    value={field.value || ""}
+                                                    onChange={field.onChange}
+                                                    folder="locations"
+                                                />
                                             </FormControl>
                                             <FormMessage />
                                         </FormItem>
