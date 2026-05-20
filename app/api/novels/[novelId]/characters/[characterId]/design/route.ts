@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/db";
+import { db } from "@/db/drizzle";
 import { characterDesignElements } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { requireUser } from "@/lib/auth"; // Assuming there is an auth wrapper, actually let's just do it directly if not found. Let's check what auth is used.
@@ -34,20 +34,23 @@ export async function POST(
     const resolvedParams = await params;
     const { novelId, characterId } = resolvedParams;
     const body = await req.json();
-    const { type, value, name } = body;
+    const { type, value, name, notes } = body;
 
-    if (!type || !value) {
-      return NextResponse.json({ error: "Type and value are required" }, { status: 400 });
+    if (!value) {
+      return NextResponse.json({ error: "Value is required" }, { status: 400 });
     }
+
+    const resolvedType = type && type.trim() !== "" ? type.trim() : "other";
 
     const newElement = await db
       .insert(characterDesignElements)
       .values({
         characterId,
         novelId,
-        type,
+        type: resolvedType,
         value,
         name: name || null,
+        notes: notes || null,
         position: Date.now(), // simple positioning
       })
       .returning();
