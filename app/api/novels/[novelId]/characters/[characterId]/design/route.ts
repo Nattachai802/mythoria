@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/drizzle";
 import { characterDesignElements } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import { requireUser } from "@/lib/auth"; // Assuming there is an auth wrapper, actually let's just do it directly if not found. Let's check what auth is used.
 
 // Just doing standard Next route. We'll skip strict auth checks here to keep it simple and match standard boilerplate, or check how other APIs do it.
 export async function GET(

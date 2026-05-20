@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import Link from "next/link"
+import { authClient } from "@/lib/auth-client"
 
 const formSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email." }),
@@ -41,6 +42,7 @@ const formSchema = z.object({
     .string()
     .min(8, { message: "Password must be at least 8 characters." }),
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
+  inviteCode: z.string().min(1, { message: "Invite code is required." }),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords do not match.",
   path: ["confirmPassword"],
@@ -57,6 +59,7 @@ export function SignupForm({
       password: "",
       confirmPassword: "",
       name: "",
+      inviteCode: "",
     },
   })
 
@@ -72,6 +75,7 @@ export function SignupForm({
           email: values.email,
           password: values.password,
           name: values.name,
+          inviteCode: values.inviteCode,
         }),
       })
 
@@ -160,15 +164,7 @@ export function SignupForm({
                     name="password"
                     render={({ field }) => (
                       <FormItem>
-                        <div className="flex items-center">
-                          <FieldLabel htmlFor="password">Password</FieldLabel>
-                          <Link
-                            href="#"
-                            className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
-                          >
-                            Forgot your password?
-                          </Link>
-                        </div>
+                        <FieldLabel htmlFor="password">Password</FieldLabel>
                         <FormControl>
                           <Input
                             id="password"
@@ -205,9 +201,43 @@ export function SignupForm({
                   />
                 </Field>
                 <Field>
+                  <FormField
+                    control={form.control}
+                    name="inviteCode"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FieldLabel htmlFor="inviteCode">Invite / Authentication Code</FieldLabel>
+                        <FormControl>
+                          <Input
+                            id="inviteCode"
+                            type="text"
+                            placeholder="Enter registration code"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </Field>
+                <Field>
                   <div className="flex flex-col gap-2">
                     <Button type="submit">Sign up</Button>
-                    <Button variant="outline" type="button">
+                    <Button 
+                      variant="outline" 
+                      type="button"
+                      onClick={async () => {
+                        const toastId = toast.loading("Redirecting to Google...");
+                        try {
+                          await authClient.signIn.social({
+                            provider: "google",
+                            callbackURL: "/dashboard"
+                          });
+                        } catch (err) {
+                          toast.error("Google sign-in failed", { id: toastId });
+                        }
+                      }}
+                    >
                       Sign up with Google
                     </Button>
                   </div>

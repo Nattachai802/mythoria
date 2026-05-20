@@ -11,7 +11,7 @@ export const auth = betterAuth({
     enabled: true,
     sendResetPassword: async ({ user, url, token }, request) => {
       await resend.emails.send({
-        from: "mythoria.noreply@gmail.com",
+        from: process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev",
         to: user.email,
         subject: "Reset your password",
         text: `Click the link to reset your password: ${url}`,

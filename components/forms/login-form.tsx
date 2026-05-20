@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import Link from "next/link"
+import { authClient } from "@/lib/auth-client"
 
 const formSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email." }),
@@ -157,7 +158,21 @@ export function LoginForm({
                 <Field>
                   <div className="flex flex-col gap-2">
                     <Button type="submit">Login</Button>
-                    <Button variant="outline" type="button">
+                    <Button 
+                      variant="outline" 
+                      type="button"
+                      onClick={async () => {
+                        const toastId = toast.loading("Redirecting to Google...");
+                        try {
+                          await authClient.signIn.social({
+                            provider: "google",
+                            callbackURL: "/dashboard"
+                          });
+                        } catch (err) {
+                          toast.error("Google sign-in failed", { id: toastId });
+                        }
+                      }}
+                    >
                       Login with Google
                     </Button>
                   </div>

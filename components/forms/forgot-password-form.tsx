@@ -49,7 +49,7 @@ export function ForgotPasswordForm({
   async function onSubmit(values: z.infer<typeof formSchema>) {
     const toastId = toast.loading("Sending reset link...")
     try {
-      const response = await fetch("/api/auth/request-password-reset", {
+      const response = await fetch("/api/auth/forget-password", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
+import { v2 as cloudinary } from "cloudinary";
+
+// Configure Cloudinary
+cloudinary.config({ 
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'doi797vsp', 
+    api_key: process.env.CLOUDINARY_API_KEY || '324749169949951', 
+    api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
 // Allowed file types
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
@@ -35,34 +41,34 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Create unique filename
-        const timestamp = Date.now();
-        const randomStr = Math.random().toString(36).substring(2, 8);
-        const extension = file.name.split(".").pop() || "jpg";
-        const filename = `${timestamp}-${randomStr}.${extension}`;
-
-        // Create upload directory if it doesn't exist
-        const uploadDir = path.join(process.cwd(), "public", "uploads", folder);
-        await mkdir(uploadDir, { recursive: true });
-
-        // Write file
+        // Convert file to buffer and upload to Cloudinary
         const bytes = await file.arrayBuffer();
         const buffer = Buffer.from(bytes);
-        const filePath = path.join(uploadDir, filename);
-        await writeFile(filePath, buffer);
 
-        // Return the public URL
-        const publicUrl = `/uploads/${folder}/${filename}`;
+        const uploadResult = await new Promise((resolve, reject) => {
+            cloudinary.uploader.upload_stream(
+                { 
+                    folder: `mythoria/${folder}`,
+                    resource_type: "auto"
+                },
+                (error, result) => {
+                    if (error) reject(error);
+                    else resolve(result);
+                }
+            ).end(buffer);
+        });
+
+        // Get the secure URL from Cloudinary
+        const publicUrl = (uploadResult as any).secure_url;
 
         return NextResponse.json({
             success: true,
             url: publicUrl,
-            filename: filename,
         });
     } catch (error) {
-        console.error("Upload error:", error);
+        console.error("Cloudinary upload error:", error);
         return NextResponse.json(
-            { success: false, error: "Failed to upload file" },
+            { success: false, error: "Failed to upload file to Cloudinary" },
             { status: 500 }
         );
     }
@@ -72,7 +78,7 @@ export async function POST(request: NextRequest) {
 export async function GET() {
     return NextResponse.json({
         success: true,
-        message: "Upload endpoint is ready",
+        message: "Cloudinary upload endpoint is ready",
         allowedTypes: ALLOWED_TYPES,
         maxSizeMB: MAX_SIZE / 1024 / 1024,
     });
