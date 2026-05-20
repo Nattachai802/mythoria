@@ -280,6 +280,41 @@ export function LocationDetailContent({
                                     </CardContent>
                                 </Card>
                             )}
+
+                            {/* Sub-locations (พื้นที่รอง) Card */}
+                            <Card className="md:col-span-2 lg:col-span-3 border-l-4 border-l-cyan-500">
+                                <CardHeader className="pb-2">
+                                    <CardTitle className="flex items-center gap-2 text-lg">
+                                        <MapPin className="h-5 w-5 text-cyan-500" />
+                                        พื้นที่รอง (Sub-locations)
+                                    </CardTitle>
+                                    <CardDescription>สถานที่ย่อยที่อยู่ภายใต้สถานที่นี้</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    {loc.childLocations && loc.childLocations.length > 0 ? (
+                                        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+                                            {loc.childLocations.map((sub: any) => (
+                                                <Link key={sub.id} href={`/dashboard/project/${novelId}/locations/${sub.id}`}>
+                                                    <div className="p-4 border rounded-lg hover:border-cyan-500 hover:bg-cyan-500/5 transition-colors group cursor-pointer h-full flex flex-col justify-center">
+                                                        <h3 className="font-semibold text-lg group-hover:text-cyan-600 transition-colors">
+                                                            {sub.name}
+                                                        </h3>
+                                                        {sub.type && (
+                                                            <p className="text-sm text-muted-foreground mt-1">
+                                                                {sub.type}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                </Link>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-muted-foreground text-sm py-4 text-center border border-dashed rounded-lg">
+                                            ยังไม่มีพื้นที่รอง
+                                        </p>
+                                    )}
+                                </CardContent>
+                            </Card>
                         </div>
 
                         <Separator className="my-8" />
