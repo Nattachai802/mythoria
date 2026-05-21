@@ -21,7 +21,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import {
-    Plus, MoreHorizontal, Pencil, Trash2,
+    Plus, MoreHorizontal, Pencil, Trash2, Copy,
     Layers, ChevronDown, ChevronRight as ChevronRightIcon, MapPin,
     FolderPlus, Clock, X, Menu, BookOpen, Download, Search, FilterX, Sparkles
 } from "lucide-react";
@@ -199,6 +199,44 @@ export function LoreTimeline({ entries, groups = [], eras = [], novelId, onRefre
         } else {
             toast.error(result.error || "ไม่สามารถลบได้");
         }
+    };
+
+    const getFormattedLoreText = (entry: LoreEntry, depth: number = 0): string => {
+        const indent = "  ".repeat(depth);
+        const prefix = depth > 0 ? `${indent}• ` : "";
+        let text = `${prefix}${entry.title}`;
+        if (entry.content) {
+            if (depth === 0) {
+                text += `\n\n${entry.content}`;
+            } else {
+                const indentedContent = entry.content
+                    .split("\n")
+                    .map(line => `${indent}  ${line}`)
+                    .join("\n");
+                text += `\n${indentedContent}`;
+            }
+        }
+        
+        const children = entries.filter(e => e.parentLoreId === entry.id);
+        if (children.length > 0) {
+            const childrenText = children
+                .map(child => getFormattedLoreText(child, depth + 1))
+                .join("\n\n");
+            text += `\n\n${childrenText}`;
+        }
+        
+        return text;
+    };
+
+    const handleCopy = (entry: LoreEntry) => {
+        const textToCopy = getFormattedLoreText(entry);
+        navigator.clipboard.writeText(textToCopy.trim())
+            .then(() => {
+                toast.success("คัดลอกตำนานไปยังคลิปบอร์ดแล้ว");
+            })
+            .catch(() => {
+                toast.error("ไม่สามารถคัดลอกได้");
+            });
     };
 
     const handleDialogClose = (open: boolean) => {
@@ -423,6 +461,9 @@ export function LoreTimeline({ entries, groups = [], eras = [], novelId, onRefre
                                                 <DropdownMenuItem onClick={() => handleEdit(entry)}>
                                                     <Pencil className="h-4 w-4 mr-2" /> แก้ไข
                                                 </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => handleCopy(entry)}>
+                                                    <Copy className="h-4 w-4 mr-2" /> คัดลอก
+                                                </DropdownMenuItem>
                                                 <DropdownMenuItem onClick={() => handleAddSubLore(entry.id)}>
                                                     <Plus className="h-4 w-4 mr-2" /> เพิ่ม Sub-lore
                                                 </DropdownMenuItem>
@@ -487,9 +528,24 @@ export function LoreTimeline({ entries, groups = [], eras = [], novelId, onRefre
                                         />
 
                                         <div
-                                            className="rounded-lg p-3 border transition-all duration-200 hover:shadow-md bg-white"
+                                            className={`rounded-lg p-3 border transition-all duration-200 hover:shadow-md bg-white ${isLeft ? 'pl-8' : 'pr-8'}`}
                                             style={{ borderColor: `${childColor}25` }}
                                         >
+                                            {/* Action buttons for sub-lore */}
+                                            <div className={`absolute top-2.5 ${isLeft ? 'left-2' : 'right-2'} opacity-0 group-hover:opacity-100 transition-opacity flex gap-1`}>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-6 w-6 rounded-full bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-700 shadow-sm border shrink-0"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleCopy(child);
+                                                    }}
+                                                >
+                                                    <Copy className="h-3 w-3" />
+                                                </Button>
+                                            </div>
+
                                             <div className={`flex items-center gap-2 ${isLeft ? 'flex-row-reverse' : ''}`}>
                                                 <span className="text-base">{child.icon || TYPE_ICONS[child.type || "event"] || "⚡"}</span>
                                                 <span className="font-medium text-sm text-slate-700 line-clamp-1">{child.title}</span>
@@ -552,6 +608,7 @@ export function LoreTimeline({ entries, groups = [], eras = [], novelId, onRefre
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
                                     <DropdownMenuItem onClick={() => handleEdit(entry)}><Pencil className="h-4 w-4 mr-2" /> แก้ไข</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleCopy(entry)}><Copy className="h-4 w-4 mr-2" /> คัดลอก</DropdownMenuItem>
                                     <DropdownMenuItem onClick={() => handleAddSubLore(entry.id)}><Plus className="h-4 w-4 mr-2" /> เพิ่ม Sub-lore</DropdownMenuItem>
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem onClick={() => handleDelete(entry)} className="text-red-600"><Trash2 className="h-4 w-4 mr-2" /> ลบ</DropdownMenuItem>
