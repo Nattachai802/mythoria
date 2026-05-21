@@ -9,8 +9,6 @@ services:
       - ../:/workspace:cached
     # ทำให้ Container รันค้างไว้รอ VS Code เข้ามาเชื่อมต่อ
     command: sleep infinity
-    # รันบน Network เดียวกับ db ทำให้ใช้ localhost ต่อหา db ได้เลย
-    network_mode: service:db
     environment:
       # ตรงกับ .env ของคุณพอดี
       - DATABASE_URL=postgresql://postgres:1234@localhost:5432/mythoria_db
@@ -18,6 +16,8 @@ services:
   db:
     image: postgres:15
     restart: unless-stopped
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: 1234
