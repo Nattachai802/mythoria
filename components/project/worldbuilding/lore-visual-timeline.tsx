@@ -12,7 +12,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-    Plus, MoreHorizontal, Pencil, Trash2,
+    Plus, MoreHorizontal, Pencil, Trash2, Copy,
     Clock, ChevronDown, ChevronRight, MapPin
 } from "lucide-react";
 import { deleteLoreEntry } from "@/server/lore";
@@ -100,6 +100,44 @@ export function LoreVisualTimeline({ eras, ungroupedLores, novelId, onRefresh }:
         } else {
             toast.error(result.error || "ไม่สามารถลบได้");
         }
+    };
+
+    const getFormattedLoreText = (entry: LoreEntry, allEntries: LoreEntry[], depth: number = 0): string => {
+        const indent = "  ".repeat(depth);
+        const prefix = depth > 0 ? `${indent}• ` : "";
+        let text = `${prefix}${entry.title}`;
+        if (entry.content) {
+            if (depth === 0) {
+                text += `\n\n${entry.content}`;
+            } else {
+                const indentedContent = entry.content
+                    .split("\n")
+                    .map(line => `${indent}  ${line}`)
+                    .join("\n");
+                text += `\n${indentedContent}`;
+            }
+        }
+        
+        const children = allEntries.filter(e => e.parentLoreId === entry.id);
+        if (children.length > 0) {
+            const childrenText = children
+                .map(child => getFormattedLoreText(child, allEntries, depth + 1))
+                .join("\n\n");
+            text += `\n\n${childrenText}`;
+        }
+        
+        return text;
+    };
+
+    const handleCopy = (entry: LoreEntry, allEntries: LoreEntry[]) => {
+        const textToCopy = getFormattedLoreText(entry, allEntries);
+        navigator.clipboard.writeText(textToCopy.trim())
+            .then(() => {
+                toast.success("คัดลอกตำนานไปยังคลิปบอร์ดแล้ว");
+            })
+            .catch(() => {
+                toast.error("ไม่สามารถคัดลอกได้");
+            });
     };
 
     const handleDialogClose = (open: boolean) => {
@@ -191,6 +229,9 @@ export function LoreVisualTimeline({ eras, ungroupedLores, novelId, onRefresh }:
                                 <DropdownMenuContent align="end">
                                     <DropdownMenuItem onClick={() => handleEdit(entry)}>
                                         <Pencil className="h-4 w-4 mr-2" /> แก้ไข
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleCopy(entry, allEntries)}>
+                                        <Copy className="h-4 w-4 mr-2" /> คัดลอก
                                     </DropdownMenuItem>
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem onClick={() => handleDelete(entry)} className="text-red-600">
