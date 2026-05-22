@@ -11,28 +11,28 @@ export async function GET(request: NextRequest, { params }: Props) {
     try {
         const { novelId } = await params;
 
-        // Fetch connections with location names
-        const connections = await db
-            .select({
-                id: locationConnections.id,
-                sourceLocationId: locationConnections.sourceLocationId,
-                targetLocationId: locationConnections.targetLocationId,
-                connectionType: locationConnections.connectionType,
-                customLabel: locationConnections.customLabel,
-                isBidirectional: locationConnections.isBidirectional,
-                travelTime: locationConnections.travelTime,
-                travelTimeUnit: locationConnections.travelTimeUnit,
-                travelMethod: locationConnections.travelMethod,
-                travelNotes: locationConnections.travelNotes,
-            })
-            .from(locationConnections)
-            .where(eq(locationConnections.novelId, novelId));
-
-        // Get location names
-        const locationsList = await db
-            .select({ id: locations.id, name: locations.name })
-            .from(locations)
-            .where(eq(locations.novelId, novelId));
+        // Fetch connections and location names in parallel
+        const [connections, locationsList] = await Promise.all([
+            db
+                .select({
+                    id: locationConnections.id,
+                    sourceLocationId: locationConnections.sourceLocationId,
+                    targetLocationId: locationConnections.targetLocationId,
+                    connectionType: locationConnections.connectionType,
+                    customLabel: locationConnections.customLabel,
+                    isBidirectional: locationConnections.isBidirectional,
+                    travelTime: locationConnections.travelTime,
+                    travelTimeUnit: locationConnections.travelTimeUnit,
+                    travelMethod: locationConnections.travelMethod,
+                    travelNotes: locationConnections.travelNotes,
+                })
+                .from(locationConnections)
+                .where(eq(locationConnections.novelId, novelId)),
+            db
+                .select({ id: locations.id, name: locations.name })
+                .from(locations)
+                .where(eq(locations.novelId, novelId))
+        ]);
 
         const locationMap = new Map(locationsList.map(l => [l.id, l.name]));
 

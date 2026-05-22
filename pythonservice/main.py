@@ -3,7 +3,7 @@ FastAPI Vector Search Service
 Provides REST API for all content vector sync and search
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import httpx
@@ -376,6 +376,120 @@ async def analyze_characters_endpoint(novel_id: str, request: AnalyzeCharactersR
     except Exception as e:
         print(f"[AnalyzeCharacters] Error: {e}")
         return {"success": False, "error": str(e)}
+
+
+class AnalyzeQueueRequest(BaseModel):
+    character_id: str = None
+    analysis_type: str = "all"
+
+
+@app.post("/analyze-queue/{novel_id}")
+async def trigger_analyze_queue(
+    novel_id: str,
+    request: AnalyzeQueueRequest,
+    background_tasks: BackgroundTasks
+):
+    """Trigger character analysis from the database queue asynchronously in background"""
+    background_tasks.add_task(
+        process_analysis_queue_task,
+        novel_id,
+        request.character_id,
+        request.analysis_type
+    )
+    return {"success": True, "message": "Background analysis task triggered."}
+
+
+async def process_analysis_queue_task(
+    novel_id: str,
+    character_id: str = None,
+    analysis_type: str = "all"
+):
+    """Worker loop to process pending analysis tasks in background"""
+    print(f"[Worker] Starting background task for novel: {novel_id}")
+    nextjs_base_url = os.getenv("NEXT_PUBLIC_BASE_URL", "http://localhost:3000")
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            # 1. Fetch current queue statuses
+            status_res = await client.get(
+                f"{nextjs_base_url}/api/novel/{novel_id}/analysis-status",
+                timeout=30.0
+            )
+            if status_res.status_code != 200:
+                print(f"[Worker] Failed to fetch queue status: {status_res.text}")
+                return
+                
+            status_data = status_res.json()
+            chapters_data = status_data.get("chapters", [])
+            
+            # Find chapters with status 'pending'
+            pending_chapters = [c for c in chapters_data if c.get("status") == "pending"]
+            
+            if not pending_chapters:
+                print(f"[Worker] No pending chapters to analyze for novel {novel_id}")
+                return
+                
+            print(f"[Worker] Found {len(pending_chapters)} pending chapters. Fetching characters...")
+            characters = await fetch_characters(novel_id)
+            
+            # 2. Process each pending chapter
+            for chapter in pending_chapters:
+                chapter_id_val = chapter["id"]
+                print(f"[Worker] Analyzing chapter {chapter_id_val} ({chapter.get('title', 'Untitled')})...")
+                
+                # Update queue status to 'processing'
+                patch_res = await client.patch(
+                    f"{nextjs_base_url}/api/novel/{novel_id}/analysis-status",
+                    json={"chapterId": chapter_id_val, "status": "processing"},
+                    timeout=10.0
+                )
+                if patch_res.status_code != 200:
+                    print(f"[Worker] Failed to update status to processing for chapter {chapter_id_val}")
+                
+                try:
+                    # Run AI analysis
+                    result = await analyze_chapter(novel_id, chapter, characters)
+                    
+                    # Prepare AI suggestions payload
+                    suggestions = []
+                    for r in result.get("relationships", []):
+                        r["suggestionType"] = "opinion_level"
+                        r["sourceChapterId"] = chapter_id_val
+                        suggestions.append(r)
+                    for e in result.get("life_events", []):
+                        e["suggestionType"] = "life_event"
+                        e["sourceChapterId"] = chapter_id_val
+                        suggestions.append(e)
+                        
+                    # Save AI Suggestions via Next.js
+                    if suggestions:
+                        sug_res = await client.post(
+                            f"{nextjs_base_url}/api/novel/{novel_id}/ai-suggestions",
+                            json={"suggestions": suggestions},
+                            timeout=30.0
+                        )
+                        if sug_res.status_code != 200:
+                            print(f"[Worker] Failed to save suggestions for chapter {chapter_id_val}: {sug_res.text}")
+                            
+                    # Update queue status to 'completed'
+                    await client.patch(
+                        f"{nextjs_base_url}/api/novel/{novel_id}/analysis-status",
+                        json={"chapterId": chapter_id_val, "status": "completed"},
+                        timeout=10.0
+                    )
+                    print(f"[Worker] Completed analysis for chapter {chapter_id_val}")
+                    
+                except Exception as ch_err:
+                    print(f"[Worker] Error analyzing chapter {chapter_id_val}: {ch_err}")
+                    # Update queue status to 'failed'
+                    await client.patch(
+                        f"{nextjs_base_url}/api/novel/{novel_id}/analysis-status",
+                        json={"chapterId": chapter_id_val, "status": "failed", "error": str(ch_err)},
+                        timeout=10.0
+                    )
+                    
+    except Exception as e:
+        print(f"[Worker] Critical error in background analysis task: {e}")
 
 
 @app.get("/analyze-characters-stream/{novel_id}")

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, integer, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, integer, jsonb, index } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 
 // ============================================
@@ -107,7 +107,9 @@ export const chapters = pgTable("chapters", {
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("chapters_novel_id_idx").on(table.novelId),
+}));
 
 export const characters = pgTable("characters", {
   id: text("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -136,7 +138,9 @@ export const characters = pgTable("characters", {
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("characters_novel_id_idx").on(table.novelId),
+}));
 
 export const characterRelationships = pgTable("character_relationships", {
   id: text("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -159,7 +163,11 @@ export const characterRelationships = pgTable("character_relationships", {
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("relationships_novel_id_idx").on(table.novelId),
+  sourceCharIdx: index("relationships_source_char_idx").on(table.sourceCharacterId),
+  targetCharIdx: index("relationships_target_char_idx").on(table.targetCharacterId),
+}));
 
 // Relationship History - ติดตามการเปลี่ยนแปลงความสัมพันธ์ตาม chapter
 export const relationshipHistory = pgTable("relationship_history", {
@@ -205,7 +213,10 @@ export const characterLifeEvents = pgTable("character_life_events", {
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("life_events_novel_id_idx").on(table.novelId),
+  characterIdIdx: index("life_events_character_id_idx").on(table.characterId),
+}));
 
 
 export const locations = pgTable("locations", {
@@ -234,7 +245,9 @@ export const locations = pgTable("locations", {
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("locations_novel_id_idx").on(table.novelId),
+}));
 
 // Location connections for map visualization
 export const locationConnections = pgTable("location_connections", {
@@ -257,7 +270,11 @@ export const locationConnections = pgTable("location_connections", {
     .notNull()
     .references(() => novels.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("loc_conn_novel_id_idx").on(table.novelId),
+  sourceLocIdx: index("loc_conn_source_loc_idx").on(table.sourceLocationId),
+  targetLocIdx: index("loc_conn_target_loc_idx").on(table.targetLocationId),
+}));
 
 
 export const timelineEvents = pgTable("timeline_events", {
@@ -881,7 +898,10 @@ export const characterAnalysisQueue = pgTable("character_analysis_queue", {
   error: text("error"),
   processedAt: timestamp("processed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("char_analysis_queue_novel_id_idx").on(table.novelId),
+  chapterIdIdx: index("char_analysis_queue_chapter_id_idx").on(table.chapterId),
+}));
 
 // AI Suggestions - AI แนะนำข้อมูลที่รอ user review
 export const aiSuggestions = pgTable("ai_suggestions", {
@@ -916,13 +936,13 @@ export const aiSuggestions = pgTable("ai_suggestions", {
 });
 
 export const driveSettings = pgTable("drive_settings", {
-  id : text("id").primaryKey().default(sql`gen_random_uuid()`),
-  novelId : text("novel_id")
-  .notNull()
-  .unique()
-  .references(() => novels.id, {onDelete: "cascade"}),
-  rootFolderId : text("root_folder_id"),
-  isEnabled : boolean("is_enabled").default(false),
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  novelId: text("novel_id")
+    .notNull()
+    .unique()
+    .references(() => novels.id, { onDelete: "cascade" }),
+  rootFolderId: text("root_folder_id"),
+  isEnabled: boolean("is_enabled").default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow()
     .$onUpdate(() => new Date()).notNull(),
@@ -936,18 +956,18 @@ export const driveSync = pgTable("drive_sync", {
   novelId: text("novel_id")
     .notNull()
     .references(() => novels.id, { onDelete: "cascade" }),
-  googleDocId: text("google_doc_id").notNull(), 
+  googleDocId: text("google_doc_id").notNull(),
   googleDriveFolderId: text("drive_folder_id"),
   lastSyncedAt: timestamp("last_synced_at"),
-  
-  baseContent: jsonb("base_content"),              
-  formatSnapshot: jsonb("format_snapshot"),        
-  
+
+  baseContent: jsonb("base_content"),
+  formatSnapshot: jsonb("format_snapshot"),
+
   lastLocalModifiedAt: timestamp("last_local_modified_at"),
   lastRemoteModifiedAt: timestamp("last_remote_modified_at"),
-  syncStatus: text("sync_status").default("synced"), 
+  syncStatus: text("sync_status").default("synced"),
   conflictData: jsonb("conflict_data"),
-  
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -975,23 +995,23 @@ export const driveCredentials = pgTable("drive_credentials", {
 
 // Note Stylometry Analysis Results (For individual scenes/episodes)
 export const noteStylometry = pgTable("note_stylometry", {
-    id: text("id").primaryKey().default(sql`gen_random_uuid()`),
-    noteId: text("note_id")
-        .notNull()
-        .references(() => notes.id, { onDelete: "cascade" }),
-    novelId: text("novel_id")
-        .notNull()
-        .references(() => novels.id, { onDelete: "cascade" }),
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  noteId: text("note_id")
+    .notNull()
+    .references(() => notes.id, { onDelete: "cascade" }),
+  novelId: text("novel_id")
+    .notNull()
+    .references(() => novels.id, { onDelete: "cascade" }),
 
-    // Detailed Metrics (JSONB)
-    pacingAndMood: jsonb("pacing_and_mood"),
-    authorNarrationStyle: jsonb("author_narration_style"),
-    characterDialogueVibes: jsonb("character_dialogue_vibes"),
-    lexicalRichness: jsonb("lexical_richness"),
-    chapterAnatomy: jsonb("chapter_anatomy"),
-    fingerprintAnalysis: jsonb("fingerprint_analysis"), // { similarity_score, status, alerts, is_anomaly }
+  // Detailed Metrics (JSONB)
+  pacingAndMood: jsonb("pacing_and_mood"),
+  authorNarrationStyle: jsonb("author_narration_style"),
+  characterDialogueVibes: jsonb("character_dialogue_vibes"),
+  lexicalRichness: jsonb("lexical_richness"),
+  chapterAnatomy: jsonb("chapter_anatomy"),
+  fingerprintAnalysis: jsonb("fingerprint_analysis"), // { similarity_score, status, alerts, is_anomaly }
 
-    createdAt: timestamp("created_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // AI Reviews Table
@@ -1040,10 +1060,10 @@ export const chapterRelations = relations(chapters, ({ one, many }) => ({
   chapterTags: many(chapterTags),
   notes: many(notes),
   characters: many(chapterCharacters),
-    chapterStylometry: one(chapterStylometry, {
-        fields: [chapters.id],
-        references: [chapterStylometry.chapterId],
-    }),
+  chapterStylometry: one(chapterStylometry, {
+    fields: [chapters.id],
+    references: [chapterStylometry.chapterId],
+  }),
 }));
 
 export const characterRelations = relations(characters, ({ one, many }) => ({
@@ -1497,14 +1517,14 @@ export const chapterStylometry = pgTable("chapter_stylometry", {
   novelId: text("novel_id")
     .notNull()
     .references(() => novels.id, { onDelete: "cascade" }),
-  
+
   // Data retrieved from Python API
   pacingAndMood: jsonb("pacing_and_mood"),
   authorNarrationStyle: jsonb("author_narration_style"),
   characterDialogueVibes: jsonb("character_dialogue_vibes"),
   lexicalRichness: jsonb("lexical_richness"),
   chapterAnatomy: jsonb("chapter_anatomy"),
-  
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()
