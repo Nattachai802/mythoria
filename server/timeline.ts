@@ -111,16 +111,10 @@ export async function reorderTimelineEvents(
 }
 export async function getTimelineEventById(id: string) {
     try {
-        const fs = require('fs');
-        const path = require('path');
-        const logPath = path.join(process.cwd(), 'debug-event.log');
-        fs.appendFileSync(logPath, `[Server] getTimelineEventById looking for id: "${id}" (len=${id?.length})\n`);
-
         const event = await db.query.timelineEvents.findFirst({
             where: eq(timelineEvents.id, id),
         });
 
-        fs.appendFileSync(logPath, `[Server] getTimelineEventById result found: ${!!event}\n`);
         return { success: true, event };
     } catch (error) {
         console.error("Error fetching timeline event:", error);

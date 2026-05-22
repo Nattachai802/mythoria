@@ -21,12 +21,6 @@ export default async function PlotPlaygroundPage({
 }: PlotPlaygroundPageProps) {
   const { id: novelId, eventId } = await params;
 
-  /* console.log removed */
-  const fs = require('fs');
-  const path = require('path');
-  const logPath = path.join(process.cwd(), 'debug-event.log');
-  fs.appendFileSync(logPath, `[Page] PlotPlaygroundPage params: novelId=${novelId}, eventId=${eventId}\n`);
-
   // Fetch all necessary data in parallel
   const [eventRes, charactersRes, locationsRes, ideasRes, eventsRes, chaptersRes, novelRes] = await Promise.all([
     getTimelineEventById(eventId),
@@ -39,7 +33,6 @@ export default async function PlotPlaygroundPage({
   ]);
 
   if (!eventRes.success || !eventRes.event) {
-    fs.appendFileSync(logPath, `[Page] 404 trigger: success=${eventRes.success}, hasEvent=${!!eventRes.event}\n`);
     return notFound();
   }
 
