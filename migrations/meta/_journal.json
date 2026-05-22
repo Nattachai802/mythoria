@@ -85,6 +85,13 @@
       "when": 1778178801489,
       "tag": "0011_mute_mastermind",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1779443880682,
+      "tag": "0012_jazzy_next_avengers",
+      "breakpoints": true
     }
   ]
 }

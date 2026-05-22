@@ -64,8 +64,8 @@ Lore Content:
 
             try {
                 if (!process.env.GROQ_API_KEY) throw new Error("GROQ_API_KEY is not set in .env");
-                
-                const openai = new OpenAI({ 
+
+                const openai = new OpenAI({
                     apiKey: process.env.GROQ_API_KEY,
                     baseURL: "https://api.groq.com/openai/v1"
                 });
@@ -80,14 +80,16 @@ Lore Content:
                 extracted = JSON.parse(textResponse);
             } catch (e2: any) {
                 console.warn(`Groq Fallback also failed: ${e2.message}. Using fallback local scan.`);
-                
+
                 // FALLBACK: Local Keyword Match Scan
                 const lowerContent = content.toLowerCase();
-                
-                const allChars = await db.query.characters.findMany({ where: eq(characters.novelId, novelId) });
-                const allLocs = await db.query.locations.findMany({ where: eq(locations.novelId, novelId) });
-                const allItems = await db.query.items.findMany({ where: eq(items.novelId, novelId) });
-                
+
+                const [allChars, allLocs, allItems] = await Promise.all([
+                    db.query.characters.findMany({ where: eq(characters.novelId, novelId) }),
+                    db.query.locations.findMany({ where: eq(locations.novelId, novelId) }),
+                    db.query.items.findMany({ where: eq(items.novelId, novelId) })
+                ]);
+
                 allChars.forEach(c => {
                     if (lowerContent.includes(c.name.toLowerCase()) && c.name.length > 1) {
                         extracted.characters.push(c.name);
@@ -111,9 +113,15 @@ Lore Content:
         const foundItems: string[] = [];
         const newIdeas: { title: string; category: string }[] = [];
 
-        // 2. Cross-reference Characters
+        // 2. Fetch all novel entities in parallel for cross-referencing
+        const [allChars, allLocs, allItems] = await Promise.all([
+            db.query.characters.findMany({ where: eq(characters.novelId, novelId) }),
+            db.query.locations.findMany({ where: eq(locations.novelId, novelId) }),
+            db.query.items.findMany({ where: eq(items.novelId, novelId) })
+        ]);
+
+        // 3. Cross-reference Characters
         if (extracted.characters && extracted.characters.length > 0) {
-            const allChars = await db.query.characters.findMany({ where: eq(characters.novelId, novelId) });
             for (const name of extracted.characters) {
                 const found = allChars.find(c => c.name.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(c.name.toLowerCase()));
                 if (found) {
@@ -124,9 +132,8 @@ Lore Content:
             }
         }
 
-        // 3. Cross-reference Locations
+        // 4. Cross-reference Locations
         if (extracted.locations && extracted.locations.length > 0) {
-            const allLocs = await db.query.locations.findMany({ where: eq(locations.novelId, novelId) });
             for (const name of extracted.locations) {
                 const found = allLocs.find(l => l.name.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(l.name.toLowerCase()));
                 if (found) {
@@ -137,9 +144,8 @@ Lore Content:
             }
         }
 
-        // 4. Cross-reference Items
+        // 5. Cross-reference Items
         if (extracted.items && extracted.items.length > 0) {
-            const allItems = await db.query.items.findMany({ where: eq(items.novelId, novelId) });
             for (const name of extracted.items) {
                 const found = allItems.find(i => i.name.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(i.name.toLowerCase()));
                 if (found) {

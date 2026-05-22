@@ -11,6 +11,10 @@ Features:
 import os
 import json
 import httpx
+import asyncio
+import time
+import hashlib
+import redis
 from typing import Optional
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
@@ -20,6 +24,36 @@ from lance_client import search_similar
 from embeddings import generate_embedding
 
 load_dotenv()
+
+# Redis Configuration
+REDIS_URL = os.getenv("REDIS_URL")
+redis_client = None
+if REDIS_URL:
+    try:
+        redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+        print("[Redis] Connected successfully")
+    except Exception as e:
+        print(f"[Redis] Connection error: {e}")
+
+def get_cached_llm(prompt_hash: str) -> Optional[str]:
+    if redis_client:
+        try:
+            return redis_client.get(f"llm_cache:{prompt_hash}")
+        except Exception as e:
+            print(f"[Redis] Cache get error: {e}")
+    return None
+
+def set_cached_llm(prompt_hash: str, response_text: str, ttl: int = 86400):
+    if redis_client:
+        try:
+            redis_client.setex(f"llm_cache:{prompt_hash}", ttl, response_text)
+        except Exception as e:
+            print(f"[Redis] Cache set error: {e}")
+
+def generate_prompt_hash(system_prompt: str, user_prompt: str) -> str:
+    combined = f"system:{system_prompt}|user:{user_prompt}"
+    return hashlib.sha256(combined.encode("utf-8")).hexdigest()
+
 
 # Typhoon API Configuration
 TYPHOON_API_KEY = os.getenv("TYPHOON_API_KEY")
@@ -154,50 +188,49 @@ async def get_story_context(novel_id: str, query: str, limit: int = 5) -> str:
         return ""
 
 
+_analysis_data_cache = {}
+
+async def fetch_analysis_data(novel_id: str) -> dict:
+    """Fetch chapters and characters from Next.js API with a 5-second TTL cache"""
+    now = time.time()
+    cached = _analysis_data_cache.get(novel_id)
+    if cached is None or (now - cached["timestamp"]) > 5.0:
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"http://localhost:3000/api/novel/{novel_id}/analysis-data",
+                    timeout=30.0
+                )
+                if response.status_code == 200:
+                    _analysis_data_cache[novel_id] = {
+                        "data": response.json(),
+                        "timestamp": now
+                    }
+                else:
+                    _analysis_data_cache[novel_id] = {
+                        "data": {},
+                        "timestamp": now
+                    }
+        except Exception as e:
+            print(f"[Fetch] Error fetching analysis data: {e}")
+            return {}
+    return _analysis_data_cache[novel_id]["data"]
+
+
 async def fetch_chapters(novel_id: str) -> list:
     """Fetch chapters from Next.js API"""
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"http://localhost:3000/api/novel/{novel_id}/analysis-data",
-                timeout=30.0
-            )
-            if response.status_code == 200:
-                data = response.json()
-                chapters = data.get("chapters", [])
-                print(f"[Fetch] Got {len(chapters)} chapters")
-                
-                # Debug: show plainText length for each chapter
-                for ch in chapters:
-                    pt = ch.get("plainText", "") or ""
-                    print(f"[Fetch] Chapter '{ch.get('title')}': plainText length = {len(pt)}")
-                    if len(pt) > 0:
-                        print(f"[Fetch]   Preview: {pt[:100]}...")
-                
-                return chapters
-    except Exception as e:
-        import traceback
-        print(f"[Fetch] Error fetching chapters: {e}")
-        print(traceback.format_exc())
-    return []
+    data = await fetch_analysis_data(novel_id)
+    chapters = data.get("chapters", [])
+    print(f"[Fetch] Got {len(chapters)} chapters")
+    return chapters
 
 
 async def fetch_characters(novel_id: str) -> list:
     """Fetch characters from Next.js API"""
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"http://localhost:3000/api/novel/{novel_id}/analysis-data",
-                timeout=30.0
-            )
-            if response.status_code == 200:
-                data = response.json()
-                characters = data.get("characters", [])
-                print(f"[Fetch] Got {len(characters)} characters")
-                return characters
-    except Exception as e:
-        print(f"[Fetch] Error fetching characters: {e}")
-    return []
+    data = await fetch_analysis_data(novel_id)
+    characters = data.get("characters", [])
+    print(f"[Fetch] Got {len(characters)} characters")
+    return characters
 
 
 async def fetch_analyzed_chapters(novel_id: str) -> set:
@@ -264,17 +297,28 @@ async def analyze_relationships(
     )
     
     try:
-        print("[analyze_relationships] Calling Typhoon LLM...")
-        response = await llm.ainvoke([
-            SystemMessage(content="คุณช่วยวิเคราะห์ความสัมพันธ์ในนิยาย ตอบเป็น JSON array เท่านั้น"),
-            HumanMessage(content=prompt)
-        ])
+        system_content = "คุณช่วยวิเคราะห์ความสัมพันธ์ในนิยาย ตอบเป็น JSON array เท่านั้น"
+        prompt_hash = generate_prompt_hash(system_content, prompt)
         
-        print(f"[analyze_relationships] ===== TYPHOON FULL RESPONSE =====")
-        print(response.content)
-        print(f"[analyze_relationships] ===== END RESPONSE =====")
-        
-        results = parse_json_response(response.content)
+        cached_response = get_cached_llm(prompt_hash)
+        if cached_response:
+            print("[analyze_relationships] Cache hit! Returning cached results.")
+            results = parse_json_response(cached_response)
+        else:
+            print("[analyze_relationships] Calling Typhoon LLM...")
+            response = await llm.ainvoke([
+                SystemMessage(content=system_content),
+                HumanMessage(content=prompt)
+            ])
+            
+            print(f"[analyze_relationships] ===== TYPHOON FULL RESPONSE =====")
+            print(response.content)
+            print(f"[analyze_relationships] ===== END RESPONSE =====")
+            
+            results = parse_json_response(response.content)
+            if results:
+                set_cached_llm(prompt_hash, response.content)
+                
         print(f"[analyze_relationships] Parsed {len(results)} relationships")
         
         # Add chapter_id to each result
@@ -313,17 +357,27 @@ async def analyze_life_events(
     )
     
     try:
-        print(f"[LifeEvents] Calling Typhoon LLM for {character_name}...")
-        response = await llm.ainvoke([
-            SystemMessage(content="คุณช่วยค้นหาเหตุการณ์สำคัญในชีวิตตัวละคร ตอบเป็น JSON array เท่านั้น"),
-            HumanMessage(content=prompt)
-        ])
+        system_content = "คุณช่วยค้นหาเหตุการณ์สำคัญในชีวิตตัวละคร ตอบเป็น JSON array เท่านั้น"
+        prompt_hash = generate_prompt_hash(system_content, prompt)
         
-        print(f"[LifeEvents] ===== TYPHOON FULL RESPONSE =====")
-        print(response.content)
-        print(f"[LifeEvents] ===== END RESPONSE =====")
-        
-        results = parse_json_response(response.content)
+        cached_response = get_cached_llm(prompt_hash)
+        if cached_response:
+            print(f"[LifeEvents] Cache hit for {character_name}! Returning cached results.")
+            results = parse_json_response(cached_response)
+        else:
+            print(f"[LifeEvents] Calling Typhoon LLM for {character_name}...")
+            response = await llm.ainvoke([
+                SystemMessage(content=system_content),
+                HumanMessage(content=prompt)
+            ])
+            
+            print(f"[LifeEvents] ===== TYPHOON FULL RESPONSE =====")
+            print(response.content)
+            print(f"[LifeEvents] ===== END RESPONSE =====")
+            
+            results = parse_json_response(response.content)
+            if results:
+                set_cached_llm(prompt_hash, response.content)
         
         # Add metadata to each result
         for r in results:
@@ -369,17 +423,29 @@ async def analyze_chapter(
     # 2. Analyze life events for each character mentioned
     print("[analyze_chapter] Analyzing life events...")
     life_events = []
-    for char in characters:
-        char_name = char.get("name", "")
-        if char_name.lower() in content.lower():
-            print(f"[analyze_chapter] Checking life events for: {char_name}")
-            events = await analyze_life_events(
-                novel_id, chapter_id, char["id"], char_name, content
-            )
-            # Add chapter_title to each event
+    
+    # Filter mentioned characters first
+    mentioned_characters = [
+        char for char in characters
+        if char.get("name", "").lower() in content.lower()
+    ]
+    
+    if mentioned_characters:
+        # Create async tasks to analyze life events for all mentioned characters in parallel
+        tasks = [
+            analyze_life_events(novel_id, chapter_id, char["id"], char.get("name", ""), content)
+            for char in mentioned_characters
+        ]
+        
+        # Run all LLM tasks concurrently
+        print(f"[analyze_chapter] Running life event analysis for {len(tasks)} characters concurrently...")
+        results = await asyncio.gather(*tasks)
+        
+        # Process results
+        for char, events in zip(mentioned_characters, results):
             for e in events:
                 e["chapter_title"] = chapter_title
-            print(f"[analyze_chapter] Found {len(events)} events for {char_name}")
+            print(f"[analyze_chapter] Found {len(events)} events for {char.get('name')}")
             life_events.extend(events)
     
     print(f"[analyze_chapter] Total: {len(relationships)} relationships, {len(life_events)} life events")

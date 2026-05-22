@@ -11,7 +11,8 @@ services:
     command: sleep infinity
     environment:
       # ตรงกับ .env ของคุณพอดี
-      - DATABASE_URL=postgresql://postgres:1234@localhost:5432/mythoria_db
+      - DATABASE_URL=postgresql://postgres:1234@db:5432/mythoria_db
+      - LOCAL_DATABASE_URL=postgresql://postgres:1234@db:5432/mythoria_db
       - NODE_OPTIONS=--max-old-space-size=4096
     
   db:

@@ -47,7 +47,6 @@ export function AIAnalysisDialog({
 }: AIAnalysisDialogProps) {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [progress, setProgress] = useState<AnalysisProgress | null>(null);
-    const [suggestions, setSuggestions] = useState<AISuggestion[]>([]);
     const [pendingSuggestions, setPendingSuggestions] = useState<AISuggestion[]>([]);
     const [processingId, setProcessingId] = useState<string | null>(null);
 
@@ -59,7 +58,6 @@ export function AIAnalysisDialog({
                 window.location.origin
             );
             url.searchParams.set("status", "pending");
-            // Show all suggestions for the novel, not filtered by character
 
             const response = await fetch(url.toString());
             const data = await response.json();
@@ -72,131 +70,102 @@ export function AIAnalysisDialog({
         }
     }, [novelId]);
 
-    useEffect(() => {
-        if (open) {
-            fetchPendingSuggestions();
-        }
-    }, [open, fetchPendingSuggestions]);
+    // Check background queue progress
+    const checkQueueStatus = useCallback(async () => {
+        try {
+            const response = await fetch(`/api/novel/${novelId}/analysis-status`);
+            const data = await response.json();
 
-    // Start AI analysis using fetch streaming
+            if (data.success) {
+                const pending = data.queue?.pending || 0;
+                const processing = data.queue?.processing || 0;
+                const activeTasks = pending + processing;
+                const total = data.totalChapters || 0;
+                const completed = data.analyzedCount || 0;
+
+                if (activeTasks > 0) {
+                    setIsAnalyzing(true);
+                    setProgress({
+                        type: "progress",
+                        progress: completed,
+                        total: total,
+                        current: `กำลังประมวลผล (${completed}/${total} ตอน)`,
+                    });
+                    return true;
+                } else {
+                    if (isAnalyzing) {
+                        setIsAnalyzing(false);
+                        setProgress({ type: "complete" });
+                        toast.success("วิเคราะห์เสร็จสิ้น!");
+                        fetchPendingSuggestions();
+                    }
+                    return false;
+                }
+            }
+            return false;
+        } catch (error) {
+            console.error("Error checking queue status:", error);
+            return false;
+        }
+    }, [novelId, isAnalyzing, fetchPendingSuggestions]);
+
+    // Start background analysis
     const startAnalysis = async () => {
         setIsAnalyzing(true);
-        setProgress({ type: "start" });
-        setSuggestions([]);
+        setProgress({ type: "start", current: "กำลังส่งงานเข้าคิวประมวลผล..." });
 
         try {
-            const url = new URL(
-                `http://localhost:8000/analyze-characters-stream/${novelId}`,
-            );
-            if (characterId) {
-                url.searchParams.set("character_id", characterId);
-            }
-
-            const response = await fetch(url.toString(), {
-                method: "GET",
-                headers: {
-                    "Accept": "text/event-stream",
-                },
+            const response = await fetch(`/api/novel/${novelId}/analysis-trigger`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    characterId,
+                    reanalyzeAll: true,
+                }),
             });
 
             if (!response.ok) {
                 throw new Error(`HTTP error: ${response.status}`);
             }
 
-            const reader = response.body?.getReader();
-            if (!reader) {
-                throw new Error("No response body");
+            const data = await response.json();
+            if (data.success) {
+                toast.success("ส่งงานเข้าคิววิเคราะห์แล้ว");
+                await checkQueueStatus();
+            } else {
+                throw new Error(data.error || "เกิดข้อผิดพลาดในการเริ่มวิเคราะห์");
             }
-
-            const decoder = new TextDecoder();
-            let buffer = "";
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split("\n");
-                buffer = lines.pop() || "";
-
-                for (const line of lines) {
-                    if (line.startsWith("data: ")) {
-                        try {
-                            const jsonStr = line.slice(6);
-                            const data: AnalysisProgress = JSON.parse(jsonStr);
-                            setProgress(data);
-
-                            if (data.type === "complete") {
-                                setIsAnalyzing(false);
-
-                                // Save suggestions and mark chapters as analyzed
-                                if (data.suggestions) {
-                                    await saveSuggestions(data.suggestions);
-                                    await markChaptersAnalyzed(data.suggestions.chapters_analyzed);
-
-                                    // Fetch updated pending suggestions
-                                    await fetchPendingSuggestions();
-                                }
-
-                                toast.success("วิเคราะห์เสร็จสิ้น!");
-                                return;
-                            }
-
-                            if (data.type === "error") {
-                                setIsAnalyzing(false);
-                                toast.error(data.message || "เกิดข้อผิดพลาด");
-                                return;
-                            }
-                        } catch (e) {
-                            console.error("Error parsing SSE:", e, line);
-                        }
-                    }
-                }
-            }
-
-            setIsAnalyzing(false);
         } catch (error) {
             setIsAnalyzing(false);
+            setProgress(null);
             toast.error("ไม่สามารถเริ่มการวิเคราะห์: " + String(error));
             console.error(error);
         }
     };
 
-    // Save suggestions to database
-    const saveSuggestions = async (data: {
-        relationships: unknown[];
-        life_events: unknown[];
-    }) => {
-        const allSuggestions = [
-            ...data.relationships.map((r) => ({
-                ...(r as Record<string, unknown>),
-                suggestionType: "opinion_level",
-            })),
-            ...data.life_events.map((e) => ({
-                ...(e as Record<string, unknown>),
-                suggestionType: "life_event",
-            })),
-        ];
+    // Trigger check on dialog open
+    useEffect(() => {
+        if (open) {
+            fetchPendingSuggestions();
+            checkQueueStatus();
+        }
+    }, [open, fetchPendingSuggestions, checkQueueStatus]);
 
-        if (allSuggestions.length === 0) return;
+    // Setup polling interval when analysis is running
+    useEffect(() => {
+        if (!open) return;
+        let intervalId: NodeJS.Timeout | null = null;
 
-        await fetch(`/api/novel/${novelId}/ai-suggestions`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ suggestions: allSuggestions }),
-        });
-    };
+        if (isAnalyzing) {
+            intervalId = setInterval(() => {
+                checkQueueStatus();
+            }, 2000);
+        }
 
-    // Mark chapters as analyzed
-    const markChaptersAnalyzed = async (chapterIds: string[]) => {
-        if (!chapterIds.length) return;
-
-        await fetch(`/api/novel/${novelId}/analysis-status`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ chapterIds }),
-        });
-    };
+        return () => {
+            if (intervalId) clearInterval(intervalId);
+        };
+    }, [open, isAnalyzing, checkQueueStatus]);
 
     // Handle accept suggestion
     const handleAccept = async (suggestion: AISuggestion) => {
