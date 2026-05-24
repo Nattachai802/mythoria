@@ -530,6 +530,7 @@ export const ideas = pgTable("ideas", {
 
   isUsed: boolean("is_used").default(false), // Auto-set to true when placed on Playground canvas
   isArchived: boolean("is_archived").default(false),
+  isDetected: boolean("is_detected").default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()
@@ -763,6 +764,10 @@ export const loreEntries = pgTable("lore_entries", {
   color: text("color").default("#8b5cf6"), // Purple-500
   importance: integer("importance").default(5), // 1-10
 
+  // Background Extraction Status
+  extractionStatus: text("extraction_status").default("none").notNull(), // "none", "pending", "processing", "completed", "failed"
+  extractionError: text("extraction_error"),
+
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()
@@ -942,6 +947,7 @@ export const driveSettings = pgTable("drive_settings", {
     .unique()
     .references(() => novels.id, { onDelete: "cascade" }),
   rootFolderId: text("root_folder_id"),
+  worldbuildingSpreadsheetId: text("worldbuilding_spreadsheet_id"),
   isEnabled: boolean("is_enabled").default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow()
@@ -1030,6 +1036,34 @@ export const aiChapterReviews = pgTable("ai_chapter_reviews", {
 });
 
 // ============================================
+// STYLOMETRY ANALYTICS MAPPING
+// ============================================
+
+export const chapterStylometry = pgTable("chapter_stylometry", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  chapterId: text("chapter_id")
+    .notNull()
+    .unique()
+    .references(() => chapters.id, { onDelete: "cascade" }),
+  novelId: text("novel_id")
+    .notNull()
+    .references(() => novels.id, { onDelete: "cascade" }),
+
+  // Data retrieved from Python API
+  pacingAndMood: jsonb("pacing_and_mood"),
+  authorNarrationStyle: jsonb("author_narration_style"),
+  characterDialogueVibes: jsonb("character_dialogue_vibes"),
+  lexicalRichness: jsonb("lexical_richness"),
+  chapterAnatomy: jsonb("chapter_anatomy"),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+// ============================================
 // RELATIONS
 // ============================================
 
@@ -1063,6 +1097,17 @@ export const chapterRelations = relations(chapters, ({ one, many }) => ({
   chapterStylometry: one(chapterStylometry, {
     fields: [chapters.id],
     references: [chapterStylometry.chapterId],
+  }),
+}));
+
+export const chapterStylometryRelations = relations(chapterStylometry, ({ one }) => ({
+  chapter: one(chapters, {
+    fields: [chapterStylometry.chapterId],
+    references: [chapters.id],
+  }),
+  novel: one(novels, {
+    fields: [chapterStylometry.novelId],
+    references: [novels.id],
   }),
 }));
 
@@ -1504,44 +1549,7 @@ export const locationEntityRelations = relations(locationEntities, ({ one }) => 
 
 export type User = typeof user.$inferSelect;
 export type Novel = typeof novels.$inferSelect;
-// ============================================
-// STYLOMETRY ANALYTICS MAPPING
-// ============================================
-
-export const chapterStylometry = pgTable("chapter_stylometry", {
-  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
-  chapterId: text("chapter_id")
-    .notNull()
-    .unique()
-    .references(() => chapters.id, { onDelete: "cascade" }),
-  novelId: text("novel_id")
-    .notNull()
-    .references(() => novels.id, { onDelete: "cascade" }),
-
-  // Data retrieved from Python API
-  pacingAndMood: jsonb("pacing_and_mood"),
-  authorNarrationStyle: jsonb("author_narration_style"),
-  characterDialogueVibes: jsonb("character_dialogue_vibes"),
-  lexicalRichness: jsonb("lexical_richness"),
-  chapterAnatomy: jsonb("chapter_anatomy"),
-
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at")
-    .defaultNow()
-    .$onUpdate(() => new Date())
-    .notNull(),
-});
-
-export const chapterStylometryRelations = relations(chapterStylometry, ({ one }) => ({
-  chapter: one(chapters, {
-    fields: [chapterStylometry.chapterId],
-    references: [chapters.id],
-  }),
-  novel: one(novels, {
-    fields: [chapterStylometry.novelId],
-    references: [novels.id],
-  }),
-}));
+// (chapterStylometry table and relations moved earlier to avoid undefined references)
 
 export type Chapter = typeof chapters.$inferSelect;
 export type Character = typeof characters.$inferSelect;

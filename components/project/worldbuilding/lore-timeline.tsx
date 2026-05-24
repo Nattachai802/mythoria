@@ -30,6 +30,8 @@ import { toast } from "sonner";
 import { LoreDialog } from "./lore-dialog";
 import { LoreGroupDialog } from "./lore-group-dialog";
 import { LoreVisualTimeline } from "./lore-visual-timeline";
+import { LoreDetailDialog } from "./lore-detail-dialog";
+import { getIdeasByNovelId } from "@/server/idea";
 
 interface LoreEntry {
     id: string;
@@ -50,6 +52,9 @@ interface LoreEntry {
     parentLore?: LoreEntry | null;
     childLores?: LoreEntry[];
     group?: { id: string; name: string; color: string; icon?: string } | null;
+    relatedCharacterIds?: any | null;
+    relatedLocationIds?: any | null;
+    relatedItemIds?: any | null;
 }
 
 interface LoreGroup {
@@ -77,6 +82,9 @@ interface LoreTimelineProps {
     eras?: Era[];
     novelId: string;
     onRefresh?: () => void;
+    characters?: { id: string; name: string }[];
+    locations?: { id: string; name: string }[];
+    items?: { id: string; name: string }[];
 }
 
 const TYPE_ICONS: Record<string, string> = {
@@ -104,7 +112,30 @@ const TYPE_LABELS: Record<string, string> = {
     history: "ประวัติศาสตร์",
 };
 
-export function LoreTimeline({ entries, groups = [], eras = [], novelId, onRefresh }: LoreTimelineProps) {
+function stripHtml(html: string | null | undefined): string {
+    if (!html) return "";
+    let text = html.replace(/<[^>]*>/g, "");
+    // Decode common entities
+    text = text
+        .replace(/&nbsp;/g, " ")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&amp;/g, "&")
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'");
+    return text.trim();
+}
+
+export function LoreTimeline({
+    entries,
+    groups = [],
+    eras = [],
+    novelId,
+    onRefresh,
+    characters = [],
+    locations = [],
+    items = []
+}: LoreTimelineProps) {
     const [dialogOpen, setDialogOpen] = useState(false);
     const [groupDialogOpen, setGroupDialogOpen] = useState(false);
     const [editEntry, setEditEntry] = useState<LoreEntry | null>(null);
@@ -112,7 +143,26 @@ export function LoreTimeline({ entries, groups = [], eras = [], novelId, onRefre
     const [defaultParentLoreId, setDefaultParentLoreId] = useState<string | null>(null);
     const [defaultGroupId, setDefaultGroupId] = useState<string | null>(null);
     const [viewMode, setViewMode] = useState<"timeline" | "hierarchy" | "groups" | "eras">("timeline");
+    const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+    const [selectedLoreForDetail, setSelectedLoreForDetail] = useState<LoreEntry | null>(null);
+
+    const handleViewDetail = (entry: LoreEntry) => {
+        setSelectedLoreForDetail(entry);
+        setDetailDialogOpen(true);
+    };
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+    const [ideas, setIdeas] = useState<any[]>([]);
+
+    const fetchIdeas = async () => {
+        const res = await getIdeasByNovelId(novelId, true);
+        if (res.success && res.data) {
+            setIdeas(res.data);
+        }
+    };
+
+    useEffect(() => {
+        fetchIdeas();
+    }, [novelId, entries]);
 
     // Search and Filter states
     const [searchQuery, setSearchQuery] = useState("");
@@ -206,10 +256,11 @@ export function LoreTimeline({ entries, groups = [], eras = [], novelId, onRefre
         const prefix = depth > 0 ? `${indent}• ` : "";
         let text = `${prefix}${entry.title}`;
         if (entry.content) {
+            const cleanContent = stripHtml(entry.content);
             if (depth === 0) {
-                text += `\n\n${entry.content}`;
+                text += `\n\n${cleanContent}`;
             } else {
-                const indentedContent = entry.content
+                const indentedContent = cleanContent
                     .split("\n")
                     .map(line => `${indent}  ${line}`)
                     .join("\n");
@@ -317,6 +368,28 @@ export function LoreTimeline({ entries, groups = [], eras = [], novelId, onRefre
         return entries.filter(e => e.parentLoreId === parentId);
     };
 
+    const getRelatedEntities = (entry: LoreEntry) => {
+        const entryChars = (entry.relatedCharacterIds as string[]) || [];
+        const entryLocs = (entry.relatedLocationIds as string[]) || [];
+        const entryItems = (entry.relatedItemIds as string[]) || [];
+
+        const matchedChars = characters.filter(c => entryChars.includes(c.id));
+        const matchedLocs = locations.filter(l => entryLocs.includes(l.id));
+        const matchedItems = items.filter(i => entryItems.includes(i.id));
+        
+        const matchedIdeas = ideas.filter(i => {
+            const loreIds = (i.linkedLoreIds as string[]) || [];
+            return loreIds.includes(entry.id);
+        });
+
+        return {
+            characters: matchedChars,
+            locations: matchedLocs,
+            items: matchedItems,
+            ideas: matchedIdeas
+        };
+    };
+
     // Zig-zag Timeline Node (Light Theme)
     const CosmicNode = ({ entry, index }: { entry: LoreEntry; index: number }) => {
         const children = getChildLores(entry.id);
@@ -332,7 +405,7 @@ export function LoreTimeline({ entries, groups = [], eras = [], novelId, onRefre
                     <div className={`flex-1 ${isLeft ? 'pr-8' : 'pl-8'}`}>
                         <div
                             className={`group relative cursor-pointer transition-all duration-300 hover:scale-[1.02] ${isLeft ? 'text-right' : 'text-left'}`}
-                            onClick={() => handleEdit(entry)}
+                            onClick={() => handleViewDetail(entry)}
                         >
                             {/* Connection Line */}
                             <svg
@@ -414,9 +487,56 @@ export function LoreTimeline({ entries, groups = [], eras = [], novelId, onRefre
                                     {/* Content */}
                                     {entry.content && (
                                         <p className={`text-sm text-slate-600 line-clamp-2 mt-3 ${isLeft ? 'text-right' : 'text-left'}`}>
-                                            {entry.content}
+                                            {stripHtml(entry.content)}
                                         </p>
                                     )}
+
+                                    {/* Entity Tags */}
+                                    {(() => {
+                                        const { characters: relChars, locations: relLocs, items: relItems, ideas: relIdeas } = getRelatedEntities(entry);
+                                        const hasTags = relChars.length > 0 || relLocs.length > 0 || relItems.length > 0 || relIdeas.length > 0;
+                                        if (!hasTags) return null;
+                                        return (
+                                            <div className={`flex flex-wrap gap-1.5 mt-3 ${isLeft ? 'justify-end' : 'justify-start'}`}>
+                                                {relChars.map(c => (
+                                                    <Badge
+                                                        key={c.id}
+                                                        variant="outline"
+                                                        className="text-[10px] px-2 py-0.5 border border-blue-200/60 text-blue-700 bg-blue-50/50 hover:bg-blue-100/50 transition-all duration-200"
+                                                    >
+                                                        👤 {c.name}
+                                                    </Badge>
+                                                ))}
+                                                {relLocs.map(l => (
+                                                    <Badge
+                                                        key={l.id}
+                                                        variant="outline"
+                                                        className="text-[10px] px-2 py-0.5 border border-emerald-200/60 text-emerald-700 bg-emerald-50/50 hover:bg-emerald-100/50 transition-all duration-200"
+                                                    >
+                                                        📍 {l.name}
+                                                    </Badge>
+                                                ))}
+                                                {relItems.map(item => (
+                                                    <Badge
+                                                        key={item.id}
+                                                        variant="outline"
+                                                        className="text-[10px] px-2 py-0.5 border border-amber-200/60 text-amber-700 bg-amber-50/50 hover:bg-amber-100/50 transition-all duration-200"
+                                                    >
+                                                        📦 {item.name}
+                                                    </Badge>
+                                                ))}
+                                                {relIdeas.map(idea => (
+                                                    <Badge
+                                                        key={idea.id}
+                                                        variant="outline"
+                                                        className="text-[10px] px-2 py-0.5 border border-purple-200/60 text-purple-700 bg-purple-50/50 hover:bg-purple-100/50 transition-all duration-200"
+                                                    >
+                                                        ✨ {idea.title}
+                                                    </Badge>
+                                                ))}
+                                            </div>
+                                        );
+                                    })()}
 
                                     {/* Footer */}
                                     <div className={`flex items-center gap-2 mt-3 ${isLeft ? 'justify-end' : 'justify-start'}`}>
@@ -520,7 +640,7 @@ export function LoreTimeline({ entries, groups = [], eras = [], novelId, onRefre
                                     <div
                                         key={child.id}
                                         className="group relative cursor-pointer"
-                                        onClick={() => handleEdit(child)}
+                                        onClick={() => handleViewDetail(child)}
                                     >
                                         <div
                                             className={`absolute top-3 ${isLeft ? '-right-6' : '-left-6'} w-3 h-3 rounded-full border bg-white`}
@@ -560,9 +680,56 @@ export function LoreTimeline({ entries, groups = [], eras = [], novelId, onRefre
                                             </div>
                                             {child.content && (
                                                 <p className={`text-xs text-slate-500 line-clamp-1 mt-1 ${isLeft ? 'text-right' : ''}`}>
-                                                    {child.content}
+                                                    {stripHtml(child.content)}
                                                 </p>
                                             )}
+
+                                            {/* Sub-lore Entity Tags */}
+                                            {(() => {
+                                                const { characters: relChars, locations: relLocs, items: relItems, ideas: relIdeas } = getRelatedEntities(child);
+                                                const hasTags = relChars.length > 0 || relLocs.length > 0 || relItems.length > 0 || relIdeas.length > 0;
+                                                if (!hasTags) return null;
+                                                return (
+                                                    <div className={`flex flex-wrap gap-1 mt-2 ${isLeft ? 'justify-end' : 'justify-start'}`}>
+                                                        {relChars.map(c => (
+                                                            <Badge
+                                                                key={c.id}
+                                                                variant="outline"
+                                                                className="text-[9px] px-1.5 py-0 border border-blue-200/50 text-blue-600 bg-blue-50/30 animate-fade-in"
+                                                            >
+                                                                👤 {c.name}
+                                                            </Badge>
+                                                        ))}
+                                                        {relLocs.map(l => (
+                                                            <Badge
+                                                                key={l.id}
+                                                                variant="outline"
+                                                                className="text-[9px] px-1.5 py-0 border border-emerald-200/50 text-emerald-600 bg-emerald-50/30 animate-fade-in"
+                                                            >
+                                                                📍 {l.name}
+                                                            </Badge>
+                                                        ))}
+                                                        {relItems.map(item => (
+                                                            <Badge
+                                                                key={item.id}
+                                                                variant="outline"
+                                                                className="text-[9px] px-1.5 py-0 border border-amber-200/50 text-amber-600 bg-amber-50/30 animate-fade-in"
+                                                            >
+                                                                📦 {item.name}
+                                                            </Badge>
+                                                        ))}
+                                                        {relIdeas.map(idea => (
+                                                            <Badge
+                                                                key={idea.id}
+                                                                variant="outline"
+                                                                className="text-[9px] px-1.5 py-0 border border-purple-200/50 text-purple-600 bg-purple-50/30 animate-fade-in"
+                                                            >
+                                                                ✨ {idea.title}
+                                                            </Badge>
+                                                        ))}
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 );
@@ -581,7 +748,11 @@ export function LoreTimeline({ entries, groups = [], eras = [], novelId, onRefre
 
         return (
             <div key={entry.id} className="space-y-2">
-                <Card className="hover:shadow-lg transition-shadow overflow-hidden" style={{ borderLeftColor: entryColor, borderLeftWidth: "4px" }}>
+                <Card 
+                    className="hover:shadow-lg transition-shadow overflow-hidden cursor-pointer" 
+                    style={{ borderLeftColor: entryColor, borderLeftWidth: "4px" }}
+                    onClick={() => handleViewDetail(entry)}
+                >
                     <CardContent className="pt-4 pb-3">
                         <div className="flex items-start justify-between gap-2">
                             <div className="flex items-start gap-3 flex-1 min-w-0">
@@ -599,7 +770,54 @@ export function LoreTimeline({ entries, groups = [], eras = [], novelId, onRefre
                                             <Badge className="text-xs" style={{ backgroundColor: `${entryColor}20`, color: entryColor }}>{children.length} sub-lore</Badge>
                                         )}
                                     </div>
-                                    {entry.content && <p className="text-sm text-muted-foreground line-clamp-2 mt-2">{entry.content}</p>}
+                                    {entry.content && <p className="text-sm text-muted-foreground line-clamp-2 mt-2">{stripHtml(entry.content)}</p>}
+
+                                    {/* Entity Tags */}
+                                    {(() => {
+                                        const { characters: relChars, locations: relLocs, items: relItems, ideas: relIdeas } = getRelatedEntities(entry);
+                                        const hasTags = relChars.length > 0 || relLocs.length > 0 || relItems.length > 0 || relIdeas.length > 0;
+                                        if (!hasTags) return null;
+                                        return (
+                                            <div className="flex flex-wrap gap-1.5 mt-3 animate-fade-in">
+                                                {relChars.map(c => (
+                                                    <Badge
+                                                        key={c.id}
+                                                        variant="outline"
+                                                        className="text-[10px] px-2 py-0.5 border border-blue-200/60 text-blue-700 bg-blue-50/50 hover:bg-blue-100/50 transition-all duration-200"
+                                                    >
+                                                        👤 {c.name}
+                                                    </Badge>
+                                                ))}
+                                                {relLocs.map(l => (
+                                                    <Badge
+                                                        key={l.id}
+                                                        variant="outline"
+                                                        className="text-[10px] px-2 py-0.5 border border-emerald-200/60 text-emerald-700 bg-emerald-50/50 hover:bg-emerald-100/50 transition-all duration-200"
+                                                    >
+                                                        📍 {l.name}
+                                                    </Badge>
+                                                ))}
+                                                {relItems.map(item => (
+                                                    <Badge
+                                                        key={item.id}
+                                                        variant="outline"
+                                                        className="text-[10px] px-2 py-0.5 border border-amber-200/60 text-amber-700 bg-amber-50/50 hover:bg-amber-100/50 transition-all duration-200"
+                                                    >
+                                                        📦 {item.name}
+                                                    </Badge>
+                                                ))}
+                                                {relIdeas.map(idea => (
+                                                    <Badge
+                                                        key={idea.id}
+                                                        variant="outline"
+                                                        className="text-[10px] px-2 py-0.5 border border-purple-200/60 text-purple-700 bg-purple-50/50 hover:bg-purple-100/50 transition-all duration-200"
+                                                    >
+                                                        ✨ {idea.title}
+                                                    </Badge>
+                                                ))}
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
                             </div>
                             <DropdownMenu>
@@ -852,8 +1070,31 @@ export function LoreTimeline({ entries, groups = [], eras = [], novelId, onRefre
             )}
 
             {/* Dialogs */}
-            <LoreDialog open={dialogOpen} onOpenChange={handleDialogClose} novelId={novelId} editEntry={editEntry} defaultParentLoreId={defaultParentLoreId} defaultGroupId={defaultGroupId} onSuccess={onRefresh} />
+            {dialogOpen && (
+                <LoreDialog open={dialogOpen} onOpenChange={handleDialogClose} novelId={novelId} editEntry={editEntry} defaultParentLoreId={defaultParentLoreId} defaultGroupId={defaultGroupId} onSuccess={onRefresh} />
+            )}
             <LoreGroupDialog open={groupDialogOpen} onOpenChange={handleGroupDialogClose} novelId={novelId} editGroup={editGroup} onSuccess={onRefresh} />
+            {detailDialogOpen && (
+                <LoreDetailDialog
+                    open={detailDialogOpen}
+                    onOpenChange={setDetailDialogOpen}
+                    entry={selectedLoreForDetail}
+                    novelId={novelId}
+                    characters={characters}
+                    locations={locations}
+                    items={items}
+                    ideas={ideas}
+                    onEdit={() => {
+                        if (selectedLoreForDetail) {
+                            handleEdit(selectedLoreForDetail);
+                        }
+                    }}
+                    onSuccess={() => {
+                        fetchIdeas();
+                        onRefresh?.();
+                    }}
+                />
+            )}
 
             {/* Floating Action Button */}
             <FloatingLoreFab

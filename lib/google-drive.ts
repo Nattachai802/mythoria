@@ -3,7 +3,7 @@ import { htmlToGoogleDocsRequests } from "@/server/drive-converter";
 
 // เราจะให้เรียกใช้ function SetCredentials ก่อนใช้คำสั่งอื่นๆ เสมอ
 // เพื่อให้แน่ใจว่าได้ Token ที่อัปเดตใหม่ล่าสุดเสมอ
-const oauth2Client = new google.auth.OAuth2(
+export const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET
 );

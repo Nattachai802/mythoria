@@ -26,11 +26,13 @@ import { getLocationsByNovelId } from "@/server/locations";
 import { getLoreGroupsByNovelId } from "@/server/lore-groups";
 import { getErasByNovelId } from "@/server/eras";
 import { getCharactersByNovelId } from "@/server/character";
+import { deleteIdea, updateIdea, getIdeasByNovelId } from "@/server/idea";
+import { getItemsByNovelId } from "@/server/items";
 import { toast } from "sonner";
 import { Loader2, Globe, MapPin, FolderTree, Layers, Clock, Plus, Sparkles, BrainCircuit } from "lucide-react";
 import { EraDialog } from "./era-dialog";
 import { LoreRichEditor, MentionItem } from "./lore-rich-editor";
-import { FloatingIdeaPool } from "./floating-idea-pool";
+import { cn } from "@/lib/utils";
 
 interface LoreDialogProps {
     open: boolean;
@@ -93,12 +95,18 @@ export function LoreDialog({
     const [characters, setCharacters] = useState<any[]>([]);
     const [eraDialogOpen, setEraDialogOpen] = useState(false);
     
-    // LLM Extraction States
+    // LLM Extraction & Selection States
     const [isExtracting, setIsExtracting] = useState(false);
-    const [extractedIdeas, setExtractedIdeas] = useState<string[]>([]);
+    const [itemsList, setItemsList] = useState<any[]>([]);
     const [foundCharacters, setFoundCharacters] = useState<string[]>([]);
     const [foundLocations, setFoundLocations] = useState<string[]>([]);
     const [foundItems, setFoundItems] = useState<string[]>([]);
+    const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
+    const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
+    const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+    const [detectedIdeas, setDetectedIdeas] = useState<{ id: string; title: string; category: string }[]>([]);
+    const [selectedIdeaIds, setSelectedIdeaIds] = useState<string[]>([]);
+    const [allIdeas, setAllIdeas] = useState<any[]>([]);
 
     // Form fields
     const [title, setTitle] = useState(editEntry?.title || "");
@@ -123,12 +131,14 @@ export function LoreDialog({
     }, [open, novelId]);
 
     const fetchData = async () => {
-        const [locResult, loreResult, groupResult, erasResult, charResult] = await Promise.all([
+        const [locResult, loreResult, groupResult, erasResult, charResult, itemsResult, ideasResult] = await Promise.all([
             getLocationsByNovelId(novelId),
             getLoreEntriesByNovelId(novelId),
             getLoreGroupsByNovelId(novelId),
             getErasByNovelId(novelId),
             getCharactersByNovelId(novelId),
+            getItemsByNovelId(novelId),
+            getIdeasByNovelId(novelId, true),
         ]);
 
         if (locResult.success && locResult.data) {
@@ -148,6 +158,12 @@ export function LoreDialog({
         }
         if (charResult.success && charResult.data) {
             setCharacters(charResult.data);
+        }
+        if (itemsResult.success && itemsResult.data) {
+            setItemsList(itemsResult.data);
+        }
+        if (ideasResult.success && ideasResult.data) {
+            setAllIdeas(ideasResult.data);
         }
     };
     
@@ -175,11 +191,32 @@ export function LoreDialog({
 
             const data = await res.json();
             if (res.ok) {
-                setFoundCharacters(data.foundCharacters || []);
-                setFoundLocations(data.foundLocations || []);
-                setFoundItems(data.foundItems || []);
-                setExtractedIdeas(data.newIdeas || []);
-                toast.success(`พบในระบบ: ${data.foundCharacters.length + data.foundLocations.length + data.foundItems.length} | ไอเดียใหม่: ${data.newIdeas.length}`);
+                // Update found lists by merging with previous ones (avoid duplicates)
+                const newFoundChars = Array.from(new Set([...foundCharacters, ...(data.foundCharacters || [])]));
+                const newFoundLocs = Array.from(new Set([...foundLocations, ...(data.foundLocations || [])]));
+                const newFoundItems = Array.from(new Set([...foundItems, ...(data.foundItems || [])]));
+                
+                setFoundCharacters(newFoundChars);
+                setFoundLocations(newFoundLocs);
+                setFoundItems(newFoundItems);
+                
+                // Auto-select newly found ones
+                setSelectedCharacterIds(Array.from(new Set([...selectedCharacterIds, ...(data.foundCharacters || [])])));
+                setSelectedLocationIds(Array.from(new Set([...selectedLocationIds, ...(data.foundLocations || [])])));
+                setSelectedItemIds(Array.from(new Set([...selectedItemIds, ...(data.foundItems || [])])));
+                
+                // Update detected ideas state for new ones (merge with existing)
+                setDetectedIdeas(prev => {
+                    const existingIds = new Set(prev.map(i => i.id));
+                    const newIdeas = (data.insertedIdeas || []).filter((i: any) => !existingIds.has(i.id));
+                    return [...prev, ...newIdeas];
+                });
+                setSelectedIdeaIds(prev => {
+                    const newIds = (data.insertedIdeas || []).map((i: any) => i.id);
+                    return Array.from(new Set([...prev, ...newIds]));
+                });
+                
+                toast.success(`พบในระบบ: ${data.foundCharacters.length + data.foundLocations.length + data.foundItems.length} | เอนทิตีใหม่: ${data.insertedIdeas.length}`);
             } else {
                 toast.error(data.error || "เกิดข้อผิดพลาดในการสกัดข้อมูล");
             }
@@ -204,14 +241,53 @@ export function LoreDialog({
             setIcon(editEntry.icon || "");
             setColor(editEntry.color || "#8b5cf6");
             setImportance(editEntry.importance || 5);
+
+            // Initialize selected and found lists from database
+            const relChars = (editEntry.relatedCharacterIds as string[]) || [];
+            const relLocs = (editEntry.relatedLocationIds as string[]) || [];
+            const relItems = (editEntry.relatedItemIds as string[]) || [];
+            
+            setFoundCharacters(relChars);
+            setSelectedCharacterIds(relChars);
+            
+            setFoundLocations(relLocs);
+            setSelectedLocationIds(relLocs);
+            
+            setFoundItems(relItems);
+            setSelectedItemIds(relItems);
         } else {
             setScope(defaultLocationId ? "location" : "world");
             setLocationId(defaultLocationId || "");
             setParentLoreId(defaultParentLoreId || "");
             setGroupId(defaultGroupId || "");
             setEraId(defaultEraId || "");
+
+            // Clear selected and found lists for new entry
+            setFoundCharacters([]);
+            setSelectedCharacterIds([]);
+            setFoundLocations([]);
+            setSelectedLocationIds([]);
+            setFoundItems([]);
+            setSelectedItemIds([]);
+            setDetectedIdeas([]);
+            setSelectedIdeaIds([]);
         }
     }, [editEntry, defaultLocationId, defaultParentLoreId, defaultGroupId, defaultEraId]);
+
+    // Handle fetching/loading linked ideas when editEntry or allIdeas changes
+    useEffect(() => {
+        if (editEntry && allIdeas.length > 0) {
+            const linkedIdeas = allIdeas.filter(i => {
+                const loreIds = (i.linkedLoreIds as string[]) || [];
+                return loreIds.includes(editEntry.id);
+            });
+            setDetectedIdeas(linkedIdeas);
+            setSelectedIdeaIds(linkedIdeas.map(i => i.id));
+        } else if (!editEntry) {
+            setDetectedIdeas([]);
+            setSelectedIdeaIds([]);
+        }
+    }, [editEntry, allIdeas]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -239,9 +315,9 @@ export function LoreDialog({
                 icon: icon.trim() || undefined,
                 color,
                 importance,
-                relatedCharacterIds: foundCharacters.length > 0 ? foundCharacters : undefined,
-                relatedLocationIds: foundLocations.length > 0 ? foundLocations : undefined,
-                relatedItemIds: foundItems.length > 0 ? foundItems : undefined,
+                relatedCharacterIds: selectedCharacterIds.length > 0 ? selectedCharacterIds : null,
+                relatedLocationIds: selectedLocationIds.length > 0 ? selectedLocationIds : null,
+                relatedItemIds: selectedItemIds.length > 0 ? selectedItemIds : null,
             };
 
             let result;
@@ -252,6 +328,31 @@ export function LoreDialog({
             }
 
             if (result.success) {
+                const loreEntryId = result.data?.id || editEntry?.id;
+                
+                // Handle new ideas association and unlinking in background
+                if (detectedIdeas.length > 0 && loreEntryId) {
+                    const toKeep = detectedIdeas.filter(i => selectedIdeaIds.includes(i.id));
+                    const toDelete = detectedIdeas.filter(i => !selectedIdeaIds.includes(i.id));
+                    
+                    // Unlink deselected ideas (remove this loreEntryId from their linkedLoreIds)
+                    await Promise.all(toDelete.map(async (i) => {
+                        const currentLoreIds = (i.linkedLoreIds as string[]) || [];
+                        if (currentLoreIds.includes(loreEntryId)) {
+                            const updatedLoreIds = currentLoreIds.filter(id => id !== loreEntryId);
+                            await updateIdea(i.id, { linkedLoreIds: updatedLoreIds });
+                        }
+                    }));
+                    
+                    // Link selected ideas (add this loreEntryId to their linkedLoreIds if not already present)
+                    await Promise.all(toKeep.map(async (i) => {
+                        const currentLoreIds = (i.linkedLoreIds as string[]) || [];
+                        if (!currentLoreIds.includes(loreEntryId)) {
+                            await updateIdea(i.id, { linkedLoreIds: [...currentLoreIds, loreEntryId] });
+                        }
+                    }));
+                }
+
                 toast.success(isEdit ? "แก้ไขสำเร็จ" : "สร้างสำเร็จ");
                 onOpenChange(false);
                 onSuccess?.();
@@ -280,6 +381,18 @@ export function LoreDialog({
         setIcon("");
         setColor("#8b5cf6");
         setImportance(5);
+        
+        setIsExtracting(false);
+        setIsLoading(false);
+        
+        setFoundCharacters([]);
+        setSelectedCharacterIds([]);
+        setFoundLocations([]);
+        setSelectedLocationIds([]);
+        setFoundItems([]);
+        setSelectedItemIds([]);
+        setDetectedIdeas([]);
+        setSelectedIdeaIds([]);
     };
 
     return (
@@ -384,25 +497,143 @@ export function LoreDialog({
                                         mentionItems={mentionItems}
                                     />
                                     
-                                    {extractedIdeas.length > 0 && (
-                                        <FloatingIdeaPool ideas={extractedIdeas} />
-                                    )}
+                                    {/* Detected Entities Section */}
+                                    {(foundCharacters.length > 0 || foundLocations.length > 0 || foundItems.length > 0 || detectedIdeas.length > 0) && (
+                                        <div className="mt-4 p-4 rounded-xl border bg-muted/20 space-y-4">
+                                            <div className="flex items-center gap-2 border-b pb-2">
+                                                <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" />
+                                                <span className="font-semibold text-sm">เอนทิตีที่ตรวจพบในเนื้อหา (คลิกเพื่อเปิด/ปิดการใช้งานใน Lore นี้)</span>
+                                            </div>
 
-                                    {(foundCharacters.length > 0 || foundLocations.length > 0 || foundItems.length > 0) && (
-                                        <div className="mt-4 flex flex-wrap gap-2 items-center bg-muted/50 p-2.5 rounded-lg border border-dashed text-sm">
-                                            <Sparkles className="w-4 h-4 text-primary" />
-                                            <span className="font-medium text-foreground">เอนทิตีในระบบที่พบ:</span>
-                                            {foundCharacters.map(id => {
-                                                const c = characters.find(x => x.id === id);
-                                                return c ? <span key={id} className="px-2.5 py-0.5 bg-blue-500/10 text-blue-500 rounded-full border border-blue-500/20">👤 {c.name}</span> : null;
-                                            })}
-                                            {foundLocations.map(id => {
-                                                const l = locations.find(x => x.id === id);
-                                                return l ? <span key={id} className="px-2.5 py-0.5 bg-green-500/10 text-green-500 rounded-full border border-green-500/20">📍 {l.name}</span> : null;
-                                            })}
-                                            {/* Note: items are not currently loaded in lore-dialog.tsx, so we just show count or generic tag if we don't have the item names fetched */}
+                                            {/* Characters */}
+                                            {foundCharacters.length > 0 && (
+                                                <div className="space-y-1.5">
+                                                    <p className="text-xs font-semibold text-blue-500">ตัวละครที่พบในระบบ:</p>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {foundCharacters.map(id => {
+                                                            const c = characters.find(x => x.id === id);
+                                                            if (!c) return null;
+                                                            const isSelected = selectedCharacterIds.includes(id);
+                                                            return (
+                                                                <button
+                                                                    key={id}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setSelectedCharacterIds(prev =>
+                                                                            isSelected ? prev.filter(x => x !== id) : [...prev, id]
+                                                                        );
+                                                                    }}
+                                                                    className={cn(
+                                                                        "inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-medium transition-all duration-200 cursor-pointer",
+                                                                        isSelected
+                                                                            ? "bg-blue-500/20 text-blue-800 border-blue-300 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800"
+                                                                            : "bg-background text-muted-foreground border-muted hover:border-blue-300 line-through opacity-60"
+                                                                    )}
+                                                                >
+                                                                    {isSelected ? "👤" : "❌"} {c.name}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Locations */}
+                                            {foundLocations.length > 0 && (
+                                                <div className="space-y-1.5">
+                                                    <p className="text-xs font-semibold text-green-500">สถานที่ที่พบในระบบ:</p>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {foundLocations.map(id => {
+                                                            const l = locations.find(x => x.id === id);
+                                                            if (!l) return null;
+                                                            const isSelected = selectedLocationIds.includes(id);
+                                                            return (
+                                                                <button
+                                                                    key={id}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setSelectedLocationIds(prev =>
+                                                                            isSelected ? prev.filter(x => x !== id) : [...prev, id]
+                                                                        );
+                                                                    }}
+                                                                    className={cn(
+                                                                        "inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-medium transition-all duration-200 cursor-pointer",
+                                                                        isSelected
+                                                                            ? "bg-green-500/20 text-green-800 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
+                                                                            : "bg-background text-muted-foreground border-muted hover:border-green-300 line-through opacity-60"
+                                                                    )}
+                                                                >
+                                                                    {isSelected ? "📍" : "❌"} {l.name}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Items */}
                                             {foundItems.length > 0 && (
-                                                <span className="px-2.5 py-0.5 bg-amber-500/10 text-amber-500 rounded-full border border-amber-500/20">📦 พบไอเท็ม {foundItems.length} ชิ้น</span>
+                                                <div className="space-y-1.5">
+                                                    <p className="text-xs font-semibold text-amber-500">ไอเทมที่พบในระบบ:</p>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {foundItems.map(id => {
+                                                            const item = itemsList.find(x => x.id === id);
+                                                            const name = item ? item.name : `ไอเทม (ID: ${id.substring(0, 4)})`;
+                                                            const isSelected = selectedItemIds.includes(id);
+                                                            return (
+                                                                <button
+                                                                    key={id}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setSelectedItemIds(prev =>
+                                                                            isSelected ? prev.filter(x => x !== id) : [...prev, id]
+                                                                        );
+                                                                    }}
+                                                                    className={cn(
+                                                                        "inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-medium transition-all duration-200 cursor-pointer",
+                                                                        isSelected
+                                                                            ? "bg-amber-500/20 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800"
+                                                                            : "bg-background text-muted-foreground border-muted hover:border-amber-300 line-through opacity-60"
+                                                                    )}
+                                                                >
+                                                                    {isSelected ? "📦" : "❌"} {name}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* New Detected Entities (Ideas) */}
+                                            {detectedIdeas.length > 0 && (
+                                                <div className="space-y-1.5">
+                                                    <p className="text-xs font-semibold text-purple-500">ไอเดียใหม่ที่ถูกสกัด (รอตรวจทานในหน้า Idea Detect):</p>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {detectedIdeas.map(idea => {
+                                                            const isSelected = selectedIdeaIds.includes(idea.id);
+                                                            const icon = idea.category === "character" ? "👤" : "🌍";
+                                                            return (
+                                                                <button
+                                                                    key={idea.id}
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setSelectedIdeaIds(prev =>
+                                                                            isSelected ? prev.filter(x => x !== idea.id) : [...prev, idea.id]
+                                                                        );
+                                                                    }}
+                                                                    className={cn(
+                                                                        "inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-medium transition-all duration-200 cursor-pointer",
+                                                                        isSelected
+                                                                            ? "bg-purple-500/20 text-purple-800 border-purple-300 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800"
+                                                                            : "bg-background text-muted-foreground border-muted hover:border-purple-300 line-through opacity-60"
+                                                                    )}
+                                                                >
+                                                                    {isSelected ? `✨ ${icon}` : "❌"} {idea.title} {idea.category === "character" ? "(ตัวละคร)" : "(สถานที่/ไอเทม)"}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
                                             )}
                                         </div>
                                     )}
