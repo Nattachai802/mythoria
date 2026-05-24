@@ -8,7 +8,7 @@ import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 
 // Helper สำหรับดึง Access Token ปัจจุบันของ User
-async function setupGoogleAuth() {
+export async function setupGoogleAuth() {
     const session = await auth.api.getSession({
         headers: await headers()
     });

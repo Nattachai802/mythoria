@@ -71,7 +71,7 @@ export function FloatingIdeaPool({ ideas }: FloatingIdeaPoolProps) {
             </div>
             
             <div className="absolute bottom-2 right-3 text-[10px] text-muted-foreground z-10 bg-background/80 px-2 py-0.5 rounded-md backdrop-blur-sm">
-                ไอเดียเหล่านี้ถูกบันทึกลงคลัง Idea ของโปรเจกต์อัตโนมัติ
+                สกัดพบไอเดียใหม่! คุณสามารถอนุมัติได้ที่แท็บ Idea Detect ในหน้าคลังไอเดีย
             </div>
         </div>
     );

@@ -18,6 +18,12 @@ import {
 import { deleteLoreEntry } from "@/server/lore";
 import { toast } from "sonner";
 import { LoreDialog } from "./lore-dialog";
+import { LoreDetailDialog } from "./lore-detail-dialog";
+import { getCharactersByNovelId } from "@/server/character";
+import { getLocationsByNovelId } from "@/server/locations";
+import { getItemsByNovelId } from "@/server/items";
+import { getIdeasByNovelId } from "@/server/idea";
+import { useEffect } from "react";
 
 interface LoreEntry {
     id: string;
@@ -73,11 +79,59 @@ const TYPE_COLORS: Record<string, string> = {
     history: "#3b82f6",
 };
 
+function stripHtml(html: string | null | undefined): string {
+    if (!html) return "";
+    let text = html.replace(/<[^>]*>/g, "");
+    // Decode common entities
+    text = text
+        .replace(/&nbsp;/g, " ")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&amp;/g, "&")
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'");
+    return text.trim();
+}
+
 export function LoreVisualTimeline({ eras, ungroupedLores, novelId, onRefresh }: LoreVisualTimelineProps) {
     const [dialogOpen, setDialogOpen] = useState(false);
     const [editEntry, setEditEntry] = useState<LoreEntry | null>(null);
     const [defaultEraId, setDefaultEraId] = useState<string | null>(null);
     const [expandedEras, setExpandedEras] = useState<Set<string>>(new Set(eras.map(e => e.id)));
+
+    const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+    const [selectedLoreForDetail, setSelectedLoreForDetail] = useState<LoreEntry | null>(null);
+    const [characters, setCharacters] = useState<any[]>([]);
+    const [locations, setLocations] = useState<any[]>([]);
+    const [items, setItems] = useState<any[]>([]);
+    const [ideas, setIdeas] = useState<any[]>([]);
+
+    const fetchIdeas = async () => {
+        const res = await getIdeasByNovelId(novelId, true);
+        if (res.success && res.data) {
+            setIdeas(res.data);
+        }
+    };
+
+    useEffect(() => {
+        const fetchData = async () => {
+            const [charRes, locRes, itemsRes] = await Promise.all([
+                getCharactersByNovelId(novelId),
+                getLocationsByNovelId(novelId),
+                getItemsByNovelId(novelId),
+            ]);
+            if (charRes.success && charRes.data) setCharacters(charRes.data);
+            if (locRes.success && locRes.data) setLocations(locRes.data);
+            if (itemsRes.success && itemsRes.data) setItems(itemsRes.data);
+            fetchIdeas();
+        };
+        fetchData();
+    }, [novelId]);
+
+    const handleViewDetail = (entry: LoreEntry) => {
+        setSelectedLoreForDetail(entry);
+        setDetailDialogOpen(true);
+    };
 
     const handleEdit = (entry: LoreEntry) => {
         setEditEntry(entry);
@@ -107,10 +161,11 @@ export function LoreVisualTimeline({ eras, ungroupedLores, novelId, onRefresh }:
         const prefix = depth > 0 ? `${indent}• ` : "";
         let text = `${prefix}${entry.title}`;
         if (entry.content) {
+            const cleanContent = stripHtml(entry.content);
             if (depth === 0) {
-                text += `\n\n${entry.content}`;
+                text += `\n\n${cleanContent}`;
             } else {
-                const indentedContent = entry.content
+                const indentedContent = cleanContent
                     .split("\n")
                     .map(line => `${indent}  ${line}`)
                     .join("\n");
@@ -175,7 +230,7 @@ export function LoreVisualTimeline({ eras, ungroupedLores, novelId, onRefresh }:
                         borderLeftColor: entryColor,
                         marginLeft: depth * 16,
                     }}
-                    onClick={() => handleEdit(entry)}
+                    onClick={() => handleViewDetail(entry)}
                 >
                     <CardContent className="pt-3 pb-3">
                         <div className="flex items-start justify-between gap-2">
@@ -373,7 +428,7 @@ export function LoreVisualTimeline({ eras, ungroupedLores, novelId, onRefresh }:
                 )}
             </div>
 
-            {/* Dialog */}
+            {/* Dialogs */}
             <LoreDialog
                 open={dialogOpen}
                 onOpenChange={handleDialogClose}
@@ -382,6 +437,27 @@ export function LoreVisualTimeline({ eras, ungroupedLores, novelId, onRefresh }:
                 defaultEraId={defaultEraId}
                 onSuccess={onRefresh}
             />
+            {detailDialogOpen && (
+                <LoreDetailDialog
+                    open={detailDialogOpen}
+                    onOpenChange={setDetailDialogOpen}
+                    entry={selectedLoreForDetail}
+                    novelId={novelId}
+                    characters={characters}
+                    locations={locations}
+                    items={items}
+                    ideas={ideas}
+                    onEdit={() => {
+                        if (selectedLoreForDetail) {
+                            handleEdit(selectedLoreForDetail);
+                        }
+                    }}
+                    onSuccess={() => {
+                        fetchIdeas();
+                        onRefresh?.();
+                    }}
+                />
+            )}
         </div>
     );
 }

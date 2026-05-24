@@ -19,7 +19,7 @@ export default async function IdeasPage({ params }: IdeasPageProps) {
 
   // Sync Discord ideas เฉพาะตอนเข้าหน้านี้แทน (ย้ายมาจาก layout)
   const [ideasResult, chaptersResult, novelResult, syncResult] = await Promise.all([
-    getIdeasByNovelId(novelId),
+    getIdeasByNovelId(novelId, true),
     getChapters(novelId),
     getNovelByIdSimple(novelId),
     syncDiscordIdeas(novelId),
@@ -38,6 +38,7 @@ export default async function IdeasPage({ params }: IdeasPageProps) {
   }
 
   const ideas = ideasResult.data || [];
+  const activeIdeasCount = ideas.filter(idea => !idea.isDetected).length;
   const chapters = chaptersResult.success
     ? (chaptersResult.chapters || []).map(ch => ({ id: ch.id, title: ch.title }))
     : [];
@@ -59,7 +60,7 @@ export default async function IdeasPage({ params }: IdeasPageProps) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <DeleteAllIdeasButton novelId={novelId} ideaCount={ideas.length} />
+          <DeleteAllIdeasButton novelId={novelId} ideaCount={activeIdeasCount} />
           <DiscordSyncButton novelId={novelId} />
           <CreateIdeaDialog novelId={novelId} />
         </div>

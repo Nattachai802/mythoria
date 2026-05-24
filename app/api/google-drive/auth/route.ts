@@ -34,6 +34,7 @@ export async function GET() {
       "https://www.googleapis.com/auth/userinfo.email",   // รู้ว่า connect ด้วย email อะไร
       "https://www.googleapis.com/auth/drive.file",
       "https://www.googleapis.com/auth/documents",
+      "https://www.googleapis.com/auth/spreadsheets",
     ],
     state,
   });

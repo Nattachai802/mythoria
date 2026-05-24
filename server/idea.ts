@@ -110,12 +110,16 @@ export async function createIdeaWithoutRevalidate(data: {
     }
 }
 
-export async function getIdeasByNovelId(novelId: string) {
+export async function getIdeasByNovelId(novelId: string, includeDetected: boolean = false) {
     try {
         const allIdeas = await db
             .select()
             .from(ideas)
-            .where(eq(ideas.novelId, novelId))
+            .where(
+                includeDetected
+                    ? eq(ideas.novelId, novelId)
+                    : and(eq(ideas.novelId, novelId), eq(ideas.isDetected, false))
+            )
             .orderBy(ideas.createdAt);
 
         return { success: true, data: allIdeas };
@@ -131,7 +135,7 @@ const _getIdeasCount = async (novelId: string) => {
         const result = await db
             .select({ id: ideas.id })
             .from(ideas)
-            .where(eq(ideas.novelId, novelId));
+            .where(and(eq(ideas.novelId, novelId), eq(ideas.isDetected, false)));
 
         return { success: true as const, count: result.length };
     } catch (error) {
@@ -191,6 +195,7 @@ export async function updateIdea(
         color: string;
         isUsed: boolean; // Can manually override
         isArchived: boolean;
+        isDetected: boolean;
         connectedIdeaIds: string[];
     }>
 ) {
@@ -254,6 +259,36 @@ export async function deleteAllIdeas(novelId: string) {
         return { success: false, error: "Failed to delete ideas" };
     }
 }
+
+export async function deleteMultipleIdeas(ideaIds: string[], novelId: string) {
+    try {
+        if (!ideaIds || ideaIds.length === 0) {
+            return { success: false, error: "No ideas selected" };
+        }
+        const deletedIdeas = await db
+            .delete(ideas)
+            .where(
+                and(
+                    eq(ideas.novelId, novelId),
+                    inArray(ideas.id, ideaIds)
+                )
+            )
+            .returning();
+
+        revalidateTag(CACHE_TAGS.ideas(novelId), "default");
+        revalidatePath(`/dashboard/project/${novelId}/idea`);
+
+        return {
+            success: true,
+            count: deletedIdeas.length,
+            message: `Deleted ${deletedIdeas.length} ideas`
+        };
+    } catch (error) {
+        console.error("Error deleting multiple ideas:", error);
+        return { success: false, error: "Failed to delete ideas" };
+    }
+}
+
 
 // Batch update canvas positions (for playground drag & drop)
 export async function updateIdeaPositions(

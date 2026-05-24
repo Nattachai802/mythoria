@@ -4,6 +4,7 @@ import { Idea } from "@/db/schema";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -26,9 +27,19 @@ interface IdeaCardProps {
     idea: Idea;
     novelId: string;
     chapterInfo?: { id: string; title: string } | null;
+    isSelectMode?: boolean;
+    isSelected?: boolean;
+    onToggleSelect?: (ideaId: string) => void;
 }
 
-export function IdeaCard({ idea, novelId, chapterInfo }: IdeaCardProps) {
+export function IdeaCard({ 
+    idea, 
+    novelId, 
+    chapterInfo,
+    isSelectMode = false,
+    isSelected = false,
+    onToggleSelect
+}: IdeaCardProps) {
     const [isDeleting, setIsDeleting] = useState(false);
     const [editDialogOpen, setEditDialogOpen] = useState(false);
     const [viewDialogOpen, setViewDialogOpen] = useState(false);
@@ -62,18 +73,35 @@ export function IdeaCard({ idea, novelId, chapterInfo }: IdeaCardProps) {
     return (
         <>
             <Card
-                className={`group hover:shadow-lg transition-all cursor-pointer ${idea.isUsed
+                className={`group hover:shadow-lg transition-all cursor-pointer relative ${idea.isUsed
                         ? 'opacity-60 bg-muted/50 border-dashed'
                         : ''
-                    }`}
-                onClick={() => setViewDialogOpen(true)}
+                    } ${isSelected ? 'ring-2 ring-primary border-primary bg-primary/5' : ''}`}
+                onClick={(e) => {
+                    if (isSelectMode && onToggleSelect) {
+                        e.stopPropagation();
+                        onToggleSelect(idea.id);
+                    } else {
+                        setViewDialogOpen(true);
+                    }
+                }}
             >
                 <CardHeader className="pb-3">
                     <div className="flex items-start justify-between gap-2">
                         <div className="flex items-start gap-3 flex-1 min-w-0">
-                            <div className="mt-1">
-                                <Lightbulb className="w-5 h-5 text-yellow-500" />
-                            </div>
+                            {isSelectMode ? (
+                                <div className="mt-1" onClick={(e) => e.stopPropagation()}>
+                                    <Checkbox
+                                        checked={isSelected}
+                                        onCheckedChange={() => onToggleSelect?.(idea.id)}
+                                        className="h-5 w-5"
+                                    />
+                                </div>
+                            ) : (
+                                <div className="mt-1">
+                                    <Lightbulb className="w-5 h-5 text-yellow-500" />
+                                </div>
+                            )}
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
                                     <h3 className={`font-semibold text-lg truncate ${idea.isUsed ? 'text-muted-foreground' : ''}`}>

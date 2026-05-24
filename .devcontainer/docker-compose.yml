@@ -7,13 +7,17 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ../:/workspace:cached
+      - /workspace/node_modules
+      - /workspace/.next
+      - /workspace/pythonservice/venv
     # ทำให้ Container รันค้างไว้รอ VS Code เข้ามาเชื่อมต่อ
     command: sleep infinity
     environment:
       # ตรงกับ .env ของคุณพอดี
       - DATABASE_URL=postgresql://postgres:1234@db:5432/mythoria_db
       - LOCAL_DATABASE_URL=postgresql://postgres:1234@db:5432/mythoria_db
-      - NODE_OPTIONS=--max-old-space-size=4096
+      - WATCHPACK_POLLING=true
+      - CHOKIDAR_USEPOLLING=true
     
   db:
     image: postgres:15

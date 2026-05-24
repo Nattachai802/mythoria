@@ -2,8 +2,10 @@
 
 import { db } from "@/db/drizzle";
 import { loreEntries, eras } from "@/db/schema";
-import { eq, asc, lt, gt, and, isNull } from "drizzle-orm";
+import { eq, asc, lt, gt, and, isNull, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { extractLoreEntitiesInBackground } from "./lore-extractor";
+import { after } from "next/server";
 
 // ============================================
 // HELPER FUNCTIONS FOR ERA AUTO-DETECTION
@@ -163,12 +165,14 @@ export async function createLoreEntry(data: {
 }) {
     try {
         // Get max orderIndex if not provided
-        let orderIndex = data.orderIndex;
-        if (orderIndex === undefined) {
+        let orderIndex: number;
+        if (data.orderIndex === undefined) {
             const existingEntries = await db.query.loreEntries.findMany({
                 where: eq(loreEntries.novelId, data.novelId),
             });
             orderIndex = existingEntries.length;
+        } else {
+            orderIndex = data.orderIndex;
         }
 
         // AUTO-DETECT ERA: ถ้าไม่ได้กำหนด eraId → inherit จาก lore ก่อนหน้า
@@ -177,12 +181,14 @@ export async function createLoreEntry(data: {
             finalEraId = await detectEraFromPreviousEntry(data.novelId, orderIndex);
         }
 
+        const extractionStatus = (data.content && data.content.trim()) ? "pending" : "none";
         const [newEntry] = await db
             .insert(loreEntries)
             .values({
                 ...data,
                 eraId: finalEraId,
                 orderIndex,
+                extractionStatus,
             })
             .returning();
 
@@ -191,6 +197,17 @@ export async function createLoreEntry(data: {
         if (data.eraId) {
             console.log(`[CREATE LORE] Calling applyEraAutoFill...`);
             await applyEraAutoFill(newEntry.id, data.eraId, data.novelId);
+        }
+
+        // Trigger background AI idea extraction
+        if (newEntry.content && newEntry.content.trim()) {
+            after(async () => {
+                try {
+                    await extractLoreEntitiesInBackground(newEntry.id, newEntry.novelId, newEntry.content!);
+                } catch (err) {
+                    console.error("[Background Extraction] Error in after():", err);
+                }
+            });
         }
 
         revalidatePath(`/dashboard/project/${data.novelId}/worldbuilding`);
@@ -267,9 +284,15 @@ export async function updateLoreEntry(
             where: eq(loreEntries.id, loreId),
         });
 
+        const updateData: any = { ...data, updatedAt: new Date() };
+        if (data.content !== undefined) {
+            updateData.extractionStatus = (data.content && data.content.trim()) ? "pending" : "none";
+            updateData.extractionError = null;
+        }
+
         const [updatedEntry] = await db
             .update(loreEntries)
-            .set({ ...data, updatedAt: new Date() })
+            .set(updateData)
             .where(eq(loreEntries.id, loreId))
             .returning();
 
@@ -280,6 +303,17 @@ export async function updateLoreEntry(
         // AUTO-FILL: ถ้า eraId เปลี่ยน → apply auto-fill logic
         if (data.eraId !== undefined && data.eraId !== oldEntry?.eraId && data.eraId) {
             await applyEraAutoFill(loreId, data.eraId, updatedEntry.novelId);
+        }
+
+        // Trigger background AI idea extraction
+        if (data.content && data.content.trim()) {
+            after(async () => {
+                try {
+                    await extractLoreEntitiesInBackground(updatedEntry.id, updatedEntry.novelId, data.content!);
+                } catch (err) {
+                    console.error("[Background Extraction] Error in after():", err);
+                }
+            });
         }
 
         revalidatePath(`/dashboard/project/${updatedEntry.novelId}/worldbuilding`);
@@ -479,5 +513,19 @@ export async function setLoreEraWithAutoFill(
     } catch (error) {
         console.error("Error setting lore era with auto-fill:", error);
         return { success: false, error: "Failed to set era" };
+    }
+}
+
+export async function getLoreExtractionStatuses(novelId: string) {
+    try {
+        const entries = await db.query.loreEntries.findMany({
+            where: eq(loreEntries.novelId, novelId),
+            orderBy: [desc(loreEntries.updatedAt)],
+        });
+        const filtered = entries.filter(e => e.extractionStatus && e.extractionStatus !== "none");
+        return { success: true, data: filtered };
+    } catch (error) {
+        console.error("Error fetching extraction statuses:", error);
+        return { success: false, error: "Failed to fetch extraction statuses" };
     }
 }
