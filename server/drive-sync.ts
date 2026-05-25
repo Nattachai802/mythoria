@@ -9,6 +9,9 @@ import { headers } from "next/headers";
 
 // Helper สำหรับดึง Access Token ปัจจุบันของ User
 export async function setupGoogleAuth() {
+    if (process.env.CLI_SYNC === "true") {
+        return;
+    }
     const session = await auth.api.getSession({
         headers: await headers()
     });
