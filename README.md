@@ -9,6 +9,7 @@
 ## 📑 สารบัญ
 
 - [🎨 Design Philosophy](#-design-philosophy)
+- [🏗️ System Architecture](#-system-architecture)
 - [🚀 ฟีเจอร์หลัก](#-ฟีเจอร์หลัก)
 - [🤖 ระบบ AI](#-ระบบ-ai)
 - [🛠️ Tech Stack](#-tech-stack)
@@ -24,6 +25,63 @@
 - **Aesthetics**: รูปทรงเลขาคณิตตัดมุม, ลวดลายอุตสาหกรรม, Typography แบบ Technical
 - **Color System**: ระบบสี **OKLCH** เพื่อความสม่ำเสมอใน Light/Dark Mode ทุกสภาพแสง
 - **Experience**: Micro-interactions, Glassmorphism, และ Keyboard Shortcuts ที่รู้สึก Premium
+
+---
+
+## 🏗️ System Architecture
+
+ระบบของ **Mythoria** ถูกออกแบบด้วยสถาปัตยกรรมแบบ Hybrid Monolith (Next.js) ร่วมกับ Python AI Microservice เพื่อการประมวลผล RAG และ AI Agent แยกส่วนอย่างมีประสิทธิภาพ:
+
+```mermaid
+graph TD
+    subgraph Client ["Client Side (Browser)"]
+        UI["Next.js Pages (Forge Mode UI)"]
+        Canvas["Visual Canvas (React Flow)"]
+        Editor["Writing Studio (Quill.js)"]
+        GraphVis["Relationship Graph (react-force-graph)"]
+    end
+
+    subgraph WebServer ["Web & Backend Server"]
+        NextServer["Next.js Server Actions / APIs"]
+        BAuth["Better Auth"]
+        Drizzle["Drizzle ORM"]
+    end
+
+    subgraph AIService ["AI Microservice (Python)"]
+        FastAPI["FastAPI App"]
+        LangChain["LangChain (Agent Orchestration)"]
+        LanceDB[("LanceDB (Vector DB)")]
+    end
+
+    subgraph External ["External Services & DB"]
+        Postgres[("Neon PostgreSQL")]
+        Typhoon["Typhoon v2.1 API"]
+        Groq["Groq API (Llama)"]
+        GDrive["Google Drive API"]
+        Discord["Discord Webhooks / API"]
+        Cloudinary["Cloudinary (Asset Store)"]
+    end
+
+    UI --> NextServer
+    Canvas --> NextServer
+    Editor --> NextServer
+    GraphVis --> NextServer
+
+    NextServer --> BAuth
+    NextServer --> Drizzle
+    NextServer --> FastAPI
+    NextServer --> GDrive
+    NextServer --> Discord
+    NextServer --> Cloudinary
+
+    Drizzle --> Postgres
+
+    FastAPI --> LangChain
+    LangChain --> LanceDB
+    LangChain --> Typhoon
+    LangChain --> Groq
+    FastAPI --> Postgres
+```
 
 ---
 
