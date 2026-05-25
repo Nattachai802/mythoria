@@ -13,7 +13,7 @@ import {
     driveSettings,
     characters
 } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, asc, desc } from "drizzle-orm";
 import { oauth2Client } from "@/lib/google-drive";
 import { setupGoogleAuth, initializeDriveSync } from "./drive-sync";
 import { revalidatePath, revalidateTag } from "next/cache";
@@ -21,6 +21,12 @@ import { CACHE_TAGS } from "@/lib/cache-config";
 
 const sheets = google.sheets({ version: "v4", auth: oauth2Client });
 const drive = google.drive({ version: "v3", auth: oauth2Client });
+
+function getCellValue(row: any[] | undefined, index: number): string | null {
+    if (!row || index === -1 || index >= row.length) return null;
+    const val = row[index];
+    return val !== undefined && val !== null ? String(val) : null;
+}
 
 function stripHtml(html: string | null | undefined): string {
     if (!html) return "";
@@ -200,9 +206,29 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
             // ==========================================
             const sheetLocs = await readSheetValues("Locations!A1:Z");
             if (sheetLocs.length > 1) {
+                const headers = sheetLocs[0];
+                const idIdx = headers.indexOf("ID");
+                const nameIdx = headers.indexOf("ชื่อสถานที่ (Name)");
+                const typeIdx = headers.indexOf("ประเภท (Type)");
+                const descIdx = headers.indexOf("คำอธิบายสถานที่ (Description)");
+                const atmosIdx = headers.indexOf("บรรยากาศ (Atmosphere)");
+                const climIdx = headers.indexOf("สภาพอากาศ (Climate)");
+                const inhabIdx = headers.indexOf("ผู้อยู่อาศัยหลัก (Inhabitants)");
+                const histIdx = headers.indexOf("ประวัติความเป็นมา (History)");
+                const secIdx = headers.indexOf("ความลับสถานที่ (Secrets)");
+
                 const rows = sheetLocs.slice(1);
                 for (const row of rows) {
-                    const [id, name, type, description, atmosphere, climate, inhabitants, history, secrets] = row;
+                    const id = getCellValue(row, idIdx);
+                    const name = getCellValue(row, nameIdx);
+                    const type = getCellValue(row, typeIdx);
+                    const description = getCellValue(row, descIdx);
+                    const atmosphere = getCellValue(row, atmosIdx);
+                    const climate = getCellValue(row, climIdx);
+                    const inhabitants = getCellValue(row, inhabIdx);
+                    const history = getCellValue(row, histIdx);
+                    const secrets = getCellValue(row, secIdx);
+
                     if (!name || !name.trim()) continue;
 
                     const locData = {
@@ -231,6 +257,13 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
                             ) {
                                 await db.update(locations).set(locData).where(eq(locations.id, existing.id));
                             }
+                        } else {
+                            // ID exists in sheet but not in DB -> insert it with the sheet's ID!
+                            await db.insert(locations).values({
+                                id: id.trim(),
+                                ...locData,
+                                novelId,
+                            });
                         }
                     } else {
                         // Create Location
@@ -250,9 +283,27 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
             // ==========================================
             const sheetItems = await readSheetValues("Items!A1:Z");
             if (sheetItems.length > 1) {
+                const headers = sheetItems[0];
+                const idIdx = headers.indexOf("ID");
+                const nameIdx = headers.indexOf("ชื่อไอเทม (Name)");
+                const typeIdx = headers.indexOf("ประเภท (Type)");
+                const rarityIdx = headers.indexOf("ระดับความหายาก (Rarity)");
+                const descIdx = headers.indexOf("คำอธิบายความสามารถ (Description)");
+                const loreIdx = headers.indexOf("ประวัติไอเทม (Lore)");
+                const ownerIdx = headers.indexOf("ผู้ครอบครองปัจจุบัน (Current Owner)");
+                const locationIdx = headers.indexOf("สถานที่เก็บรักษา (Location)");
+
                 const rows = sheetItems.slice(1);
                 for (const row of rows) {
-                    const [id, name, type, rarity, description, loreVal, ownerName, locationName] = row;
+                    const id = getCellValue(row, idIdx);
+                    const name = getCellValue(row, nameIdx);
+                    const type = getCellValue(row, typeIdx);
+                    const rarity = getCellValue(row, rarityIdx);
+                    const description = getCellValue(row, descIdx);
+                    const loreVal = getCellValue(row, loreIdx);
+                    const ownerName = getCellValue(row, ownerIdx);
+                    const locationName = getCellValue(row, locationIdx);
+
                     if (!name || !name.trim()) continue;
 
                     // Resolve Owner
@@ -292,6 +343,13 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
                             ) {
                                 await db.update(items).set(itemData).where(eq(items.id, existing.id));
                             }
+                        } else {
+                            // ID exists in sheet but not in DB -> insert it with the sheet's ID!
+                            await db.insert(items).values({
+                                id: id.trim(),
+                                ...itemData,
+                                novelId,
+                            });
                         }
                     } else {
                         await db.insert(items).values({
@@ -310,12 +368,36 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
             // ==========================================
             const sheetLores = await readSheetValues("Lore!A1:Z");
             if (sheetLores.length > 1) {
+                const headers = sheetLores[0];
+                const idIdx = headers.indexOf("ID");
+                const titleIdx = headers.indexOf("ชื่อ (Title)");
+                const typeIdx = headers.indexOf("ประเภท (Type)");
+                const importanceIdx = headers.indexOf("ระดับความสำคัญ (Importance)");
+                const eraIdx = headers.indexOf("ยุคสมัย (Era)");
+                const groupIdx = headers.indexOf("กลุ่มของ Lore (Group)");
+                const scopeIdx = headers.indexOf("ขอบเขต (Scope)");
+                const locationIdx = headers.indexOf("สถานที่หลัก (Location)");
+                const parentLoreIdx = headers.indexOf("Lore หลัก (Parent Lore)");
+                const contentIdx = headers.indexOf("เนื้อหา (Content)");
+                const charsIdx = headers.indexOf("ตัวละครที่เกี่ยวข้อง (Related Characters)");
+                const locsIdx = headers.indexOf("สถานที่ที่เกี่ยวข้อง (Locations)");
+                const itemsIdx = headers.indexOf("ไอเทมที่เกี่ยวข้อง (Items)");
+
                 const rows = sheetLores.slice(1);
                 for (const row of rows) {
-                    const [
-                        id, title, type, importance, eraName, groupName, scope, locationName,
-                        content, relCharsStr, relLocsStr, relItemsStr
-                    ] = row;
+                    const id = getCellValue(row, idIdx);
+                    const title = getCellValue(row, titleIdx);
+                    const type = getCellValue(row, typeIdx);
+                    const importance = getCellValue(row, importanceIdx);
+                    const eraName = getCellValue(row, eraIdx);
+                    const groupName = getCellValue(row, groupIdx);
+                    const scope = getCellValue(row, scopeIdx);
+                    const locationName = getCellValue(row, locationIdx);
+                    const parentLoreTitle = getCellValue(row, parentLoreIdx);
+                    const content = getCellValue(row, contentIdx);
+                    const relCharsStr = getCellValue(row, charsIdx);
+                    const relLocsStr = getCellValue(row, locsIdx);
+                    const relItemsStr = getCellValue(row, itemsIdx);
 
                     if (!title || !title.trim()) continue;
 
@@ -413,6 +495,24 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
                                     })
                                     .where(eq(loreEntries.id, existing.id));
                             }
+                        } else {
+                            // ID exists in sheet but not in DB -> insert it with the sheet's ID!
+                            const contentHtml = textToHtml(content?.trim() || "");
+                            await db.insert(loreEntries).values({
+                                id: id.trim(),
+                                title: title.trim(),
+                                type: type?.trim() || "event",
+                                importance: importanceNum,
+                                eraId,
+                                groupId,
+                                scope: scope?.trim() || "world",
+                                locationId: loreLocId,
+                                content: contentHtml,
+                                relatedCharacterIds: charIds.length > 0 ? charIds : null,
+                                relatedLocationIds: locIds.length > 0 ? locIds : null,
+                                relatedItemIds: itemIds.length > 0 ? itemIds : null,
+                                novelId,
+                            });
                         }
                     } else {
                         // Create Lore Entry
@@ -433,6 +533,35 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
                         });
                     }
                 }
+
+                // Second Pass: Resolve parent-child (sub-lore) relationships
+                if (parentLoreIdx !== -1) {
+                    const updatedDbLore = await db.query.loreEntries.findMany({ where: eq(loreEntries.novelId, novelId) });
+                    for (const row of rows) {
+                        const id = getCellValue(row, idIdx);
+                        const title = getCellValue(row, titleIdx);
+                        const parentLoreTitle = getCellValue(row, parentLoreIdx);
+
+                        if (!title || !title.trim()) continue;
+
+                        const childEntry = updatedDbLore.find(l => id && id.trim() ? l.id === id.trim() : l.title.toLowerCase() === title.trim().toLowerCase());
+                        if (!childEntry) continue;
+
+                        let targetParentId: string | null = null;
+                        if (parentLoreTitle && parentLoreTitle.trim()) {
+                            const parentEntry = updatedDbLore.find(l => l.title.toLowerCase() === parentLoreTitle.trim().toLowerCase());
+                            if (parentEntry && parentEntry.id !== childEntry.id) {
+                                targetParentId = parentEntry.id;
+                            }
+                        }
+
+                        if (childEntry.parentLoreId !== targetParentId) {
+                            await db.update(loreEntries)
+                                .set({ parentLoreId: targetParentId })
+                                .where(eq(loreEntries.id, childEntry.id));
+                        }
+                    }
+                }
             }
 
             // ==========================================
@@ -440,9 +569,29 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
             // ==========================================
             const sheetEntities = await readSheetValues("Entities!A1:Z");
             if (sheetEntities.length > 1) {
+                const headers = sheetEntities[0];
+                const idIdx = headers.indexOf("ID");
+                const nameIdx = headers.indexOf("ชื่อ (Name)");
+                const typeIdx = headers.indexOf("ประเภท (Type)");
+                const threatIdx = headers.indexOf("ระดับความเป็นอันตราย (Threat Level)");
+                const appIdx = headers.indexOf("รูปร่างลักษณะ (Appearance)");
+                const abIdx = headers.indexOf("ความสามารถพิเศษ (Abilities)");
+                const weakIdx = headers.indexOf("จุดอ่อน (Weaknesses)");
+                const habIdx = headers.indexOf("ถิ่นที่อยู่อาศัย (Habitat)");
+                const descIdx = headers.indexOf("คำอธิบายทั่วไป (Description)");
+
                 const rows = sheetEntities.slice(1);
                 for (const row of rows) {
-                    const [id, name, type, threatLevel, appearance, abilitiesVal, weaknessesVal, habitat, description] = row;
+                    const id = getCellValue(row, idIdx);
+                    const name = getCellValue(row, nameIdx);
+                    const type = getCellValue(row, typeIdx);
+                    const threatLevel = getCellValue(row, threatIdx);
+                    const appearance = getCellValue(row, appIdx);
+                    const abilitiesVal = getCellValue(row, abIdx);
+                    const weaknessesVal = getCellValue(row, weakIdx);
+                    const habitat = getCellValue(row, habIdx);
+                    const description = getCellValue(row, descIdx);
+
                     if (!name || !name.trim()) continue;
 
                     const entityData = {
@@ -473,6 +622,13 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
                             ) {
                                 await db.update(entities).set(entityData).where(eq(entities.id, existing.id));
                             }
+                        } else {
+                            // ID exists in sheet but not in DB -> insert it with the sheet's ID!
+                            await db.insert(entities).values({
+                                id: id.trim(),
+                                ...entityData,
+                                novelId,
+                            });
                         }
                     } else {
                         await db.insert(entities).values({
@@ -490,23 +646,32 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
         console.log("[SHEETS_SYNC] Pushing latest database state back to Google Sheets...");
 
         // Fetch fresh copies of everything
-        const freshLocs = await db.query.locations.findMany({ where: eq(locations.novelId, novelId) });
+        const freshLocs = await db.query.locations.findMany({
+            where: eq(locations.novelId, novelId),
+            orderBy: [asc(locations.createdAt)],
+        });
         const freshItems = await db.query.items.findMany({
             where: eq(items.novelId, novelId),
+            orderBy: [asc(items.createdAt)],
             with: {
-                currentOwner: true,
+                owner: true,
                 location: true,
             }
         });
         const freshLore = await db.query.loreEntries.findMany({
             where: eq(loreEntries.novelId, novelId),
+            orderBy: [asc(loreEntries.orderIndex), asc(loreEntries.createdAt)],
             with: {
                 era: true,
                 group: true,
                 location: true,
+                parentLore: true,
             }
         });
-        const freshEntities = await db.query.entities.findMany({ where: eq(entities.novelId, novelId) });
+        const freshEntities = await db.query.entities.findMany({
+            where: eq(entities.novelId, novelId),
+            orderBy: [asc(entities.createdAt)],
+        });
 
         const writeSheetValues = async (sheetTitle: string, header: string[], rows: any[][]) => {
             await sheets.spreadsheets.values.clear({
@@ -547,13 +712,13 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
             i.rarity || "",
             i.description || "",
             i.lore || "",
-            i.currentOwner?.name || "",
+            i.owner?.name || "",
             i.location?.name || ""
         ]);
         await writeSheetValues("Items", itemHeader, itemRows);
 
         // Write Lore Sheet
-        const loreHeader = ["ID", "ชื่อ (Title)", "ประเภท (Type)", "ระดับความสำคัญ (Importance)", "ยุคสมัย (Era)", "กลุ่มของ Lore (Group)", "ขอบเขต (Scope)", "สถานที่หลัก (Location)", "เนื้อหา (Content)", "ตัวละครที่เกี่ยวข้อง (Related Characters)", "สถานที่ที่เกี่ยวข้อง (Locations)", "ไอเทมที่เกี่ยวข้อง (Items)"];
+        const loreHeader = ["ID", "ชื่อ (Title)", "ประเภท (Type)", "ระดับความสำคัญ (Importance)", "ยุคสมัย (Era)", "กลุ่มของ Lore (Group)", "ขอบเขต (Scope)", "สถานที่หลัก (Location)", "Lore หลัก (Parent Lore)", "เนื้อหา (Content)", "ตัวละครที่เกี่ยวข้อง (Related Characters)", "สถานที่ที่เกี่ยวข้อง (Locations)", "ไอเทมที่เกี่ยวข้อง (Items)"];
         const loreRows = freshLore.map(l => {
             // Map character IDs to names
             const charNames: string[] = [];
@@ -588,6 +753,7 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
                 l.group?.name || "",
                 l.scope || "world",
                 l.location?.name || "",
+                l.parentLore?.title || "",
                 stripHtml(l.content),
                 charNames.join(", "),
                 locNames.join(", "),
@@ -616,9 +782,13 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
         await writeSheetValues("Entities", entityHeader, entityRows);
 
         // Revalidate Cache tags
-        revalidateTag(CACHE_TAGS.locations(novelId), "default");
-        revalidateTag(CACHE_TAGS.ideas(novelId), "default");
-        revalidatePath(`/dashboard/project/${novelId}/worldbuilding`);
+        try {
+            revalidateTag(CACHE_TAGS.locations(novelId), "default");
+            revalidateTag(CACHE_TAGS.ideas(novelId), "default");
+            revalidatePath(`/dashboard/project/${novelId}/worldbuilding`);
+        } catch (revalidateErr) {
+            console.log("[SHEETS_SYNC] Cache revalidation skipped (running outside Next.js request scope)");
+        }
 
         const spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}`;
         console.log(`[SHEETS_SYNC] Completed 2-way sync successfully for novel: ${novelId}. URL: ${spreadsheetUrl}`);
