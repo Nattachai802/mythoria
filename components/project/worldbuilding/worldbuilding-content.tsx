@@ -349,28 +349,30 @@ export function WorldBuildingContent({
                             <AlertTriangle className="h-5 w-5" />
                             <span>ยืนยันการดำเนินการเขียนทับข้อมูล</span>
                         </AlertDialogTitle>
-                        <AlertDialogDescription className="space-y-3 pt-2 text-sm">
-                            {pendingStrategy === "db-to-sheets" ? (
-                                <>
-                                    <p className="font-semibold text-foreground">คุณกำลังจะเขียนทับข้อมูลใน Google Sheets:</p>
-                                    <p>
-                                        ข้อมูลเดิมทั้งหมดบน Google Sheets จะถูกล้างและแทนที่ด้วยข้อมูลจากฐานข้อมูลหลักบนเว็บในปัจจุบัน ข้อมูลส่วนที่พิมพ์ค้างอยู่บนชีทแต่อยู่คนละที่กับในเว็บอาจสูญหายได้
-                                    </p>
-                                </>
-                            ) : (
-                                <>
-                                    <p className="font-bold text-red-600 dark:text-red-400">⚠️ คำเตือนสำคัญสำหรับการสูญเสียข้อมูล:</p>
-                                    <p className="font-semibold text-foreground">
-                                        คุณกำลังจะเขียนทับข้อมูลบนเว็บไซต์ด้วยข้อมูลจาก Google Sheets
-                                    </p>
-                                    <p className="text-muted-foreground">
-                                        ข้อมูลต่างๆ ในระบบเว็บ (สถานที่, ไอเทม, เหตุการณ์ประวัติศาสตร์, สิ่งมีชีวิต) ที่<strong>ไม่มีอยู่บน Google Sheets</strong> จะถูก<strong>ลบออกจากฐานข้อมูลหลักอย่างถาวรทันที!</strong>
-                                    </p>
-                                    <p className="text-xs font-medium text-red-500 dark:text-red-400">
-                                        * การดำเนินการนี้ไม่สามารถยกเลิกหรือกู้คืนได้ภายหลัง
-                                    </p>
-                                </>
-                            )}
+                        <AlertDialogDescription asChild>
+                            <div className="space-y-3 pt-2 text-sm">
+                                {pendingStrategy === "db-to-sheets" ? (
+                                    <>
+                                        <p className="font-semibold text-foreground">คุณกำลังจะเขียนทับข้อมูลใน Google Sheets:</p>
+                                        <p>
+                                            ข้อมูลเดิมทั้งหมดบน Google Sheets จะถูกล้างและแทนที่ด้วยข้อมูลจากฐานข้อมูลหลักบนเว็บในปัจจุบัน ข้อมูลส่วนที่พิมพ์ค้างอยู่บนชีทแต่อยู่คนละที่กับในเว็บอาจสูญหายได้
+                                        </p>
+                                    </>
+                                ) : (
+                                    <>
+                                        <p className="font-bold text-red-600 dark:text-red-400">⚠️ คำเตือนสำคัญสำหรับการสูญเสียข้อมูล:</p>
+                                        <p className="font-semibold text-foreground">
+                                            คุณกำลังจะเขียนทับข้อมูลบนเว็บไซต์ด้วยข้อมูลจาก Google Sheets
+                                        </p>
+                                        <p className="text-muted-foreground">
+                                            ข้อมูลต่างๆ ในระบบเว็บ (สถานที่, ไอเทม, เหตุการณ์ประวัติศาสตร์, สิ่งมีชีวิต) ที่<strong>ไม่มีอยู่บน Google Sheets</strong> จะถูก<strong>ลบออกจากฐานข้อมูลหลักอย่างถาวรทันที!</strong>
+                                        </p>
+                                        <p className="text-xs font-medium text-red-500 dark:text-red-400">
+                                            * การดำเนินการนี้ไม่สามารถยกเลิกหรือกู้คืนได้ภายหลัง
+                                        </p>
+                                    </>
+                                )}
+                            </div>
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

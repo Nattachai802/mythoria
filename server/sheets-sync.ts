@@ -754,8 +754,7 @@ export async function syncWorldBuilding(
         // ==========================================
         // 5. PUSH BACK LATEST DB DATA TO GOOGLE SHEET
         // ==========================================
-        if (strategy !== "sheets-to-db") {
-            console.log("[SHEETS_SYNC] Pushing latest database state back to Google Sheets...");
+        console.log("[SHEETS_SYNC] Pushing latest database state back to Google Sheets...");
 
         // Fetch fresh copies of everything
         const freshLocs = await db.query.locations.findMany({
@@ -892,7 +891,6 @@ export async function syncWorldBuilding(
             ];
         });
         await writeSheetValues("Entities", entityHeader, entityRows);
-        }
 
         // Revalidate Cache tags
         try {
