@@ -19,6 +19,16 @@ import { deleteLoreEntry } from "@/server/lore";
 import { toast } from "sonner";
 import { LoreDialog } from "./lore-dialog";
 import { LoreDetailDialog } from "./lore-detail-dialog";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { getCharactersByNovelId } from "@/server/character";
 import { getLocationsByNovelId } from "@/server/locations";
 import { getItemsByNovelId } from "@/server/items";
@@ -98,6 +108,7 @@ export function LoreVisualTimeline({ eras, ungroupedLores, novelId, onRefresh }:
     const [editEntry, setEditEntry] = useState<LoreEntry | null>(null);
     const [defaultEraId, setDefaultEraId] = useState<string | null>(null);
     const [expandedEras, setExpandedEras] = useState<Set<string>>(new Set(eras.map(e => e.id)));
+    const [deleteConfirmEntry, setDeleteConfirmEntry] = useState<LoreEntry | null>(null);
 
     const [detailDialogOpen, setDetailDialogOpen] = useState(false);
     const [selectedLoreForDetail, setSelectedLoreForDetail] = useState<LoreEntry | null>(null);
@@ -146,7 +157,6 @@ export function LoreVisualTimeline({ eras, ungroupedLores, novelId, onRefresh }:
     };
 
     const handleDelete = async (entry: LoreEntry) => {
-        if (!confirm(`ลบ "${entry.title}" ใช่หรือไม่?`)) return;
         const result = await deleteLoreEntry(entry.id);
         if (result.success) {
             toast.success("ลบตำนานสำเร็จ");
@@ -282,14 +292,14 @@ export function LoreVisualTimeline({ eras, ungroupedLores, novelId, onRefresh }:
                                     </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                    <DropdownMenuItem onClick={() => handleEdit(entry)}>
+                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEdit(entry); }}>
                                         <Pencil className="h-4 w-4 mr-2" /> แก้ไข
                                     </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleCopy(entry, allEntries)}>
+                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleCopy(entry, allEntries); }}>
                                         <Copy className="h-4 w-4 mr-2" /> คัดลอก
                                     </DropdownMenuItem>
                                     <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={() => handleDelete(entry)} className="text-red-600">
+                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setDeleteConfirmEntry(entry); }} className="text-red-600">
                                         <Trash2 className="h-4 w-4 mr-2" /> ลบ
                                     </DropdownMenuItem>
                                 </DropdownMenuContent>
@@ -437,6 +447,30 @@ export function LoreVisualTimeline({ eras, ungroupedLores, novelId, onRefresh }:
                 defaultEraId={defaultEraId}
                 onSuccess={onRefresh}
             />
+            <AlertDialog open={deleteConfirmEntry !== null} onOpenChange={(open) => { if (!open) setDeleteConfirmEntry(null); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>ยืนยันการลบตำนาน</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            คุณแน่ใจหรือไม่ว่าต้องการลบตำนาน &ldquo;{deleteConfirmEntry?.title}&rdquo;? การดำเนินการนี้ไม่สามารถย้อนกลับได้ และหัวข้อย่อยทั้งหมดที่อ้างอิงถึงจะถูกลบหรือตัดความสัมพันธ์ไป
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setDeleteConfirmEntry(null)}>ยกเลิก</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={async () => {
+                                if (deleteConfirmEntry) {
+                                    await handleDelete(deleteConfirmEntry);
+                                    setDeleteConfirmEntry(null);
+                                }
+                            }}
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                        >
+                            ยืนยันการลบ
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
             {detailDialogOpen && (
                 <LoreDetailDialog
                     open={detailDialogOpen}
