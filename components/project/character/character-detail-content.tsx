@@ -36,6 +36,7 @@ import { CharacterDesignBoard } from "@/components/project/character/character-d
 import { FormattedTextSection } from "@/components/ui/formatted-text-section";
 import { Character } from "@/db/schema";
 import { cn } from "@/lib/utils";
+import { useRouter } from "next/navigation";
 
 interface CharacterDetailContentProps {
     character: Character;
@@ -102,6 +103,7 @@ export function CharacterDetailContent({
     novelId,
     ideas = []
 }: CharacterDetailContentProps) {
+    const router = useRouter();
     const [sheetOpen, setSheetOpen] = useState(false);
     const roleConfig = ROLE_CONFIG[character.role as keyof typeof ROLE_CONFIG] || ROLE_CONFIG.minor;
 
@@ -436,6 +438,7 @@ export function CharacterDetailContent({
                 novelId={novelId}
                 open={sheetOpen}
                 onOpenChange={setSheetOpen}
+                onSaved={() => router.refresh()}
             />
         </>
     );

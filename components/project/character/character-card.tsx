@@ -25,6 +25,7 @@ import { deleteCharacter } from "@/server/character";
 import { useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useRouter } from "next/navigation";
 
 interface CharacterCardProps {
   character: Character;
@@ -40,6 +41,7 @@ const ROLE_CONFIG = {
 };
 
 export function CharacterCard({ character, novelId, onEdit }: CharacterCardProps) {
+  const router = useRouter();
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -51,6 +53,7 @@ export function CharacterCard({ character, novelId, onEdit }: CharacterCardProps
     if (result.success) {
       toast.success("Character deleted successfully");
       setIsDeleteOpen(false);
+      router.refresh();
     } else {
       toast.error(result.error || "Failed to delete character");
     }
@@ -134,6 +137,7 @@ export function CharacterCard({ character, novelId, onEdit }: CharacterCardProps
         novelId={novelId}
         open={isSheetOpen}
         onOpenChange={setIsSheetOpen}
+        onSaved={() => router.refresh()}
       />
 
       <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>

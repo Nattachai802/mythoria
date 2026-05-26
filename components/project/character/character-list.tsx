@@ -156,6 +156,7 @@ export function CharacterList({ novelId, initialCharacters }: CharacterListProps
         if (result.success) {
             toast.success("Character deleted successfully");
             setIsDeleteOpen(false);
+            router.refresh();
         } else {
             toast.error(result.error || "Failed to delete character");
         }
@@ -545,6 +546,7 @@ export function CharacterList({ novelId, initialCharacters }: CharacterListProps
                     novelId={novelId}
                     open={isSheetOpen}
                     onOpenChange={setIsSheetOpen}
+                    onSaved={() => router.refresh()}
                 />
             )}
 

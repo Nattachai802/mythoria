@@ -4,12 +4,14 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { CharacterSheet } from "./character-sheet";
+import { useRouter } from "next/navigation";
 
 interface CreateCharacterButtonProps {
     novelId: string;
 }
 
 export function CreateCharacterButton({ novelId }: CreateCharacterButtonProps) {
+    const router = useRouter();
     const [open, setOpen] = useState(false);
 
     return (
@@ -23,6 +25,7 @@ export function CreateCharacterButton({ novelId }: CreateCharacterButtonProps) {
                 onOpenChange={setOpen}
                 novelId={novelId}
                 character={null}
+                onSaved={() => router.refresh()}
             />
         </>
     );
