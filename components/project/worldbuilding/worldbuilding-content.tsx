@@ -12,9 +12,25 @@ import { LocationsView } from "@/components/project/location/locations-view";
 import { CreateLocationDialog } from "@/components/project/location/create-location-dialog";
 import { LoreMonitor } from "./lore-monitor";
 import { Button } from "@/components/ui/button";
-import { FileSpreadsheet, Loader2 } from "lucide-react";
+import { FileSpreadsheet, Loader2, ChevronDown, AlertTriangle } from "lucide-react";
 import { checkGoogleConnected } from "@/server/drive-sync";
-import { syncWorldBuilding2Way } from "@/server/sheets-sync";
+import { syncWorldBuilding } from "@/server/sheets-sync";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { useEffect } from "react";
 
@@ -45,10 +61,15 @@ export function WorldBuildingContent({
     connections,
 }: WorldBuildingContentProps) {
     const router = useRouter();
+    const characters = (novel as any).characters || [];
+    const locations = (novel as any).locations || [];
+
     const [activeTab, setActiveTab] = useState("locations");
     const [googleConnected, setGoogleConnected] = useState(false);
     const [googleEmail, setGoogleEmail] = useState<string | undefined>(undefined);
     const [isSyncing, setIsSyncing] = useState(false);
+    const [confirmOpen, setConfirmOpen] = useState(false);
+    const [pendingStrategy, setPendingStrategy] = useState<"db-to-sheets" | "sheets-to-db" | null>(null);
 
     useEffect(() => {
         const checkConnection = async () => {
@@ -59,20 +80,40 @@ export function WorldBuildingContent({
         checkConnection();
     }, []);
 
-    const handleGoogleSheetsSync = async () => {
+    useEffect(() => {
+        const savedScroll = sessionStorage.getItem("scroll-position-worldbuilding");
+        if (savedScroll) {
+            const y = parseInt(savedScroll, 10);
+            if (!isNaN(y)) {
+                window.scrollTo({ top: y, behavior: "instant" as any });
+            }
+            sessionStorage.removeItem("scroll-position-worldbuilding");
+        }
+    }, [items, loreEntries, entities, locations]);
+
+    const handleGoogleSheetsSync = async (strategy: "2-way" | "db-to-sheets" | "sheets-to-db" = "2-way") => {
         setIsSyncing(true);
-        const toastId = toast.loading("กำลังเริ่มการซิงก์ข้อมูลสองทางกับ Google Sheets...");
+        let message = "กำลังเริ่มการซิงก์ข้อมูลสองทางกับ Google Sheets...";
+        if (strategy === "db-to-sheets") message = "กำลังส่งออกข้อมูลทั้งหมดไปยัง Google Sheets...";
+        if (strategy === "sheets-to-db") message = "กำลังนำเข้าและเขียนทับข้อมูลในระบบเว็บจาก Google Sheets...";
+        
+        const toastId = toast.loading(message);
         
         try {
-            const res = await syncWorldBuilding2Way(novelId);
+            const res = await syncWorldBuilding(novelId, strategy);
             if (res.success && res.spreadsheetUrl) {
-                toast.success("ซิงก์ข้อมูลสองทางสำเร็จแล้ว!", {
+                let successMsg = "ซิงก์ข้อมูลสองทางสำเร็จแล้ว!";
+                if (strategy === "db-to-sheets") successMsg = "เขียนทับข้อมูลใน Google Sheets สำเร็จแล้ว!";
+                if (strategy === "sheets-to-db") successMsg = "เขียนทับข้อมูลบนเว็บสำเร็จแล้ว!";
+                
+                toast.success(successMsg, {
                     id: toastId,
                     action: {
                         label: "เปิด Sheets",
                         onClick: () => window.open(res.spreadsheetUrl, "_blank")
                     }
                 });
+                sessionStorage.setItem("scroll-position-worldbuilding", window.scrollY.toString());
                 router.refresh();
             } else {
                 toast.error(res.error || "เกิดข้อผิดพลาดในการซิงก์ข้อมูล", { id: toastId });
@@ -85,12 +126,9 @@ export function WorldBuildingContent({
     };
 
     const handleRefresh = () => {
+        sessionStorage.setItem("scroll-position-worldbuilding", window.scrollY.toString());
         router.refresh();
     };
-
-    // Get characters and locations from novel for linking
-    const characters = (novel as any).characters || [];
-    const locations = (novel as any).locations || [];
 
     return (
         <div className="space-y-6">
@@ -104,21 +142,65 @@ export function WorldBuildingContent({
                 </div>
                 <div className="flex items-center gap-2 self-start sm:self-auto">
                     {googleConnected && (
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleGoogleSheetsSync}
-                            disabled={isSyncing}
-                            className="gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900/50 dark:text-emerald-400 dark:hover:bg-emerald-950/20"
-                            title={googleEmail ? `ซิงก์บัญชี: ${googleEmail}` : "ซิงก์ไปยัง Google Sheets"}
-                        >
-                            {isSyncing ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                                <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                            )}
-                            <span>ซิงก์ Google Sheets</span>
-                        </Button>
+                        <div className="flex items-center">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleGoogleSheetsSync("2-way")}
+                                disabled={isSyncing}
+                                className="rounded-r-none gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900/50 dark:text-emerald-400 dark:hover:bg-emerald-950/20 border-r-0"
+                                title={googleEmail ? `ซิงก์บัญชี: ${googleEmail}` : "ซิงก์ไปยัง Google Sheets"}
+                            >
+                                {isSyncing ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                    <FileSpreadsheet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                                )}
+                                <span>ซิงก์ Google Sheets</span>
+                            </Button>
+                            
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={isSyncing}
+                                        className="rounded-l-none border-l-0 px-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900/50 dark:text-emerald-400 dark:hover:bg-emerald-950/20 h-[36px]"
+                                    >
+                                        <ChevronDown className="h-4 w-4" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => handleGoogleSheetsSync("2-way")} className="gap-2">
+                                        <span className="text-base">🔄</span>
+                                        <div className="flex flex-col">
+                                            <span className="font-medium">ซิงก์สองทาง (2-Way Sync)</span>
+                                            <span className="text-xs text-muted-foreground">ผสานข้อมูลความเปลี่ยนแปลงทั้งสองฝั่ง</span>
+                                        </div>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => {
+                                        setPendingStrategy("db-to-sheets");
+                                        setConfirmOpen(true);
+                                    }} className="gap-2">
+                                        <span className="text-base text-amber-500">📤</span>
+                                        <div className="flex flex-col">
+                                            <span className="font-medium">เขียนทับ Google Sheets</span>
+                                            <span className="text-xs text-muted-foreground text-amber-600 dark:text-amber-400">ใช้ข้อมูลในเว็บเขียนทับบนชีททั้งหมด</span>
+                                        </div>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => {
+                                        setPendingStrategy("sheets-to-db");
+                                        setConfirmOpen(true);
+                                    }} className="gap-2">
+                                        <span className="text-base text-red-500">📥</span>
+                                        <div className="flex flex-col">
+                                            <span className="font-medium">เขียนทับข้อมูลบนเว็บ</span>
+                                            <span className="text-xs text-muted-foreground text-red-600 dark:text-red-400">ใช้ข้อมูลในชีทเขียนทับเว็บ (ลบส่วนต่าง)</span>
+                                        </div>
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </div>
                     )}
                     <LoreMonitor novelId={novelId} onRefresh={handleRefresh} />
                 </div>
@@ -258,6 +340,54 @@ export function WorldBuildingContent({
                     />
                 </TabsContent>
             </Tabs>
+
+            {/* Warning Dialog สำหรับกรณีเขียนทับ (Overwrite) */}
+            <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+                <AlertDialogContent className="border-red-200 dark:border-red-950 max-w-md">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
+                            <AlertTriangle className="h-5 w-5" />
+                            <span>ยืนยันการดำเนินการเขียนทับข้อมูล</span>
+                        </AlertDialogTitle>
+                        <AlertDialogDescription className="space-y-3 pt-2 text-sm">
+                            {pendingStrategy === "db-to-sheets" ? (
+                                <>
+                                    <p className="font-semibold text-foreground">คุณกำลังจะเขียนทับข้อมูลใน Google Sheets:</p>
+                                    <p>
+                                        ข้อมูลเดิมทั้งหมดบน Google Sheets จะถูกล้างและแทนที่ด้วยข้อมูลจากฐานข้อมูลหลักบนเว็บในปัจจุบัน ข้อมูลส่วนที่พิมพ์ค้างอยู่บนชีทแต่อยู่คนละที่กับในเว็บอาจสูญหายได้
+                                    </p>
+                                </>
+                            ) : (
+                                <>
+                                    <p className="font-bold text-red-600 dark:text-red-400">⚠️ คำเตือนสำคัญสำหรับการสูญเสียข้อมูล:</p>
+                                    <p className="font-semibold text-foreground">
+                                        คุณกำลังจะเขียนทับข้อมูลบนเว็บไซต์ด้วยข้อมูลจาก Google Sheets
+                                    </p>
+                                    <p className="text-muted-foreground">
+                                        ข้อมูลต่างๆ ในระบบเว็บ (สถานที่, ไอเทม, เหตุการณ์ประวัติศาสตร์, สิ่งมีชีวิต) ที่<strong>ไม่มีอยู่บน Google Sheets</strong> จะถูก<strong>ลบออกจากฐานข้อมูลหลักอย่างถาวรทันที!</strong>
+                                    </p>
+                                    <p className="text-xs font-medium text-red-500 dark:text-red-400">
+                                        * การดำเนินการนี้ไม่สามารถยกเลิกหรือกู้คืนได้ภายหลัง
+                                    </p>
+                                </>
+                            )}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => {
+                                if (pendingStrategy) {
+                                    handleGoogleSheetsSync(pendingStrategy);
+                                }
+                            }}
+                            className={pendingStrategy === "sheets-to-db" ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" : "bg-amber-600 text-white hover:bg-amber-500"}
+                        >
+                            ยืนยันเขียนทับข้อมูล
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

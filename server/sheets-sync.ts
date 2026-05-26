@@ -13,7 +13,7 @@ import {
     driveSettings,
     characters
 } from "@/db/schema";
-import { eq, and, asc, desc } from "drizzle-orm";
+import { eq, and, asc, desc, inArray } from "drizzle-orm";
 import { oauth2Client } from "@/lib/google-drive";
 import { setupGoogleAuth, initializeDriveSync } from "./drive-sync";
 import { revalidatePath, revalidateTag } from "next/cache";
@@ -67,9 +67,12 @@ async function getRootFolder(fileId: string) {
     return file.data.parents?.[0] || "";
 }
 
-export async function syncWorldBuilding2Way(novelId: string): Promise<{ success: boolean; spreadsheetUrl?: string; error?: string }> {
+export async function syncWorldBuilding(
+    novelId: string,
+    strategy: "2-way" | "db-to-sheets" | "sheets-to-db" = "2-way"
+): Promise<{ success: boolean; spreadsheetUrl?: string; error?: string }> {
     try {
-        console.log(`[SHEETS_SYNC] Starting 2-way sync for novel: ${novelId}`);
+        console.log(`[SHEETS_SYNC] Starting sync (${strategy}) for novel: ${novelId}`);
         await setupGoogleAuth();
 
         const novel = await db.query.novels.findFirst({
@@ -109,8 +112,16 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
 
         if (spreadsheetId) {
             try {
-                // Verify the spreadsheet still exists
-                await sheets.spreadsheets.get({ spreadsheetId });
+                // ตรวจสอบว่าสเปรดชีตยังอยู่และไม่อยู่ในถังขยะ (Trashed)
+                const file = await drive.files.get({
+                    fileId: spreadsheetId,
+                    fields: "trashed",
+                });
+                
+                if (file.data.trashed) {
+                    console.log("[SHEETS_SYNC] Spreadsheet is in trash, creating a new one...");
+                    spreadsheetId = null;
+                }
             } catch (err: any) {
                 if (err.status === 404 || err.code === 404) {
                     console.log("[SHEETS_SYNC] Spreadsheet not found, creating a new one...");
@@ -118,6 +129,35 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
                 } else {
                     throw err;
                 }
+            }
+        }
+
+        // ค้นหาไฟล์เดิมที่มีอยู่ในโฟลเดอร์นิยายก่อนสร้างใหม่
+        if (!spreadsheetId) {
+            try {
+                const searchName = `Mythoria Worldbuilding: ${novel.title}`;
+                const query = `'${settings.rootFolderId}' in parents and mimeType = 'application/vnd.google-apps.spreadsheet' and name = '${searchName.replace(/'/g, "\\'")}' and trashed = false`;
+                
+                const listResponse = await drive.files.list({
+                    q: query,
+                    spaces: "drive",
+                    fields: "files(id, name)",
+                });
+                
+                const existingFiles = listResponse.data.files || [];
+                if (existingFiles.length > 0) {
+                    spreadsheetId = existingFiles[0].id || null;
+                    if (spreadsheetId) {
+                        console.log(`[SHEETS_SYNC] Found existing matching spreadsheet in Drive folder: ${spreadsheetId}`);
+                        
+                        // บันทึก ID สเปรดชีตกลับลง DB
+                        await db.update(driveSettings)
+                            .set({ worldbuildingSpreadsheetId: spreadsheetId })
+                            .where(eq(driveSettings.id, settings.id));
+                    }
+                }
+            } catch (searchErr) {
+                console.warn("[SHEETS_SYNC] Failed to search for existing spreadsheet in Drive folder:", searchErr);
             }
         }
 
@@ -197,8 +237,13 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
             }
         };
 
-        // Only pull changes if the spreadsheet is NOT newly created
-        if (!isNewSpreadsheet) {
+        const processedLocationIds: string[] = [];
+        const processedItemIds: string[] = [];
+        const processedLoreIds: string[] = [];
+        const processedEntityIds: string[] = [];
+
+        // Only pull changes if the spreadsheet is NOT newly created and not in db-to-sheets mode
+        if (!isNewSpreadsheet && strategy !== "db-to-sheets") {
             console.log("[SHEETS_SYNC] Pulling updates from Google Sheets...");
 
             // ==========================================
@@ -245,6 +290,7 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
                     if (id && id.trim()) {
                         const existing = dbLocations.find(l => l.id === id.trim());
                         if (existing) {
+                            processedLocationIds.push(existing.id);
                             // Update only if changed
                             if (existing.name !== locData.name ||
                                 existing.type !== locData.type ||
@@ -264,13 +310,15 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
                                 ...locData,
                                 novelId,
                             });
+                            processedLocationIds.push(id.trim());
                         }
                     } else {
                         // Create Location
-                        await db.insert(locations).values({
+                        const [newLoc] = await db.insert(locations).values({
                             ...locData,
                             novelId,
-                        });
+                        }).returning({ id: locations.id });
+                        if (newLoc) processedLocationIds.push(newLoc.id);
                     }
                 }
             }
@@ -333,6 +381,7 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
                     if (id && id.trim()) {
                         const existing = dbItems.find(i => i.id === id.trim());
                         if (existing) {
+                            processedItemIds.push(existing.id);
                             if (existing.name !== itemData.name ||
                                 existing.type !== itemData.type ||
                                 existing.rarity !== itemData.rarity ||
@@ -350,12 +399,14 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
                                 ...itemData,
                                 novelId,
                             });
+                            processedItemIds.push(id.trim());
                         }
                     } else {
-                        await db.insert(items).values({
+                        const [newItem] = await db.insert(items).values({
                             ...itemData,
                             novelId,
-                        });
+                        }).returning({ id: items.id });
+                        if (newItem) processedItemIds.push(newItem.id);
                     }
                 }
             }
@@ -384,7 +435,8 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
                 const itemsIdx = headers.indexOf("ไอเทมที่เกี่ยวข้อง (Items)");
 
                 const rows = sheetLores.slice(1);
-                for (const row of rows) {
+                for (let i = 0; i < rows.length; i++) {
+                    const row = rows[i];
                     const id = getCellValue(row, idIdx);
                     const title = getCellValue(row, titleIdx);
                     const type = getCellValue(row, typeIdx);
@@ -455,6 +507,7 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
                     if (id && id.trim()) {
                         const existing = dbLore.find(l => l.id === id.trim());
                         if (existing) {
+                            processedLoreIds.push(existing.id);
                             // Check content change
                             const strippedDbContent = stripHtml(existing.content);
                             const sheetContent = content?.trim() || "";
@@ -475,6 +528,7 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
                                 existing.scope !== (scope?.trim() || "world") ||
                                 existing.locationId !== loreLocId ||
                                 existing.content !== contentHtml ||
+                                existing.orderIndex !== i ||
                                 isCharsChanged ||
                                 isLocsChanged ||
                                 isItemsChanged
@@ -489,6 +543,7 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
                                         scope: scope?.trim() || "world",
                                         locationId: loreLocId,
                                         content: contentHtml,
+                                        orderIndex: i,
                                         relatedCharacterIds: charIds.length > 0 ? charIds : null,
                                         relatedLocationIds: locIds.length > 0 ? locIds : null,
                                         relatedItemIds: itemIds.length > 0 ? itemIds : null,
@@ -508,16 +563,18 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
                                 scope: scope?.trim() || "world",
                                 locationId: loreLocId,
                                 content: contentHtml,
+                                orderIndex: i,
                                 relatedCharacterIds: charIds.length > 0 ? charIds : null,
                                 relatedLocationIds: locIds.length > 0 ? locIds : null,
                                 relatedItemIds: itemIds.length > 0 ? itemIds : null,
                                 novelId,
                             });
+                            processedLoreIds.push(id.trim());
                         }
                     } else {
                         // Create Lore Entry
                         const contentHtml = textToHtml(content?.trim() || "");
-                        await db.insert(loreEntries).values({
+                        const [newLore] = await db.insert(loreEntries).values({
                             title: title.trim(),
                             type: type?.trim() || "event",
                             importance: importanceNum,
@@ -526,11 +583,13 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
                             scope: scope?.trim() || "world",
                             locationId: loreLocId,
                             content: contentHtml,
+                            orderIndex: i,
                             relatedCharacterIds: charIds.length > 0 ? charIds : null,
                             relatedLocationIds: locIds.length > 0 ? locIds : null,
                             relatedItemIds: itemIds.length > 0 ? itemIds : null,
                             novelId,
-                        });
+                        }).returning({ id: loreEntries.id });
+                        if (newLore) processedLoreIds.push(newLore.id);
                     }
                 }
 
@@ -608,6 +667,7 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
                     if (id && id.trim()) {
                         const existing = dbEntities.find(e => e.id === id.trim());
                         if (existing) {
+                            processedEntityIds.push(existing.id);
                             const isAbilitiesChanged = JSON.stringify(existing.abilities || []) !== JSON.stringify(entityData.abilities);
                             const isWeaknessesChanged = JSON.stringify(existing.weaknesses || []) !== JSON.stringify(entityData.weaknesses);
 
@@ -629,21 +689,73 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
                                 ...entityData,
                                 novelId,
                             });
+                            processedEntityIds.push(id.trim());
                         }
                     } else {
-                        await db.insert(entities).values({
+                        const [newEntity] = await db.insert(entities).values({
                             ...entityData,
                             novelId,
-                        });
+                        }).returning({ id: entities.id });
+                        if (newEntity) processedEntityIds.push(newEntity.id);
                     }
                 }
+            }
+        }
+
+        // ดำเนินการ Overwrite DB ถ้าผู้ใช้เลือกโหมดนำเข้าเท่านั้น (Sheets -> DB)
+        if (!isNewSpreadsheet && strategy === "sheets-to-db") {
+            console.log("[SHEETS_SYNC] Overwriting database: Deleting records not in Google Sheets...");
+            
+            // ลบ Lore ส่วนเกิน
+            const loreToDelete = dbLore.filter(l => !processedLoreIds.includes(l.id));
+            if (loreToDelete.length > 0) {
+                const deleteIds = loreToDelete.map(l => l.id);
+                // เคลียร์ parent ID
+                await db.update(loreEntries)
+                    .set({ parentLoreId: null })
+                    .where(and(eq(loreEntries.novelId, novelId), inArray(loreEntries.id, deleteIds)));
+                await db.delete(loreEntries)
+                    .where(and(eq(loreEntries.novelId, novelId), inArray(loreEntries.id, deleteIds)));
+            }
+
+            // ลบ Items ส่วนเกิน
+            const itemsToDelete = dbItems.filter(i => !processedItemIds.includes(i.id));
+            if (itemsToDelete.length > 0) {
+                const deleteIds = itemsToDelete.map(i => i.id);
+                await db.delete(items)
+                    .where(and(eq(items.novelId, novelId), inArray(items.id, deleteIds)));
+            }
+
+            // ลบ Locations ส่วนเกิน
+            const locationsToDelete = dbLocations.filter(l => !processedLocationIds.includes(l.id));
+            if (locationsToDelete.length > 0) {
+                const deleteIds = locationsToDelete.map(l => l.id);
+                // เคลียร์ความสัมพันธ์ใน items และ lore
+                await db.update(items)
+                    .set({ locationId: null })
+                    .where(and(eq(items.novelId, novelId), inArray(items.locationId, deleteIds)));
+                await db.update(loreEntries)
+                    .set({ locationId: null })
+                    .where(and(eq(loreEntries.novelId, novelId), inArray(loreEntries.locationId, deleteIds)));
+                // ลบจริง
+                await db.delete(locations)
+                    .where(and(eq(locations.novelId, novelId), inArray(locations.id, deleteIds)));
+            }
+
+            // ลบ Entities ส่วนเกิน
+            const entitiesToDelete = dbEntities.filter(e => !processedEntityIds.includes(e.id));
+            if (entitiesToDelete.length > 0) {
+                const deleteIds = entitiesToDelete.map(e => e.id);
+                await db.delete(entities)
+                    .where(and(eq(entities.novelId, novelId), inArray(entities.id, deleteIds)));
             }
         }
 
         // ==========================================
         // 5. PUSH BACK LATEST DB DATA TO GOOGLE SHEET
         // ==========================================
-        console.log("[SHEETS_SYNC] Pushing latest database state back to Google Sheets...");
+        if (strategy !== "sheets-to-db") {
+            console.log("[SHEETS_SYNC] Pushing latest database state back to Google Sheets...");
 
         // Fetch fresh copies of everything
         const freshLocs = await db.query.locations.findMany({
@@ -780,6 +892,7 @@ export async function syncWorldBuilding2Way(novelId: string): Promise<{ success:
             ];
         });
         await writeSheetValues("Entities", entityHeader, entityRows);
+        }
 
         // Revalidate Cache tags
         try {
