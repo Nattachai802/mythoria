@@ -1063,6 +1063,45 @@ export const chapterStylometry = pgTable("chapter_stylometry", {
     .notNull(),
 });
 
+export const noteAuditIssues = pgTable("note_audit_issues", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  novelId: text("novel_id")
+    .notNull()
+    .references(() => novels.id, { onDelete: "cascade" }),
+  noteId: text("note_id")
+    .notNull()
+    .references(() => notes.id, { onDelete: "cascade" }),
+
+  level: text("level").notNull(), // 'developmental' | 'line' | 'proofreading'
+  category: text("category").notNull(), // 'plot_hole', 'character_state', 'tell_vs_show', 'spelling', 'redundancy'
+
+  startIndex: integer("start_index").notNull(),
+  endIndex: integer("end_index").notNull(),
+
+  flaggedText: text("flagged_text").notNull(),
+  issueDescription: text("issue_description").notNull(),
+  suggestedText: text("suggested_text"),
+  suggestionNotes: text("suggestion_notes"),
+
+  status: text("status").default("unresolved").notNull(), // 'unresolved' | 'resolved'
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+export const noteAuditIssuesRelations = relations(noteAuditIssues, ({ one }) => ({
+  novel: one(novels, {
+    fields: [noteAuditIssues.novelId],
+    references: [novels.id],
+  }),
+  note: one(notes, {
+    fields: [noteAuditIssues.noteId],
+    references: [notes.id],
+  }),
+}));
+
 // ============================================
 // RELATIONS
 // ============================================
@@ -1208,6 +1247,7 @@ export const noteRelations = relations(notes, ({ one, many }) => ({
   }),
   characters: many(noteCharacters),
   aiReviews: many(aiChapterReviews),
+  auditIssues: many(noteAuditIssues),
 }));
 
 export const tagRelations = relations(tags, ({ one, many }) => ({
