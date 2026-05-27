@@ -7,7 +7,7 @@ import { GoogleGenAI } from "@google/genai";
 import { revalidatePath } from "next/cache";
 
 // API Configuration - reuse from environment
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "AIzaSyA7O91TiZA3oB48B2NbRlgs5jNkwIx-wQo";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 const GEMINI_MODEL = "gemini-2.5-flash";
 
 // Initialize Gemini client
