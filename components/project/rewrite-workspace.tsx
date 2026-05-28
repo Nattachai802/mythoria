@@ -38,15 +38,55 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { updateNote, updateNoteStatus } from "@/server/note";
-import { createNoteVersion } from "@/server/version-history";
+import { createNoteVersion, getNoteVersions } from "@/server/version-history";
 import { NOTE_STATUS_CONFIG, NoteStatus } from "@/lib/note-constants";
 import { VersionHistoryPanel } from "@/components/project/version-history-panel";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { diff_match_patch } from "diff-match-patch";
+import { GitCompare, BookOpen } from "lucide-react";
 
 import "react-quill-new/dist/quill.snow.css";
 
 const ReactQuill = dynamic(() => import("react-quill-new"), { ssr: false });
+
+// Helper functions for paragraph rewrite mode
+function parseHtmlToParagraphs(html: string): string[] {
+    if (!html) return [];
+    if (typeof window === "undefined") return [];
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+    const pElements = Array.from(doc.querySelectorAll("p, div, li"));
+    if (pElements.length > 0) {
+        return pElements.map(el => el.textContent || "").filter(text => text.trim() !== "");
+    }
+    // Fallback split by double newlines or single newlines
+    return html.split(/\n+/).map(text => text.trim()).filter(text => text !== "");
+}
+
+function getWordDiffHtml(oldText: string, newText: string): string {
+    if (!oldText && !newText) return "";
+    const dmp = new diff_match_patch();
+    const diffs = dmp.diff_main(oldText || "", newText || "");
+    dmp.diff_cleanupSemantic(diffs);
+    
+    return diffs.map(([op, text]) => {
+        const escapedText = text
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+        if (op === -1) {
+            return `<del class="bg-red-500/20 text-red-500 line-through px-0.5 rounded mx-0.5">${escapedText}</del>`;
+        } else if (op === 1) {
+            return `<ins class="bg-green-500/20 text-green-500 no-underline px-0.5 rounded mx-0.5">${escapedText}</ins>`;
+        }
+        return escapedText;
+    }).join("");
+}
+
+function rebuildParagraphsToHtml(paragraphs: string[]): string {
+    return paragraphs.map(p => `<p>${p}</p>`).join("");
+}
 
 interface AuditIssue {
     id: string;
@@ -156,6 +196,80 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
     const quillRef = useRef<any>(null);
     const editorContainerRef = useRef<HTMLDivElement>(null);
     const lastSavedContent = useRef(initialNote.content?.text || "");
+
+    // Paragraph Rewrite Mode States
+    const [isParagraphMode, setIsParagraphMode] = useState(false);
+    const [activeParagraphIndex, setActiveParagraphIndex] = useState<number | null>(null);
+    const [editingParagraphs, setEditingParagraphs] = useState<string[]>([]);
+    const [originalParagraphs, setOriginalParagraphs] = useState<string[]>([]);
+    
+    // Versions state
+    const [noteVersions, setNoteVersions] = useState<any[]>([]);
+    const [selectedCompareVersionId, setSelectedCompareVersionId] = useState<string>("latest");
+    const [loadingCompareVersion, setLoadingCompareVersion] = useState(false);
+
+    // Fetch note versions for comparison dropdown
+    useEffect(() => {
+        const loadVersionsList = async () => {
+            try {
+                const res = await getNoteVersions(note.id);
+                if (res.success && res.versions) {
+                    setNoteVersions(res.versions);
+                }
+            } catch (e) {
+                console.error("Failed to load versions list:", e);
+            }
+        };
+        loadVersionsList();
+    }, [note.id]);
+
+    // Handle compare version selection changes
+    const handleCompareVersionChange = async (val: string) => {
+        setSelectedCompareVersionId(val);
+        if (val === "latest") {
+            const parsed = parseHtmlToParagraphs(initialNote.content?.text || "");
+            setOriginalParagraphs(parsed);
+            return;
+        }
+        
+        setLoadingCompareVersion(true);
+        try {
+            const selectedVer = noteVersions.find(v => v.id === val);
+            if (selectedVer) {
+                const text = typeof selectedVer.content === 'object' 
+                    ? selectedVer.content?.text || '' 
+                    : selectedVer.content;
+                const parsed = parseHtmlToParagraphs(text);
+                setOriginalParagraphs(parsed);
+            }
+        } catch (e) {
+            toast.error("ล้มเหลวในการโหลดเวอร์ชันสำหรับเปรียบเทียบ");
+        } finally {
+            setLoadingCompareVersion(false);
+        }
+    };
+
+    // Update paragraph text
+    const handleUpdateParagraph = (index: number, newText: string) => {
+        const updated = [...editingParagraphs];
+        updated[index] = newText;
+        setEditingParagraphs(updated);
+        
+        // Sync back to content html string
+        const newHtml = rebuildParagraphsToHtml(updated);
+        setContent(newHtml);
+        if (newHtml !== lastSavedContent.current) {
+            setSaveStatus("unsaved");
+        }
+    };
+
+    // Auto-align paragraph arrays if content changes externally
+    useEffect(() => {
+        if (!isParagraphMode && content) {
+            const parsed = parseHtmlToParagraphs(content);
+            setEditingParagraphs(parsed);
+        }
+    }, [content, isParagraphMode]);
 
     // Fetch existing issues
     useEffect(() => {
@@ -409,6 +523,28 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                         </Select>
                     </div>
 
+                    {/* Mode Toggle Button */}
+                    <Button
+                        variant={isParagraphMode ? "secondary" : "outline"}
+                        size="sm"
+                        className="h-8 text-xs font-mono tracking-wide gap-1.5 border-steel-800"
+                        onClick={() => {
+                            if (!isParagraphMode) {
+                                const parsedEdit = parseHtmlToParagraphs(content);
+                                setEditingParagraphs(parsedEdit);
+                                if (originalParagraphs.length === 0) {
+                                    const parsedOrig = parseHtmlToParagraphs(initialNote.content?.text || "");
+                                    setOriginalParagraphs(parsedOrig);
+                                }
+                                setActiveParagraphIndex(0);
+                            }
+                            setIsParagraphMode(!isParagraphMode);
+                        }}
+                    >
+                        <GitCompare className="h-3.5 w-3.5 text-amber-500" />
+                        <span className="hidden sm:inline">{isParagraphMode ? "โหมดปกติ" : "โหมดเกลาทีละย่อหน้า"}</span>
+                    </Button>
+
                     <VersionHistoryPanel noteId={note.id} novelId={novelId}>
                         <Button variant="outline" size="sm" className="h-8 text-xs font-mono tracking-wide gap-1.5 border-steel-800">
                             <History className="h-3.5 w-3.5" />
@@ -487,25 +623,199 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                     />
                 )}
 
-                {/* Column 2: Center Editor */}
-                <div ref={editorContainerRef} className="flex-1 h-full flex flex-col bg-background relative overflow-hidden">
-                    <ReactQuill
-                        ref={quillRef}
-                        theme="snow"
-                        value={content}
-                        onChange={(val) => {
-                            setContent(val);
-                            if (val !== lastSavedContent.current) setSaveStatus("unsaved");
-                        }}
-                        onChangeSelection={handleSelectionChange}
-                        modules={modules}
-                        className="h-full flex flex-col [&>.ql-toolbar]:border-t-0 [&>.ql-toolbar]:border-x-0 [&>.ql-toolbar]:border-b [&>.ql-toolbar]:bg-background [&>.ql-container]:flex-1 [&>.ql-container]:overflow-y-auto [&>.ql-container]:border-none [&>.ql-container]:bg-muted/20 [&>.ql-editor]:bg-background [&>.ql-editor]:shadow-md [&>.ql-editor]:border [&>.ql-editor]:border-steel-800/30 [&>.ql-editor]:rounded-lg [&>.ql-editor]:my-8 [&>.ql-editor]:mx-auto [&>.ql-editor]:max-w-3xl [&>.ql-editor]:w-[calc(100%-4rem)] [&>.ql-editor]:p-8 [&>.ql-editor]:text-base [&>.ql-editor]:leading-relaxed"
-                        placeholder="เริ่มต้นเขียนหรือเกลาเนื้อหาบทนี้..."
-                    />
-                </div>
+                {/* Column 2: Center Editor / Paragraph Rewrite Workspace */}
+                {isParagraphMode ? (
+                    <div className="flex-1 h-full flex flex-col overflow-hidden bg-background relative">
+                        {/* Upper split area */}
+                        <div className="flex-1 flex flex-row overflow-hidden divide-x divide-steel-800/60">
+                            {/* Left Pane: Single Original Paragraph */}
+                            <div className="flex-1 h-full flex flex-col min-w-[320px] overflow-hidden bg-muted/5">
+                                <div className="p-4 border-b border-steel-800/60 bg-muted/20 flex items-center justify-between shrink-0">
+                                    <span className="text-xs font-mono font-semibold tracking-wider text-muted-foreground uppercase flex items-center gap-1.5">
+                                        <BookOpen className="h-3.5 w-3.5 text-amber-500" />
+                                        ย่อหน้าต้นฉบับดั้งเดิม
+                                    </span>
+                                    
+                                    <Select value={selectedCompareVersionId} onValueChange={handleCompareVersionChange}>
+                                        <SelectTrigger className="w-[180px] h-7 text-xs border-steel-800 bg-background/50">
+                                            <SelectValue placeholder="เลือกเวอร์ชันเปรียบเทียบ" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="latest" className="text-xs">
+                                                ต้นร่างปัจจุบัน (ที่เซฟล่าสุด)
+                                            </SelectItem>
+                                            {noteVersions.map((v) => (
+                                                <SelectItem key={v.id} value={v.id} className="text-xs">
+                                                    Version {v.versionNumber} ({v.saveType === 'manual' ? 'Manual' : 'Auto'})
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="flex-1 overflow-y-auto p-8 flex flex-col justify-center max-w-2xl mx-auto w-full relative">
+                                    <div className="absolute top-4 left-6 text-xs font-mono text-muted-foreground/35 select-none font-bold">
+                                        ORIGINAL PARAGRAPH #{(activeParagraphIndex ?? 0) + 1}
+                                    </div>
+                                    {loadingCompareVersion ? (
+                                        <div className="flex justify-center items-center py-8">
+                                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                                        </div>
+                                    ) : (
+                                        <p className="text-lg leading-relaxed tracking-wide text-foreground/80 font-sans whitespace-pre-wrap italic border-l-2 border-amber-500/20 pl-4 py-2">
+                                            {originalParagraphs[activeParagraphIndex ?? 0] || (
+                                                <span className="text-muted-foreground/30">[ย่อหน้าว่างในประวัติเวอร์ชันนี้]</span>
+                                            )}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Right Pane: Editable Textarea & Diff Preview */}
+                            <div className="flex-1 h-full flex flex-col min-w-[320px] overflow-hidden bg-background">
+                                <div className="p-4 border-b border-steel-800/60 bg-muted/20 flex items-center justify-between shrink-0">
+                                    <span className="text-xs font-mono font-semibold tracking-wider text-muted-foreground uppercase flex items-center gap-1.5">
+                                        <PenTool className="h-3.5 w-3.5 text-amber-500" />
+                                        การปรับปรุงภาษาและเกลาสำนวน
+                                    </span>
+                                    <span className="text-[10px] font-mono text-muted-foreground bg-steel-900 border border-steel-800 px-2 py-0.5 rounded-sm">
+                                        FOCUS EDITING
+                                    </span>
+                                </div>
+
+                                <div className="flex-1 overflow-y-auto p-6 space-y-6 flex flex-col max-w-2xl mx-auto w-full">
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between items-center">
+                                            <label className="text-[10px] font-mono font-bold tracking-wider text-muted-foreground uppercase">
+                                                พิมพ์เกลาข้อความในกล่องนี้:
+                                            </label>
+                                            <span className="text-[10px] font-mono text-muted-foreground/50">
+                                                (ดัชนีย่อหน้า #{(activeParagraphIndex ?? 0) + 1})
+                                            </span>
+                                        </div>
+                                        <textarea
+                                            value={editingParagraphs[activeParagraphIndex ?? 0] || ""}
+                                            onChange={(e) => handleUpdateParagraph(activeParagraphIndex ?? 0, e.target.value)}
+                                            className="w-full min-h-[160px] p-4 text-base bg-muted/10 border border-steel-800 rounded-lg focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 resize-y text-foreground leading-relaxed outline-none transition-all duration-200 shadow-inner"
+                                            placeholder="เริ่มต้นเขียนหรือเกลาเนื้อหาบทนี้..."
+                                            autoFocus
+                                            onKeyDown={(e) => {
+                                                if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                                                    e.preventDefault();
+                                                    const idx = activeParagraphIndex ?? 0;
+                                                    if (idx < editingParagraphs.length - 1) {
+                                                        setActiveParagraphIndex(idx + 1);
+                                                    } else {
+                                                        setIsParagraphMode(false);
+                                                        setActiveParagraphIndex(null);
+                                                        toast.success("เกลาเนื้อหาครบทุกย่อหน้าแล้ว");
+                                                    }
+                                                }
+                                            }}
+                                        />
+                                    </div>
+
+                                    {/* Real-time Diff Preview Box */}
+                                    {originalParagraphs[activeParagraphIndex ?? 0] !== editingParagraphs[activeParagraphIndex ?? 0] && (
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-mono font-bold tracking-wider text-muted-foreground uppercase">
+                                                เปรียบเทียบการเปลี่ยนแปลง (Word Diff):
+                                            </label>
+                                            <div className="p-4 rounded-lg border border-steel-800 bg-muted/10 text-sm leading-relaxed tracking-wide whitespace-pre-wrap min-h-[80px]">
+                                                <div 
+                                                    dangerouslySetInnerHTML={{ 
+                                                        __html: getWordDiffHtml(
+                                                            originalParagraphs[activeParagraphIndex ?? 0] || "", 
+                                                            editingParagraphs[activeParagraphIndex ?? 0] || ""
+                                                        ) 
+                                                    }} 
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Navigation Footer */}
+                        <div className="h-16 border-t border-steel-800 bg-muted/15 shrink-0 px-6 flex items-center justify-between relative">
+                            {/* Visual Progress Bar */}
+                            <div className="absolute top-0 left-0 h-[2px] bg-amber-500 transition-all duration-300" 
+                                 style={{ width: `${(((activeParagraphIndex ?? 0) + 1) / (editingParagraphs.length || 1)) * 100}%` }} 
+                            />
+                            
+                            <div className="flex items-center gap-4">
+                                <span className="text-xs font-mono text-muted-foreground/80">
+                                    ย่อหน้าที่ <strong className="text-foreground">{(activeParagraphIndex ?? 0) + 1}</strong> จาก <strong className="text-foreground">{editingParagraphs.length}</strong>
+                                </span>
+                                <span className="hidden md:inline text-[10px] font-mono text-muted-foreground/50">
+                                    • กดยืนยันบันทึกด้วย Ctrl + Enter
+                                </span>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={(activeParagraphIndex ?? 0) === 0}
+                                    onClick={() => {
+                                        const idx = activeParagraphIndex ?? 0;
+                                        setActiveParagraphIndex(idx - 1);
+                                    }}
+                                    className="h-8 text-xs px-4"
+                                >
+                                    ก่อนหน้า
+                                </Button>
+                                
+                                {(activeParagraphIndex ?? 0) < editingParagraphs.length - 1 ? (
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => {
+                                            const idx = activeParagraphIndex ?? 0;
+                                            setActiveParagraphIndex(idx + 1);
+                                        }}
+                                        className="h-8 text-xs px-4 hover:border-amber-500/50 hover:bg-amber-500/5"
+                                    >
+                                        ถัดไป
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        size="sm"
+                                        variant="forge"
+                                        onClick={() => {
+                                            setIsParagraphMode(false);
+                                            setActiveParagraphIndex(null);
+                                            toast.success("เกลาเนื้อหาครบทุกย่อหน้าแล้ว");
+                                        }}
+                                        className="h-8 text-xs px-4 font-semibold"
+                                    >
+                                        เสร็จสิ้น
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <div ref={editorContainerRef} className="flex-1 h-full flex flex-col bg-background relative overflow-hidden">
+                        <ReactQuill
+                            ref={quillRef}
+                            theme="snow"
+                            value={content}
+                            onChange={(val) => {
+                                setContent(val);
+                                if (val !== lastSavedContent.current) setSaveStatus("unsaved");
+                            }}
+                            onChangeSelection={handleSelectionChange}
+                            modules={modules}
+                            className="h-full flex flex-col [&>.ql-toolbar]:border-t-0 [&>.ql-toolbar]:border-x-0 [&>.ql-toolbar]:border-b [&>.ql-toolbar]:bg-background [&>.ql-container]:flex-1 [&>.ql-container]:overflow-y-auto [&>.ql-container]:border-none [&>.ql-container]:bg-muted/20 [&>.ql-editor]:bg-background [&>.ql-editor]:shadow-md [&>.ql-editor]:border [&>.ql-editor]:border-steel-800/30 [&>.ql-editor]:rounded-lg [&>.ql-editor]:my-8 [&>.ql-editor]:mx-auto [&>.ql-editor]:max-w-3xl [&>.ql-editor]:w-[calc(100%-4rem)] [&>.ql-editor]:p-8 [&>.ql-editor]:text-base [&>.ql-editor]:leading-relaxed"
+                            placeholder="เริ่มต้นเขียนหรือเกลาเนื้อหาบทนี้..."
+                        />
+                    </div>
+                )}
 
                 {/* Right Resizer Handle */}
-                {showAuditor && (
+                {showAuditor && !isParagraphMode && (
                     <div 
                         className={cn(
                             "hidden md:flex w-1 bg-steel-800/60 hover:bg-primary/55 cursor-col-resize z-10 transition-colors shrink-0",
@@ -516,7 +826,7 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                 )}
 
                 {/* Column 3: Right Auditor Panel */}
-                {showAuditor && (
+                {showAuditor && !isParagraphMode && (
                     <div 
                         className="shrink-0 bg-card/40 flex flex-col h-full relative noise-texture-strong"
                         style={{ width: auditorWidth }}
@@ -659,7 +969,7 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                                             />
                                         </div>
 
-                                        <Button onClick={handleAddIssue} size="sm" className="w-full text-xs h-9.5 font-semibold tracking-wide chamfered-sm">
+                                        <Button onClick={handleAddIssue} size="default" className="w-full text-sm h-11 font-semibold tracking-wide chamfered-sm">
                                             บันทึกจุดตรวจทาน
                                         </Button>
                                     </div>
