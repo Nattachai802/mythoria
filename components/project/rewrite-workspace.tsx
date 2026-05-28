@@ -76,9 +76,9 @@ function getWordDiffHtml(oldText: string, newText: string): string {
             .replace(/</g, "&lt;")
             .replace(/>/g, "&gt;");
         if (op === -1) {
-            return `<del class="bg-red-500/20 text-red-500 line-through px-0.5 rounded mx-0.5">${escapedText}</del>`;
+            return `<del class="bg-red-500/10 dark:bg-red-500/[0.05] text-red-500 dark:text-red-400 line-through decoration-red-500/30 px-0.5 rounded mx-0.5">${escapedText}</del>`;
         } else if (op === 1) {
-            return `<ins class="bg-green-500/20 text-green-500 no-underline px-0.5 rounded mx-0.5">${escapedText}</ins>`;
+            return `<ins class="bg-emerald-500/10 dark:bg-emerald-500/[0.05] text-emerald-600 dark:text-emerald-400 no-underline decoration-emerald-500/30 px-0.5 rounded mx-0.5">${escapedText}</ins>`;
         }
         return escapedText;
     }).join("");
@@ -498,7 +498,7 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                             setTitle(e.target.value);
                             setSaveStatus("unsaved");
                         }}
-                        className="text-sm font-semibold font-display border-none shadow-none focus-visible:ring-0 px-2 py-1 h-8 bg-muted/40 hover:bg-muted/80 focus:bg-background rounded-md transition-colors max-w-[240px]"
+                        className="text-sm font-semibold font-display border border-transparent shadow-none focus-visible:ring-0 px-3 py-1 h-8 bg-transparent hover:bg-muted/30 hover:border-steel-800/40 focus:bg-background focus:border-steel-800 rounded-md transition-all duration-200 max-w-[240px]"
                         placeholder="Note Title"
                     />
                 </div>
@@ -662,7 +662,7 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                                             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                                         </div>
                                     ) : (
-                                        <p className="text-lg leading-relaxed tracking-wide text-foreground/80 font-sans whitespace-pre-wrap italic border-l-2 border-amber-500/20 pl-4 py-2">
+                                        <p className="text-[17px] leading-loose tracking-wide text-foreground/85 font-sans whitespace-pre-wrap italic border-l-2 border-amber-500/35 pl-5 py-3 bg-muted/5 dark:bg-zinc-900/5 rounded-r-lg">
                                             {originalParagraphs[activeParagraphIndex ?? 0] || (
                                                 <span className="text-muted-foreground/30">[ย่อหน้าว่างในประวัติเวอร์ชันนี้]</span>
                                             )}
@@ -678,7 +678,7 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                                         <PenTool className="h-3.5 w-3.5 text-amber-500" />
                                         การปรับปรุงภาษาและเกลาสำนวน
                                     </span>
-                                    <span className="text-[10px] font-mono text-muted-foreground bg-steel-900 border border-steel-800 px-2 py-0.5 rounded-sm">
+                                    <span className="text-[10px] font-mono text-muted-foreground bg-steel-900 border border-steel-800/80 px-2 py-0.5 rounded-sm">
                                         FOCUS EDITING
                                     </span>
                                 </div>
@@ -696,7 +696,7 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                                         <textarea
                                             value={editingParagraphs[activeParagraphIndex ?? 0] || ""}
                                             onChange={(e) => handleUpdateParagraph(activeParagraphIndex ?? 0, e.target.value)}
-                                            className="w-full min-h-[160px] p-4 text-base bg-muted/10 border border-steel-800 rounded-lg focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 resize-y text-foreground leading-relaxed outline-none transition-all duration-200 shadow-inner"
+                                            className="w-full min-h-[180px] p-5 text-[17px] bg-muted/5 focus:bg-background border border-steel-800/60 rounded-xl focus:border-amber-500/50 focus:ring-4 focus:ring-amber-500/5 resize-y text-foreground leading-loose tracking-wide outline-none transition-all duration-200 shadow-xs"
                                             placeholder="เริ่มต้นเขียนหรือเกลาเนื้อหาบทนี้..."
                                             autoFocus
                                             onKeyDown={(e) => {
@@ -721,7 +721,7 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                                             <label className="text-[10px] font-mono font-bold tracking-wider text-muted-foreground uppercase">
                                                 เปรียบเทียบการเปลี่ยนแปลง (Word Diff):
                                             </label>
-                                            <div className="p-4 rounded-lg border border-steel-800 bg-muted/10 text-sm leading-relaxed tracking-wide whitespace-pre-wrap min-h-[80px]">
+                                            <div className="p-5 rounded-xl border border-steel-800/60 bg-muted/5 text-[15px] leading-relaxed tracking-wide whitespace-pre-wrap min-h-[90px] shadow-xs">
                                                 <div 
                                                     dangerouslySetInnerHTML={{ 
                                                         __html: getWordDiffHtml(
@@ -1002,19 +1002,12 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                                                 key={issue.id}
                                                 onClick={() => handleSelectIssueRange(issue)}
                                                 className={cn(
-                                                    "p-3.5 rounded-lg border bg-background/50 hover:bg-background/90 transition-all cursor-pointer space-y-3 relative group",
-                                                    isDev && "border-red-500/20 hover:border-red-500/40 hover:shadow-[0_0_10px_rgba(239,68,68,0.1)]",
-                                                    isLine && "border-amber-500/20 hover:border-amber-500/40 hover:shadow-[0_0_10px_rgba(245,158,11,0.1)]",
-                                                    isProof && "border-blue-500/20 hover:border-blue-500/40 hover:shadow-[0_0_10px_rgba(59,130,246,0.1)]"
+                                                    "p-3.5 rounded-lg border bg-background/50 hover:bg-background/95 transition-all cursor-pointer space-y-3 relative group",
+                                                    isDev && "border-red-500/15 hover:border-red-500/30 bg-red-500/[0.01] hover:shadow-[0_2px_8px_rgba(239,68,68,0.04)]",
+                                                    isLine && "border-amber-500/15 hover:border-amber-500/30 bg-amber-500/[0.01] hover:shadow-[0_2px_8px_rgba(245,158,11,0.04)]",
+                                                    isProof && "border-blue-500/15 hover:border-blue-500/30 bg-blue-500/[0.01] hover:shadow-[0_2px_8px_rgba(59,130,246,0.04)]"
                                                 )}
                                             >
-                                                {/* Tech accent bar */}
-                                                <div className={cn(
-                                                    "absolute top-0 left-0 w-[3px] h-full rounded-l-lg",
-                                                    isDev && "bg-red-500",
-                                                    isLine && "bg-amber-500",
-                                                    isProof && "bg-blue-500"
-                                                )} />
 
                                                 <div className="flex items-start justify-between gap-1">
                                                     <div className="flex flex-wrap gap-1">
