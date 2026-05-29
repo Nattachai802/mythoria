@@ -45,7 +45,7 @@ import { VersionHistoryPanel } from "@/components/project/version-history-panel"
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { diff_match_patch } from "diff-match-patch";
-import { GitCompare, BookOpen, ChevronUp, ChevronDown, Plus, ArrowUp, ArrowDown, Search, Eye, EyeOff } from "lucide-react";
+import { GitCompare, BookOpen, ChevronUp, ChevronDown, Plus, ArrowUp, ArrowDown, Search, Eye, EyeOff, Bookmark } from "lucide-react";
 
 import "react-quill-new/dist/quill.snow.css";
 
@@ -232,6 +232,17 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
     const [editingParagraphs, setEditingParagraphs] = useState<string[]>([]);
     const [originalParagraphs, setOriginalParagraphs] = useState<string[]>([]);
     const [showDiff, setShowDiff] = useState(true);
+    const [bookmarks, setBookmarks] = useState<number[]>(initialNote.content?.bookmarks || []);
+    const lastSavedBookmarks = useRef<number[]>(initialNote.content?.bookmarks || []);
+
+    const toggleBookmark = (index: number) => {
+        setBookmarks(prev => {
+            const exists = prev.includes(index);
+            const next = exists ? prev.filter(i => i !== index) : [...prev, index];
+            setSaveStatus("unsaved");
+            return next;
+        });
+    };
 
     const [transitionDirection, setTransitionDirection] = useState<"up" | "down">("down");
 
@@ -379,10 +390,18 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                     handleInsertParagraph(activeParagraphIndex);
                 }
             }
+
+            // 7. สลับมาร์กบุ๊กมาร์ก (Alt+B / Option+B)
+            if (e.altKey && e.key.toLowerCase() === "b") {
+                e.preventDefault();
+                if (activeParagraphIndex !== null) {
+                    toggleBookmark(activeParagraphIndex);
+                }
+            }
         };
         window.addEventListener("keydown", handleGlobalKeyDown);
         return () => window.removeEventListener("keydown", handleGlobalKeyDown);
-    }, [isParagraphMode, activeParagraphIndex, editingParagraphs.length, content, originalParagraphs, initialNote.content?.text]);
+    }, [isParagraphMode, activeParagraphIndex, editingParagraphs.length, content, originalParagraphs, initialNote.content?.text, bookmarks]);
 
     // Get count of findText matches in the document
     const getMatchCount = useMemo(() => {
@@ -442,6 +461,10 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
         updatedOrig.splice(index + 1, 0, "");
         setOriginalParagraphs(updatedOrig);
 
+        // Shift bookmarks
+        const updatedBookmarks = bookmarks.map(bIdx => bIdx > index ? bIdx + 1 : bIdx);
+        setBookmarks(updatedBookmarks);
+
         const newHtml = rebuildParagraphsToHtml(updatedEdit);
         setContent(newHtml);
         setSaveStatus("unsaved");
@@ -464,6 +487,12 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
         const updatedOrig = [...originalParagraphs];
         updatedOrig.splice(index, 1);
         setOriginalParagraphs(updatedOrig);
+
+        // Shift and filter bookmarks
+        const updatedBookmarks = bookmarks
+            .filter(bIdx => bIdx !== index)
+            .map(bIdx => bIdx > index ? bIdx - 1 : bIdx);
+        setBookmarks(updatedBookmarks);
 
         const newHtml = rebuildParagraphsToHtml(updatedEdit);
         setContent(newHtml);
@@ -490,6 +519,14 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
         updatedOrig[index] = updatedOrig[targetIndex];
         updatedOrig[targetIndex] = tempOrig;
         setOriginalParagraphs(updatedOrig);
+
+        // Swap bookmark indices if affected
+        const updatedBookmarks = bookmarks.map(bIdx => {
+            if (bIdx === index) return targetIndex;
+            if (bIdx === targetIndex) return index;
+            return bIdx;
+        });
+        setBookmarks(updatedBookmarks);
 
         const newHtml = rebuildParagraphsToHtml(updatedEdit);
         setContent(newHtml);
@@ -548,13 +585,14 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
         try {
             const res = await updateNote(note.id, {
                 title,
-                content: { text: content }
+                content: { text: content, bookmarks }
             });
             if (res.success) {
                 const wordCount = content.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").trim().split(/\s+/).length;
-                await createNoteVersion(note.id, title, { text: content }, wordCount, "manual");
+                await createNoteVersion(note.id, title, { text: content, bookmarks }, wordCount, "manual");
                 lastSavedContent.current = content;
                 lastSavedTitle.current = title;
+                lastSavedBookmarks.current = bookmarks;
                 setSaveStatus("saved");
                 toast.success("บันทึกเนื้อหาเรียบร้อย");
 
@@ -580,8 +618,9 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
     useEffect(() => {
         const hasContentChanged = content !== lastSavedContent.current;
         const hasTitleChanged = title !== lastSavedTitle.current;
+        const hasBookmarksChanged = JSON.stringify(bookmarks) !== JSON.stringify(lastSavedBookmarks.current);
 
-        if (!hasContentChanged && !hasTitleChanged) return;
+        if (!hasContentChanged && !hasTitleChanged && !hasBookmarksChanged) return;
 
         setSaveStatus("unsaved");
 
@@ -591,13 +630,14 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                 try {
                     const res = await updateNote(note.id, {
                         title,
-                        content: { text: content }
+                        content: { text: content, bookmarks }
                     });
                     if (res.success) {
                         const wordCount = content.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").trim().split(/\s+/).length;
-                        await createNoteVersion(note.id, title, { text: content }, wordCount, "auto");
+                        await createNoteVersion(note.id, title, { text: content, bookmarks }, wordCount, "auto");
                         lastSavedContent.current = content;
                         lastSavedTitle.current = title;
+                        lastSavedBookmarks.current = bookmarks;
                         setSaveStatus("saved");
 
                         // Refresh version history in background
@@ -1084,8 +1124,9 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                                                             )}
                                                         </div>
                                                     ) : (
-                                                        <p className="text-sm leading-relaxed text-muted-foreground italic pl-5">
-                                                            [{i + 1}] {para}
+                                                        <p className="text-sm leading-relaxed text-muted-foreground italic pl-5 flex items-center gap-1.5">
+                                                            {bookmarks.includes(i) && <Bookmark className="h-3 w-3 text-amber-500 fill-amber-500/80 shrink-0" />}
+                                                            <span>[{i + 1}] {para}</span>
                                                         </p>
                                                     )}
                                                 </div>
@@ -1102,9 +1143,31 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                                         <PenTool className="h-3.5 w-3.5 text-amber-500" />
                                         การปรับปรุงภาษาและเกลาสำนวน
                                     </span>
-                                    <span className="text-[10px] font-mono text-muted-foreground bg-steel-900 border border-steel-800/80 px-2 py-0.5 rounded-sm">
-                                        FOCUS EDITING
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-mono text-muted-foreground hidden sm:inline">ย้ายไปยัง:</span>
+                                        <Select
+                                            value={activeParagraphIndex !== null ? String(activeParagraphIndex) : undefined}
+                                            onValueChange={(val) => navigateParagraph(Number(val))}
+                                        >
+                                            <SelectTrigger className="w-[180px] h-7 text-xs border-steel-800 bg-background/50 hover:bg-background/80 hover:border-steel-700 transition-colors">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent className="max-h-[300px]">
+                                                {editingParagraphs.map((para, i) => (
+                                                    <SelectItem key={i} value={String(i)} className="text-xs">
+                                                        <div className="flex items-center justify-between w-[150px] gap-2">
+                                                            <span className="truncate">
+                                                                {i + 1}. {para ? para.substring(0, 18) + "..." : "[ย่อหน้าว่าง]"}
+                                                            </span>
+                                                            {bookmarks.includes(i) && (
+                                                                <Bookmark className="h-3 w-3 text-amber-500 fill-current shrink-0" />
+                                                            )}
+                                                        </div>
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                 </div>
 
                                 <div className="flex-1 overflow-y-auto p-6 max-w-2xl mx-auto w-full">
@@ -1225,6 +1288,19 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                                                                             <Button
                                                                                 size="icon"
                                                                                 variant="ghost"
+                                                                                onClick={() => toggleBookmark(i)}
+                                                                                className={cn(
+                                                                                    "h-5 w-5 rounded hover:bg-steel-800 transition-colors",
+                                                                                    bookmarks.includes(i) ? "text-amber-500 hover:text-amber-400" : "text-muted-foreground hover:text-foreground"
+                                                                                )}
+                                                                                title={bookmarks.includes(i) ? "ยกเลิกที่คั่นหน้า" : "คั่นหน้านี้"}
+                                                                            >
+                                                                                <Bookmark className={cn("h-3.5 w-3.5", bookmarks.includes(i) && "fill-current")} />
+                                                                            </Button>
+
+                                                                            <Button
+                                                                                size="icon"
+                                                                                variant="ghost"
                                                                                 onClick={() => setShowDiff(!showDiff)}
                                                                                 className="h-5 w-5 rounded hover:bg-steel-800 text-muted-foreground hover:text-foreground"
                                                                                 title={showDiff ? "ซ่อนการเปรียบเทียบคำ (Word Diff)" : "แสดงการเปรียบเทียบคำ (Word Diff)"}
@@ -1321,6 +1397,33 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                                 <span className="hidden md:inline text-[10px] font-mono text-muted-foreground/50">
                                     • กดยืนยันบันทึกด้วย Ctrl + Enter
                                 </span>
+                            </div>
+
+                            {/* Bookmarks list & navigation */}
+                            <div className="flex items-center gap-2 overflow-x-auto max-w-[55%] py-1">
+                                <Bookmark className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                                <span className="text-xs text-muted-foreground shrink-0 font-medium">ที่คั่นหน้า:</span>
+                                {bookmarks.length === 0 ? (
+                                    <span className="text-xs text-muted-foreground/50 italic">
+                                        ยังไม่มีที่คั่นหน้า (กด Alt+B เพื่อคั่นหน้า)
+                                    </span>
+                                ) : (
+                                    <div className="flex gap-1.5 overflow-x-auto scrollbar-none">
+                                        {[...bookmarks].sort((a, b) => a - b).map((bIdx) => (
+                                            <Badge
+                                                key={bIdx}
+                                                variant="outline"
+                                                onClick={() => navigateParagraph(bIdx)}
+                                                className={cn(
+                                                    "cursor-pointer hover:bg-steel-800 text-[10px] font-mono border-amber-500/30 text-amber-500 hover:text-amber-400 gap-1 px-1.5 py-0.5 transition-colors shrink-0",
+                                                    bIdx === activeParagraphIndex && "bg-amber-500/10 border-amber-500/60"
+                                                )}
+                                            >
+                                                ย่อหน้าที่ {bIdx + 1}
+                                            </Badge>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
