@@ -1181,9 +1181,10 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                                                 <div
                                                     key={i}
                                                     ref={(el) => { rightParagraphRefs.current[i] = el; }}
+                                                    onClick={!isActive ? () => navigateParagraph(i) : undefined}
                                                     className={cn(
-                                                        "transition-all duration-500 ease-in-out py-3 w-full group",
-                                                        isActive ? "opacity-100" : "opacity-45"
+                                                        "transition-all duration-300 ease-in-out py-3 w-full group",
+                                                        isActive ? "opacity-100" : "opacity-45 cursor-pointer hover:bg-muted/5 hover:opacity-85 rounded-lg px-3 -mx-3"
                                                     )}
                                                 >
                                                     <div className="flex items-start w-full gap-3">
