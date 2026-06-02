@@ -35,6 +35,7 @@ import { generateThaiAliases } from "@/server/ai";
 import { toast } from "sonner";
 import { Character } from "@/db/schema";
 import { ImageUpload } from "@/components/ui/image-upload";
+import { useRouter } from "next/navigation";
 
 const characterSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -68,6 +69,7 @@ export function EditCharacterDialog({
   open,
   onOpenChange,
 }: EditCharacterDialogProps) {
+  const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [aliasInput, setAliasInput] = useState("");
@@ -125,6 +127,7 @@ export function EditCharacterDialog({
     if (result.success) {
       toast.success("Character updated successfully");
       onOpenChange(false);
+      router.refresh();
     } else {
       toast.error(result.error || "Failed to update character");
     }

@@ -46,6 +46,8 @@ const AIReviewPanel = dynamic(() => import("@/components/project/ai-review-panel
 const NotePlotPanel = dynamic(() => import("@/components/project/note-plot-panel").then(m => ({ default: m.NotePlotPanel })), { ssr: false })
 const NoteReferencePanel = dynamic(() => import("@/components/project/note-reference-panel").then(m => ({ default: m.NoteReferencePanel })), { ssr: false })
 
+import "react-quill-new/dist/quill.bubble.css";
+import "react-quill-new/dist/quill.snow.css";
 const ReactQuill = dynamic(() => import("react-quill-new"), { ssr: false });
 
 // A4 page: ~1500 characters (including spaces) per page

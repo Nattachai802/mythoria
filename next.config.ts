@@ -29,13 +29,10 @@ const nextConfig: NextConfig = {
       "fuse.js",
     ],
   },
-  webpack: (config) => {
-    config.watchOptions = {
-      poll: 1000,
-      aggregateTimeout: 300,
-    };
-    return config;
-  },
+  // NOTE: webpack file-watch polling was removed — Turbopack (default in dev)
+  // ignores this key, and poll:1000 only slowed down the legacy `dev:webpack`
+  // fallback. Re-add a `webpack: (config) => {...}` block here only if you
+  // run `npm run dev:webpack` inside Docker/WSL where native file watching fails.
 };
 
 export default nextConfig;

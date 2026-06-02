@@ -2,7 +2,7 @@
 
 import { db } from "@/db/drizzle";
 import { loreEntries, eras } from "@/db/schema";
-import { eq, asc, lt, gt, and, isNull, desc } from "drizzle-orm";
+import { eq, asc, lt, and, isNotNull, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { extractLoreEntitiesInBackground } from "./lore-extractor";
 import { after } from "next/server";
@@ -25,18 +25,18 @@ async function detectEraFromPreviousEntry(novelId: string, orderIndex: number): 
         return firstEra?.id || null;
     }
 
-    // Find the previous entry that has an era
-    const allEntries = await db.query.loreEntries.findMany({
-        where: eq(loreEntries.novelId, novelId),
-        orderBy: [asc(loreEntries.orderIndex)],
+    // Find the closest previous entry that has an era — use DB query, no JS iteration
+    const prevEntry = await db.query.loreEntries.findFirst({
+        where: and(
+            eq(loreEntries.novelId, novelId),
+            lt(loreEntries.orderIndex, orderIndex),
+            isNotNull(loreEntries.eraId),
+        ),
+        orderBy: [desc(loreEntries.orderIndex)],
     });
 
-    // Look backwards from current position
-    for (let i = orderIndex - 1; i >= 0; i--) {
-        const entry = allEntries.find(e => (e.orderIndex ?? 0) === i);
-        if (entry?.eraId) {
-            return entry.eraId;
-        }
+    if (prevEntry?.eraId) {
+        return prevEntry.eraId;
     }
 
     // No previous entry with era found - get first era
@@ -370,12 +370,13 @@ export async function reorderLoreEntries(novelId: string, orderedIds: string[]) 
 // Get lore by type
 export async function getLoreByType(novelId: string, type: string) {
     try {
-        const entries = await db.query.loreEntries.findMany({
-            where: eq(loreEntries.novelId, novelId),
+        const filtered = await db.query.loreEntries.findMany({
+            where: and(
+                eq(loreEntries.novelId, novelId),
+                eq(loreEntries.type, type),
+            ),
             orderBy: [asc(loreEntries.orderIndex)],
         });
-
-        const filtered = entries.filter((e) => e.type === type);
 
         return { success: true, data: filtered };
     } catch (error) {
@@ -518,12 +519,15 @@ export async function setLoreEraWithAutoFill(
 
 export async function getLoreExtractionStatuses(novelId: string) {
     try {
-        const entries = await db.query.loreEntries.findMany({
-            where: eq(loreEntries.novelId, novelId),
+        const filtered = await db.query.loreEntries.findMany({
+            where: and(
+                eq(loreEntries.novelId, novelId),
+                isNotNull(loreEntries.extractionStatus),
+            ),
             orderBy: [desc(loreEntries.updatedAt)],
         });
-        const filtered = entries.filter(e => e.extractionStatus && e.extractionStatus !== "none");
-        return { success: true, data: filtered };
+        const entries = filtered.filter(e => e.extractionStatus !== "none");
+        return { success: true, data: entries };
     } catch (error) {
         console.error("Error fetching extraction statuses:", error);
         return { success: false, error: "Failed to fetch extraction statuses" };

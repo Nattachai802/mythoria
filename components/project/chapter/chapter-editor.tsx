@@ -12,6 +12,7 @@ import { updateChapter } from "@/server/chapter";
 import { CastDeck } from "./cast-deck";
 import { cn } from "@/lib/utils";
 
+import "react-quill-new/dist/quill.snow.css";
 const ReactQuill = dynamic(() => import("react-quill-new"), { ssr: false });
 
 interface ChapterEditorProps {

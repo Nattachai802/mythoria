@@ -4,6 +4,39 @@ import { db } from "@/db/drizzle";
 import { characters, characterRelationships, relationshipHistory, chapters } from "@/db/schema";
 import { eq, and, desc, asc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { v2 as cloudinary } from "cloudinary";
+
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+/**
+ * แยก public_id ออกจาก Cloudinary URL
+ * เช่น https://res.cloudinary.com/xxx/image/upload/v123/mythoria/characters/abc.png
+ * → mythoria/characters/abc
+ */
+function extractCloudinaryPublicId(url: string): string | null {
+    try {
+        const match = url.match(/\/upload\/(?:v\d+\/)?(.+?)(?:\.[a-z]+)?$/i);
+        return match ? match[1] : null;
+    } catch {
+        return null;
+    }
+}
+
+async function deleteCloudinaryImage(url: string): Promise<void> {
+    const publicId = extractCloudinaryPublicId(url);
+    if (!publicId) return;
+    try {
+        await cloudinary.uploader.destroy(publicId);
+        console.log(`[Cloudinary] Deleted: ${publicId}`);
+    } catch (err) {
+        // ไม่ throw — การลบรูปเก่าล้มเหลวไม่ควรหยุดการ save
+        console.error(`[Cloudinary] Failed to delete ${publicId}:`, err);
+    }
+}
 
 export async function createCharacter(data: {
     name: string;
@@ -98,6 +131,20 @@ export async function updateCharacter(
     }>
 ) {
     try {
+        // ถ้ามีการเปลี่ยนรูป ดึงรูปเก่าออกมาก่อน update
+        let oldImageUrl: string | null = null;
+        if (data.image !== undefined) {
+            const [existing] = await db
+                .select({ image: characters.image })
+                .from(characters)
+                .where(eq(characters.id, characterId))
+                .limit(1);
+            // เก็บรูปเก่าเฉพาะเมื่อมีรูปเก่าและรูปใหม่ต่างออกไป
+            if (existing?.image && existing.image !== data.image) {
+                oldImageUrl = existing.image;
+            }
+        }
+
         const [updatedCharacter] = await db
             .update(characters)
             .set({ ...data, updatedAt: new Date() })
@@ -106,6 +153,11 @@ export async function updateCharacter(
 
         if (!updatedCharacter) {
             return { success: false, error: "Character not found" };
+        }
+
+        // ลบรูปเก่าจาก Cloudinary หลัง DB update สำเร็จแล้ว
+        if (oldImageUrl) {
+            await deleteCloudinaryImage(oldImageUrl);
         }
 
         revalidatePath(`/dashboard/project/${updatedCharacter.novelId}/characters`);

@@ -3,6 +3,7 @@ langchain
 langchain-openai
 pydantic
 pythainlp
+attacut
 google-generativeai
 python-dotenv
 pandas

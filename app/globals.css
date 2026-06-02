@@ -1,7 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "react-quill-new/dist/quill.bubble.css";
-@import "react-quill-new/dist/quill.snow.css";
+/* Quill CSS is imported per-component (near usage) to avoid bundler ordering issues */
 
 @custom-variant dark (&:is(.dark *));
 
