@@ -56,3 +56,29 @@ export async function POST(request: NextRequest, { params }: Props) {
         return NextResponse.json({ success: false, error: "Failed to create audit issue" }, { status: 500 });
     }
 }
+
+// Bulk delete — ลบ issues ของ note ตาม category (ใช้ตอน re-run spell check เพื่อ dedup)
+export async function DELETE(request: NextRequest, { params }: Props) {
+    try {
+        const { novelId, noteId } = await params;
+        const category = request.nextUrl.searchParams.get("category");
+
+        const conditions = [
+            eq(noteAuditIssues.novelId, novelId),
+            eq(noteAuditIssues.noteId, noteId),
+        ];
+        if (category) {
+            conditions.push(eq(noteAuditIssues.category, category));
+        }
+
+        const deleted = await db
+            .delete(noteAuditIssues)
+            .where(and(...conditions))
+            .returning({ id: noteAuditIssues.id });
+
+        return NextResponse.json({ success: true, deletedCount: deleted.length });
+    } catch (error) {
+        console.error("Error bulk deleting audit issues:", error);
+        return NextResponse.json({ success: false, error: "Failed to delete audit issues" }, { status: 500 });
+    }
+}

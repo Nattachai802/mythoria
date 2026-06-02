@@ -1743,4 +1743,6 @@ export const schema = {
   driveSettings,
   driveSync,
   driveCredentials,
+  noteAuditIssues,
+  noteAuditIssuesRelations,
 };

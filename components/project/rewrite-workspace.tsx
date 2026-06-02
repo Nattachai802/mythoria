@@ -26,6 +26,7 @@ import {
     PanelRightOpen
 } from "lucide-react";
 import { NoteReferencePanel } from "@/components/project/note-reference-panel";
+import { SpellCheckButton } from "@/components/project/spell-check-button";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -145,6 +146,7 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
     const [issues, setIssues] = useState<AuditIssue[]>([]);
     const [loadingIssues, setLoadingIssues] = useState(true);
     const [levelFilter, setLevelFilter] = useState<string>("all");
+    const [issuesKey, setIssuesKey] = useState(0);
 
     // Selected text selection in Quill
     const [selectionRange, setSelectionRange] = useState<{ index: number; length: number } | null>(null);
@@ -544,6 +546,30 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
         }
     }, [content, isParagraphMode]);
 
+    // Re-map spelling issues' index จาก server-offset → Quill index จริง
+    // (background spell check ไม่มี Quill จึงเก็บ offset แบบ plain text — ต้อง map ใหม่ฝั่ง client)
+    const remapSpellingIssues = (rawIssues: AuditIssue[]): AuditIssue[] => {
+        const editor = quillRef.current?.getEditor();
+        const fullText: string = editor ? editor.getText() : "";
+        if (!fullText) return rawIssues; // editor ยังไม่พร้อม — ใช้ค่าเดิมไปก่อน
+
+        // แยก spelling ออกมา เรียงตามลำดับพบ (startIndex จาก server) แล้วเดิน sequential search
+        const spelling = rawIssues
+            .filter(i => i.category === "spelling")
+            .sort((a, b) => a.startIndex - b.startIndex);
+        const others = rawIssues.filter(i => i.category !== "spelling");
+
+        let pointer = 0;
+        const remapped = spelling.map(issue => {
+            const idx = fullText.indexOf(issue.flaggedText, pointer);
+            if (idx === -1) return issue; // หาไม่เจอ (content เปลี่ยน) — คงค่าเดิม
+            pointer = idx + issue.flaggedText.length;
+            return { ...issue, startIndex: idx, endIndex: idx + issue.flaggedText.length };
+        });
+
+        return [...others, ...remapped];
+    };
+
     // Fetch existing issues
     useEffect(() => {
         const fetchIssues = async () => {
@@ -552,7 +578,7 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                 const res = await fetch(`/api/novel/${novelId}/note/${note.id}/audit-issues`);
                 const data = await res.json();
                 if (data.success) {
-                    setIssues(data.issues || []);
+                    setIssues(remapSpellingIssues(data.issues || []));
                 }
             } catch (e) {
                 console.error("Failed to load issues:", e);
@@ -561,7 +587,7 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
             }
         };
         fetchIssues();
-    }, [novelId, note.id]);
+    }, [novelId, note.id, issuesKey]);
 
     // Handle selection change in Quill safely
     const handleSelectionChange = (range: any, source: any, editor: any) => {
@@ -676,6 +702,14 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
             if (res.success) {
                 toast.success(`เปลี่ยนสถานะเป็น: ${NOTE_STATUS_CONFIG[newStatus].label}`);
                 router.refresh();
+
+                // ตั้งสถานะ "รอพิสูจน์อักษร" → trigger background spell check (server-side)
+                if (newStatus === "proofreading") {
+                    toast.info("เริ่มตรวจคำผิดอัตโนมัติเบื้องหลัง — สถานะจะเปลี่ยนเป็น 'รอตรวจสอบ' เมื่อเสร็จ");
+                    fetch(`/api/novel/${novelId}/note/${note.id}/spell-check-trigger`, {
+                        method: "POST",
+                    }).catch(() => toast.error("เริ่มตรวจคำผิดไม่สำเร็จ"));
+                }
             }
         } catch (e) {
             toast.error("เปลี่ยนสถานะไม่สำเร็จ");
@@ -1476,6 +1510,15 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                                     </Badge>
                                 )}
                             </div>
+                            <SpellCheckButton
+                                novelId={novelId}
+                                noteId={note.id}
+                                getPlainText={() => {
+                                    const editor = quillRef.current?.getEditor();
+                                    return editor ? editor.getText() : "";
+                                }}
+                                onComplete={() => setIssuesKey(k => k + 1)}
+                            />
 
                             {/* Filter buttons */}
                             <div className="grid grid-cols-4 gap-1 p-0.5 bg-muted/80 rounded-md border border-steel-800">

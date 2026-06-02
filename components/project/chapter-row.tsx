@@ -3,7 +3,7 @@
 import { useState, useTransition, useOptimistic, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronRight, ChevronLeft, Plus, StickyNote, FileText, AlertTriangle, CheckCircle2, Pencil, RefreshCw, Send, Circle } from "lucide-react";
+import { ChevronRight, ChevronLeft, Plus, StickyNote, FileText, AlertTriangle, CheckCircle2, Pencil, RefreshCw, Send, Circle, SpellCheck, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -35,6 +35,8 @@ const STATUS_ICONS = {
     draft: Circle,
     writing: Pencil,
     needs_rewrite: RefreshCw,
+    proofreading: SpellCheck,
+    user_verify: Eye,
     published: Send,
 } as const;
 
@@ -119,6 +121,15 @@ export function ChapterRow({
                     [noteId]: originalNote?.status || 'draft'
                 }));
                 toast.error("ไม่สามารถเปลี่ยนสถานะได้ - กู้คืนสถานะเดิม");
+                return;
+            }
+
+            // 4. ตั้งเป็น "รอพิสูจน์อักษร" → trigger background spell check
+            if (newStatus === "proofreading") {
+                toast.info("เริ่มตรวจคำผิดอัตโนมัติเบื้องหลัง...");
+                fetch(`/api/novel/${novelId}/note/${noteId}/spell-check-trigger`, {
+                    method: "POST",
+                }).catch(() => toast.error("เริ่มตรวจคำผิดไม่สำเร็จ"));
             }
         });
     };

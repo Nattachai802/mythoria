@@ -23,7 +23,17 @@ from stylometry import analyze_single_chapter_style
 
 load_dotenv()
 
-app = FastAPI(title="Mythoria Vector Service", version="1.0.0")
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    from spell_checker import ensure_cache_built
+    ensure_cache_built()
+    yield
+    # Shutdown (ไม่ต้องทำอะไร)
+
+app = FastAPI(title="Mythoria Vector Service", version="1.0.0", lifespan=lifespan)
 
 # CORS for Next.js
 app.add_middleware(
@@ -938,6 +948,209 @@ async def analyze_fingerprint_bulk_endpoint(request: BulkFingerprintRequest):
     except Exception as e:
         print(f"[BulkFingerprint] Error: {e}")
         return {"success": False, "error": str(e)}
+
+
+# ============================================
+# SPELL CHECK ENDPOINTS
+# ============================================
+
+from spell_checker import NovelSpellChecker, check_novel_text
+
+
+class SpellCheckRequest(BaseModel):
+    text: str
+    custom_words: list[str] = []     # ชื่อตัวละคร, สถานที่, คำเฉพาะของเรื่อง
+    novel_id: str = ""               # optional — ใช้สำหรับ logging
+
+
+class SpellErrorResponse(BaseModel):
+    word: str
+    position: int
+    offset: int
+    suggestions: list[str]
+    sentence: str
+    sentence_index: int
+
+
+class SpellCheckResponse(BaseModel):
+    success: bool
+    total_words: int
+    error_count: int
+    errors: list[SpellErrorResponse]
+    custom_words_used: list[str]
+
+
+@app.post("/spell-check", response_model=SpellCheckResponse)
+async def spell_check_endpoint(request: SpellCheckRequest):
+    """
+    ตรวจจับคำผิดในเนื้อหานิยาย
+    - รองรับ custom_words เพื่อ whitelist ชื่อตัวละคร/สถานที่
+    - คืน errors พร้อม suggestions และ context
+    """
+    if not request.text.strip():
+        return SpellCheckResponse(
+            success=True,
+            total_words=0,
+            error_count=0,
+            errors=[],
+            custom_words_used=[],
+        )
+
+    try:
+        result = check_novel_text(
+            text=request.text,
+            custom_words=request.custom_words if request.custom_words else None,
+        )
+
+        return SpellCheckResponse(
+            success=True,
+            total_words=result.total_words,
+            error_count=result.error_count,
+            errors=[
+                SpellErrorResponse(
+                    word=e.word,
+                    position=e.position,
+                    offset=e.offset,
+                    suggestions=e.suggestions,
+                    sentence=e.sentence,
+                    sentence_index=e.sentence_index,
+                )
+                for e in result.errors
+            ],
+            custom_words_used=result.custom_words_used,
+        )
+
+    except Exception as e:
+        print(f"[SpellCheck] Error: {e}")
+        return SpellCheckResponse(
+            success=False,
+            total_words=0,
+            error_count=0,
+            errors=[],
+            custom_words_used=[],
+        )
+
+
+class WordCheckRequest(BaseModel):
+    word: str
+    custom_words: list[str] = []
+
+
+@app.post("/spell-check/word")
+async def spell_check_word_endpoint(request: WordCheckRequest):
+    """ตรวจคำเดียว — สำหรับ inline real-time check"""
+    checker = NovelSpellChecker(custom_words=request.custom_words or None)
+    return checker.check_word(request.word)
+
+
+@app.get("/spell-check/cache/status")
+async def spell_cache_status():
+    """ดูสถานะ spell cache"""
+    from spell_checker import _SUGGESTION_CACHE, _CACHE_BUILDING
+    import os
+    from build_spell_cache import CACHE_FILE, get_current_version
+    return {
+        "cached_words": len(_SUGGESTION_CACHE),
+        "building": _CACHE_BUILDING,
+        "cache_file_exists": os.path.exists(CACHE_FILE),
+        "cache_file_size_mb": round(os.path.getsize(CACHE_FILE) / 1024 / 1024, 1) if os.path.exists(CACHE_FILE) else 0,
+        "pythainlp_version": get_current_version(),
+    }
+
+
+@app.delete("/spell-check/cache")
+async def flush_spell_cache():
+    """Flush spell cache ทั้งหมด (ใช้เมื่อ PyThaiNLP update)"""
+    from spell_checker import _SUGGESTION_CACHE, ensure_cache_built
+    import os
+    from build_spell_cache import CACHE_FILE
+    count = len(_SUGGESTION_CACHE)
+    _SUGGESTION_CACHE.clear()
+    if os.path.exists(CACHE_FILE):
+        os.remove(CACHE_FILE)
+    ensure_cache_built()  # trigger rebuild ใน background
+    return {"flushed_words": count, "rebuilding": True}
+
+
+# ============================================
+# BACKGROUND SPELL CHECK (trigger จากการเปลี่ยนสถานะ note)
+# ============================================
+
+class SpellCheckNoteRequest(BaseModel):
+    noteId: str
+    novelId: str
+    text: str                    # HTML content จาก note
+    customWords: list[str] = []
+
+
+@app.post("/spell-check-note")
+async def spell_check_note_endpoint(
+    request: SpellCheckNoteRequest,
+    background_tasks: BackgroundTasks,
+):
+    """Trigger background spell check สำหรับ note เดียว — return ทันที"""
+    background_tasks.add_task(
+        process_spell_check_task,
+        request.noteId,
+        request.novelId,
+        request.text,
+        request.customWords,
+    )
+    return {"success": True, "message": "Background spell check triggered."}
+
+
+async def process_spell_check_task(
+    note_id: str,
+    novel_id: str,
+    text: str,
+    custom_words: list[str],
+):
+    """Worker: spell check note ใน background → save issues → set status user_verify"""
+    nextjs_base_url = os.getenv("NEXT_PUBLIC_BASE_URL", "http://localhost:3000")
+    print(f"[SpellCheckWorker] เริ่มตรวจ note {note_id} ({len(text)} chars, {len(custom_words)} custom words)")
+
+    try:
+        # 1. spell check (check_novel_text strip HTML ใน _preprocess อยู่แล้ว)
+        result = check_novel_text(text=text, custom_words=custom_words or None)
+        print(f"[SpellCheckWorker] พบคำผิด {result.error_count} คำ จาก {result.total_words} คำ")
+
+        async with httpx.AsyncClient() as client:
+            base = f"{nextjs_base_url}/api/novel/{novel_id}/note/{note_id}"
+
+            # 2. dedup — ลบ spelling issues เก่า
+            await client.delete(f"{base}/audit-issues", params={"category": "spelling"}, timeout=30.0)
+
+            # 3. save คำผิดใหม่ เรียงตามลำดับพบ (offset) — client จะ re-map เป็น Quill index
+            ordered = sorted(result.errors, key=lambda e: e.offset)
+            saved = 0
+            for err in ordered:
+                has_suggestion = len(err.suggestions) > 0
+                body = {
+                    "level": "proofreading" if has_suggestion else "line",
+                    "category": "spelling",
+                    "startIndex": err.offset,
+                    "endIndex": err.offset + len(err.word),
+                    "flaggedText": err.word,
+                    "issueDescription": (
+                        f"คำสะกดผิด — แนะนำ: {', '.join(err.suggestions[:3])}"
+                        if has_suggestion
+                        else "อาจสะกดผิด — ไม่มีคำแนะนำอัตโนมัติ โปรดตรวจสอบเอง"
+                    ),
+                    "suggestedText": err.suggestions[0] if has_suggestion else None,
+                    "suggestionNotes": None if has_suggestion else "PyThaiNLP หาคำที่ถูกต้องไม่ได้",
+                }
+                res = await client.post(f"{base}/audit-issues", json=body, timeout=30.0)
+                if res.status_code in (200, 201):
+                    saved += 1
+
+            # 4. set status → user_verify
+            await client.patch(f"{base}/status", json={"status": "user_verify"}, timeout=30.0)
+            print(f"[SpellCheckWorker] เสร็จ — saved {saved} issues, status → user_verify")
+
+    except Exception as e:
+        print(f"[SpellCheckWorker] Error: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
