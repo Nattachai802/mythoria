@@ -20,6 +20,7 @@ import {
 import { MoreVertical, Pencil, Trash2, Lightbulb, BookOpen, Eye, CheckCircle2 } from "lucide-react";
 import { deleteIdea } from "@/server/idea";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { EditIdeaDialog } from "./edit-idea-dialog";
 
@@ -40,6 +41,7 @@ export function IdeaCard({
     isSelected = false,
     onToggleSelect
 }: IdeaCardProps) {
+    const router = useRouter();
     const [isDeleting, setIsDeleting] = useState(false);
     const [editDialogOpen, setEditDialogOpen] = useState(false);
     const [viewDialogOpen, setViewDialogOpen] = useState(false);
@@ -54,6 +56,7 @@ export function IdeaCard({
 
         if (result.success) {
             toast.success("Idea deleted successfully");
+            router.refresh();
         } else {
             toast.error(result.error || "Failed to delete idea");
             setIsDeleting(false);

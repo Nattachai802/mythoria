@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -40,6 +41,7 @@ interface EditIdeaDialogProps {
 }
 
 export function EditIdeaDialog({ idea, open, onOpenChange }: EditIdeaDialogProps) {
+    const router = useRouter();
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     const getContentString = (content: any): string => {
@@ -89,6 +91,7 @@ export function EditIdeaDialog({ idea, open, onOpenChange }: EditIdeaDialogProps
         if (result.success) {
             toast.success("Idea updated successfully");
             onOpenChange(false);
+            router.refresh();
         } else {
             toast.error(result.error || "Failed to update idea");
         }
