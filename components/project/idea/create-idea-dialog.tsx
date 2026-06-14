@@ -144,11 +144,10 @@ export function CreateIdeaDialog({
                     </FormControl>
                     <SelectContent>
                       <SelectItem value="general">💭 General</SelectItem>
-                      <SelectItem value="character">👤 Character</SelectItem>
-                      <SelectItem value="power">⚡ Power</SelectItem>
-                      <SelectItem value="lore">📜 Lore</SelectItem>
-                      <SelectItem value="location">🗺️ Location</SelectItem>
                       <SelectItem value="plot">📖 Plot</SelectItem>
+                      <SelectItem value="character">👤 Character</SelectItem>
+                      <SelectItem value="worldbuilding">🌍 Worldbuilding</SelectItem>
+                      <SelectItem value="subplot">🔀 Subplot</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormDescription>

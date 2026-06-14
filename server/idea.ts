@@ -2,9 +2,18 @@
 
 import { db } from "@/db/drizzle";
 import { ideas, ideaConnections, Idea } from "@/db/schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, ilike } from "drizzle-orm";
 import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
 import { CACHE_TAGS, CACHE_DURATION } from "@/lib/cache-config";
+
+async function findIdeaByTitle(novelId: string, title: string) {
+    const [existing] = await db
+        .select({ id: ideas.id, title: ideas.title })
+        .from(ideas)
+        .where(and(eq(ideas.novelId, novelId), ilike(ideas.title, title.trim())))
+        .limit(1);
+    return existing ?? null;
+}
 
 export async function createIdea(data: {
     title: string;
@@ -25,6 +34,11 @@ export async function createIdea(data: {
     isUsed?: boolean;
 }) {
     try {
+        const duplicate = await findIdeaByTitle(data.novelId, data.title);
+        if (duplicate) {
+            return { success: true, data: duplicate, isDuplicate: true };
+        }
+
         const [newIdea] = await db
             .insert(ideas)
             .values({
@@ -42,15 +56,14 @@ export async function createIdea(data: {
                 canvasX: data.canvasX,
                 canvasY: data.canvasY,
                 color: data.color,
-                isUsed: data.isUsed ?? (data.canvasX !== undefined && data.canvasY !== undefined), // Auto-set if canvas position provided
+                isUsed: data.isUsed ?? (data.canvasX !== undefined && data.canvasY !== undefined),
             })
             .returning();
 
-        // Clear cache (Next.js 16 requires 2 args)
         revalidateTag(CACHE_TAGS.ideas(data.novelId), "default");
         revalidatePath(`/dashboard/project/${data.novelId}/idea`);
 
-        return { success: true, data: newIdea };
+        return { success: true, data: newIdea, isDuplicate: false };
     } catch (error) {
         console.error("Error creating idea:", error);
         return { success: false, error: "Failed to create idea" };
@@ -80,6 +93,11 @@ export async function createIdeaWithoutRevalidate(data: {
     isUsed?: boolean;
 }) {
     try {
+        const duplicate = await findIdeaByTitle(data.novelId, data.title);
+        if (duplicate) {
+            return { success: true, data: duplicate, isDuplicate: true };
+        }
+
         const [newIdea] = await db
             .insert(ideas)
             .values({
@@ -98,12 +116,11 @@ export async function createIdeaWithoutRevalidate(data: {
                 canvasX: data.canvasX,
                 canvasY: data.canvasY,
                 color: data.color,
-                isUsed: data.isUsed ?? (data.canvasX !== undefined && data.canvasY !== undefined), // Auto-set if canvas position provided
+                isUsed: data.isUsed ?? (data.canvasX !== undefined && data.canvasY !== undefined),
             })
             .returning();
 
-        // No revalidation here - will be refreshed on next page load
-        return { success: true, data: newIdea };
+        return { success: true, data: newIdea, isDuplicate: false };
     } catch (error) {
         console.error("Error creating idea:", error);
         return { success: false, error: "Failed to create idea" };
