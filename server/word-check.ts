@@ -113,21 +113,34 @@ export async function checkWordCountSufficiency(
             targetWords = averageWords;
         }
 
+        // Sum all notes in the current chapter (not just the note being edited)
+        let currentChapterTotal = currentWordCount;
+        if (currentChapterId) {
+            const currentChapterNotes = await db.query.notes.findMany({
+                where: and(eq(notes.novelId, novelId), eq(notes.linkedToChapterId, currentChapterId)),
+                columns: { content: true },
+            });
+            currentChapterTotal = currentChapterNotes.reduce((sum: number, n: { content: unknown }) => {
+                const c = n.content as { text?: string } | null;
+                return sum + calculateWordCount(c?.text);
+            }, 0);
+        }
+
         // Determine status
-        const hasEnoughWords = currentWordCount >= targetWords;
-        const percentComplete = Math.min(100, Math.round((currentWordCount / targetWords) * 100));
+        const hasEnoughWords = currentChapterTotal >= targetWords;
+        const percentComplete = Math.min(100, Math.round((currentChapterTotal / targetWords) * 100));
 
         // Generate message
         let message: string;
         if (hasEnoughWords) {
-            message = `เขียนครบแล้ว! (${currentWordCount.toLocaleString()}/${targetWords.toLocaleString()} คำ)`;
+            message = `เขียนครบแล้ว! (${currentChapterTotal.toLocaleString()}/${targetWords.toLocaleString()} คำ)`;
         } else {
-            const remaining = targetWords - currentWordCount;
+            const remaining = targetWords - currentChapterTotal;
             message = `เหลืออีก ${remaining.toLocaleString()} คำ (${percentComplete}%)`;
         }
 
         return {
-            currentWords: currentWordCount,
+            currentWords: currentChapterTotal,
             targetWords,
             averageWords,
             hasEnoughWords,

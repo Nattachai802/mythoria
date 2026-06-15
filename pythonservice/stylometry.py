@@ -166,6 +166,7 @@ class DialogExtractor:
             results.append({
                 "text": content,
                 "is_dialog": is_dialog,
+                "span": (start, end),
                 "confidence_score": round(score, 2),
                 "metadata": {
                     "guessed_speaker": found_speaker,
@@ -625,11 +626,12 @@ def analyze_single_chapter_style(text: str, character_names: List[str] = None) -
     avg_words_per_sent = round(total_words / total_sentences, 1) if total_sentences > 0 else 0
     
     total_len = len(text)
-    d_len = len(dialogue_text)
-    n_len = len(narration_text)
-    
-    dialogue_ratio = round((d_len / total_len) * 100, 2) if total_len > 0 else 0
-    narration_ratio = round((n_len / total_len) * 100, 2) if total_len > 0 else 0
+
+    # Dialogue footprint = ความยาว span เต็ม (รวมเครื่องหมายคำพูด) ของ quote ที่จัดเป็นบทสนทนา
+    # ใช้ span จาก extractor ตัวเดียว เพื่อให้บรรยาย + สนทนา partition กันสะอาด รวมได้ 100% เสมอ
+    dialogue_char_len = sum((d["span"][1] - d["span"][0]) for d in extracted if d["is_dialog"])
+    dialogue_ratio = round((dialogue_char_len / total_len) * 100, 2) if total_len > 0 else 0
+    narration_ratio = round(100 - dialogue_ratio, 2) if total_len > 0 else 0
     
     if dialogue_ratio > 60:
         genre_hint = "เน้นบทสนทนา (Dialog-Heavy / Fast-paced)"

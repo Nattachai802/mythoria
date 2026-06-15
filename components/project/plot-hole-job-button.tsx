@@ -127,22 +127,19 @@ export function PlotHoleJobButton({ novelId }: PlotHoleJobButtonProps) {
           )}
         </div>
       ) : (
-        <div className="flex items-center gap-3">
-          {/* Closed Book Icon */}
+        <div className="flex items-center gap-2.5 px-3 py-2">
           <ClosedBook />
-
+          <span className="flex-1 text-xs font-medium">ตรวจสอบ Plot Holes</span>
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
             onClick={handleCheck}
-            className="gap-2 flex-1 justify-center bg-white/50 dark:bg-white/5 hover:bg-purple-50 dark:hover:bg-purple-900/20"
+            className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground shrink-0 gap-1"
           >
             {result?.success ? (
-              <CheckCircle2 className="h-4 w-4 text-green-500" />
-            ) : (
-              <AlertTriangle className="h-4 w-4" />
-            )}
-            ตรวจสอบ
+              <CheckCircle2 className="h-3 w-3 text-green-500" />
+            ) : null}
+            {result?.success ? "ตรวจแล้ว" : "ตรวจ →"}
           </Button>
         </div>
       )}

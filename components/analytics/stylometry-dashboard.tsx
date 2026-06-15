@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useMemo, useRef } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { BarChart3, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 export interface StylometryData {
     id: string;
@@ -114,18 +114,19 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
 
     if (!data || data.length === 0) {
         return (
-            <div className="flex flex-col items-center justify-center p-12 mt-8 text-center border rounded-lg border-dashed bg-muted/20">
-                <BarChart3 className="w-12 h-12 text-muted-foreground mb-4 opacity-50" />
-                <h3 className="text-xl font-bold">ยังไม่มีข้อมูลการวิเคราะห์สไตล์การเขียน</h3>
-                <p className="text-muted-foreground mt-2 max-w-sm">
-                    ไปที่หน้าต่างแต่งนิยายในแต่ละตอน และกดปุ่ม <strong className="text-purple-600">"วิเคราะห์ลีลาการเขียน"</strong> เพื่อนำข้อมูลเชิงลึกมาแสดงผลเปรียบเทียบที่นี่
+            <div className="flex flex-col items-center justify-center p-12 text-center chamfered border border-dashed border-border bg-card/40">
+                <BarChart3 className="w-10 h-10 text-[var(--forge-gold)]/50 mb-4" />
+                <h3 className="text-lg font-display font-semibold">ยังไม่มีข้อมูลการวิเคราะห์สไตล์การเขียน</h3>
+                <p className="text-muted-foreground mt-2 max-w-sm text-sm">
+                    ไปที่หน้าต่างแต่งนิยายในแต่ละตอน และกดปุ่ม <strong className="text-[var(--forge-amber)]">&ldquo;วิเคราะห์ลีลาการเขียน&rdquo;</strong> เพื่อนำข้อมูลเชิงลึกมาแสดงผลเปรียบเทียบที่นี่
                 </p>
             </div>
         );
     }
 
     // ─── SVG layout ───────────────────────────────────────────────────────────
-    const svgW = 900;
+    // Min 900px, scale up at 70px/chapter so dots don't overlap
+    const svgW = Math.max(900, data.length * 70);
     const svgH = 280;
     const padL = 44, padR = 20, padT = 28, padB = 40;
     const chartW = svgW - padL - padR;
@@ -152,28 +153,28 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
     const hoverX = hoveredIdx !== null ? toX(hoveredIdx) : null;
 
     return (
-        <div className="space-y-8 mt-4 pb-20">
+        <div className="space-y-5 pb-10">
             {/* Header */}
-            <div className="flex items-start justify-between border-b pb-4">
+            <div className="flex items-start justify-between gap-4">
                 <div>
-                    <h2 className="text-2xl font-bold">วิเคราะห์ลีลาการเขียน (Stylometry)</h2>
-                    <p className="text-muted-foreground mt-1 text-sm">
+                    <h2 className="text-xl font-display font-bold tracking-tight">วิเคราะห์ลีลาการเขียน</h2>
+                    <p className="text-muted-foreground mt-1 text-sm max-w-xl">
                         เปรียบเทียบคุณลักษณะการเขียนรายตอน — เห็นชัดว่าตอนไหนเปลี่ยนไปจากสไตล์ปกติของคุณ
                     </p>
                 </div>
-                <div className="text-sm px-4 py-2 bg-purple-50 text-purple-700 rounded-lg flex gap-2 items-center shrink-0 ml-4">
-                    <Info className="w-4 h-4" />
+                <div className="font-technical text-[9px] uppercase tracking-[0.15em] px-3 py-1.5 bg-muted text-muted-foreground chamfered-sm border border-border flex gap-2 items-center shrink-0 tabular-nums">
+                    <Info className="w-3.5 h-3.5" />
                     {data.length} ตอน
                 </div>
             </div>
 
             {/* ── Main Multi-line Chart ── */}
-            <Card>
-                <CardHeader className="pb-3">
-                    <CardTitle>Style Profile ตลอดทั้งเรื่อง</CardTitle>
-                    <CardDescription>
+            <div className="chamfered border border-border bg-card/50 p-5">
+                <div className="pb-3">
+                    <span className="font-technical text-[9px] uppercase tracking-[0.2em] text-muted-foreground">Style Profile · ตลอดทั้งเรื่อง</span>
+                    <p className="text-sm text-muted-foreground mt-1.5">
                         แกน Y = ค่าเบี่ยงเบน (Z-Score) จากค่าเฉลี่ยสไตล์ของคุณ — เส้นที่ขึ้น/ลงแรงคือตอนที่เปลี่ยนไปมากกว่าปกติ
-                    </CardDescription>
+                    </p>
 
                     {/* Feature toggles */}
                     <div className="flex flex-wrap gap-2 mt-3">
@@ -200,17 +201,19 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
                             );
                         })}
                     </div>
-                </CardHeader>
+                </div>
 
-                <CardContent className="pt-0">
+                <div className="pt-0">
+                    <div className="overflow-x-auto">
                     <div
-                        className="relative rounded-xl border border-border/40 bg-muted/10 overflow-hidden select-none"
+                        className="relative chamfered-sm border border-border/40 bg-muted/10 overflow-hidden select-none"
+                        style={{ minWidth: `${svgW}px` }}
                     >
                         <svg
                             ref={svgRef}
                             viewBox={`0 0 ${svgW} ${svgH}`}
                             className="w-full block"
-                            style={{ aspectRatio: `${svgW} / ${svgH}` }}
+                            style={{ width: `${svgW}px`, height: `${svgH}px` }}
                             onMouseMove={e => {
                                 const rect = svgRef.current?.getBoundingClientRect();
                                 if (!rect) return;
@@ -233,7 +236,7 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
                             {/* Normal band -1 to +1 */}
                             <rect
                                 x={padL} y={toY(1)} width={chartW} height={toY(-1) - toY(1)}
-                                fill="hsl(142,60%,50%)" fillOpacity="0.07"
+                                fill="hsl(48,90%,55%)" fillOpacity="0.08"
                             />
 
                             {/* Y-axis ticks */}
@@ -245,14 +248,14 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
                                     <g key={z}>
                                         <line
                                             x1={padL} y1={y} x2={svgW - padR} y2={y}
-                                            stroke={isMid ? "hsl(142,55%,45%)" : isThreshold ? "hsl(0,70%,55%)" : "currentColor"}
+                                            stroke={isMid ? "hsl(48,90%,55%)" : isThreshold ? "hsl(0,70%,55%)" : "currentColor"}
                                             strokeWidth={isMid ? 1 : 0.5}
                                             strokeDasharray={isMid ? "4 6" : isThreshold ? "3 4" : "2 6"}
                                             opacity={isMid ? 0.5 : isThreshold ? 0.35 : 0.2}
                                             className={isMid ? "" : "text-muted-foreground"}
                                         />
                                         <text x={padL - 6} y={y + 4} textAnchor="end" fontSize="9"
-                                            fill={isMid ? "hsl(142,55%,45%)" : isThreshold ? "hsl(0,65%,55%)" : "hsl(0,0%,60%)"}
+                                            fill={isMid ? "hsl(48,90%,55%)" : isThreshold ? "hsl(0,65%,55%)" : "hsl(0,0%,60%)"}
                                             fontWeight={isMid ? "700" : "400"}>
                                             {z > 0 ? `+${z}` : z}
                                         </text>
@@ -261,7 +264,7 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
                             })}
 
                             {/* Labels */}
-                            <text x={padL + 4} y={toY(1) - 4} fontSize="8" fill="hsl(142,55%,45%)" opacity="0.7">โซนปกติ</text>
+                            <text x={padL + 4} y={toY(1) - 4} fontSize="8" fill="hsl(48,90%,55%)" opacity="0.7">โซนปกติ</text>
                             <text x={padL + 4} y={toY(2) - 4} fontSize="8" fill="hsl(0,65%,55%)" opacity="0.7">ผิดปกติ (&gt;2 SD)</text>
 
                             {/* Hover crosshair */}
@@ -309,7 +312,7 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
                                     key={i}
                                     x={toX(i)} y={padT + chartH + 16}
                                     textAnchor="middle" fontSize="9"
-                                    fill={hoveredIdx === i ? "hsl(252,80%,55%)" : "hsl(0,0%,60%)"}
+                                    fill={hoveredIdx === i ? "hsl(48,90%,55%)" : "hsl(0,0%,60%)"}
                                     fontWeight={hoveredIdx === i ? "700" : "400"}
                                 >
                                     {i + 1}
@@ -355,80 +358,85 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
                             );
                         })()}
                     </div>
+                    </div>{/* end overflow-x-auto */}
 
                     {/* Legend */}
                     <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 mt-3 text-[10px] text-muted-foreground">
                         <span>แกน Y = ค่าเบี่ยงเบน (SD) จากค่าเฉลี่ย</span>
-                        <span className="flex items-center gap-1"><span className="w-3 h-px bg-emerald-500/40 border-b border-dashed border-emerald-500/50 inline-block" />โซนปกติ (0 ±1)</span>
+                        <span className="flex items-center gap-1"><span className="w-3 h-px bg-[var(--forge-gold)]/40 border-b border-dashed border-[var(--forge-gold)]/50 inline-block" />โซนปกติ (0 ±1)</span>
                         <span className="flex items-center gap-1 text-red-400/70"><span className="w-3 h-px bg-red-400/50 border-b border-dashed border-red-400/50 inline-block" />ผิดปกติ (±2)</span>
                     </div>
-                </CardContent>
-            </Card>
+                </div>
+            </div>
 
             {/* Bottom 2-col */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card>
-                    <CardHeader>
-                        <CardTitle>สัดส่วนบรรยาย vs สนทนา</CardTitle>
-                        <CardDescription>ดุลยภาพระหว่างบทบรรยายและบทสนทนาในแต่ละตอน</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-4">
-                            {data.map((item) => {
-                                const dialogRatio = item.chapterAnatomy?.dialogue_ratio_percentage || 0;
-                                const narrationRatio = item.chapterAnatomy?.narration_ratio_percentage || 0;
-                                return (
-                                    <div key={item.id} className="space-y-1.5">
-                                        <div className="flex justify-between text-sm">
-                                            <span className="font-medium truncate max-w-[160px]" title={item.chapterTitle}>{item.chapterTitle}</span>
-                                            <span className="text-xs text-muted-foreground shrink-0 ml-2">
-                                                บรรยาย {narrationRatio}% / สนทนา {dialogRatio}%
-                                            </span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="chamfered border border-border bg-card/50 p-5">
+                    <div className="mb-4">
+                        <span className="font-technical text-[9px] uppercase tracking-[0.2em] text-muted-foreground">สัดส่วนบรรยาย vs สนทนา</span>
+                        <p className="text-xs text-muted-foreground mt-1">ดุลยภาพระหว่างบทบรรยายและบทสนทนาในแต่ละตอน</p>
+                    </div>
+                    <div className="pb-1">
+                        <ScrollArea className="h-[360px] pr-3">
+                            <div className="space-y-4">
+                                {data.map((item) => {
+                                    const dialogRatio = item.chapterAnatomy?.dialogue_ratio_percentage || 0;
+                                    const narrationRatio = item.chapterAnatomy?.narration_ratio_percentage || 0;
+                                    return (
+                                        <div key={item.id} className="space-y-1.5">
+                                            <div className="flex justify-between text-sm">
+                                                <span className="font-medium truncate max-w-[160px]" title={item.chapterTitle}>{item.chapterTitle}</span>
+                                                <span className="text-xs text-muted-foreground shrink-0 ml-2">
+                                                    บรรยาย {narrationRatio}% / สนทนา {dialogRatio}%
+                                                </span>
+                                            </div>
+                                            <div className="h-2.5 w-full bg-muted rounded-full flex overflow-hidden">
+                                                <div className="bg-[var(--chart-3)] h-full opacity-70" style={{ width: `${narrationRatio}%` }} />
+                                                <div className="bg-[var(--forge-gold)] h-full opacity-80" style={{ width: `${dialogRatio}%` }} />
+                                            </div>
                                         </div>
-                                        <div className="h-2.5 w-full bg-slate-100 rounded-full flex overflow-hidden">
-                                            <div className="bg-blue-400 h-full" style={{ width: `${narrationRatio}%` }} />
-                                            <div className="bg-emerald-400 h-full" style={{ width: `${dialogRatio}%` }} />
-                                        </div>
-                                    </div>
-                                );
-                            })}
+                                    );
+                                })}
+                            </div>
+                        </ScrollArea>
+                        <div className="flex gap-4 mt-4 pt-3 border-t border-border/60 text-xs text-muted-foreground justify-center">
+                            <span className="flex items-center gap-1.5"><span className="w-3 h-3 chamfered-sm bg-[var(--chart-3)] opacity-70" />บทบรรยาย</span>
+                            <span className="flex items-center gap-1.5"><span className="w-3 h-3 chamfered-sm bg-[var(--forge-gold)] opacity-80" />บทสนทนา</span>
                         </div>
-                        <div className="flex gap-4 mt-5 text-xs text-muted-foreground justify-center">
-                            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-blue-400" />บทบรรยาย</span>
-                            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-emerald-400" />บทสนทนา</span>
-                        </div>
-                    </CardContent>
-                </Card>
+                    </div>
+                </div>
 
-                <Card>
-                    <CardHeader>
-                        <CardTitle>อารมณ์และบรรยากาศรายตอน</CardTitle>
-                        <CardDescription>น้ำเสียงภาพรวมและบรรยากาศตัวละครที่ระบบประเมิน</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-3">
-                            {data.map((item) => {
-                                const mood = item.pacingAndMood?.vibe || "ไม่มีข้อมูล";
-                                const charVibe = item.characterDialogueVibes?.vibe || "ไม่มีข้อมูล";
-                                return (
-                                    <div key={item.id} className="p-3 rounded-lg border bg-card shadow-sm">
-                                        <h4 className="font-medium text-sm mb-2">{item.chapterTitle}</h4>
-                                        <div className="grid grid-cols-2 gap-2 text-xs">
-                                            <div>
-                                                <span className="text-muted-foreground block mb-1">ภาพรวมตอน</span>
-                                                <span className="inline-flex rounded-md bg-slate-100 px-2 py-1 font-medium text-slate-700">{mood.split('(')[0].trim()}</span>
-                                            </div>
-                                            <div>
-                                                <span className="text-muted-foreground block mb-1">บรรยากาศตัวละคร</span>
-                                                <span className="inline-flex rounded-md bg-purple-50 px-2 py-1 font-medium text-purple-700">{charVibe.split('(')[0].trim()}</span>
+                <div className="chamfered border border-border bg-card/50 p-5">
+                    <div className="mb-4">
+                        <span className="font-technical text-[9px] uppercase tracking-[0.2em] text-muted-foreground">อารมณ์และบรรยากาศรายตอน</span>
+                        <p className="text-xs text-muted-foreground mt-1">น้ำเสียงภาพรวมและบรรยากาศตัวละครที่ระบบประเมิน</p>
+                    </div>
+                    <div className="pb-1">
+                        <ScrollArea className="h-[360px] pr-3">
+                            <div className="space-y-3">
+                                {data.map((item) => {
+                                    const mood = item.pacingAndMood?.vibe || "ไม่มีข้อมูล";
+                                    const charVibe = item.characterDialogueVibes?.vibe || "ไม่มีข้อมูล";
+                                    return (
+                                        <div key={item.id} className="p-3 chamfered-sm border border-border bg-card/50">
+                                            <h4 className="font-medium text-sm mb-2">{item.chapterTitle}</h4>
+                                            <div className="grid grid-cols-2 gap-2 text-xs">
+                                                <div>
+                                                    <span className="text-muted-foreground block mb-1">ภาพรวมตอน</span>
+                                                    <span className="inline-flex chamfered-sm bg-muted px-2 py-1 font-medium text-foreground">{mood.split('(')[0].trim()}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-muted-foreground block mb-1">บรรยากาศตัวละคร</span>
+                                                    <span className="inline-flex chamfered-sm bg-[var(--forge-gold)]/10 px-2 py-1 font-medium text-[var(--forge-amber)]">{charVibe.split('(')[0].trim()}</span>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </CardContent>
-                </Card>
+                                    );
+                                })}
+                            </div>
+                        </ScrollArea>
+                    </div>
+                </div>
             </div>
         </div>
     );

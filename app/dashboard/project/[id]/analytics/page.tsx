@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { getNovelByIdSimple } from "@/server/novel";
 import { getWritingActivity, getWordsPerDay, getWritingStreak, getAnalyticsSummary } from "@/server/analytics";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
     Flame,
     TrendingUp,
@@ -12,7 +12,6 @@ import {
     BookOpen,
     FileText,
     Trophy,
-    Zap,
 } from "lucide-react";
 import { ActivityCalendar } from "@/components/analytics/activity-calendar";
 import { WordsChart } from "@/components/analytics/words-chart";
@@ -46,169 +45,195 @@ export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
     const summary = summaryResult.summary;
     const stylometryData = stylometryResult.success ? stylometryResult.data : [];
 
+    const activeDays = activity.filter((d) => d.words > 0).length;
+    const goalProgress = summary?.targetWords
+        ? Math.round((summary.totalWords / summary.targetWords) * 100)
+        : 0;
+
     return (
-        <div className="p-8 space-y-8">
+        <div className="p-8 space-y-6">
             <ProjectBreadcrumb
                 novelId={novelId}
                 novelTitle={novel.title}
-                items={[{ label: "Analytics" }]}
+                items={[{ label: "สถิติ" }]}
             />
 
-            <div>
-                <h1 className="text-3xl font-bold">Writing Analytics</h1>
-                <p className="text-muted-foreground mt-1">
-                    Track your writing progress and habits
-                </p>
-            </div>
-
-            {/* Stats Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {/* Writing Streak */}
-                <Card className="bg-gradient-to-br from-orange-500/10 to-red-500/10 border-orange-500/20">
-                    <CardContent className="pt-6">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 rounded-lg bg-orange-500/20">
-                                <Flame className="w-5 h-5 text-orange-500" />
-                            </div>
-                            <div>
-                                <p className="text-2xl font-bold">{streak.currentStreak}</p>
-                                <p className="text-xs text-muted-foreground">Day Streak</p>
-                            </div>
-                        </div>
-                        {streak.bestStreak > 0 && (
-                            <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-                                <Trophy className="w-3 h-3" />
-                                Best: {streak.bestStreak} days
-                            </p>
-                        )}
-                    </CardContent>
-                </Card>
-
-                {/* Today */}
-                <Card>
-                    <CardContent className="pt-6">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 rounded-lg bg-blue-500/20">
-                                <PenTool className="w-5 h-5 text-blue-500" />
-                            </div>
-                            <div>
-                                <p className="text-2xl font-bold">{summary?.todayWords?.toLocaleString() || 0}</p>
-                                <p className="text-xs text-muted-foreground">Words Today</p>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* This Week */}
-                <Card>
-                    <CardContent className="pt-6">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 rounded-lg bg-green-500/20">
-                                <TrendingUp className="w-5 h-5 text-green-500" />
-                            </div>
-                            <div>
-                                <p className="text-2xl font-bold">{summary?.weekWords?.toLocaleString() || 0}</p>
-                                <p className="text-xs text-muted-foreground">This Week</p>
-                            </div>
-                        </div>
-                        {summary?.avgWordsPerDay && summary.avgWordsPerDay > 0 && (
-                            <p className="text-xs text-muted-foreground mt-2">
-                                Avg: {summary.avgWordsPerDay} words/day
-                            </p>
-                        )}
-                    </CardContent>
-                </Card>
-
-                {/* This Month */}
-                <Card>
-                    <CardContent className="pt-6">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 rounded-lg bg-purple-500/20">
-                                <Calendar className="w-5 h-5 text-purple-500" />
-                            </div>
-                            <div>
-                                <p className="text-2xl font-bold">{summary?.monthWords?.toLocaleString() || 0}</p>
-                                <p className="text-xs text-muted-foreground">This Month</p>
-                            </div>
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* Words Per Day Chart */}
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <TrendingUp className="w-5 h-5" />
-                        Words Per Day (Last 7 Days)
-                    </CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <WordsChart data={wordsPerDay} />
-                </CardContent>
-            </Card>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                {/* Activity Calendar */}
-                <Card className="lg:col-span-2 flex flex-col">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <Calendar className="w-5 h-5" />
-                            Writing Activity (Last 90 Days)
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex-1 flex items-center justify-center">
-                        <ActivityCalendar activity={activity} />
-                    </CardContent>
-                </Card>
-
-                {/* Project Stats */}
-                <div className="flex flex-col gap-4">
-                    <Card className="flex-1">
-                        <CardContent className="pt-6 flex items-center gap-4 h-full">
-                            <div className="p-3 rounded-xl bg-indigo-500/20">
-                                <BookOpen className="w-6 h-6 text-indigo-500" />
-                            </div>
-                            <div>
-                                <p className="text-3xl font-bold">{summary?.totalWords?.toLocaleString() || 0}</p>
-                                <p className="text-sm text-muted-foreground">Total Words</p>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card className="flex-1">
-                        <CardContent className="pt-6 flex items-center gap-4 h-full">
-                            <div className="p-3 rounded-xl bg-teal-500/20">
-                                <FileText className="w-6 h-6 text-teal-500" />
-                            </div>
-                            <div>
-                                <p className="text-3xl font-bold">{summary?.totalNotes || 0}</p>
-                                <p className="text-sm text-muted-foreground">Total Notes</p>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card className="flex-1">
-                        <CardContent className="pt-6 flex items-center gap-4 h-full">
-                            <div className="p-3 rounded-xl bg-amber-500/20">
-                                <Target className="w-6 h-6 text-amber-500" />
-                            </div>
-                            <div>
-                                <p className="text-3xl font-bold">
-                                    {summary?.targetWords
-                                        ? Math.round((summary.totalWords / summary.targetWords) * 100)
-                                        : 0}%
-                                </p>
-                                <p className="text-sm text-muted-foreground">Goal Progress</p>
-                            </div>
-                        </CardContent>
-                    </Card>
+            {/* Page title */}
+            <div className="flex items-end justify-between gap-4 flex-wrap">
+                <div>
+                    <h1 className="text-3xl font-display font-bold tracking-tight">ภาพรวมการเขียน</h1>
+                    <div className="flex items-center gap-2 mt-1.5">
+                        <span className="relative flex h-1.5 w-1.5">
+                            <span className="absolute inline-flex h-full w-full rounded-full bg-[var(--forge-gold)] opacity-75 animate-forge-pulse" />
+                            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[var(--forge-gold)]" />
+                        </span>
+                        <span className="font-technical text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                            บันทึกการทำงาน · 90 วัน
+                        </span>
+                    </div>
                 </div>
             </div>
 
-            <hr className="my-8" />
-            
-            <StylometryDashboard data={stylometryData as any} />
+            {/* Hero instrument row: streak gauge + activity heatmap */}
+            <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4">
+                {/* STREAK GAUGE — molten forge face */}
+                <div className="relative chamfered overflow-hidden noise-texture glow-gold border border-black/10 bg-gradient-to-br from-[var(--forge-gold)] to-[var(--forge-amber)] flex flex-col justify-between p-5 min-h-[220px]">
+                    <div className="relative z-[2] flex items-center justify-between">
+                        <span className="font-technical text-[9px] uppercase tracking-[0.2em] text-black/55">
+                            ต่อเนื่อง
+                        </span>
+                        <Flame className="h-4 w-4 text-black/70" />
+                    </div>
+
+                    <div className="relative z-[2]">
+                        <div className="flex items-baseline gap-2">
+                            <span className="font-display text-6xl font-bold tabular-nums leading-none text-[oklch(0.2_0.04_60)]">
+                                {streak.currentStreak}
+                            </span>
+                            <span className="text-sm text-black/45">วัน</span>
+                        </div>
+                        <p className="text-xs text-black/60 mt-2">
+                            {streak.currentStreak > 0 ? "เขียนต่อเนื่องไม่ขาดสาย" : "เริ่มสตรีคของคุณวันนี้"}
+                        </p>
+                    </div>
+
+                    <div className="relative z-[2] flex items-center gap-1.5 text-[11px] text-black/55 pt-2.5 border-t border-black/10">
+                        <Trophy className="h-3 w-3" />
+                        สถิติสูงสุด {streak.bestStreak} วัน
+                    </div>
+
+                    {/* hazard edge — industrial signature */}
+                    <div className="absolute bottom-0 left-0 right-0 h-[4px] hazard-stripe-dark z-[2] opacity-70" />
+                </div>
+
+                {/* ACTIVITY HEATMAP — the hero */}
+                <div className="chamfered border border-border bg-card/50 p-5 flex flex-col">
+                    <div className="flex items-center justify-between mb-4">
+                        <span className="font-technical text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
+                            แผนผังกิจกรรม · 90 วัน
+                        </span>
+                        <span className="font-technical text-[9px] tabular-nums text-muted-foreground/70">
+                            {activeDays} วันที่ลงมือ
+                        </span>
+                    </div>
+                    <div className="flex-1 flex items-center">
+                        <ActivityCalendar activity={activity} large />
+                    </div>
+                </div>
+            </div>
+
+            {/* Readout strip */}
+            <div className="chamfered border border-border bg-card/50 grid grid-cols-2 md:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-border/60">
+                <div className="px-5 py-4 flex flex-col gap-1.5">
+                    <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground flex items-center gap-1.5">
+                        <span className="h-1 w-1 rounded-full bg-[var(--forge-gold)]" />
+                        วันนี้
+                    </span>
+                    <div className="flex items-baseline gap-1">
+                        <span className="text-2xl font-display font-bold tabular-nums">{summary?.todayWords?.toLocaleString() || '0'}</span>
+                        <span className="text-xs text-muted-foreground">คำ</span>
+                    </div>
+                </div>
+                <div className="px-5 py-4 flex flex-col gap-1.5">
+                    <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground flex items-center gap-1.5">
+                        <TrendingUp className="h-3 w-3" />สัปดาห์นี้
+                    </span>
+                    <div className="flex items-baseline gap-1">
+                        <span className="text-2xl font-display font-bold tabular-nums">{summary?.weekWords?.toLocaleString() || '0'}</span>
+                        <span className="text-xs text-muted-foreground">คำ</span>
+                    </div>
+                </div>
+                <div className="px-5 py-4 flex flex-col gap-1.5">
+                    <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground flex items-center gap-1.5">
+                        <Calendar className="h-3 w-3" />เดือนนี้
+                    </span>
+                    <div className="flex items-baseline gap-1">
+                        <span className="text-2xl font-display font-bold tabular-nums">{summary?.monthWords?.toLocaleString() || '0'}</span>
+                        <span className="text-xs text-muted-foreground">คำ</span>
+                    </div>
+                </div>
+                <div className="px-5 py-4 flex flex-col gap-1.5">
+                    <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground flex items-center gap-1.5">
+                        <BookOpen className="h-3 w-3" />รวมทั้งหมด
+                    </span>
+                    <div className="flex items-baseline gap-1">
+                        <span className="text-2xl font-display font-bold tabular-nums">{summary?.totalWords?.toLocaleString() || '0'}</span>
+                        <span className="text-xs text-muted-foreground">คำ</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Tabs: daily breakdown vs stylometry */}
+            <Tabs defaultValue="daily" className="space-y-4 pt-1">
+                <TabsList>
+                    <TabsTrigger value="daily">รายวัน</TabsTrigger>
+                    <TabsTrigger value="style">วิเคราะห์สไตล์</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="daily" className="space-y-4">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                        <div className="lg:col-span-2 chamfered border border-border bg-card/50 p-5">
+                            <div className="flex items-center justify-between mb-5">
+                                <span className="font-technical text-[9px] uppercase tracking-[0.2em] text-muted-foreground flex items-center gap-2">
+                                    <TrendingUp className="h-3.5 w-3.5" />
+                                    คำที่เขียนรายวัน · 7 วัน
+                                </span>
+                            </div>
+                            <WordsChart data={wordsPerDay} />
+                        </div>
+
+                        <div className="chamfered border border-border bg-card/50 divide-y divide-border/60">
+                            <div className="p-5 flex flex-col gap-1">
+                                <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground flex items-center gap-1.5">
+                                    <FileText className="h-3 w-3" />จำนวนตอน
+                                </span>
+                                <div className="flex items-baseline gap-1.5">
+                                    <span className="text-3xl font-display font-bold tabular-nums tracking-tight">
+                                        {summary?.totalNotes || '0'}
+                                    </span>
+                                    <span className="text-sm text-muted-foreground">ตอน</span>
+                                </div>
+                            </div>
+
+                            <div className="p-5 flex flex-col gap-1.5">
+                                <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground flex items-center gap-1.5">
+                                    <Target className="h-3 w-3" />เป้าหมายทั้งเรื่อง
+                                </span>
+                                <div className="flex items-baseline gap-1.5">
+                                    <span className="text-3xl font-display font-bold tabular-nums tracking-tight">{goalProgress}%</span>
+                                </div>
+                                {/* progress track */}
+                                <div className="h-1.5 w-full bg-muted chamfered-sm overflow-hidden mt-1">
+                                    <div
+                                        className="h-full bg-[var(--forge-gold)] transition-all"
+                                        style={{ width: `${Math.min(100, goalProgress)}%` }}
+                                    />
+                                </div>
+                                <span className="text-[10px] text-muted-foreground tabular-nums">
+                                    {(summary?.totalWords ?? 0).toLocaleString()} / {(summary?.targetWords ?? 0).toLocaleString()} คำ
+                                </span>
+                            </div>
+
+                            <div className="p-5 flex flex-col gap-1">
+                                <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground flex items-center gap-1.5">
+                                    <PenTool className="h-3 w-3" />เฉลี่ยต่อวัน
+                                </span>
+                                <div className="flex items-baseline gap-1.5">
+                                    <span className="text-3xl font-display font-bold tabular-nums tracking-tight">
+                                        {(summary?.avgWordsPerDay ?? 0).toLocaleString()}
+                                    </span>
+                                    <span className="text-sm text-muted-foreground">คำ</span>
+                                </div>
+                                <span className="text-[10px] text-muted-foreground">จากสัปดาห์ล่าสุด</span>
+                            </div>
+                        </div>
+                    </div>
+                </TabsContent>
+
+                <TabsContent value="style">
+                    <StylometryDashboard data={stylometryData as any} />
+                </TabsContent>
+            </Tabs>
         </div>
     );
 }

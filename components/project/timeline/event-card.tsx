@@ -141,13 +141,12 @@ export function EventCard({ event, characters = [], locations = [] }: EventCardP
             {/* Film Frame Card */}
             <div
                 className={cn(
-                    "relative overflow-hidden cursor-pointer",
+                    "relative overflow-hidden cursor-pointer chamfered-sm",
                     "transition-all duration-300 ease-out",
-                    // Film frame - สีครีมอ่อนแบบ vintage
-                    "bg-[#f5f5f0] border border-zinc-200/60",
+                    "bg-[#f5f5f0] dark:bg-card border border-zinc-200/60 dark:border-border",
                     // Hover state
                     isHovered && !isDragging && [
-                        "bg-[#eeede8]",
+                        "bg-[#eeede8] dark:bg-accent",
                         "shadow-md shadow-primary/10",
                         "scale-[1.01]",
                     ],
@@ -173,10 +172,10 @@ export function EventCard({ event, characters = [], locations = [] }: EventCardP
                     <div className="flex items-start justify-between gap-2 mb-2">
                         <h4
                             className={cn(
-                                "font-medium text-sm leading-snug",
-                                "text-zinc-800 transition-all duration-200",
+                                "font-display font-semibold text-sm leading-snug tracking-tight",
+                                "text-zinc-800 dark:text-foreground transition-all duration-200",
                                 isHovered && !event.isCompleted && "text-primary",
-                                event.isCompleted && "text-zinc-400 line-through"
+                                event.isCompleted && "text-zinc-400 dark:text-muted-foreground line-through"
                             )}
                         >
                             {event.title}
@@ -192,7 +191,7 @@ export function EventCard({ event, characters = [], locations = [] }: EventCardP
                                 onClick={handleToggleComplete}
                                 disabled={isPending}
                                 className={cn(
-                                    "p-1 rounded hover:bg-zinc-200/60 transition-colors",
+                                    "p-1 rounded hover:bg-zinc-200/60 dark:hover:bg-muted transition-colors",
                                     event.isCompleted ? "text-emerald-500" : "text-amber-500"
                                 )}
                                 title={event.isCompleted ? "Mark as Draft" : "Mark as Done"}
@@ -208,7 +207,7 @@ export function EventCard({ event, characters = [], locations = [] }: EventCardP
                             <div
                                 {...attributes}
                                 {...listeners}
-                                className="p-1 rounded hover:bg-zinc-200/60 cursor-grab active:cursor-grabbing text-zinc-500"
+                                className="p-1 rounded hover:bg-zinc-200/60 dark:hover:bg-muted cursor-grab active:cursor-grabbing text-zinc-500 dark:text-muted-foreground"
                                 onPointerDown={(e) => {
                                     e.stopPropagation()
                                     listeners?.onPointerDown?.(e)
@@ -222,7 +221,7 @@ export function EventCard({ event, characters = [], locations = [] }: EventCardP
                     {/* Metadata Footer */}
                     <div className="flex items-center justify-between text-xs">
                         {/* Left: Type & Location */}
-                        <div className="flex items-center gap-2 text-zinc-600">
+                        <div className="flex items-center gap-2 text-zinc-600 dark:text-muted-foreground">
                             {/* Event Type */}
                             <div className={cn("flex items-center gap-1 transition-colors", typeConfig.color)}>
                                 <TypeIcon className="w-3 h-3" />

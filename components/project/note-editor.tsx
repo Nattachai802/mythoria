@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { Save, ArrowLeft, Trash2, Maximize2, Minimize2, FileText, CheckCircle2, AlertCircle, PanelRightClose, PanelRightOpen, AlignCenter, Cloud, CloudOff, Loader2, ChevronLeft, ChevronRight, X, MoreHorizontal, Sparkles, History, BarChart, BookOpen } from "lucide-react"
+import { Save, Trash2, Maximize2, Minimize2, FileText, CheckCircle2, AlertCircle, PanelRightClose, PanelRightOpen, AlignCenter, Cloud, CloudOff, Loader2, ChevronLeft, ChevronRight, X, MoreHorizontal, Sparkles, History, BarChart, BookOpen, Users, ScrollText, Activity } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
@@ -76,6 +76,7 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
     const [wordStatus, setWordStatus] = useState<WordCountStatus | null>(null)
     const [isNavigating, setIsNavigating] = useState(false)
     const [isAnalyzing, setIsAnalyzing] = useState(false)
+    const [activeSidebarTab, setActiveSidebarTab] = useState<'cast' | 'plot' | 'ai'>('cast')
 
     const editorContainerRef = useRef<HTMLDivElement>(null)
     const currentDataRef = useRef({ title, content })
@@ -479,6 +480,13 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
         )
     }
 
+    // Sidebar tab config
+    const sidebarTabs = [
+        { id: 'cast' as const, label: 'ตัวละคร', icon: Users },
+        { id: 'plot' as const, label: 'พล็อต', icon: ScrollText },
+        { id: 'ai' as const, label: 'AI', icon: Sparkles },
+    ]
+
     return (
         <TooltipProvider>
             <div className={cn(
@@ -487,14 +495,14 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                     ? "fixed inset-0 z-50 p-0 h-screen w-screen"
                     : "h-[calc(100vh-4rem)]"
             )}>
-                {/* Single Header Row — Title + Stats + Actions */}
+                {/* Header — Nav + Title + Writing Controls */}
                 <div className={cn(
-                    "flex items-center gap-2 border-b px-2 py-1.5 transition-all duration-300 shrink-0",
+                    "flex items-center gap-1 border-b px-2 py-1.5 transition-all duration-300 shrink-0",
                     isFocusMode && "fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-sm border-b",
                     isFocusMode && !showZenControls && "opacity-0 -translate-y-full pointer-events-none",
                     isFocusMode && showZenControls && "opacity-100 translate-y-0"
                 )}>
-                    {/* Left: Previous Note + Title */}
+                    {/* Nav zone: prev + title + next */}
                     <Tooltip>
                         <TooltipTrigger asChild>
                             <Button
@@ -507,82 +515,108 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                                 {isNavigating ? (
                                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                 ) : (
-                                    <ArrowLeft className="h-3.5 w-3.5" />
+                                    <ChevronLeft className="h-3.5 w-3.5" />
                                 )}
                             </Button>
                         </TooltipTrigger>
-                        <TooltipContent>
-                            <p>ตอนก่อนหน้า</p>
-                        </TooltipContent>
+                        <TooltipContent><p>ตอนก่อนหน้า</p></TooltipContent>
                     </Tooltip>
 
                     <Input
                         value={title}
                         onChange={(e) => setTitle(e.target.value)}
-                        className="flex-1 text-sm font-semibold border-none shadow-none focus-visible:ring-0 focus-visible:border-b-primary px-1 h-7 bg-transparent min-w-[120px] max-w-[300px] border-b border-b-transparent hover:border-b-muted-foreground/30 focus:border-b-primary transition-colors"
-                        placeholder="Untitled Note"
+                        className="flex-1 text-sm font-semibold border-none shadow-none focus-visible:ring-0 px-1 h-7 bg-transparent min-w-[120px] max-w-[300px] border-b border-b-transparent hover:border-b-muted-foreground/30 focus:border-b-primary transition-colors"
+                        placeholder="ไม่มีชื่อตอน"
                     />
 
-                    {/* Center: Stats (inline, compact) */}
-                    {!isFocusMode && (
-                        <div className="hidden sm:flex items-center gap-2 text-[11px] text-muted-foreground shrink-0">
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="shrink-0 h-7 w-7 text-muted-foreground hover:text-foreground"
+                                onClick={handleNextNote}
+                                disabled={isNavigating}
+                            >
+                                {isNavigating ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                    <ChevronRight className="h-3.5 w-3.5" />
+                                )}
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent><p>ตอนถัดไป</p></TooltipContent>
+                    </Tooltip>
+
+                    {/* Spacer */}
+                    <div className="flex-1" />
+
+                    {/* Writing controls zone */}
+                    <div className="flex items-center gap-0.5 shrink-0">
+                        {/* Divider */}
+                        <div className="w-px h-4 bg-border mx-1" />
+
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant={showReference ? "secondary" : "ghost"}
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={() => setShowReference(!showReference)}
+                                >
+                                    <BookOpen className="h-3.5 w-3.5" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent><p>{showReference ? "ปิดหน้าต่างอ้างอิง" : "อ้างอิง"}</p></TooltipContent>
+                        </Tooltip>
+
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant={isTypewriterMode ? "secondary" : "ghost"}
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={() => setIsTypewriterMode(!isTypewriterMode)}
+                                >
+                                    <AlignCenter className="h-3.5 w-3.5" />
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent><p>{isTypewriterMode ? "ปิด Typewriter" : "Typewriter Mode"}</p></TooltipContent>
+                        </Tooltip>
+
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    onClick={() => setIsFocusMode(!isFocusMode)}
+                                >
+                                    {isFocusMode ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent><p>{isFocusMode ? "ออก Zen Mode" : "Zen Mode"}</p></TooltipContent>
+                        </Tooltip>
+
+                        {!isFocusMode && (
                             <Tooltip>
                                 <TooltipTrigger asChild>
-                                    <div className="flex items-center gap-1.5 cursor-help hover:text-foreground/70 transition-colors">
-                                        <span>{wordCount.toLocaleString()} คำ</span>
-                                        <span className="opacity-30">·</span>
-                                        <FileText className="h-3 w-3 opacity-50" />
-                                        <span>{pageCount}</span>
-                                    </div>
+                                    <Button
+                                        variant={showSidebar ? "secondary" : "ghost"}
+                                        size="icon"
+                                        className="h-7 w-7"
+                                        onClick={() => setShowSidebar(!showSidebar)}
+                                    >
+                                        {showSidebar ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRightOpen className="h-3.5 w-3.5" />}
+                                    </Button>
                                 </TooltipTrigger>
-                                <TooltipContent align="center" className="flex flex-col gap-1 text-xs">
-                                    <div className="flex justify-between gap-4">
-                                        <span className="text-muted-foreground">ตัวอักษร (รวมช่องว่าง):</span>
-                                        <span className="font-semibold">{stats.charsWithSpaces.toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex justify-between gap-4">
-                                        <span className="text-muted-foreground">ตัวอักษร (ไม่รวมช่องว่าง):</span>
-                                        <span className="font-semibold">{stats.charsWithoutSpaces.toLocaleString()}</span>
-                                    </div>
-                                </TooltipContent>
+                                <TooltipContent><p>{showSidebar ? "ซ่อน Context" : "Context Panel"}</p></TooltipContent>
                             </Tooltip>
+                        )}
 
-                            {wordStatus && (
-                                <div className="flex items-center gap-1.5">
-                                    <div className={cn(
-                                        "flex items-center gap-1",
-                                        wordStatus.hasEnoughWords
-                                            ? "text-emerald-600 dark:text-emerald-400"
-                                            : "text-amber-600 dark:text-amber-400"
-                                    )}>
-                                        {wordStatus.hasEnoughWords ? (
-                                            <CheckCircle2 className="h-3 w-3" />
-                                        ) : (
-                                            <AlertCircle className="h-3 w-3" />
-                                        )}
-                                        <span>{wordStatus.percentComplete}%</span>
-                                    </div>
-                                    <Progress
-                                        value={Math.min(100, wordStatus.percentComplete)}
-                                        className={cn(
-                                            "w-12 h-1",
-                                            wordStatus.hasEnoughWords
-                                                ? "[&>div]:bg-emerald-500"
-                                                : "[&>div]:bg-amber-500"
-                                        )}
-                                    />
-                                </div>
-                            )}
+                        <div className="w-px h-4 bg-border mx-1" />
 
-                            <ExtractionStatus noteId={note.id} />
-                        </div>
-                    )}
-
-                    {/* Right: Action buttons */}
-                    <div className="flex items-center gap-0.5 shrink-0">
-                        <SaveStatusIndicator />
-
-                        {/* More Options Menu (Less frequently used actions) */}
+                        {/* More Options */}
                         {!isFocusMode && (
                             <Popover>
                                 <PopoverTrigger asChild>
@@ -591,12 +625,12 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                                     </Button>
                                 </PopoverTrigger>
                                 <PopoverContent align="end" className="w-56 p-2 space-y-1">
-                                    <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                                        ตัวเลือกเพิ่มเติม
+                                    <div className="px-2 py-1.5 text-xs font-technical font-semibold text-muted-foreground uppercase tracking-wider">
+                                        เครื่องมือ
                                     </div>
                                     <div className="flex flex-col gap-1">
-                                        <Button 
-                                            variant="ghost" 
+                                        <Button
+                                            variant="ghost"
                                             className="w-full justify-start h-8 px-2 text-xs font-normal"
                                             onClick={handleAnalyze}
                                             disabled={isAnalyzing}
@@ -604,24 +638,15 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                                             <BarChart className="h-4 w-4 mr-2" />
                                             {isAnalyzing ? "กำลังวิเคราะห์..." : "วิเคราะห์ลีลาการเขียน"}
                                         </Button>
-                                        
-                                        {/* Plot Hole Checker is a component with its own Collapsible, fits well here */}
+
                                         <div className="px-1">
-                                            <PlotHoleChecker
-                                                novelId={novelId}
-                                                noteId={note.id}
-                                                content={content}
-                                            />
+                                            <PlotHoleChecker novelId={novelId} noteId={note.id} content={content} />
                                         </div>
 
-                                        <NoteSummaryButton
-                                            noteId={note.id}
-                                            novelId={novelId}
-                                            initialSummary={note.summary}
-                                        >
+                                        <NoteSummaryButton noteId={note.id} novelId={novelId} initialSummary={note.summary}>
                                             <Button variant="ghost" className="w-full justify-start h-8 px-2 text-xs font-normal">
                                                 <Sparkles className="h-4 w-4 mr-2" />
-                                                สรุปตอน (AI Summary)
+                                                สรุปตอน (AI)
                                             </Button>
                                         </NoteSummaryButton>
 
@@ -645,15 +670,15 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                                             </AlertDialogTrigger>
                                             <AlertDialogContent>
                                                 <AlertDialogHeader>
-                                                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                                    <AlertDialogTitle>ลบตอนนี้?</AlertDialogTitle>
                                                     <AlertDialogDescription>
-                                                        This action cannot be undone. This will permanently delete your note.
+                                                        การกระทำนี้ไม่สามารถย้อนกลับได้ ตอนนี้จะถูกลบออกอย่างถาวร
                                                     </AlertDialogDescription>
                                                 </AlertDialogHeader>
                                                 <AlertDialogFooter>
-                                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                    <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
                                                     <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                                                        Delete
+                                                        ลบ
                                                     </AlertDialogAction>
                                                 </AlertDialogFooter>
                                             </AlertDialogContent>
@@ -663,110 +688,13 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                             </Popover>
                         )}
 
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <Button
-                                    variant={showReference ? "secondary" : "ghost"}
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    onClick={() => setShowReference(!showReference)}
-                                >
-                                    <BookOpen className="h-3.5 w-3.5" />
-                                </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                                <p>{showReference ? "ปิดหน้าต่างอ้างอิง" : "เปิดหน้าต่างอ้างอิง"}</p>
-                            </TooltipContent>
-                        </Tooltip>
-
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <Button
-                                    variant={isTypewriterMode ? "secondary" : "ghost"}
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    onClick={() => setIsTypewriterMode(!isTypewriterMode)}
-                                >
-                                    <AlignCenter className="h-3.5 w-3.5" />
-                                </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                                <p>{isTypewriterMode ? "ปิด Typewriter Mode" : "เปิด Typewriter Mode"}</p>
-                            </TooltipContent>
-                        </Tooltip>
-
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    onClick={() => setIsFocusMode(!isFocusMode)}
-                                >
-                                    {isFocusMode ? (
-                                        <Minimize2 className="h-3.5 w-3.5" />
-                                    ) : (
-                                        <Maximize2 className="h-3.5 w-3.5" />
-                                    )}
-                                </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                                <p>{isFocusMode ? "ออก Zen Mode" : "เข้า Zen Mode"}</p>
-                            </TooltipContent>
-                        </Tooltip>
-
-                        {!isFocusMode && (
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-7 w-7"
-                                        onClick={() => setShowSidebar(!showSidebar)}
-                                    >
-                                        {showSidebar ? (
-                                            <PanelRightClose className="h-3.5 w-3.5" />
-                                        ) : (
-                                            <PanelRightOpen className="h-3.5 w-3.5" />
-                                        )}
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                    <p>{showSidebar ? "ซ่อน Sidebar" : "เปิด Sidebar"}</p>
-                                </TooltipContent>
-                            </Tooltip>
-                        )}
-
-
-
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    onClick={handleNextNote}
-                                    disabled={isNavigating}
-                                >
-                                    {isNavigating ? (
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    ) : (
-                                        <ChevronRight className="h-3.5 w-3.5" />
-                                    )}
-                                </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                                <p>ตอนถัดไป</p>
-                            </TooltipContent>
-                        </Tooltip>
-
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleSave} disabled={loading}>
                             <Save className="h-3.5 w-3.5" />
                         </Button>
                     </div>
                 </div>
 
-                {/* Main content area — Editor takes full width */}
+                {/* Main content area */}
                 <div className={cn(
                     "flex-1 overflow-hidden relative transition-all duration-300 bg-muted flex",
                     isFocusMode && "pt-0",
@@ -775,15 +703,13 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                     {/* Reference Panel */}
                     {!isFocusMode && showReference && (
                         <>
-                            <div 
+                            <div
                                 className="hidden sm:flex flex-col bg-background relative z-0 shrink-0 transition-none"
                                 style={{ width: referenceWidth }}
                             >
                                 <NoteReferencePanel novelId={novelId} currentNoteId={note.id} linkedChapterId={note.linkedToChapterId} />
                             </div>
-                            
-                            {/* Resizer Handle */}
-                            <div 
+                            <div
                                 className={cn(
                                     "hidden sm:flex w-1.5 bg-border hover:bg-primary/50 cursor-col-resize z-10 transition-colors shrink-0",
                                     isDragging && "bg-primary"
@@ -793,13 +719,13 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                         </>
                     )}
 
-                    {/* Editor — always full width */}
+                    {/* Editor */}
                     <div
                         ref={editorContainerRef}
                         className={cn(
                             "h-full overflow-hidden flex flex-col transition-all duration-300 w-full flex-1 bg-background shadow-md",
                             !showReference && "max-w-3xl mx-auto",
-                            isFocusMode && "!max-w-4xl px-4 md:px-8 pt-4 shadow-none bg-transparent"
+                            isFocusMode && "!max-w-2xl px-4 md:px-8 pt-4 shadow-none bg-transparent"
                         )}
                     >
                         <ReactQuill
@@ -812,57 +738,141 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                                 "[&>.ql-editor]:px-6 [&>.ql-editor]:py-6 sm:[&>.ql-editor]:px-10",
                                 isFocusMode && "[&>.ql-editor]:text-lg [&>.ql-editor]:leading-relaxed [&>.ql-editor]:px-4 sm:[&>.ql-editor]:px-12"
                             )}
-                            placeholder="Start writing your scene..."
+                            placeholder="เริ่มเขียนฉากของคุณ..."
                         />
                     </div>
 
-                    {/* Sidebar Overlay — slides over content from the right */}
+                    {/* Context Sidebar Drawer */}
                     {!isFocusMode && (
                         <>
-                            {/* Backdrop */}
                             {showSidebar && (
                                 <div
                                     className="absolute inset-0 bg-background/40 backdrop-blur-[1px] z-10 transition-opacity duration-300"
                                     onClick={() => setShowSidebar(false)}
                                 />
                             )}
-                            {/* Drawer */}
                             <div className={cn(
                                 "absolute top-0 right-0 h-full w-80 bg-background border-l shadow-xl z-20 transition-transform duration-300 ease-in-out flex flex-col",
                                 showSidebar ? "translate-x-0" : "translate-x-full"
                             )}>
-                                {/* Drawer header */}
-                                <div className="flex items-center justify-between px-3 py-2 border-b shrink-0">
-                                    <span className="text-xs font-medium text-muted-foreground">Side Panel</span>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-6 w-6"
+                                {/* Tab bar */}
+                                <div className="flex items-center border-b shrink-0">
+                                    {sidebarTabs.map((tab) => {
+                                        const Icon = tab.icon
+                                        return (
+                                            <button
+                                                key={tab.id}
+                                                onClick={() => setActiveSidebarTab(tab.id)}
+                                                className={cn(
+                                                    "flex-1 flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-colors border-b-2",
+                                                    activeSidebarTab === tab.id
+                                                        ? "border-primary text-primary"
+                                                        : "border-transparent text-muted-foreground hover:text-foreground"
+                                                )}
+                                            >
+                                                <Icon className="h-3.5 w-3.5" />
+                                                {tab.label}
+                                            </button>
+                                        )
+                                    })}
+                                    <button
                                         onClick={() => setShowSidebar(false)}
+                                        className="px-2 py-2 text-muted-foreground hover:text-foreground transition-colors shrink-0"
                                     >
                                         <X className="h-3.5 w-3.5" />
-                                    </Button>
+                                    </button>
                                 </div>
-                                {/* Drawer content */}
-                                <div className="flex-1 overflow-y-auto space-y-4 p-3">
-                                    <NoteCastDeck
-                                        noteId={note.id}
-                                        novelId={novelId}
-                                        linkedChapterId={note.linkedToChapterId}
-                                        content={content}
-                                    />
-                                    <NotePlotPanel
-                                        noteId={note.id}
-                                        novelId={novelId}
-                                        linkedChapterId={note.linkedToChapterId}
-                                    />
-                                    <CharacterStateEditor noteId={note.id} />
-                                    <AIReviewPanel noteId={note.id} novelId={novelId} />
+
+                                {/* Tab content */}
+                                <div className="flex-1 overflow-y-auto p-3">
+                                    {activeSidebarTab === 'cast' && (
+                                        <div className="flex flex-col gap-4">
+                                            <NoteCastDeck
+                                                noteId={note.id}
+                                                novelId={novelId}
+                                                linkedChapterId={note.linkedToChapterId}
+                                                content={content}
+                                            />
+                                            <div className="h-px bg-border" />
+                                            <CharacterStateEditor noteId={note.id} />
+                                        </div>
+                                    )}
+                                    {activeSidebarTab === 'plot' && (
+                                        <NotePlotPanel
+                                            noteId={note.id}
+                                            novelId={novelId}
+                                            linkedChapterId={note.linkedToChapterId}
+                                        />
+                                    )}
+                                    {activeSidebarTab === 'ai' && (
+                                        <AIReviewPanel noteId={note.id} novelId={novelId} />
+                                    )}
                                 </div>
                             </div>
                         </>
                     )}
                 </div>
+
+                {/* Bottom Status Bar */}
+                {!isFocusMode && (
+                    <div className="flex items-center justify-between px-3 py-1 border-t bg-background/80 shrink-0 text-[11px] text-muted-foreground">
+                        {/* Left: word stats */}
+                        <div className="flex items-center gap-3">
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <div className="flex items-center gap-1.5 cursor-help hover:text-foreground/70 transition-colors">
+                                        <span>{wordCount.toLocaleString()} คำ</span>
+                                        <span className="opacity-30">·</span>
+                                        <FileText className="h-3 w-3 opacity-50" />
+                                        <span>{pageCount} หน้า</span>
+                                    </div>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="flex flex-col gap-1 text-xs">
+                                    <div className="flex justify-between gap-4">
+                                        <span className="text-muted-foreground">ตัวอักษร (รวมช่องว่าง):</span>
+                                        <span className="font-semibold">{stats.charsWithSpaces.toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex justify-between gap-4">
+                                        <span className="text-muted-foreground">ตัวอักษร (ไม่รวมช่องว่าง):</span>
+                                        <span className="font-semibold">{stats.charsWithoutSpaces.toLocaleString()}</span>
+                                    </div>
+                                </TooltipContent>
+                            </Tooltip>
+
+                            <ExtractionStatus noteId={note.id} />
+                        </div>
+
+                        {/* Center: chapter progress */}
+                        {wordStatus && (
+                            <div className="flex items-center gap-2">
+                                <div className={cn(
+                                    "flex items-center gap-1",
+                                    wordStatus.hasEnoughWords
+                                        ? "text-emerald-600 dark:text-emerald-400"
+                                        : "text-amber-600 dark:text-amber-400"
+                                )}>
+                                    {wordStatus.hasEnoughWords
+                                        ? <CheckCircle2 className="h-3 w-3" />
+                                        : <AlertCircle className="h-3 w-3" />
+                                    }
+                                    <span>{wordStatus.percentComplete}% ความยาวเทียบบทอื่น</span>
+                                </div>
+                                <Progress
+                                    value={Math.min(100, wordStatus.percentComplete)}
+                                    className={cn(
+                                        "w-16 h-1",
+                                        wordStatus.hasEnoughWords
+                                            ? "[&>div]:bg-emerald-500"
+                                            : "[&>div]:bg-amber-500"
+                                    )}
+                                />
+                            </div>
+                        )}
+
+                        {/* Right: save status */}
+                        <SaveStatusIndicator />
+                    </div>
+                )}
             </div>
         </TooltipProvider>
     )
