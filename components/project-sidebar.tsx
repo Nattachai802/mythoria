@@ -74,19 +74,20 @@ export function ProjectSidebar({ projectId, projectTitle, chapters = [] }: Proje
                                 <div className="flex aspect-square size-8 items-center justify-center">
                                     <ArrowLeft className="size-4" />
                                 </div>
-                                <div className="flex flex-col gap-0.5 leading-none">
-                                    <span className="font-semibold">Back to Dashboard</span>
-                                    <span className="">{projectTitle || "Project"}</span>
+                                <div className="flex flex-col gap-0.5 leading-none overflow-hidden">
+                                    <span className="font-technical text-[9px] uppercase tracking-[0.2em] text-muted-foreground">Back to Dashboard</span>
+                                    <span className="font-display font-semibold text-sm truncate">{projectTitle || "Project"}</span>
                                 </div>
                             </Link>
                         </SidebarMenuButton>
                     </SidebarMenuItem>
                 </SidebarMenu>
+                <div className="h-[2px] mx-2 hazard-stripe-subtle" />
             </SidebarHeader>
             <SidebarSeparator className="mx-0" />
             <SidebarContent>
                 <SidebarGroup>
-                    <SidebarGroupLabel>Project Menu</SidebarGroupLabel>
+                    <SidebarGroupLabel className="font-technical text-[9px] tracking-[0.2em] uppercase">Project Menu</SidebarGroupLabel>
                     <SidebarMenu>
                         {navItems.map((item) => (
                             <SidebarMenuItem key={item.title}>
@@ -111,7 +112,7 @@ export function ProjectSidebar({ projectId, projectTitle, chapters = [] }: Proje
                 {/* Chapters Section */}
                 {chapters.length > 0 && (
                     <SidebarGroup>
-                        <SidebarGroupLabel>Chapters</SidebarGroupLabel>
+                        <SidebarGroupLabel className="font-technical text-[9px] tracking-[0.2em] uppercase">Chapters</SidebarGroupLabel>
                         <SidebarMenu>
                             {publishedChapters.length > 0 && (
                                 <Collapsible defaultOpen className="group/collapsible">

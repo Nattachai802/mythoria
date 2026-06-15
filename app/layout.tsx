@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Outfit, JetBrains_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Outfit, JetBrains_Mono, Sarabun } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider"
 import { KeyboardShortcutsProvider } from "@/components/keyboard-shortcuts-provider"
 import "./globals.css";
@@ -24,6 +24,13 @@ const outfit = Outfit({
   weight: ["400", "500", "600", "700", "800"],
 });
 
+// Reading font for novel writing canvas
+const sarabun = Sarabun({
+  variable: "--font-sarabun",
+  subsets: ["thai", "latin"],
+  weight: ["300", "400", "500"],
+});
+
 // Technical monospace for industrial UI elements
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-jetbrains",
@@ -44,7 +51,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head />
-      <body className={`${geistSans.variable} ${geistMono.variable} ${outfit.variable} ${jetbrainsMono.variable} antialiased`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} ${outfit.variable} ${jetbrainsMono.variable} ${sarabun.variable} antialiased`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

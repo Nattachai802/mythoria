@@ -165,8 +165,8 @@ export function ChapterColumn({
                 </div>
 
                 {/* Chapter Info Label */}
-                <div className="absolute top-[118px] w-52 text-center bg-background/95 backdrop-blur-sm px-3 py-1.5 rounded-lg border shadow-sm">
-                    <span className="text-sm font-semibold text-foreground block truncate">
+                <div className="absolute top-[118px] w-52 text-center bg-background/95 backdrop-blur-sm px-3 py-1.5 chamfered-sm border border-border shadow-sm">
+                    <span className="font-display text-sm font-semibold text-foreground block truncate tracking-tight">
                         {chapter.title}
                     </span>
                     <div className="flex items-center justify-center gap-2 text-[10px] text-muted-foreground">

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { BarChart3, Loader2, Check, ChevronRight } from "lucide-react"
+import { Loader2, Check, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { Progress } from "@/components/ui/progress"
@@ -36,6 +36,117 @@ interface Props {
     chapters: Chapter[]
     totalNotesCount: number
     analyzedCount: number
+}
+
+// Quill pen with a waveform being drawn beneath — represents stylometric analysis
+function QuillWriter() {
+    return (
+        <div className="quill-writer">
+            <div className="quill-body">
+                <div className="quill-shaft" />
+                <div className="quill-barbs barbs-left" />
+                <div className="quill-barbs barbs-right" />
+                <div className="quill-nib" />
+            </div>
+            <svg className="quill-wave" viewBox="0 0 36 10" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path
+                    d="M0 5 Q4.5 1 9 5 Q13.5 9 18 5 Q22.5 1 27 5 Q31.5 9 36 5"
+                    stroke="hsl(223, 10%, 45%)"
+                    strokeWidth="1.2"
+                    strokeLinecap="round"
+                    className="wave-path"
+                />
+            </svg>
+            <style jsx>{`
+                .quill-writer {
+                    width: 2em;
+                    height: 2.4em;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 0.25em;
+                    flex-shrink: 0;
+                }
+                .quill-body {
+                    position: relative;
+                    width: 1.2em;
+                    height: 1.5em;
+                    transform: rotate(-30deg);
+                    transform-origin: bottom center;
+                }
+                .quill-shaft {
+                    position: absolute;
+                    left: 50%;
+                    top: 0;
+                    bottom: 0.3em;
+                    width: 0.12em;
+                    transform: translateX(-50%);
+                    background: linear-gradient(
+                        to bottom,
+                        hsl(40, 15%, 75%) 0%,
+                        hsl(40, 15%, 55%) 100%
+                    );
+                    border-radius: 0.06em;
+                }
+                .quill-barbs {
+                    position: absolute;
+                    top: 0.1em;
+                    bottom: 0.5em;
+                    width: 0.45em;
+                    border-radius: 0.5em 0 0 0.5em;
+                    background: linear-gradient(
+                        to bottom,
+                        hsl(40, 20%, 82%) 0%,
+                        hsl(40, 15%, 65%) 100%
+                    );
+                }
+                .barbs-left  { right: 50%; transform-origin: right center; transform: skewY(8deg); }
+                .barbs-right {
+                    left: 50%;
+                    border-radius: 0 0.5em 0.5em 0;
+                    background: linear-gradient(
+                        to bottom,
+                        hsl(40, 20%, 78%) 0%,
+                        hsl(40, 15%, 60%) 100%
+                    );
+                    transform-origin: left center;
+                    transform: skewY(-8deg);
+                }
+                .quill-nib {
+                    position: absolute;
+                    bottom: 0;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    width: 0;
+                    height: 0;
+                    border-left: 0.15em solid transparent;
+                    border-right: 0.15em solid transparent;
+                    border-top: 0.35em solid hsl(223, 10%, 30%);
+                }
+                .quill-wave {
+                    width: 2em;
+                    height: 0.65em;
+                    overflow: visible;
+                }
+                .wave-path {
+                    stroke-dasharray: 48;
+                    stroke-dashoffset: 48;
+                    animation: draw-wave 2.4s ease-in-out infinite;
+                }
+                @keyframes draw-wave {
+                    0%    { stroke-dashoffset: 48; opacity: 0.3; }
+                    10%   { opacity: 1; }
+                    65%   { stroke-dashoffset: 0; opacity: 1; }
+                    85%   { stroke-dashoffset: 0; opacity: 0; }
+                    100%  { stroke-dashoffset: 48; opacity: 0; }
+                }
+                @media (prefers-reduced-motion: reduce) {
+                    .wave-path { animation: none; stroke-dashoffset: 0; opacity: 0.6; }
+                }
+            `}</style>
+        </div>
+    );
 }
 
 export function StylometryBulkAnalyzeButton({ novelId, notes, chapters, totalNotesCount, analyzedCount }: Props) {
@@ -104,15 +215,18 @@ export function StylometryBulkAnalyzeButton({ novelId, notes, chapters, totalNot
     })).filter(ch => ch.notes.length > 0)
 
     return (
-        <Dialog open={open} onOpenChange={(val) => !isAnalyzing && setOpen(val)}>
+        <div className="flex items-center gap-2.5 px-3 py-2">
+            <QuillWriter />
+            <span className="flex-1 text-xs font-medium">วิเคราะห์ลีลาการเขียน</span>
+            <Dialog open={open} onOpenChange={(val) => !isAnalyzing && setOpen(val)}>
             <DialogTrigger asChild>
-                <Button 
-                    variant="outline" 
-                    className="w-full bg-background" 
+                <Button
+                    variant="ghost"
+                    size="sm"
                     disabled={notes.length === 0}
+                    className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground shrink-0"
                 >
-                    <BarChart3 className="h-4 w-4 mr-2" />
-                    {notes.length === 0 && analyzedCount > 0 ? "วิเคราะห์ครบถ้วนแล้ว" : `เลือกตอนเพื่อวิเคราะห์ (${notes.length})`}
+                    {notes.length === 0 && analyzedCount > 0 ? "ครบแล้ว" : `เลือก (${notes.length}) →`}
                 </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px]">
@@ -206,5 +320,6 @@ export function StylometryBulkAnalyzeButton({ novelId, notes, chapters, totalNot
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+        </div>
     )
 }

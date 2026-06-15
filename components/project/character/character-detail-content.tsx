@@ -82,10 +82,10 @@ function InfoSection({ icon, title, children, className }: InfoSectionProps) {
     const textContent = typeof children === "string" ? children : null;
 
     return (
-        <div className={cn("space-y-3", className)}>
+        <div className={cn("space-y-2 tech-border-left", className)}>
             <div className="flex items-center gap-2 text-muted-foreground">
                 {icon}
-                <h3 className="text-sm font-semibold uppercase tracking-wide">{title}</h3>
+                <h3 className="font-technical text-xs font-semibold uppercase tracking-[0.15em]">{title}</h3>
             </div>
             {textContent ? (
                 <FormattedTextSection text={textContent} className="text-sm" />
@@ -123,7 +123,7 @@ export function CharacterDetailContent({
                         <div className="flex flex-col md:flex-row gap-8 items-start">
                             {/* Character Portrait */}
                             <div className="relative group">
-                                <div className="w-48 h-64 rounded-xl overflow-hidden shadow-2xl border-4 border-background/50 backdrop-blur-sm">
+                                <div className="w-48 h-64 chamfered overflow-hidden shadow-2xl border-2 border-primary/30 backdrop-blur-sm">
                                     {character.image ? (
                                         <img
                                             src={character.image}
@@ -136,15 +136,15 @@ export function CharacterDetailContent({
                                         </div>
                                     )}
                                 </div>
-                                {/* Decorative glow */}
-                                <div className="absolute -inset-2 bg-gradient-to-br from-primary/20 to-transparent rounded-xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity -z-10" />
+                                {/* Forge glow on hover */}
+                                <div className="absolute -inset-2 bg-gradient-to-br from-primary/20 to-transparent blur-xl opacity-0 group-hover:opacity-100 transition-opacity -z-10" />
                             </div>
 
                             {/* Character Info */}
                             <div className="flex-1 space-y-4">
                                 <div className="flex items-start justify-between gap-4">
                                     <div>
-                                        <h1 className="text-4xl md:text-5xl font-bold tracking-tight">
+                                        <h1 className="font-display text-4xl md:text-5xl font-bold tracking-tight">
                                             {character.name}
                                         </h1>
                                         <div className="flex items-center gap-3 mt-3 flex-wrap">

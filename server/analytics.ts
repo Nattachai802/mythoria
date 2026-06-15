@@ -244,6 +244,9 @@ async function _getAnalyticsSummary(novelId: string) {
         });
 
         // Calculate stats
+        // Use createdAt (not updatedAt) to count words in newly-created notes.
+        // updatedAt is bumped by background AI processes (summaries, plot hole checks, etc.)
+        // causing word counts to be inflated even when the user hasn't written anything.
         const today = new Date().toISOString().split('T')[0];
         const weekAgo = new Date(Date.now() - 7 * 86400000);
         const monthAgo = new Date(Date.now() - 30 * 86400000);
@@ -254,15 +257,15 @@ async function _getAnalyticsSummary(novelId: string) {
 
         for (const note of allNotes) {
             const words = getWordCount(note.content);
-            const noteDate = note.updatedAt.toISOString().split('T')[0];
+            const noteDate = note.createdAt.toISOString().split('T')[0];
 
             if (noteDate === today) {
                 todayWords += words;
             }
-            if (note.updatedAt >= weekAgo) {
+            if (note.createdAt >= weekAgo) {
                 weekWords += words;
             }
-            if (note.updatedAt >= monthAgo) {
+            if (note.createdAt >= monthAgo) {
                 monthWords += words;
             }
         }
