@@ -291,6 +291,11 @@ export const timelineEvents = pgTable("timeline_events", {
   // Event classification
   eventType: text("event_type").default("scene"), // scene, action, dialogue, flashback, revelation, emotional, transition
   isCompleted: boolean("is_completed").default(false),
+  // Scene dramatic fields (D1) — โครงฉากดราม่า
+  sceneGoal: text("scene_goal"),             // เป้าหมายของฉาก: ตัวละครต้องการอะไร
+  sceneConflict: text("scene_conflict"),     // อุปสรรค: อะไรขวาง
+  sceneOutcome: text("scene_outcome"),       // ผลลัพธ์: success | failure | ongoing | unknown
+  valueShift: integer("value_shift"),        // ทิศ/ความเข้มของการเปลี่ยนค่า −5…+5 (ป้อน tension curve A2)
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()
@@ -555,6 +560,79 @@ export const ideaConnections = pgTable("idea_connections", {
     .references(() => novels.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// ============================================
+// PLOT THREADS — Setup → Payoff / Promise Ledger
+// "ปมเรื่อง": สิ่งที่ผู้เขียนหว่านไว้แล้วต้องเฉลย กันลืมว่าผูกอะไรไว้บ้าง
+// ============================================
+export const plotThreads = pgTable("plot_threads", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  novelId: text("novel_id")
+    .notNull()
+    .references(() => novels.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  type: text("type").notNull().default("foreshadow"), // mystery | foreshadow | chekhov | character_arc | promise
+  status: text("status").notNull().default("planted"), // planted | developing | paid | abandoned
+  importance: text("importance").notNull().default("minor"), // major | minor
+  color: text("color").default("#f59e0b"),
+  note: text("note"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+// จุดสัมผัสของปมกับฉาก (หลายจุดต่อปม): หว่าน / ย้ำ / เฉลย
+export const plotThreadBeats = pgTable("plot_thread_beats", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  threadId: text("thread_id")
+    .notNull()
+    .references(() => plotThreads.id, { onDelete: "cascade" }),
+  eventId: text("event_id")
+    .notNull()
+    .references(() => timelineEvents.id, { onDelete: "cascade" }),
+  role: text("role").notNull().default("seed"), // seed | reinforce | payoff
+  note: text("note"),
+  orderIndex: integer("order_index").default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const plotThreadRelations = relations(plotThreads, ({ one, many }) => ({
+  novel: one(novels, { fields: [plotThreads.novelId], references: [novels.id] }),
+  beats: many(plotThreadBeats),
+}));
+
+export const plotThreadBeatRelations = relations(plotThreadBeats, ({ one }) => ({
+  thread: one(plotThreads, { fields: [plotThreadBeats.threadId], references: [plotThreads.id] }),
+  event: one(timelineEvents, { fields: [plotThreadBeats.eventId], references: [timelineEvents.id] }),
+}));
+
+export type PlotThread = typeof plotThreads.$inferSelect;
+export type PlotThreadBeat = typeof plotThreadBeats.$inferSelect;
+
+// ============================================
+// STORY ARC TABLES
+// ============================================
+
+export const storyArcs = pgTable("story_arcs", {
+    id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+    novelId: text("novel_id").notNull().references(() => novels.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    color: text("color").notNull().default("#6366f1"),
+    startChapterId: text("start_chapter_id").references(() => chapters.id, { onDelete: "set null" }),
+    endChapterId: text("end_chapter_id").references(() => chapters.id, { onDelete: "set null" }),
+    orderIndex: integer("order_index").notNull().default(0),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+})
+
+export const storyArcRelations = relations(storyArcs, ({ one }) => ({
+    novel: one(novels, { fields: [storyArcs.novelId], references: [novels.id] }),
+    startChapter: one(chapters, { fields: [storyArcs.startChapterId], references: [chapters.id] }),
+    endChapter: one(chapters, { fields: [storyArcs.endChapterId], references: [chapters.id] }),
+}))
+
+export type StoryArc = typeof storyArcs.$inferSelect
 
 // ============================================
 // POWER SYSTEM TABLES
@@ -1705,6 +1783,12 @@ export const schema = {
   ideaRelations,
   ideaConnections,
   ideaConnectionRelations,
+  plotThreads,
+  plotThreadBeats,
+  plotThreadRelations,
+  plotThreadBeatRelations,
+  storyArcs,
+  storyArcRelations,
   powers,
   powerLevels,
   powerCombinations,

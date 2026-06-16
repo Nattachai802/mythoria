@@ -16,13 +16,13 @@ import {
     ArrowRight,
     Film,
     CheckCircle2,
-    Circle
+    Circle,
+    TrendingUp,
+    TrendingDown
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
-import { useTransition, useState } from "react"
-import { updateTimelineEvent } from "@/server/timeline"
-import { toast } from "sonner"
+import { useState } from "react"
 
 // Event type configuration - minimal colors
 const EVENT_TYPES = {
@@ -65,15 +65,19 @@ const EVENT_TYPES = {
 
 type EventType = keyof typeof EVENT_TYPES
 
+type ThreadDot = { color: string; title: string }
+
 interface EventCardProps {
     event: TimelineEvent
     characters?: Character[]
     locations?: Location[]
+    isDimmed?: boolean
+    threadDots?: ThreadDot[]
+    onToggleComplete?: (id: string) => void
 }
 
-export function EventCard({ event, characters = [], locations = [] }: EventCardProps) {
+export function EventCard({ event, characters = [], locations = [], isDimmed = false, threadDots, onToggleComplete }: EventCardProps) {
     const router = useRouter()
-    const [isPending, startTransition] = useTransition()
     const [isHovered, setIsHovered] = useState(false)
 
     const {
@@ -107,17 +111,10 @@ export function EventCard({ event, characters = [], locations = [] }: EventCardP
     const relatedLocationIds = (event.relatedLocationIds as string[]) || []
     const relatedLocation = locations.find(l => relatedLocationIds.includes(l.id))
 
-    // Handle completion toggle
+    // Handle completion toggle — state lives in TimelineBoard (optimistic)
     const handleToggleComplete = (e: React.MouseEvent) => {
         e.stopPropagation()
-        startTransition(async () => {
-            const result = await updateTimelineEvent(event.id, { isCompleted: !event.isCompleted })
-            if (result.success) {
-                toast.success(result.event?.isCompleted ? "Scene completed ✓" : "Scene marked as draft")
-            } else {
-                toast.error("Failed to update")
-            }
-        })
+        onToggleComplete?.(event.id)
     }
 
     const handleClick = () => {
@@ -131,9 +128,11 @@ export function EventCard({ event, characters = [], locations = [] }: EventCardP
             ref={setNodeRef}
             style={style}
             className={cn(
-                "relative w-full py-2",
+                "relative w-full py-2 transition-all duration-300",
                 // Fade-in animation on mount
                 "animate-in fade-in slide-in-from-bottom-4 duration-500",
+                // Lens: de-emphasize cards that don't match the active filter
+                isDimmed && "opacity-25 grayscale hover:opacity-60",
             )}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
@@ -181,33 +180,34 @@ export function EventCard({ event, characters = [], locations = [] }: EventCardP
                             {event.title}
                         </h4>
 
-                        {/* Actions (Fade in on Hover) */}
-                        <div className={cn(
-                            "flex items-center gap-0.5 transition-all duration-200",
-                            isHovered ? "opacity-100 translate-x-0" : "opacity-0 translate-x-2"
-                        )}>
-                            {/* Status Toggle */}
+                        {/* Actions */}
+                        <div className="flex items-center gap-0.5">
+                            {/* Status Toggle — always visible so it's easy to find */}
                             <button
                                 onClick={handleToggleComplete}
-                                disabled={isPending}
                                 className={cn(
                                     "p-1 rounded hover:bg-zinc-200/60 dark:hover:bg-muted transition-colors",
-                                    event.isCompleted ? "text-emerald-500" : "text-amber-500"
+                                    event.isCompleted
+                                        ? "text-emerald-500"
+                                        : "text-amber-500/70 hover:text-amber-500"
                                 )}
-                                title={event.isCompleted ? "Mark as Draft" : "Mark as Done"}
+                                title={event.isCompleted ? "ทำเครื่องหมายเป็นฉบับร่าง" : "ทำเครื่องหมายว่าเสร็จ"}
                             >
                                 {event.isCompleted ? (
-                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <CheckCircle2 className="w-4 h-4" />
                                 ) : (
-                                    <Circle className="w-3.5 h-3.5" />
+                                    <Circle className="w-4 h-4" />
                                 )}
                             </button>
 
-                            {/* Drag Handle */}
+                            {/* Drag Handle (fade in on hover) */}
                             <div
                                 {...attributes}
                                 {...listeners}
-                                className="p-1 rounded hover:bg-zinc-200/60 dark:hover:bg-muted cursor-grab active:cursor-grabbing text-zinc-500 dark:text-muted-foreground"
+                                className={cn(
+                                    "p-1 rounded hover:bg-zinc-200/60 dark:hover:bg-muted cursor-grab active:cursor-grabbing text-zinc-500 dark:text-muted-foreground transition-opacity duration-200",
+                                    isHovered ? "opacity-100" : "opacity-0"
+                                )}
                                 onPointerDown={(e) => {
                                     e.stopPropagation()
                                     listeners?.onPointerDown?.(e)
@@ -217,6 +217,30 @@ export function EventCard({ event, characters = [], locations = [] }: EventCardP
                             </div>
                         </div>
                     </div>
+
+                    {/* Thread dots — colored edge marks แบบฟิล์มตัดต่อ */}
+                    {threadDots && threadDots.length > 0 && (
+                        <div className="flex items-center gap-1 mb-1.5">
+                            {threadDots.slice(0, 5).map((dot, i) => (
+                                <TooltipProvider key={i} delayDuration={100}>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <span
+                                                className="h-2 w-2 chamfered-sm shrink-0 cursor-default transition-transform hover:scale-110"
+                                                style={{
+                                                    background: dot.color,
+                                                    boxShadow: `0 0 5px ${dot.color}66`,
+                                                }}
+                                            />
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top">
+                                            <span className="font-technical text-[9px] uppercase tracking-wide">{dot.title}</span>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                            ))}
+                        </div>
+                    )}
 
                     {/* Metadata Footer */}
                     <div className="flex items-center justify-between text-xs">
@@ -238,6 +262,24 @@ export function EventCard({ event, characters = [], locations = [] }: EventCardP
                                         <MapPin className="w-3 h-3 shrink-0" />
                                         <span className="truncate text-[9px]">
                                             {relatedLocation.name}
+                                        </span>
+                                    </div>
+                                </>
+                            )}
+
+                            {/* Value-shift badge (D1) */}
+                            {typeof event.valueShift === "number" && event.valueShift !== 0 && (
+                                <>
+                                    <span className="text-zinc-400">·</span>
+                                    <div className={cn(
+                                        "flex items-center gap-0.5",
+                                        event.valueShift > 0 ? "text-emerald-500" : "text-red-500"
+                                    )}>
+                                        {event.valueShift > 0
+                                            ? <TrendingUp className="w-3 h-3" />
+                                            : <TrendingDown className="w-3 h-3" />}
+                                        <span className="text-[9px] tabular-nums font-medium">
+                                            {event.valueShift > 0 ? `+${event.valueShift}` : event.valueShift}
                                         </span>
                                     </div>
                                 </>

@@ -19,13 +19,15 @@ import { GroupFrame, CanvasGroup } from "./group-frame";
 import { updateTimelineCanvas } from "@/server/timeline";
 import { updateIdea } from "@/server/idea"; // For auto-reset isUsed flag
 import { getSceneElementDetails, getIdeaNotesForIdeas } from "@/server/scene-element-details";
+import { addBeat, createThread } from "@/server/plot-threads";
+import type { ThreadWithBeats } from "@/server/plot-threads";
 import { SceneElementDetailDialog } from "./scene-element-detail-dialog";
 import { IdeaNoteDialog } from "./idea-note-dialog";
 import { SceneElementDetails } from "@/db/schema";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Save, ZoomIn, ZoomOut, Maximize2, Link2, X, Check, Move, Download, List, Navigation, SkipBack, SkipForward, StickyNote, GitBranchPlus, Lightbulb, Group, Loader2 } from "lucide-react";
+import { Plus, Save, ZoomIn, ZoomOut, Maximize2, Link2, X, Check, Move, Download, List, Navigation, SkipBack, SkipForward, StickyNote, GitBranchPlus, Lightbulb, Group, Loader2, Sprout } from "lucide-react";
 import { CreateIdeaDialog } from "@/components/project/idea/create-idea-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
@@ -36,6 +38,7 @@ interface PlaygroundBoardProps {
     characters: any[];
     locations: any[];
     ideas: any[];
+    threads?: ThreadWithBeats[];
 }
 
 // Red String Connection (ด้ายแดงแบบนักสืบ)
@@ -302,6 +305,128 @@ function DroppableCanvas({
     );
 }
 
+function ThreadSuggestToast({
+    ideaTitle,
+    threads,
+    novelId,
+    eventId,
+    onDismiss,
+}: {
+    ideaTitle: string;
+    threads: ThreadWithBeats[];
+    novelId: string;
+    eventId: string;
+    onDismiss: () => void;
+}) {
+    const [mode, setMode] = useState<"pick" | "new">("pick");
+    const [selectedId, setSelectedId] = useState(threads[0]?.id ?? "");
+    const [newTitle, setNewTitle] = useState(ideaTitle);
+    const [isLinking, setIsLinking] = useState(false);
+
+    const handleLink = async () => {
+        setIsLinking(true);
+        let threadId = selectedId;
+
+        if (mode === "new") {
+            if (!newTitle.trim()) return;
+            const res = await createThread({ novelId, title: newTitle.trim(), type: "foreshadow" });
+            if (!res.success || !res.data) { setIsLinking(false); toast.error("สร้างปมไม่สำเร็จ"); return; }
+            threadId = res.data.id;
+        }
+
+        const res = await addBeat({ threadId, eventId, role: "seed", novelId });
+        setIsLinking(false);
+        if (res.success) {
+            toast.success("ผูกปมแล้ว ✓");
+            onDismiss();
+        } else {
+            toast.error("ผูกปมไม่สำเร็จ");
+        }
+    };
+
+    return (
+        <div className="chamfered-sm border border-zinc-700 bg-zinc-900 text-zinc-100 shadow-xl w-[320px] overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-700/60 bg-zinc-950/60">
+                <Sprout className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                <span className="font-technical text-[9px] uppercase tracking-widest text-zinc-400">วางแล้ว — ผูกปมดีไหม?</span>
+                <button onClick={onDismiss} className="ml-auto text-zinc-600 hover:text-zinc-300 transition-colors">
+                    <X className="h-3 w-3" />
+                </button>
+            </div>
+
+            <div className="px-3 py-2.5 space-y-2">
+                <p className="text-xs text-zinc-300 truncate">
+                    <span className="text-amber-400 font-medium">"{ideaTitle}"</span>
+                </p>
+
+                {/* Mode toggle */}
+                <div className="flex gap-1">
+                    <button
+                        onClick={() => setMode("pick")}
+                        className={`flex-1 h-6 text-[10px] chamfered-sm border transition-colors ${mode === "pick" ? "bg-zinc-700 border-zinc-500 text-zinc-100" : "border-zinc-700 text-zinc-500 hover:text-zinc-300"}`}
+                    >
+                        ปมที่มีอยู่
+                    </button>
+                    <button
+                        onClick={() => setMode("new")}
+                        className={`flex-1 h-6 text-[10px] chamfered-sm border transition-colors ${mode === "new" ? "bg-zinc-700 border-zinc-500 text-zinc-100" : "border-zinc-700 text-zinc-500 hover:text-zinc-300"}`}
+                    >
+                        สร้างปมใหม่
+                    </button>
+                </div>
+
+                {mode === "pick" && threads.length > 0 && (
+                    <div className="flex flex-col gap-1 max-h-[120px] overflow-y-auto">
+                        {threads.map(t => (
+                            <button
+                                key={t.id}
+                                onClick={() => setSelectedId(t.id)}
+                                className={`flex items-center gap-2 px-2 py-1.5 chamfered-sm border text-left text-xs transition-colors ${selectedId === t.id ? "border-amber-500/50 bg-amber-500/10 text-amber-200" : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"}`}
+                            >
+                                <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: t.color ?? "#f59e0b" }} />
+                                <span className="truncate">{t.title}</span>
+                                {selectedId === t.id && <Check className="h-3 w-3 ml-auto shrink-0 text-amber-400" />}
+                            </button>
+                        ))}
+                    </div>
+                )}
+
+                {mode === "pick" && threads.length === 0 && (
+                    <p className="text-[11px] text-zinc-500 text-center py-1">ยังไม่มีปม — ลองสร้างใหม่</p>
+                )}
+
+                {mode === "new" && (
+                    <input
+                        value={newTitle}
+                        onChange={e => setNewTitle(e.target.value)}
+                        placeholder="ชื่อปมใหม่…"
+                        className="w-full h-8 px-2 text-xs bg-zinc-800 border border-zinc-600 chamfered-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/60"
+                        autoFocus
+                    />
+                )}
+
+                <div className="flex gap-1.5 pt-0.5">
+                    <button
+                        onClick={handleLink}
+                        disabled={isLinking || (mode === "pick" && !selectedId) || (mode === "new" && !newTitle.trim())}
+                        className="flex-1 h-7 chamfered-sm bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[11px] font-medium hover:bg-amber-500/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1"
+                    >
+                        {isLinking ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sprout className="h-3 w-3" />}
+                        {mode === "new" ? "สร้างและผูก" : "ผูกปม"}
+                    </button>
+                    <button
+                        onClick={onDismiss}
+                        className="h-7 px-2 chamfered-sm border border-zinc-700 text-zinc-500 text-[11px] hover:text-zinc-300 transition-colors"
+                    >
+                        ข้าม
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 export function PlaygroundBoard({
     eventId,
     novelId,
@@ -309,6 +434,7 @@ export function PlaygroundBoard({
     characters,
     locations,
     ideas,
+    threads = [],
 }: PlaygroundBoardProps) {
     const [items, setItems] = useState<any[]>(initialItems.filter((i: any) => i.type !== 'group'));
     const [groups, setGroups] = useState<CanvasGroup[]>(
@@ -325,6 +451,15 @@ export function PlaygroundBoard({
     );
     const [activeDragItem, setActiveDragItem] = useState<any>(null);
     const [isSaving, setIsSaving] = useState(false);
+
+    // Thread suggester state — แสดงหลัง drop idea
+    const [threadSuggest, setThreadSuggest] = useState<{
+        ideaTitle: string;
+        selectedThreadId: string;
+        newThreadTitle: string;
+        mode: "pick" | "new";
+        isLinking: boolean;
+    } | null>(null);
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
     const [linkingSourceId, setLinkingSourceId] = useState<string | null>(null);
     const [zoom, setZoom] = useState(1);
@@ -1069,6 +1204,25 @@ export function PlaygroundBoard({
                     canvasY: Math.round(y),
                     isUsed: true
                 });
+
+                // Suggest linking to a plot thread
+                setThreadSuggest({
+                    ideaTitle: activeData.title || "ไอเดียนี้",
+                    selectedThreadId: threads[0]?.id ?? "",
+                    newThreadTitle: activeData.title || "",
+                    mode: "pick",
+                    isLinking: false,
+                });
+                toast(
+                    <ThreadSuggestToast
+                        ideaTitle={activeData.title || "ไอเดียนี้"}
+                        threads={threads}
+                        novelId={novelId}
+                        eventId={eventId}
+                        onDismiss={() => toast.dismiss("thread-suggest")}
+                    />,
+                    { id: "thread-suggest", duration: 8000, unstyled: true, classNames: { toast: "w-full" } }
+                );
             }
         }
     };
