@@ -4,8 +4,10 @@ import { getLocationsByNovelId } from "@/server/locations";
 import { getIdeasByNovelId } from "@/server/idea";
 import { getChapters } from "@/server/chapter";
 import { getNovelById } from "@/server/novel";
+import { getThreadsByNovelId } from "@/server/plot-threads";
 import { PlaygroundBoard } from "@/components/plot/playground/playground-board";
 import { SceneNavigator } from "@/components/plot/playground/scene-navigator";
+import { SceneDramaticPanel } from "@/components/plot/playground/scene-dramatic-panel";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
 import { notFound } from "next/navigation";
 
@@ -22,7 +24,7 @@ export default async function PlotPlaygroundPage({
   const { id: novelId, eventId } = await params;
 
   // Fetch all necessary data in parallel
-  const [eventRes, charactersRes, locationsRes, ideasRes, eventsRes, chaptersRes, novelRes] = await Promise.all([
+  const [eventRes, charactersRes, locationsRes, ideasRes, eventsRes, chaptersRes, novelRes, threadsRes] = await Promise.all([
     getTimelineEventById(eventId),
     getCharactersByNovelId(novelId),
     getLocationsByNovelId(novelId),
@@ -30,6 +32,7 @@ export default async function PlotPlaygroundPage({
     getTimeLineEvents(novelId),
     getChapters(novelId),
     getNovelById(novelId),
+    getThreadsByNovelId(novelId),
   ]);
 
   if (!eventRes.success || !eventRes.event) {
@@ -51,12 +54,15 @@ export default async function PlotPlaygroundPage({
             { label: eventRes.event.title }
           ]}
         />
-        <SceneNavigator
-          novelId={novelId}
-          currentEvent={eventRes.event}
-          events={eventsRes.events || []}
-          chapters={chaptersRes.chapters || []}
-        />
+        <div className="flex items-center gap-2 flex-wrap">
+          <SceneNavigator
+            novelId={novelId}
+            currentEvent={eventRes.event}
+            events={eventsRes.events || []}
+            chapters={chaptersRes.chapters || []}
+          />
+          <SceneDramaticPanel event={eventRes.event} />
+        </div>
       </div>
 
       <div className="flex-1 overflow-hidden">
@@ -67,6 +73,7 @@ export default async function PlotPlaygroundPage({
           characters={charactersRes.data || []}
           locations={locationsRes.data || []}
           ideas={ideasRes.data || []}
+          threads={threadsRes.data || []}
         />
       </div>
     </div>

@@ -13,6 +13,8 @@ import { EventCard } from "./event-card"
 import { CreateSceneDialog } from "./create-scene-dialog"
 import { Button } from "@/components/ui/button"
 
+type ThreadDot = { color: string; title: string }
+
 interface ChapterColumnProps {
     chapter: Chapter
     events: TimelineEvent[]
@@ -20,6 +22,10 @@ interface ChapterColumnProps {
     locations?: Location[]
     isFirst: boolean
     isLast: boolean
+    matchedIds?: Set<string>
+    isFiltering?: boolean
+    eventThreadsMap?: Map<string, ThreadDot[]>
+    onToggleComplete?: (id: string) => void
 }
 
 export function ChapterColumn({
@@ -28,7 +34,11 @@ export function ChapterColumn({
     characters = [],
     locations = [],
     isFirst,
-    isLast
+    isLast,
+    matchedIds,
+    isFiltering = false,
+    eventThreadsMap,
+    onToggleComplete
 }: ChapterColumnProps) {
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
@@ -46,6 +56,8 @@ export function ChapterColumn({
     }
 
     const completedCount = events.filter(e => e.isCompleted).length
+    const matchedCount = matchedIds ? events.filter(e => matchedIds.has(e.id)).length : events.length
+    const columnDimmed = isFiltering && matchedCount === 0
 
     // CSS Pattern สำหรับรูหนามเตย
     const filmPerforationStyle = {
@@ -67,8 +79,9 @@ export function ChapterColumn({
         <div
             ref={setNodeRef}
             className={cn(
-                "flex flex-col items-center min-w-[260px] max-w-[260px] h-full relative group",
-                isOver && "ring-2 ring-primary/20 rounded-lg"
+                "flex flex-col items-center min-w-[260px] max-w-[260px] h-full relative group transition-opacity duration-300",
+                isOver && "ring-2 ring-primary/20 rounded-lg",
+                columnDimmed && "opacity-30"
             )}
         >
             {/* Horizontal line connector */}
@@ -170,13 +183,21 @@ export function ChapterColumn({
                         {chapter.title}
                     </span>
                     <div className="flex items-center justify-center gap-2 text-[10px] text-muted-foreground">
-                        <span>{events.length} scenes</span>
-                        {completedCount > 0 && (
+                        {isFiltering ? (
+                            <span className="text-primary font-medium tabular-nums">
+                                {matchedCount}/{events.length} ตรงตัวกรอง
+                            </span>
+                        ) : (
                             <>
-                                <span>•</span>
-                                <span className="text-emerald-600 dark:text-emerald-400">
-                                    {completedCount} done
-                                </span>
+                                <span>{events.length} scenes</span>
+                                {completedCount > 0 && (
+                                    <>
+                                        <span>•</span>
+                                        <span className="text-emerald-600 dark:text-emerald-400">
+                                            {completedCount} done
+                                        </span>
+                                    </>
+                                )}
                             </>
                         )}
                     </div>
@@ -225,6 +246,9 @@ export function ChapterColumn({
                                                 event={event}
                                                 characters={characters}
                                                 locations={locations}
+                                                isDimmed={isFiltering && !!matchedIds && !matchedIds.has(event.id)}
+                                                threadDots={eventThreadsMap?.get(event.id)}
+                                                onToggleComplete={onToggleComplete}
                                             />
                                             <div className="h-[2px] bg-zinc-300/60 mx-1" />
                                         </div>

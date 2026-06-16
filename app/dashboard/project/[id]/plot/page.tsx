@@ -3,6 +3,8 @@ import { getNovelById } from "@/server/novel"
 import { getTimeLineEvents } from "@/server/timeline"
 import { getCharactersByNovelId } from "@/server/character"
 import { getLocationsByNovelId } from "@/server/locations"
+import { getThreadsByNovelId } from "@/server/plot-threads"
+import { getArcsByNovelId } from "@/server/story-arcs"
 import { TimelineBoard } from "@/components/project/timeline/timeline-board"
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb"
 
@@ -13,11 +15,13 @@ type Props = {
 export default async function PlotPage({ params }: Props) {
     const { id } = await params
 
-    const [novelResult, eventsResult, charactersResult, locationsResult] = await Promise.all([
+    const [novelResult, eventsResult, charactersResult, locationsResult, threadsResult, arcsResult] = await Promise.all([
         getNovelById(id),
         getTimeLineEvents(id),
         getCharactersByNovelId(id),
-        getLocationsByNovelId(id)
+        getLocationsByNovelId(id),
+        getThreadsByNovelId(id),
+        getArcsByNovelId(id),
     ])
 
     if (!novelResult.success || !novelResult.novel) {
@@ -28,6 +32,8 @@ export default async function PlotPage({ params }: Props) {
     const events = eventsResult.events || []
     const characters = charactersResult.data || []
     const locations = locationsResult.data || []
+    const threads = threadsResult.data || []
+    const arcs = arcsResult.data || []
 
     return (
         <div className="flex flex-col h-[calc(100vh-4rem)]">
@@ -36,11 +42,11 @@ export default async function PlotPage({ params }: Props) {
                     <ProjectBreadcrumb
                         novelId={id}
                         novelTitle={novel.title}
-                        items={[{ label: "Plot Board" }]}
+                        items={[{ label: "กระดานพล็อต" }]}
                     />
-                    <h1 className="text-lg font-semibold">Plot Board</h1>
+                    <h1 className="text-lg font-display font-semibold">กระดานพล็อต</h1>
                     <p className="text-sm text-muted-foreground">
-                        Manage your plot and events for "{novel.title}"
+                        วางโครงเรื่องและฉากของ &ldquo;{novel.title}&rdquo;
                     </p>
                 </div>
             </div>
@@ -52,6 +58,8 @@ export default async function PlotPage({ params }: Props) {
                     initialEvents={events}
                     characters={characters}
                     locations={locations}
+                    threads={threads}
+                    arcs={arcs}
                 />
             </div>
         </div>
