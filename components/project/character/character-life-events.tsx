@@ -9,12 +9,10 @@ import {
 } from "@/server/life-events";
 import { EVENT_TYPES, EventType } from "@/lib/life-event-types";
 import { getChapters } from "@/server/chapter";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import {
     Dialog,
@@ -40,7 +38,12 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Pencil, Trash2, Sparkles } from "lucide-react";
+import {
+    Plus, Pencil, Trash2,
+    HeartCrack, Trophy, Skull, Lightbulb, Sparkles, Heart, Zap, Pin,
+    TrendingUp, TrendingDown, Minus,
+    type LucideIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 
 interface CharacterLifeEventsProps {
@@ -64,10 +67,33 @@ interface LifeEvent {
     } | null;
 }
 
+// Lucide icons replace the emoji in EVENT_TYPES; category color drives the timeline dot
+const EVENT_ICONS: Record<string, LucideIcon> = {
+    trauma: HeartCrack,
+    achievement: Trophy,
+    loss: Skull,
+    discovery: Lightbulb,
+    transformation: Sparkles,
+    relationship: Heart,
+    power: Zap,
+    other: Pin,
+};
+
+const EVENT_DOT: Record<string, string> = {
+    trauma: "text-red-500",
+    achievement: "text-[var(--forge-amber)]",
+    loss: "text-zinc-400",
+    discovery: "text-sky-500",
+    transformation: "text-violet-500",
+    relationship: "text-pink-500",
+    power: "text-[var(--forge-gold)]",
+    other: "text-zinc-400",
+};
+
 const IMPACT_CONFIG = {
-    positive: { label: 'เชิงบวก', color: 'bg-green-500', icon: '✨' },
-    negative: { label: 'เชิงลบ', color: 'bg-red-500', icon: '💔' },
-    neutral: { label: 'กลาง', color: 'bg-gray-500', icon: '⚖️' },
+    positive: { label: 'เชิงบวก', cls: 'text-emerald-500', Icon: TrendingUp },
+    negative: { label: 'เชิงลบ', cls: 'text-red-500', Icon: TrendingDown },
+    neutral: { label: 'กลาง', cls: 'text-muted-foreground', Icon: Minus },
 };
 
 export function CharacterLifeEvents({ characterId, novelId }: CharacterLifeEventsProps) {
@@ -196,99 +222,80 @@ export function CharacterLifeEvents({ characterId, novelId }: CharacterLifeEvent
 
     return (
         <>
-            <Card>
-                <CardHeader>
-                    <div className="flex items-center justify-between">
-                        <CardTitle className="flex items-center gap-2">
-                            <Sparkles className="h-5 w-5" />
-                            เหตุการณ์สำคัญในชีวิต
-                        </CardTitle>
-                        <Button onClick={openAddDialog} size="sm">
-                            <Plus className="h-4 w-4 mr-2" />
-                            เพิ่มเหตุการณ์
-                        </Button>
-                    </div>
-                </CardHeader>
-                <CardContent>
-                    {isLoading ? (
-                        <div className="text-center py-8 text-muted-foreground">
-                            กำลังโหลด...
-                        </div>
-                    ) : events.length === 0 ? (
-                        <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg">
-                            <p className="mb-2">ยังไม่มีเหตุการณ์สำคัญ</p>
-                            <p className="text-sm">บันทึกจุดเปลี่ยนสำคัญในชีวิตตัวละคร เช่น การค้นพบพลัง, การสูญเสีย, ความสำเร็จ</p>
-                        </div>
-                    ) : (
-                        <div className="space-y-3">
-                            {events.map((event) => {
-                                const eventConfig = getEventConfig(event.eventType);
-                                const impactConfig = getImpactConfig(event.impact || "neutral");
+            <div className="flex justify-end mb-4">
+                <Button onClick={openAddDialog} size="sm" variant="outline" className="chamfered-sm">
+                    <Plus className="h-4 w-4 mr-2" />
+                    เพิ่มเหตุการณ์
+                </Button>
+            </div>
 
-                                return (
-                                    <div
-                                        key={event.id}
-                                        className="flex items-start gap-3 p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
-                                    >
-                                        {/* Event Icon */}
-                                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl ${eventConfig.color} text-white`}>
-                                            {eventConfig.icon}
-                                        </div>
+            {isLoading ? (
+                <div className="text-sm text-muted-foreground py-6">กำลังโหลด…</div>
+            ) : events.length === 0 ? (
+                <div className="flex flex-col items-center text-center py-12 chamfered border border-dashed border-border bg-card/40">
+                    <Sparkles className="w-9 h-9 text-[var(--forge-gold)]/50 mb-3" />
+                    <p className="font-display font-semibold">ยังไม่มีเหตุการณ์สำคัญ</p>
+                    <p className="text-sm text-muted-foreground mt-1.5 max-w-sm">
+                        บันทึกจุดเปลี่ยนในชีวิตตัวละคร เช่น การค้นพบพลัง การสูญเสีย หรือความสำเร็จ
+                    </p>
+                </div>
+            ) : (
+                <div className="relative ml-3 border-l border-border/70 pl-7 space-y-6">
+                    {events.map((event) => {
+                        const eventConfig = getEventConfig(event.eventType);
+                        const impactConfig = getImpactConfig(event.impact || "neutral");
+                        const EventIcon = EVENT_ICONS[event.eventType] || Pin;
+                        const ImpactIcon = impactConfig.Icon;
 
-                                        {/* Event Content */}
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                                <span className="font-medium">{event.title}</span>
-                                                <Badge variant="outline" className="text-xs">
-                                                    {eventConfig.label}
-                                                </Badge>
-                                                <Badge variant="outline" className={`text-xs ${event.impact === 'positive' ? 'border-green-500 text-green-600' : event.impact === 'negative' ? 'border-red-500 text-red-600' : ''}`}>
-                                                    {impactConfig.icon} {impactConfig.label}
-                                                </Badge>
-                                            </div>
+                        return (
+                            <div key={event.id} className="group relative">
+                                {/* timeline node */}
+                                <span className={`absolute -left-[37px] top-0.5 flex h-6 w-6 items-center justify-center chamfered-sm border border-border bg-card ${EVENT_DOT[event.eventType] || "text-muted-foreground"}`}>
+                                    <EventIcon className="h-3.5 w-3.5" />
+                                </span>
 
-                                            {event.description && (
-                                                <p className="text-sm text-muted-foreground line-clamp-2 mb-1">
-                                                    {event.description}
-                                                </p>
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                                            {event.chapter && (
+                                                <span className="font-technical text-[9px] uppercase tracking-[0.12em] text-[var(--forge-amber)]">
+                                                    บทที่ {event.chapter.orderIndex}
+                                                </span>
                                             )}
-
-                                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                                                {event.chapter && (
-                                                    <span className="bg-primary/10 text-primary px-2 py-0.5 rounded">
-                                                        บทที่ {event.chapter.orderIndex}
-                                                    </span>
-                                                )}
-                                                <span>ความสำคัญ: {event.importance}/10</span>
-                                            </div>
+                                            <span className="font-technical text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
+                                                {eventConfig.label}
+                                            </span>
                                         </div>
-
-                                        {/* Actions */}
-                                        <div className="flex gap-1">
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-8 w-8"
-                                                onClick={() => openEditDialog(event)}
-                                            >
-                                                <Pencil className="h-4 w-4" />
-                                            </Button>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-8 w-8 text-muted-foreground hover:text-red-500"
-                                                onClick={() => setDeleteId(event.id)}
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
+                                        <h4 className="font-display font-semibold leading-tight">{event.title}</h4>
+                                        {event.description && (
+                                            <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+                                                {event.description}
+                                            </p>
+                                        )}
+                                        <div className="flex items-center gap-3 mt-1.5">
+                                            <span className={`inline-flex items-center gap-1 text-[11px] ${impactConfig.cls}`}>
+                                                <ImpactIcon className="h-3 w-3" />{impactConfig.label}
+                                            </span>
+                                            <span className="font-technical text-[10px] tabular-nums text-muted-foreground">
+                                                ความสำคัญ {event.importance}/10
+                                            </span>
                                         </div>
                                     </div>
-                                );
-                            })}
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
+
+                                    <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
+                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditDialog(event)}>
+                                            <Pencil className="h-3.5 w-3.5" />
+                                        </Button>
+                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-red-500" onClick={() => setDeleteId(event.id)}>
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
 
             {/* Add/Edit Dialog */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -329,7 +336,7 @@ export function CharacterLifeEvents({ characterId, novelId }: CharacterLifeEvent
                                     <SelectContent>
                                         {Object.entries(EVENT_TYPES).map(([key, config]) => (
                                             <SelectItem key={key} value={key}>
-                                                {config.icon} {config.label}
+                                                {config.label}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
@@ -345,7 +352,7 @@ export function CharacterLifeEvents({ characterId, novelId }: CharacterLifeEvent
                                     <SelectContent>
                                         {Object.entries(IMPACT_CONFIG).map(([key, config]) => (
                                             <SelectItem key={key} value={key}>
-                                                {config.icon} {config.label}
+                                                {config.label}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>

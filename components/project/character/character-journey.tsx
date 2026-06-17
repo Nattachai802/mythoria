@@ -25,15 +25,6 @@ const STATUS_COLORS: Record<string, string> = {
     escaped: "bg-blue-500",
 };
 
-const METHOD_ICONS: Record<string, string> = {
-    walk: "🚶",
-    horse: "🐴",
-    carriage: "🛒",
-    boat: "⛵",
-    teleport: "✨",
-    custom: "⚙️",
-};
-
 interface TravelSegment {
     fromNoteId: string;
     toNoteId: string;
@@ -99,9 +90,9 @@ export function CharacterJourney({ characterId, novelId }: CharacterJourneyProps
 
     return (
         <div className="space-y-2">
-            <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2 mb-1 font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground tabular-nums">
                 <MapPin className="h-3 w-3" />
-                <span>เส้นทางการเดินทาง ({journey.length} จุด)</span>
+                {journey.length} จุดที่ AI บันทึกตำแหน่ง
             </div>
 
             <div className="relative">
@@ -115,8 +106,21 @@ export function CharacterJourney({ characterId, novelId }: CharacterJourneyProps
                         const segmentKey = nextPoint ? `${point.noteId}-${nextPoint.noteId}` : null;
                         const travelInfo = segmentKey ? travelSegments.get(segmentKey) : null;
 
+                        // Show a chapter header when the chapter changes
+                        const prevPoint = journey[index - 1];
+                        const showChapterHeader =
+                            index === 0 || prevPoint?.chapterId !== point.chapterId;
+
                         return (
                             <div key={`${point.noteId}-${index}`}>
+                                {showChapterHeader && (
+                                    <div className="relative flex items-center gap-2 pl-10 pt-3 pb-1.5 first:pt-0">
+                                        <span className="absolute left-[9px] top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-sm border border-border bg-background" />
+                                        <span className="font-technical text-[10px] uppercase tracking-[0.12em] text-foreground/70">
+                                            {point.chapterTitle || "ไม่ได้จัดเข้าบท"}
+                                        </span>
+                                    </div>
+                                )}
                                 {/* Journey Point */}
                                 <div className="relative pl-10 py-2">
                                     {/* Timeline dot */}
@@ -130,7 +134,7 @@ export function CharacterJourney({ characterId, novelId }: CharacterJourneyProps
                                     {/* Content */}
                                     <Link
                                         href={`/dashboard/project/${novelId}/notes/${point.noteId}`}
-                                        className="group block p-2 rounded-lg hover:bg-muted/50 transition-colors"
+                                        className="group block p-2 chamfered-sm hover:bg-muted/50 transition-colors"
                                     >
                                         <div className="flex items-start justify-between gap-2">
                                             <div className="flex-1 min-w-0">
@@ -174,10 +178,10 @@ export function CharacterJourney({ characterId, novelId }: CharacterJourneyProps
                                 {travelInfo && travelInfo.travelTime && (
                                     <div className="relative pl-10 py-1">
                                         <div className="absolute left-[14px] top-0 bottom-0 w-0.5 bg-amber-500/50" />
-                                        <div className="flex items-center gap-2 py-1 px-2 ml-2 rounded bg-amber-500/10 border border-amber-500/20 text-xs">
+                                        <div className="flex items-center gap-2 py-1 px-2 ml-2 chamfered-sm bg-amber-500/10 border border-amber-500/20 text-xs">
                                             <Clock className="h-3 w-3 text-amber-500" />
                                             <span className="text-amber-700 dark:text-amber-400">
-                                                {METHOD_ICONS[travelInfo.travelMethod || "walk"]} {travelInfo.travelTime} {travelInfo.travelTimeUnit === "hours" ? "ชม." : travelInfo.travelTimeUnit === "days" ? "วัน" : travelInfo.travelTimeUnit}
+                                                {travelInfo.travelTime} {travelInfo.travelTimeUnit === "hours" ? "ชม." : travelInfo.travelTimeUnit === "days" ? "วัน" : travelInfo.travelTimeUnit}
                                             </span>
                                         </div>
                                     </div>

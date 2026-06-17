@@ -1,8 +1,8 @@
 "use server";
 
 import { db } from "@/db/drizzle";
-import { characterStates, InsertCharacterState } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { characterStates, InsertCharacterState, notes, chapters } from "@/db/schema";
+import { eq, inArray } from "drizzle-orm";
 
 export interface CharacterStateWithCharacter {
     id: string;
@@ -207,6 +207,25 @@ export interface CharacterJourneyPoint {
     mood: string | null;
     health: number | null;
     extractedAt: Date;
+    chapterId: string | null;
+    chapterTitle: string | null;
+    chapterOrder: number | null;
+    episodeNumber: number | null;
+}
+
+// Extract episode number from a note title, e.g. "ตอนที่ 14 – ..." -> 14
+// Tolerates the misspelling "ตอนทืี่" and missing spaces.
+function parseEpisodeNumber(title: string): number | null {
+    const match = title.match(/ตอน\S*?\s*(\d+)/);
+    return match ? parseInt(match[1], 10) : null;
+}
+
+// Normalized key for detecting duplicate episodes (e.g. a typo'd orphan note
+// vs the real chaptered note). Uses the subtitle after the dash separator.
+function episodeDedupKey(title: string): string {
+    const parts = title.split(/[–-]/);
+    const subtitle = parts.length > 1 ? parts.slice(1).join("-") : title;
+    return subtitle.replace(/\s+/g, "").toLowerCase();
 }
 
 /**
@@ -223,19 +242,83 @@ export async function getCharacterJourney(characterId: string): Promise<{
             with: {
                 note: true,
             },
-            orderBy: (characterStates, { asc }) => [asc(characterStates.extractedAt)],
+            orderBy: (table, { desc }) => [desc(table.extractedAt)],
         });
 
-        const journey: CharacterJourneyPoint[] = states.map((state) => ({
-            noteId: state.noteId,
-            noteTitle: (state as any).note?.title || "",
-            locationId: state.locationId,
-            locationName: state.locationName,
-            status: state.status,
-            mood: state.mood,
-            health: state.health,
-            extractedAt: state.extractedAt,
-        }));
+        // Dedup step 1: keep only the most recent extraction per noteId
+        const seenNoteIds = new Set<string>();
+        const dedupByNote = states.filter((state) => {
+            if (seenNoteIds.has(state.noteId)) return false;
+            seenNoteIds.add(state.noteId);
+            return true;
+        });
+
+        // Dedup step 2: collapse duplicate episodes (e.g. a typo'd orphan note vs
+        // the real chaptered note). Prefer the entry that is linked to a chapter.
+        const byEpisode = new Map<string, typeof dedupByNote[number]>();
+        for (const state of dedupByNote) {
+            const title = (state as any).note?.title || "";
+            const key = episodeDedupKey(title);
+            const existing = byEpisode.get(key);
+            if (!existing) {
+                byEpisode.set(key, state);
+                continue;
+            }
+            const existingHasChapter = !!(existing as any).note?.linkedToChapterId;
+            const currentHasChapter = !!(state as any).note?.linkedToChapterId;
+            // Replace only if current is chaptered and existing isn't
+            if (currentHasChapter && !existingHasChapter) {
+                byEpisode.set(key, state);
+            }
+        }
+        const dedupedStates = Array.from(byEpisode.values());
+
+        // Fetch chapter info (title + orderIndex) for grouping and sorting
+        const chapterIds = dedupedStates
+            .map((s) => (s as any).note?.linkedToChapterId)
+            .filter(Boolean) as string[];
+        const chapterInfoMap = new Map<string, { title: string; orderIndex: number }>();
+        if (chapterIds.length > 0) {
+            const chapterRows = await db.query.chapters.findMany({
+                where: (table, { inArray }) => inArray(table.id, chapterIds),
+                columns: { id: true, title: true, orderIndex: true },
+            });
+            for (const ch of chapterRows) {
+                chapterInfoMap.set(ch.id, { title: ch.title, orderIndex: ch.orderIndex });
+            }
+        }
+
+        const journey: CharacterJourneyPoint[] = dedupedStates.map((state) => {
+            const note = (state as any).note;
+            const chapterId = note?.linkedToChapterId ?? null;
+            const chapterInfo = chapterId ? chapterInfoMap.get(chapterId) : undefined;
+            const title = note?.title || "";
+            return {
+                noteId: state.noteId,
+                noteTitle: title,
+                locationId: state.locationId,
+                locationName: state.locationName,
+                status: state.status,
+                mood: state.mood,
+                health: state.health,
+                extractedAt: state.extractedAt,
+                chapterId,
+                chapterTitle: chapterInfo?.title ?? null,
+                chapterOrder: chapterInfo?.orderIndex ?? null,
+                episodeNumber: parseEpisodeNumber(title),
+            };
+        });
+
+        // Sort by chapter order, then by episode number, then by extraction time
+        journey.sort((a, b) => {
+            const aChapter = a.chapterOrder ?? Infinity;
+            const bChapter = b.chapterOrder ?? Infinity;
+            if (aChapter !== bChapter) return aChapter - bChapter;
+            const aEp = a.episodeNumber ?? Infinity;
+            const bEp = b.episodeNumber ?? Infinity;
+            if (aEp !== bEp) return aEp - bEp;
+            return a.extractedAt.getTime() - b.extractedAt.getTime();
+        });
 
         return {
             success: true,

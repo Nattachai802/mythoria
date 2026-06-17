@@ -135,7 +135,7 @@ export function ActivityCalendar({ activity, large = false }: ActivityCalendarPr
                                                 <div
                                                     className={cn(
                                                         cellSize,
-                                                        "chamfered-sm cursor-pointer transition-colors hover:ring-2 hover:ring-[var(--forge-gold)]/50",
+                                                        "rounded-md cursor-pointer transition-colors hover:ring-2 hover:ring-[var(--forge-gold)]/50",
                                                         intensityColors[getIntensity(day.words)]
                                                     )}
                                                 />
@@ -163,7 +163,7 @@ export function ActivityCalendar({ activity, large = false }: ActivityCalendarPr
             <div className="flex items-center gap-2.5 text-xs text-muted-foreground">
                 <span>น้อย</span>
                 {intensityColors.map((color, index) => (
-                    <div key={index} className={cn("chamfered-sm", color, large ? "w-4 h-4" : "w-3.5 h-3.5")} />
+                    <div key={index} className={cn("rounded-sm", color, large ? "w-4 h-4" : "w-3.5 h-3.5")} />
                 ))}
                 <span>มาก</span>
             </div>

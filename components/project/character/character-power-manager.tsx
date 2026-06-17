@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { Power, PowerLevel, CharacterPower } from "@/db/schema";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,7 +21,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Zap, Trash2, ChevronUp, ChevronDown, Sparkles } from "lucide-react";
+import { Plus, Zap, Trash2, ChevronUp, ChevronDown, Sparkles, ArrowRight } from "lucide-react";
 import {
     assignPowerToCharacter,
     removePowerFromCharacter,
@@ -134,47 +133,39 @@ export function CharacterPowerManager({ characterId, novelId }: CharacterPowerMa
     );
 
     if (loading) {
-        return (
-            <Card>
-                <CardContent className="py-8 text-center text-muted-foreground">
-                    Loading powers...
-                </CardContent>
-            </Card>
-        );
+        return <div className="text-sm text-muted-foreground py-4">กำลังโหลดพลัง…</div>;
     }
 
     return (
         <div className="space-y-4">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <Zap className="w-5 h-5 text-primary" />
-                    <h3 className="font-semibold">Powers</h3>
-                    <Badge variant="secondary">{characterPowers.length}</Badge>
-                </div>
+            {/* Toolbar */}
+            <div className="flex items-center justify-between gap-3">
+                <span className="font-technical text-[10px] uppercase tracking-[0.15em] text-muted-foreground tabular-nums">
+                    {characterPowers.length} พลังที่ถือครอง
+                </span>
                 <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
                     <DialogTrigger asChild>
-                        <Button size="sm" disabled={unassignedPowers.length === 0}>
+                        <Button size="sm" variant="outline" className="chamfered-sm" disabled={unassignedPowers.length === 0}>
                             <Plus className="h-4 w-4 mr-1" />
-                            Add Power
+                            เพิ่มพลัง
                         </Button>
                     </DialogTrigger>
                     <DialogContent>
                         <DialogHeader>
-                            <DialogTitle>Assign Power</DialogTitle>
+                            <DialogTitle>มอบพลังให้ตัวละคร</DialogTitle>
                         </DialogHeader>
                         <div className="space-y-4">
                             <div className="space-y-2">
-                                <Label>Select Power</Label>
+                                <Label>เลือกพลัง</Label>
                                 <Select value={selectedPowerId} onValueChange={setSelectedPowerId}>
                                     <SelectTrigger>
-                                        <SelectValue placeholder="Choose a power..." />
+                                        <SelectValue placeholder="เลือกพลัง…" />
                                     </SelectTrigger>
                                     <SelectContent>
                                         {unassignedPowers.map((power) => (
                                             <SelectItem key={power.id} value={power.id}>
                                                 <div className="flex items-center gap-2">
-                                                    <span>{power.icon || "⚡"}</span>
+                                                    <span className="w-2 h-2 chamfered-sm shrink-0" style={{ backgroundColor: power.color || "var(--forge-gold)" }} />
                                                     <span>{power.name}</span>
                                                     <Badge variant="outline" className="text-xs ml-2">
                                                         {power.rarity}
@@ -187,26 +178,26 @@ export function CharacterPowerManager({ characterId, novelId }: CharacterPowerMa
                             </div>
 
                             <div className="space-y-2">
-                                <Label>How was it acquired?</Label>
+                                <Label>ได้พลังมาอย่างไร?</Label>
                                 <Select value={acquiredMethod} onValueChange={setAcquiredMethod}>
                                     <SelectTrigger>
-                                        <SelectValue placeholder="Select method..." />
+                                        <SelectValue placeholder="เลือกวิธี…" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="born">Born with it</SelectItem>
-                                        <SelectItem value="trained">Trained</SelectItem>
-                                        <SelectItem value="gifted">Gifted</SelectItem>
-                                        <SelectItem value="stolen">Stolen</SelectItem>
-                                        <SelectItem value="awakened">Awakened</SelectItem>
-                                        <SelectItem value="other">Other</SelectItem>
+                                        <SelectItem value="born">เกิดมาพร้อมพลัง</SelectItem>
+                                        <SelectItem value="trained">ฝึกฝน</SelectItem>
+                                        <SelectItem value="gifted">ได้รับมอบ</SelectItem>
+                                        <SelectItem value="stolen">ขโมยมา</SelectItem>
+                                        <SelectItem value="awakened">ปลุกพลัง</SelectItem>
+                                        <SelectItem value="other">อื่นๆ</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
 
                             <div className="space-y-2">
-                                <Label>Notes (optional)</Label>
+                                <Label>หมายเหตุ (ไม่บังคับ)</Label>
                                 <Textarea
-                                    placeholder="Any additional details..."
+                                    placeholder="รายละเอียดเพิ่มเติม…"
                                     value={notes}
                                     onChange={(e) => setNotes(e.target.value)}
                                 />
@@ -214,10 +205,10 @@ export function CharacterPowerManager({ characterId, novelId }: CharacterPowerMa
 
                             <div className="flex justify-end gap-2">
                                 <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
-                                    Cancel
+                                    ยกเลิก
                                 </Button>
                                 <Button onClick={handleAddPower}>
-                                    Assign Power
+                                    มอบพลัง
                                 </Button>
                             </div>
                         </div>
@@ -227,106 +218,94 @@ export function CharacterPowerManager({ characterId, novelId }: CharacterPowerMa
 
             {/* No powers message */}
             {characterPowers.length === 0 ? (
-                <Card>
-                    <CardContent className="py-8 text-center text-muted-foreground">
-                        <Zap className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                        <p>No powers assigned yet</p>
-                        {availablePowers.length === 0 && (
-                            <p className="text-xs mt-1">Create powers in the Powers page first</p>
-                        )}
-                    </CardContent>
-                </Card>
+                <div className="flex flex-col items-center text-center py-10 chamfered border border-dashed border-border bg-card/40">
+                    <Zap className="w-9 h-9 text-[var(--forge-gold)]/50 mb-3" />
+                    <p className="text-sm text-muted-foreground">ยังไม่ได้มอบพลังให้ตัวละครนี้</p>
+                    {availablePowers.length === 0 && (
+                        <p className="text-xs text-muted-foreground/70 mt-1">สร้างพลังในหน้าระบบพลังก่อน</p>
+                    )}
+                </div>
             ) : (
                 <div className="space-y-3">
                     {characterPowers.map((cp) => {
                         const maxLevel = cp.power.maxLevel || 10;
                         const currentLevel = cp.currentLevel || 1;
+                        const accent = cp.power.color || "var(--forge-gold)";
 
                         return (
-                            <Card
-                                key={cp.id}
-                                className="border-l-4"
-                                style={{ borderLeftColor: cp.power.color || "#3b82f6" }}
-                            >
-                                <CardHeader className="pb-2">
-                                    <div className="flex items-start justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <div
-                                                className="w-10 h-10 rounded-lg flex items-center justify-center text-xl"
-                                                style={{ backgroundColor: `${cp.power.color}20` }}
-                                            >
-                                                {cp.power.icon || "⚡"}
-                                            </div>
-                                            <div>
-                                                <h4 className="font-semibold">{cp.power.name}</h4>
-                                                <div className="flex items-center gap-2 mt-1">
-                                                    <Badge variant="outline" className="text-xs">
-                                                        {cp.power.type}
-                                                    </Badge>
-                                                    {cp.acquiredMethod && (
-                                                        <span className="text-xs text-muted-foreground">
-                                                            {cp.acquiredMethod}
-                                                        </span>
-                                                    )}
-                                                </div>
+                            <div key={cp.id} className="chamfered border border-border bg-card/50 p-4">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <div
+                                            className="w-10 h-10 chamfered-sm flex items-center justify-center shrink-0 border"
+                                            style={{ backgroundColor: `color-mix(in oklch, ${accent} 16%, transparent)`, borderColor: `color-mix(in oklch, ${accent} 35%, transparent)` }}
+                                        >
+                                            {cp.power.icon ? (
+                                                <span className="text-lg leading-none">{cp.power.icon}</span>
+                                            ) : (
+                                                <Zap className="w-5 h-5" style={{ color: accent }} />
+                                            )}
+                                        </div>
+                                        <div className="min-w-0">
+                                            <h4 className="font-display font-bold leading-tight truncate">{cp.power.name}</h4>
+                                            <div className="flex items-center gap-2 mt-1">
+                                                <span className="font-technical text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
+                                                    {cp.power.type}
+                                                </span>
+                                                {cp.acquiredMethod && (
+                                                    <span className="text-xs text-muted-foreground">· {cp.acquiredMethod}</span>
+                                                )}
                                             </div>
                                         </div>
+                                    </div>
 
-                                        <div className="flex items-center gap-2">
-                                            {/* Level Controls */}
-                                            <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
-                                                <Button
-                                                    size="icon"
-                                                    variant="ghost"
-                                                    className="h-6 w-6"
-                                                    disabled={currentLevel <= 1}
-                                                    onClick={() => handleLevelChange(cp.id, currentLevel - 1)}
-                                                >
-                                                    <ChevronDown className="h-3 w-3" />
-                                                </Button>
-                                                <span className="text-sm font-medium px-2">
-                                                    Lv. {currentLevel}
-                                                </span>
-                                                <Button
-                                                    size="icon"
-                                                    variant="ghost"
-                                                    className="h-6 w-6"
-                                                    disabled={currentLevel >= maxLevel}
-                                                    onClick={() => handleLevelChange(cp.id, currentLevel + 1)}
-                                                >
-                                                    <ChevronUp className="h-3 w-3" />
-                                                </Button>
-                                            </div>
-
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        {/* Level Controls */}
+                                        <div className="flex items-center gap-1 bg-muted chamfered-sm p-1">
                                             <Button
                                                 size="icon"
                                                 variant="ghost"
-                                                className="h-8 w-8 text-red-500 hover:text-red-600"
-                                                onClick={() => handleRemovePower(cp.id, cp.power.name)}
+                                                className="h-6 w-6"
+                                                disabled={currentLevel <= 1}
+                                                onClick={() => handleLevelChange(cp.id, currentLevel - 1)}
                                             >
-                                                <Trash2 className="h-4 w-4" />
+                                                <ChevronDown className="h-3 w-3" />
+                                            </Button>
+                                            <span className="font-technical text-xs font-medium px-1.5 tabular-nums">
+                                                ระดับ {currentLevel}
+                                            </span>
+                                            <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                className="h-6 w-6"
+                                                disabled={currentLevel >= maxLevel}
+                                                onClick={() => handleLevelChange(cp.id, currentLevel + 1)}
+                                            >
+                                                <ChevronUp className="h-3 w-3" />
                                             </Button>
                                         </div>
+
+                                        <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            className="h-8 w-8 text-red-500 hover:text-red-600"
+                                            onClick={() => handleRemovePower(cp.id, cp.power.name)}
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
                                     </div>
-                                </CardHeader>
+                                </div>
 
                                 {cp.power.levels && cp.power.levels.length > 0 && (
-                                    <CardContent className="pt-0">
-                                        <PowerLevelDisplay
-                                            levels={cp.power.levels}
-                                            currentLevel={currentLevel}
-                                        />
-                                    </CardContent>
+                                    <div className="mt-3 pt-3 border-t border-border/60">
+                                        <PowerLevelDisplay levels={cp.power.levels} currentLevel={currentLevel} />
+                                    </div>
                                 )}
 
                                 {cp.notes && (
-                                    <CardContent className="pt-0">
-                                        <p className="text-xs text-muted-foreground italic">
-                                            {cp.notes}
-                                        </p>
-                                    </CardContent>
+                                    <p className="text-xs text-muted-foreground italic mt-2">{cp.notes}</p>
                                 )}
-                            </Card>
+                            </div>
                         );
                     })}
                 </div>
@@ -334,34 +313,23 @@ export function CharacterPowerManager({ characterId, novelId }: CharacterPowerMa
 
             {/* Possible Combinations */}
             {possibleCombinations.length > 0 && (
-                <Card className="border-dashed border-2 border-amber-300 bg-amber-50/50">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-sm flex items-center gap-2 text-amber-700">
-                            <Sparkles className="w-4 h-4" />
-                            Possible Power Combinations
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-2">
-                            {possibleCombinations.map((combo: any) => (
-                                <div
-                                    key={combo.id}
-                                    className="flex items-center gap-2 text-sm"
-                                >
-                                    <span>→</span>
-                                    <span className="font-medium">
-                                        {combo.resultPower?.icon || "✨"} {combo.resultPower?.name}
-                                    </span>
-                                    {combo.description && (
-                                        <span className="text-muted-foreground text-xs">
-                                            ({combo.description})
-                                        </span>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
+                <div className="chamfered border border-[var(--forge-gold)]/40 bg-[var(--forge-gold)]/[0.06] p-4">
+                    <div className="flex items-center gap-2 mb-2.5 font-technical text-[10px] uppercase tracking-[0.15em] text-[var(--forge-amber)]">
+                        <Sparkles className="w-3.5 h-3.5" />
+                        การผสานพลังที่เป็นไปได้
+                    </div>
+                    <div className="space-y-1.5">
+                        {possibleCombinations.map((combo: any) => (
+                            <div key={combo.id} className="flex items-center gap-2 text-sm">
+                                <ArrowRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                                <span className="font-medium">{combo.resultPower?.name}</span>
+                                {combo.description && (
+                                    <span className="text-muted-foreground text-xs">({combo.description})</span>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
             )}
         </div>
     );

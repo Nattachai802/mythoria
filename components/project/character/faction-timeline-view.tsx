@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { getAllFactionsWithMembers, getFactionsByNovelId } from "@/server/factions";
 import { getChapters } from "@/server/chapter";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -129,36 +128,21 @@ export function FactionTimelineView({ novelId }: FactionTimelineViewProps) {
     };
 
     if (isLoading) {
-        return (
-            <Card>
-                <CardContent className="py-8 text-center text-muted-foreground">
-                    กำลังโหลดข้อมูลก๊ก...
-                </CardContent>
-            </Card>
-        );
+        return <div className="text-sm text-muted-foreground py-4">กำลังโหลดข้อมูลก๊ก…</div>;
     }
 
     if (factions.length === 0) {
         return (
-            <Card>
-                <CardContent className="py-8 text-center text-muted-foreground">
-                    <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                    <p className="mb-2">ยังไม่มีก๊ก/ฝ่าย</p>
-                    <p className="text-sm">สร้างก๊กในหน้าความสัมพันธ์เพื่อติดตามสมาชิก</p>
-                </CardContent>
-            </Card>
+            <div className="flex flex-col items-center text-center py-10 chamfered border border-dashed border-border bg-card/40">
+                <Users className="w-9 h-9 text-[var(--forge-gold)]/50 mb-3" />
+                <p className="text-sm text-muted-foreground">ยังไม่มีก๊ก/ฝ่าย</p>
+                <p className="text-xs text-muted-foreground/70 mt-1">สร้างก๊กในหน้าความสัมพันธ์เพื่อติดตามสมาชิก</p>
+            </div>
         );
     }
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                    <Users className="w-5 h-5" />
-                    Timeline ก๊ก/ฝ่าย
-                </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
+        <div className="chamfered border border-border bg-card/50 p-5 space-y-4">
                 {/* Chapter markers */}
                 {chapters.length > 0 && (
                     <div className="relative h-6 mb-2">
@@ -196,7 +180,7 @@ export function FactionTimelineView({ novelId }: FactionTimelineViewProps) {
                             : {};
 
                         return (
-                            <div key={faction.id} className="border rounded-lg overflow-hidden">
+                            <div key={faction.id} className="border border-border chamfered-sm overflow-hidden">
                                 {/* Faction Header */}
                                 <button
                                     className="w-full flex items-center justify-between p-3 bg-muted/50 hover:bg-muted/70 transition-colors text-left"
@@ -307,7 +291,6 @@ export function FactionTimelineView({ novelId }: FactionTimelineViewProps) {
                         );
                     })}
                 </div>
-            </CardContent>
-        </Card>
+        </div>
     );
 }

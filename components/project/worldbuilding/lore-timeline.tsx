@@ -23,8 +23,12 @@ import {
 import {
     Plus, MoreHorizontal, Pencil, Trash2, Copy,
     Layers, ChevronDown, ChevronRight as ChevronRightIcon, MapPin,
-    FolderPlus, Clock, X, Menu, BookOpen, Download, Search, FilterX, Sparkles
+    FolderPlus, Clock, X, Menu, BookOpen, Download, Search, FilterX, Sparkles,
+    Star, SlidersHorizontal, Users, Package
 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Switch } from "@/components/ui/switch";
+import { LoreInspectorPanel } from "./lore-inspector-panel";
 import { deleteLoreEntry } from "@/server/lore";
 import { toast } from "sonner";
 import { LoreDialog } from "./lore-dialog";
@@ -39,7 +43,6 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { LoreGroupDialog } from "./lore-group-dialog";
-import { LoreVisualTimeline } from "./lore-visual-timeline";
 import { LoreDetailDialog } from "./lore-detail-dialog";
 import { getIdeasByNovelId } from "@/server/idea";
 
@@ -152,12 +155,29 @@ export function LoreTimeline({
     const [editGroup, setEditGroup] = useState<LoreGroup | null>(null);
     const [defaultParentLoreId, setDefaultParentLoreId] = useState<string | null>(null);
     const [defaultGroupId, setDefaultGroupId] = useState<string | null>(null);
-    const [viewMode, setViewMode] = useState<"timeline" | "hierarchy" | "groups" | "eras">("timeline");
+    const [viewMode, setViewMode] = useState<"timeline" | "hierarchy" | "groups">("timeline");
     const [detailDialogOpen, setDetailDialogOpen] = useState(false);
     const [selectedLoreForDetail, setSelectedLoreForDetail] = useState<LoreEntry | null>(null);
     const [deleteConfirmEntry, setDeleteConfirmEntry] = useState<LoreEntry | null>(null);
+    const [inspectEntry, setInspectEntry] = useState<LoreEntry | null>(null);
+    // LOD — แสดงเฉพาะ node สำคัญ (importance >= 7 จากสเกล 1-10)
+    const [majorOnly, setMajorOnly] = useState(false);
+    const MAJOR_THRESHOLD = 7;
+    // ยุบ/กางคอลัมน์ยุคที่ lore ยาว (Chronicle spine)
+    const [expandedSpineEras, setExpandedSpineEras] = useState<Set<string>>(new Set());
+    const SPINE_CAP = 7;
+    const toggleSpineEra = (id: string) => setExpandedSpineEras(prev => {
+        const next = new Set(prev);
+        next.has(id) ? next.delete(id) : next.add(id);
+        return next;
+    });
 
+    // คลิกการ์ด → เปิด inspector panel ด้านข้าง (แทน modal เดิม)
     const handleViewDetail = (entry: LoreEntry) => {
+        setInspectEntry(entry);
+    };
+    // "เปิดเต็ม" จาก inspector → detail dialog เดิม (connections/AI)
+    const handleOpenFullDetail = (entry: LoreEntry) => {
         setSelectedLoreForDetail(entry);
         setDetailDialogOpen(true);
     };
@@ -221,9 +241,14 @@ export function LoreTimeline({
         });
     }, [entries, searchQuery, filterEra, filterType, filterImportance]);
 
-    const rootEntries = filteredEntries.filter(e => !e.parentLoreId);
-    const ungroupedEntries = filteredEntries.filter(e => !e.groupId && !e.parentLoreId);
-    const loresWithoutEra = filteredEntries.filter(e => !e.eraId && !e.parentLoreId);
+    // LOD filter — ตัด node รองออกเมื่อเปิด "สำคัญเท่านั้น"
+    const passesLOD = (e: LoreEntry) => !majorOnly || (e.importance ?? 0) >= MAJOR_THRESHOLD;
+    const lodEntries = filteredEntries.filter(passesLOD);
+    const hiddenByLOD = majorOnly ? filteredEntries.filter(e => !e.parentLoreId && (e.importance ?? 0) < MAJOR_THRESHOLD).length : 0;
+
+    const rootEntries = lodEntries.filter(e => !e.parentLoreId);
+    const ungroupedEntries = lodEntries.filter(e => !e.groupId && !e.parentLoreId);
+    const loresWithoutEra = lodEntries.filter(e => !e.eraId && !e.parentLoreId);
 
     const handleEdit = (entry: LoreEntry) => {
         setEditEntry(entry);
@@ -413,6 +438,9 @@ export function LoreTimeline({
                 <div className={`flex items-start gap-4 ${isLeft ? 'flex-row' : 'flex-row-reverse'}`}>
                     {/* Card Side */}
                     <div className={`flex-1 ${isLeft ? 'pr-8' : 'pl-8'}`}>
+                      <TooltipProvider delayDuration={350}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
                         <div
                             className={`group relative cursor-pointer transition-all duration-300 hover:scale-[1.02] ${isLeft ? 'text-right' : 'text-left'}`}
                             onClick={() => handleViewDetail(entry)}
@@ -607,6 +635,35 @@ export function LoreTimeline({
                                 </div>
                             </div>
                         </div>
+                          </TooltipTrigger>
+                          <TooltipContent side={isLeft ? "left" : "right"} align="start" className="max-w-[240px] p-3">
+                            <div className="flex items-center gap-1.5 mb-1">
+                                <span className="text-sm">{entry.icon || TYPE_ICONS[entry.type || "event"] || "⚡"}</span>
+                                <span className="font-semibold text-xs">{entry.title}</span>
+                            </div>
+                            {stripHtml(entry.content) ? (
+                                <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-3 mb-1.5">{stripHtml(entry.content)}</p>
+                            ) : (
+                                <p className="text-[11px] text-muted-foreground/70 italic mb-1.5">ยังไม่มีเนื้อหา</p>
+                            )}
+                            <div className="flex flex-wrap items-center gap-1">
+                                {entry.type && (
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ color: entryColor, background: `${entryColor}1a` }}>{entry.type}</span>
+                                )}
+                                {entry.scope === "location" && entry.location && (
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground inline-flex items-center gap-0.5">
+                                        <MapPin className="h-2.5 w-2.5" />{entry.location.name}
+                                    </span>
+                                )}
+                                {typeof entry.importance === "number" && entry.importance > 0 && (
+                                    <span className="inline-flex items-center gap-0.5 text-[9px] text-amber-500">
+                                        <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-400" />{entry.importance}
+                                    </span>
+                                )}
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                     </div>
 
                     {/* Center Node */}
@@ -755,96 +812,227 @@ export function LoreTimeline({
         const children = getChildLores(entry.id);
         const hasChildren = children.length > 0;
         const entryColor = entry.color || TYPE_COLORS[entry.type || "event"] || "#8b5cf6";
+        const major = (entry.importance ?? 0) >= MAJOR_THRESHOLD;
+        const typeLabel = entry.type ? (TYPE_LABELS[entry.type] || entry.type) : null;
 
         return (
             <div key={entry.id} className="space-y-2">
-                <Card 
-                    className="hover:shadow-lg transition-shadow overflow-hidden cursor-pointer" 
-                    style={{ borderLeftColor: entryColor, borderLeftWidth: "4px" }}
+                <div
+                    className="group relative chamfered-sm border bg-white hover:bg-[#FAF7EF] transition-colors cursor-pointer px-4 py-3"
+                    style={{ borderColor: "#E7E0D0", borderTopColor: entryColor, borderTopWidth: 2 }}
                     onClick={() => handleViewDetail(entry)}
                 >
-                    <CardContent className="pt-4 pb-3">
-                        <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-start gap-3 flex-1 min-w-0">
-                                <div className="w-10 h-10 rounded-lg flex items-center justify-center text-xl shrink-0" style={{ backgroundColor: `${entryColor}20` }}>
-                                    {entry.icon || TYPE_ICONS[entry.type || "event"] || "⚡"}
+                    <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-3 flex-1 min-w-0">
+                            {/* notch — ทึบ=สำคัญ กลวง=รอง */}
+                            <span
+                                className="shrink-0 mt-1.5"
+                                style={{
+                                    width: 9, height: 9, transform: "rotate(45deg)",
+                                    background: major ? "var(--forge-amber)" : "transparent",
+                                    border: major ? "none" : `1.5px solid ${entryColor}`,
+                                    boxShadow: major ? "0 0 5px var(--forge-amber)" : "none",
+                                }}
+                            />
+                            <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5">
+                                    <h4 className="text-[15px] text-zinc-800 leading-snug truncate" style={{ fontFamily: "var(--font-serif)" }}>{entry.title}</h4>
+                                    {entry.icon && <span className="text-[11px] opacity-50 leading-none shrink-0">{entry.icon}</span>}
+                                    {major && <Star className="h-3 w-3 shrink-0 fill-amber-400 text-amber-400" />}
                                 </div>
-                                <div className="min-w-0 flex-1">
-                                    <h4 className="font-medium line-clamp-1">{entry.title}</h4>
-                                    <div className="flex flex-wrap items-center gap-1 mt-1">
-                                        {entry.era && <Badge variant="outline" className="text-xs">{entry.era.name}</Badge>}
-                                        {entry.scope === "location" && entry.location && (
-                                            <Badge variant="secondary" className="text-xs gap-1"><MapPin className="h-3 w-3" />{entry.location.name}</Badge>
-                                        )}
-                                        {hasChildren && (
-                                            <Badge className="text-xs" style={{ backgroundColor: `${entryColor}20`, color: entryColor }}>{children.length} sub-lore</Badge>
-                                        )}
-                                    </div>
-                                    {entry.content && <p className="text-sm text-muted-foreground line-clamp-2 mt-2">{stripHtml(entry.content)}</p>}
+                                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-1">
+                                    {typeLabel && <span className="text-[9px] uppercase tracking-[0.14em]" style={{ color: entryColor }}>{typeLabel}</span>}
+                                    {entry.era && <span className="text-[9px] uppercase tracking-[0.12em] text-muted-foreground inline-flex items-center gap-0.5"><Clock className="h-2.5 w-2.5" />{entry.era.name}</span>}
+                                    {entry.scope === "location" && entry.location && (
+                                        <span className="text-[9px] text-muted-foreground inline-flex items-center gap-0.5"><MapPin className="h-2.5 w-2.5" />{entry.location.name}</span>
+                                    )}
+                                    {hasChildren && <span className="text-[9px] uppercase tracking-[0.12em]" style={{ color: entryColor }}>+{children.length} sub</span>}
+                                </div>
+                                {entry.content && <p className="text-[13px] text-muted-foreground line-clamp-2 mt-2 leading-relaxed">{stripHtml(entry.content)}</p>}
 
-                                    {/* Entity Tags */}
-                                    {(() => {
-                                        const { characters: relChars, locations: relLocs, items: relItems, ideas: relIdeas } = getRelatedEntities(entry);
-                                        const hasTags = relChars.length > 0 || relLocs.length > 0 || relItems.length > 0 || relIdeas.length > 0;
-                                        if (!hasTags) return null;
-                                        return (
-                                            <div className="flex flex-wrap gap-1.5 mt-3 animate-fade-in">
-                                                {relChars.map(c => (
-                                                    <Badge
-                                                        key={c.id}
-                                                        variant="outline"
-                                                        className="text-[10px] px-2 py-0.5 border border-blue-200/60 text-blue-700 bg-blue-50/50 hover:bg-blue-100/50 transition-all duration-200"
-                                                    >
-                                                        👤 {c.name}
-                                                    </Badge>
-                                                ))}
-                                                {relLocs.map(l => (
-                                                    <Badge
-                                                        key={l.id}
-                                                        variant="outline"
-                                                        className="text-[10px] px-2 py-0.5 border border-emerald-200/60 text-emerald-700 bg-emerald-50/50 hover:bg-emerald-100/50 transition-all duration-200"
-                                                    >
-                                                        📍 {l.name}
-                                                    </Badge>
-                                                ))}
-                                                {relItems.map(item => (
-                                                    <Badge
-                                                        key={item.id}
-                                                        variant="outline"
-                                                        className="text-[10px] px-2 py-0.5 border border-amber-200/60 text-amber-700 bg-amber-50/50 hover:bg-amber-100/50 transition-all duration-200"
-                                                    >
-                                                        📦 {item.name}
-                                                    </Badge>
-                                                ))}
-                                                {relIdeas.map(idea => (
-                                                    <Badge
-                                                        key={idea.id}
-                                                        variant="outline"
-                                                        className="text-[10px] px-2 py-0.5 border border-purple-200/60 text-purple-700 bg-purple-50/50 hover:bg-purple-100/50 transition-all duration-200"
-                                                    >
-                                                        ✨ {idea.title}
-                                                    </Badge>
-                                                ))}
-                                            </div>
-                                        );
-                                    })()}
+                                {/* Entity Tags */}
+                                {(() => {
+                                    const { characters: relChars, locations: relLocs, items: relItems, ideas: relIdeas } = getRelatedEntities(entry);
+                                    const hasTags = relChars.length > 0 || relLocs.length > 0 || relItems.length > 0 || relIdeas.length > 0;
+                                    if (!hasTags) return null;
+                                    const tag = (key: string, label: string, Icon: typeof MapPin, cls: string) => (
+                                        <span key={key} className={`text-[10px] px-2 py-0.5 rounded-full border inline-flex items-center gap-1 ${cls}`}>
+                                            <Icon className="h-2.5 w-2.5" />{label}
+                                        </span>
+                                    );
+                                    return (
+                                        <div className="flex flex-wrap gap-1.5 mt-2.5">
+                                            {relChars.map(c => tag(c.id, c.name, Users, "border-blue-200/60 text-blue-700 bg-blue-50/50"))}
+                                            {relLocs.map(l => tag(l.id, l.name, MapPin, "border-emerald-200/60 text-emerald-700 bg-emerald-50/50"))}
+                                            {relItems.map(item => tag(item.id, item.name, Package, "border-amber-200/60 text-amber-700 bg-amber-50/50"))}
+                                            {relIdeas.map(idea => tag(idea.id, idea.title, Sparkles, "border-purple-200/60 text-purple-700 bg-purple-50/50"))}
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+                        </div>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}><MoreHorizontal className="h-4 w-4" /></Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEdit(entry); }}><Pencil className="h-4 w-4 mr-2" /> แก้ไข</DropdownMenuItem>
+                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleCopy(entry); }}><Copy className="h-4 w-4 mr-2" /> คัดลอก</DropdownMenuItem>
+                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleAddSubLore(entry.id); }}><Plus className="h-4 w-4 mr-2" /> เพิ่ม Sub-lore</DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setDeleteConfirmEntry(entry); }} className="text-red-600"><Trash2 className="h-4 w-4 mr-2" /> ลบ</DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    // ── Chronicle of Ages — light theme, ยุคเป็นฐานแกนนอน ──
+    const toRoman = (n: number) => {
+        const map: [number, string][] = [[10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]];
+        let r = "", x = n;
+        for (const [v, s] of map) while (x >= v) { r += s; x -= v; }
+        return r || "—";
+    };
+
+    const NodeChip = ({ entry }: { entry: LoreEntry }) => {
+        const color = entry.color || TYPE_COLORS[entry.type || "event"] || "#8b5cf6";
+        const kids = getChildLores(entry.id).filter(passesLOD);
+        const preview = stripHtml(entry.content);
+        const major = (entry.importance ?? 0) >= MAJOR_THRESHOLD;
+        const typeLabel = entry.type ? (TYPE_LABELS[entry.type] || entry.type) : null;
+        return (
+            <TooltipProvider delayDuration={300}>
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <button
+                            onClick={() => handleViewDetail(entry)}
+                            className="w-full flex items-start gap-2.5 py-1.5 pr-1.5 text-left group border-b transition-colors hover:bg-[#FAF7EF]"
+                            style={{ borderColor: "#EFEADF" }}
+                        >
+                            {/* notch — ข้าวหลามตัด ทึบ=สำคัญ กลวง=รอง */}
+                            <span
+                                className="shrink-0 mt-[5px]"
+                                style={{
+                                    width: 8, height: 8, transform: "rotate(45deg)",
+                                    background: major ? "var(--forge-amber)" : "transparent",
+                                    border: major ? "none" : `1.5px solid ${color}`,
+                                    boxShadow: major ? "0 0 5px var(--forge-amber)" : "none",
+                                }}
+                            />
+                            <span className="min-w-0 flex-1">
+                                <span className="block text-[12.5px] leading-snug text-zinc-800 truncate" style={{ fontFamily: "var(--font-serif)" }}>
+                                    {entry.title}
+                                </span>
+                                <span className="flex items-center gap-1.5 mt-0.5">
+                                    {entry.icon && <span className="text-[10px] opacity-50 leading-none">{entry.icon}</span>}
+                                    {typeLabel && (
+                                        <span className="text-[8px] uppercase tracking-[0.14em]" style={{ color }}>{typeLabel}</span>
+                                    )}
+                                    {kids.length > 0 && <span className="text-[8px] text-muted-foreground tabular-nums">+{kids.length}</span>}
+                                </span>
+                            </span>
+                        </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" align="start" className="max-w-[240px] p-3">
+                        <div className="flex items-center gap-1.5 mb-1">
+                            <span className="font-semibold text-xs" style={{ fontFamily: "var(--font-serif)" }}>{entry.title}</span>
+                        </div>
+                        {preview ? (
+                            <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-3 mb-1.5">{preview}</p>
+                        ) : (
+                            <p className="text-[11px] text-muted-foreground/70 italic mb-1.5">ยังไม่มีเนื้อหา</p>
+                        )}
+                        <div className="flex flex-wrap items-center gap-1">
+                            {typeLabel && <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ color, background: `${color}1a` }}>{typeLabel}</span>}
+                            {entry.scope === "location" && entry.location && (
+                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground inline-flex items-center gap-0.5">
+                                    <MapPin className="h-2.5 w-2.5" />{entry.location.name}
+                                </span>
+                            )}
+                            {typeof entry.importance === "number" && entry.importance >= MAJOR_THRESHOLD && (
+                                <span className="inline-flex items-center gap-0.5 text-[9px] text-amber-600">
+                                    <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-400" />{entry.importance}
+                                </span>
+                            )}
+                        </div>
+                    </TooltipContent>
+                </Tooltip>
+            </TooltipProvider>
+        );
+    };
+
+    const EraSpine = () => {
+        const sortedEras = [...eras].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+        const noEraNodes = rootEntries.filter(e => !e.eraId);
+        const segments: { id: string; age: number | null; name: string; color: string; nodes: LoreEntry[] }[] = [
+            ...sortedEras.map((era, i) => ({
+                id: era.id,
+                age: i + 1,
+                name: era.name,
+                color: era.color || "#6366f1",
+                nodes: rootEntries.filter(e => e.eraId === era.id),
+            })),
+            ...(noEraNodes.length > 0 ? [{ id: "__no_era", age: null, name: "ไม่ระบุยุค", color: "#94a3b8", nodes: noEraNodes }] : []),
+        ];
+
+        return (
+            <div className="relative overflow-x-auto pb-4">
+                {/* age rule — เส้นแกนยุคสลัก */}
+                <div
+                    className="absolute left-0 right-0"
+                    style={{ top: 60, height: 1, background: "linear-gradient(to right, transparent, #DDD5C4 5%, #DDD5C4 95%, transparent)" }}
+                />
+                <div className="flex gap-6 min-w-max px-1">
+                    {segments.map(seg => (
+                        <div key={seg.id} className="w-[230px] shrink-0">
+                            {/* age plate — แผ่นยุค chamfered */}
+                            <div
+                                className="relative z-10 chamfered-sm mb-5 px-3 py-2"
+                                style={{ background: "#FAF8F3", border: "1px solid #E7E0D0", borderTop: `2px solid ${seg.color}` }}
+                            >
+                                <div className="text-[9px] font-medium tracking-[0.2em]" style={{ color: "#B45309" }}>
+                                    {seg.age != null ? `AGE ${toRoman(seg.age)}` : "UNDATED"}
+                                </div>
+                                <div className="text-sm leading-tight text-zinc-800 mt-0.5" style={{ fontFamily: "var(--font-serif)" }}>
+                                    {seg.name}
+                                </div>
+                                <div className="text-[8px] uppercase tracking-[0.12em] text-muted-foreground mt-1 tabular-nums">
+                                    {seg.nodes.length} events
                                 </div>
                             </div>
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={(e) => e.stopPropagation()}><MoreHorizontal className="h-4 w-4" /></Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEdit(entry); }}><Pencil className="h-4 w-4 mr-2" /> แก้ไข</DropdownMenuItem>
-                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleCopy(entry); }}><Copy className="h-4 w-4 mr-2" /> คัดลอก</DropdownMenuItem>
-                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleAddSubLore(entry.id); }}><Plus className="h-4 w-4 mr-2" /> เพิ่ม Sub-lore</DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setDeleteConfirmEntry(entry); }} className="text-red-600"><Trash2 className="h-4 w-4 mr-2" /> ลบ</DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
+                            {/* events — cap แล้วมีปุ่มกาง ถ้ายุคยาว */}
+                            {(() => {
+                                const expanded = expandedSpineEras.has(seg.id);
+                                const overflow = seg.nodes.length - SPINE_CAP;
+                                const shown = expanded ? seg.nodes : seg.nodes.slice(0, SPINE_CAP);
+                                return (
+                                    <div>
+                                        {seg.nodes.length === 0 ? (
+                                            <p className="text-[10px] text-muted-foreground/50 text-center py-3 italic">—</p>
+                                        ) : (
+                                            shown.map(n => <NodeChip key={n.id} entry={n} />)
+                                        )}
+                                        {overflow > 0 && (
+                                            <button
+                                                onClick={() => toggleSpineEra(seg.id)}
+                                                className="w-full mt-1.5 py-1 flex items-center justify-center gap-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground hover:text-zinc-700 transition-colors"
+                                            >
+                                                {expanded ? (
+                                                    <>ย่อ<ChevronDown className="h-3 w-3 rotate-180" /></>
+                                                ) : (
+                                                    <>ดูอีก {overflow}<ChevronDown className="h-3 w-3" /></>
+                                                )}
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            })()}
                         </div>
-                    </CardContent>
-                </Card>
+                    ))}
+                </div>
             </div>
         );
     };
@@ -858,8 +1046,17 @@ export function LoreTimeline({
                     <Button variant={viewMode === "timeline" ? "secondary" : "ghost"} size="sm" onClick={() => setViewMode("timeline")}>Timeline</Button>
                     <Button variant={viewMode === "hierarchy" ? "secondary" : "ghost"} size="sm" onClick={() => setViewMode("hierarchy")}>Hierarchy</Button>
                     <Button variant={viewMode === "groups" ? "secondary" : "ghost"} size="sm" onClick={() => setViewMode("groups")}>Groups</Button>
-                    <Button variant={viewMode === "eras" ? "secondary" : "ghost"} size="sm" onClick={() => setViewMode("eras")}><Clock className="h-3 w-3 mr-1" />Eras</Button>
                 </div>
+
+                {/* LOD toggle — แสดงเฉพาะ node สำคัญ */}
+                <label className="flex items-center gap-2 cursor-pointer select-none rounded-lg border bg-card px-3 py-1.5 ml-auto">
+                    <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-xs font-medium">สำคัญเท่านั้น</span>
+                    <Switch checked={majorOnly} onCheckedChange={setMajorOnly} />
+                    {majorOnly && hiddenByLOD > 0 && (
+                        <span className="text-[10px] text-muted-foreground tabular-nums">ซ่อน {hiddenByLOD}</span>
+                    )}
+                </label>
             </div>
 
             {/* Search & Filter Bar */}
@@ -990,37 +1187,9 @@ export function LoreTimeline({
                     </Button>
                 </div>
             ) : viewMode === "timeline" ? (
-                /* Cosmic Archive Timeline - Light Theme */
-                <div
-                    className="relative rounded-2xl overflow-hidden p-8"
-                    style={{
-                        background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 50%, #f8fafc 100%)',
-                    }}
-                >
-                    {/* Subtle pattern */}
-                    <div
-                        className="absolute inset-0 opacity-30"
-                        style={{
-                            backgroundImage: `radial-gradient(circle at 25% 25%, rgba(139, 92, 246, 0.03) 0%, transparent 50%),
-                                            radial-gradient(circle at 75% 75%, rgba(59, 130, 246, 0.03) 0%, transparent 50%)`,
-                        }}
-                    />
-
-                    {/* Central Line */}
-                    <div
-                        className="absolute left-1/2 top-8 bottom-8 w-0.5 -translate-x-1/2"
-                        style={{
-                            background: 'linear-gradient(180deg, transparent, #a78bfa, #60a5fa, #a78bfa, transparent)',
-                            boxShadow: '0 0 15px rgba(167, 139, 250, 0.3)',
-                        }}
-                    />
-
-                    {/* Timeline Items */}
-                    <div className="relative space-y-8">
-                        {rootEntries.map((entry, index) => (
-                            <CosmicNode key={entry.id} entry={entry} index={index} />
-                        ))}
-                    </div>
+                /* Chronicle of Ages — พงศาวดารแห่งยุคสมัย */
+                <div className="relative rounded-2xl overflow-hidden border bg-white p-6 pt-7">
+                    <EraSpine />
                 </div>
             ) : viewMode === "hierarchy" ? (
                 <div className="space-y-3">{rootEntries.map(entry => renderLoreCard(entry))}</div>
@@ -1075,9 +1244,7 @@ export function LoreTimeline({
                         </Card>
                     )}
                 </div>
-            ) : (
-                <LoreVisualTimeline eras={eras} ungroupedLores={loresWithoutEra} novelId={novelId} onRefresh={onRefresh} />
-            )}
+            ) : null}
 
             {/* Dialogs */}
             {dialogOpen && (
@@ -1108,6 +1275,17 @@ export function LoreTimeline({
                 </AlertDialogContent>
             </AlertDialog>
             <LoreGroupDialog open={groupDialogOpen} onOpenChange={handleGroupDialogClose} novelId={novelId} editGroup={editGroup} onSuccess={onRefresh} />
+
+            {/* Inspector panel (master-detail, non-modal) */}
+            <LoreInspectorPanel
+                entry={inspectEntry}
+                children={inspectEntry ? getChildLores(inspectEntry.id) : []}
+                onClose={() => setInspectEntry(null)}
+                onEdit={(e) => { setInspectEntry(null); handleEdit(e); }}
+                onOpenFull={(e) => { setInspectEntry(null); handleOpenFullDetail(e); }}
+                onInspectChild={(child) => setInspectEntry(child)}
+            />
+
             {detailDialogOpen && (
                 <LoreDetailDialog
                     open={detailDialogOpen}

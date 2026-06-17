@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef } from "react";
-import { BarChart3, Info } from "lucide-react";
+import { BarChart3, Info, Search, X, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -92,7 +92,11 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
         new Set(FEATURES.map(f => f.key))
     );
     const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+    const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+    const [search, setSearch] = useState("");
+    const [anomalyOnly, setAnomalyOnly] = useState(false);
     const svgRef = useRef<SVGSVGElement>(null);
+    const scrollRef = useRef<HTMLDivElement>(null);
 
     const toggleFeature = (key: string) => {
         setVisibleFeatures(prev => {
@@ -111,6 +115,31 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
         () => FEATURES.map(f => ({ key: f.key, scores: computeZScores(data, f) })),
         [data]
     );
+
+    // ค่าเบี่ยงเบนสูงสุดต่อตอน → ใช้ทำเครื่องหมาย "ผิดปกติ"
+    const chapterMaxZ = useMemo(
+        () => data.map((_, i) => {
+            let max = 0;
+            for (const fz of featureZScores) {
+                const s = fz.scores[i];
+                if (s.raw !== null) max = Math.max(max, Math.abs(s.z));
+            }
+            return max;
+        }),
+        [data, featureZScores]
+    );
+    const isAnomalyChapter = (i: number) => chapterMaxZ[i] >= 1.96;
+    const anomalyCount = chapterMaxZ.filter(z => z >= 1.96).length;
+
+    // ตอนที่โผล่ใน jump strip (กรองตามค้นหา / เฉพาะผิดปกติ)
+    const jumpIndices = data
+        .map((_, i) => i)
+        .filter(i => {
+            if (anomalyOnly && !isAnomalyChapter(i)) return false;
+            if (!search.trim()) return true;
+            const q = search.trim().toLowerCase();
+            return String(i + 1).includes(q) || (data[i].chapterTitle || "").toLowerCase().includes(q);
+        });
 
     if (!data || data.length === 0) {
         return (
@@ -151,6 +180,32 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
     };
 
     const hoverX = hoveredIdx !== null ? toX(hoveredIdx) : null;
+    const selectedX = selectedIdx !== null ? toX(selectedIdx) : null;
+
+    // เลือกตอน → เลื่อนกราฟให้ตอนนั้นอยู่กลางจอ
+    const selectChapter = (i: number) => {
+        setSelectedIdx(i);
+        const el = scrollRef.current;
+        if (el && svgW > el.clientWidth) {
+            const target = (toX(i) / svgW) * el.scrollWidth - el.clientWidth / 2;
+            el.scrollTo({ left: Math.max(0, target), behavior: "smooth" });
+        }
+    };
+
+    const step = (dir: number) => {
+        const cur = selectedIdx ?? (dir > 0 ? -1 : data.length);
+        selectChapter(Math.max(0, Math.min(data.length - 1, cur + dir)));
+    };
+
+    const idxFromEvent = (clientX: number) => {
+        const rect = svgRef.current?.getBoundingClientRect();
+        if (!rect) return null;
+        const relX = ((clientX - rect.left) / rect.width) * svgW;
+        const idx = Math.round((relX - padL) / (chartW / (data.length - 1 || 1)));
+        return Math.max(0, Math.min(data.length - 1, idx));
+    };
+
+    const selected = selectedIdx !== null ? data[selectedIdx] : null;
 
     return (
         <div className="space-y-5 pb-10">
@@ -167,6 +222,159 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
                     {data.length} ตอน
                 </div>
             </div>
+
+            {/* ── Chapter navigator — bounded ไม่ว่ากี่ตอน ── */}
+            <div className="chamfered border border-border bg-card/50 p-3 flex flex-col gap-2.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                    {/* search jump */}
+                    <div className="flex items-center gap-2 px-2.5 h-8 chamfered-sm border border-border bg-background flex-1 min-w-[160px] max-w-[240px]">
+                        <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        <input
+                            value={search}
+                            onChange={e => {
+                                setSearch(e.target.value);
+                                const n = parseInt(e.target.value, 10);
+                                if (!isNaN(n) && n >= 1 && n <= data.length) selectChapter(n - 1);
+                            }}
+                            placeholder="พิมพ์เลขตอน / ชื่อตอน…"
+                            className="bg-transparent text-xs outline-none w-full placeholder:text-muted-foreground/60"
+                        />
+                        {search && (
+                            <button onClick={() => setSearch("")} className="text-muted-foreground hover:text-foreground">
+                                <X className="w-3 h-3" />
+                            </button>
+                        )}
+                    </div>
+
+                    {/* stepper ◀ N / total ▶ */}
+                    <div className="flex items-center h-8 chamfered-sm border border-border bg-background">
+                        <button onClick={() => step(-1)} disabled={selectedIdx === 0}
+                            className="h-full px-2 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                            <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        <span className="font-technical text-[10px] tabular-nums text-muted-foreground min-w-[96px] text-center px-1 border-x border-border">
+                            {selectedIdx !== null ? `ตอนที่ ${selectedIdx + 1} / ${data.length}` : `เลือกตอน · ${data.length}`}
+                        </span>
+                        <button onClick={() => step(1)} disabled={selectedIdx === data.length - 1}
+                            className="h-full px-2 text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                            <ChevronRight className="w-4 h-4" />
+                        </button>
+                    </div>
+
+                    {/* anomaly toggle */}
+                    {anomalyCount > 0 && (
+                        <button
+                            onClick={() => setAnomalyOnly(v => !v)}
+                            className={cn(
+                                "flex items-center gap-1.5 h-8 px-2.5 chamfered-sm border text-[11px] font-technical uppercase tracking-[0.08em] transition-colors",
+                                anomalyOnly ? "border-red-400/50 text-red-500 bg-red-500/10" : "border-border text-muted-foreground hover:text-foreground"
+                            )}
+                        >
+                            <AlertTriangle className="w-3.5 h-3.5" />ผิดปกติ <span className="tabular-nums">({anomalyCount})</span>
+                        </button>
+                    )}
+                </div>
+
+                {/* chip grid — โผล่เฉพาะตอนค้นหา / กรองผิดปกติ (bounded) */}
+                {(search.trim() || anomalyOnly) && (
+                    <div className="flex flex-wrap gap-1 max-h-[92px] overflow-y-auto pt-0.5">
+                        {jumpIndices.length === 0 ? (
+                            <span className="text-[11px] text-muted-foreground italic px-1 py-1">ไม่พบตอนที่ตรงกับการค้นหา</span>
+                        ) : jumpIndices.map(i => {
+                            const sel = selectedIdx === i;
+                            const anom = isAnomalyChapter(i);
+                            return (
+                                <button
+                                    key={i}
+                                    onClick={() => selectChapter(i)}
+                                    title={data[i].chapterTitle}
+                                    className={cn(
+                                        "shrink-0 min-w-[26px] h-6 px-1.5 chamfered-sm text-[10px] tabular-nums border transition-colors",
+                                        sel
+                                            ? "bg-[var(--forge-gold)] border-[var(--forge-gold)] text-black font-bold"
+                                            : anom
+                                                ? "border-red-400/50 text-red-500 hover:bg-red-500/10"
+                                                : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
+                                    )}
+                                >
+                                    {i + 1}
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+
+            {/* ── Focused readout — ผลวิเคราะห์ตอนที่เลือก ── */}
+            {selected && selectedIdx !== null && (
+                <div className="chamfered border-2 border-[var(--forge-gold)]/40 bg-card/50 p-5">
+                    <div className="flex items-start justify-between gap-3 mb-4">
+                        <div className="min-w-0">
+                            <span className="font-technical text-[9px] uppercase tracking-[0.2em] text-[var(--forge-amber)]">ตอนที่เลือก</span>
+                            <h3 className="text-lg font-display font-bold tracking-tight truncate">
+                                <span className="text-muted-foreground tabular-nums mr-1.5">{selectedIdx + 1}.</span>
+                                {selected.chapterTitle}
+                            </h3>
+                        </div>
+                        <button onClick={() => setSelectedIdx(null)} className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0">
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+
+                    {/* narration vs dialogue */}
+                    {(() => {
+                        const dia = selected.chapterAnatomy?.dialogue_ratio_percentage || 0;
+                        const nar = selected.chapterAnatomy?.narration_ratio_percentage || 0;
+                        return (
+                            <div className="mb-4">
+                                <div className="flex justify-between text-[11px] text-muted-foreground mb-1.5">
+                                    <span>บรรยาย {nar}%</span><span>สนทนา {dia}%</span>
+                                </div>
+                                <div className="h-3 w-full bg-muted chamfered-sm flex overflow-hidden">
+                                    <div className="bg-[var(--chart-3)] h-full opacity-70" style={{ width: `${nar}%` }} />
+                                    <div className="bg-[var(--forge-gold)] h-full opacity-80" style={{ width: `${dia}%` }} />
+                                </div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* feature z-scores */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 mb-4">
+                        {FEATURES.map(f => {
+                            const s = featureZScores.find(x => x.key === f.key)!.scores[selectedIdx];
+                            const isAnomaly = Math.abs(s.z) >= 1.96;
+                            const isDrift = Math.abs(s.z) >= 1.0;
+                            return (
+                                <div key={f.key} className="flex items-center justify-between gap-3">
+                                    <span className="flex items-center gap-1.5 min-w-0">
+                                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: f.color }} />
+                                        <span className="text-xs text-muted-foreground truncate">{f.shortLabel}</span>
+                                    </span>
+                                    <span className="flex items-center gap-2 shrink-0 tabular-nums">
+                                        <span className="text-[11px] text-muted-foreground font-mono">{s.raw?.toFixed(1) ?? "–"}{s.raw !== null ? f.unit : ""}</span>
+                                        <span className={cn("text-[11px] font-bold font-mono", isAnomaly ? "text-red-500" : isDrift ? "text-amber-500" : "text-emerald-500")}>
+                                            {s.raw !== null ? `${s.z > 0 ? "+" : ""}${s.z.toFixed(2)}` : ""}
+                                            {isAnomaly && <AlertTriangle className="inline w-3 h-3 ml-0.5 -mt-0.5" />}
+                                        </span>
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* mood + char vibe */}
+                    <div className="grid grid-cols-2 gap-3 pt-3 border-t border-border/60">
+                        <div>
+                            <span className="text-[10px] text-muted-foreground block mb-1">อารมณ์ภาพรวม</span>
+                            <span className="inline-flex chamfered-sm bg-muted px-2 py-1 text-xs font-medium">{(selected.pacingAndMood?.vibe || "ไม่มีข้อมูล").split("(")[0].trim()}</span>
+                        </div>
+                        <div>
+                            <span className="text-[10px] text-muted-foreground block mb-1">บรรยากาศตัวละคร</span>
+                            <span className="inline-flex chamfered-sm bg-[var(--forge-gold)]/10 px-2 py-1 text-xs font-medium text-[var(--forge-amber)]">{(selected.characterDialogueVibes?.vibe || "ไม่มีข้อมูล").split("(")[0].trim()}</span>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* ── Main Multi-line Chart ── */}
             <div className="chamfered border border-border bg-card/50 p-5">
@@ -204,7 +412,7 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
                 </div>
 
                 <div className="pt-0">
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto" ref={scrollRef}>
                     <div
                         className="relative chamfered-sm border border-border/40 bg-muted/10 overflow-hidden select-none"
                         style={{ minWidth: `${svgW}px` }}
@@ -212,16 +420,17 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
                         <svg
                             ref={svgRef}
                             viewBox={`0 0 ${svgW} ${svgH}`}
-                            className="w-full block"
+                            className="w-full block cursor-pointer"
                             style={{ width: `${svgW}px`, height: `${svgH}px` }}
                             onMouseMove={e => {
-                                const rect = svgRef.current?.getBoundingClientRect();
-                                if (!rect) return;
-                                const relX = (e.clientX - rect.left) / rect.width * svgW;
-                                const idx = Math.round((relX - padL) / (chartW / (data.length - 1 || 1)));
-                                setHoveredIdx(Math.max(0, Math.min(data.length - 1, idx)));
+                                const idx = idxFromEvent(e.clientX);
+                                if (idx !== null) setHoveredIdx(idx);
                             }}
                             onMouseLeave={() => setHoveredIdx(null)}
+                            onClick={e => {
+                                const idx = idxFromEvent(e.clientX);
+                                if (idx !== null) setSelectedIdx(idx);
+                            }}
                         >
                             <defs>
                                 <clipPath id="chart-clip">
@@ -266,6 +475,12 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
                             {/* Labels */}
                             <text x={padL + 4} y={toY(1) - 4} fontSize="8" fill="hsl(48,90%,55%)" opacity="0.7">โซนปกติ</text>
                             <text x={padL + 4} y={toY(2) - 4} fontSize="8" fill="hsl(0,65%,55%)" opacity="0.7">ผิดปกติ (&gt;2 SD)</text>
+
+                            {/* Selected chapter marker (persistent) */}
+                            {selectedX !== null && (
+                                <line x1={selectedX} y1={padT} x2={selectedX} y2={padT + chartH}
+                                    stroke="var(--forge-gold)" strokeWidth="1.5" opacity="0.7" />
+                            )}
 
                             {/* Hover crosshair */}
                             {hoverX !== null && (
@@ -312,8 +527,8 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
                                     key={i}
                                     x={toX(i)} y={padT + chartH + 16}
                                     textAnchor="middle" fontSize="9"
-                                    fill={hoveredIdx === i ? "hsl(48,90%,55%)" : "hsl(0,0%,60%)"}
-                                    fontWeight={hoveredIdx === i ? "700" : "400"}
+                                    fill={(hoveredIdx === i || selectedIdx === i) ? "hsl(48,90%,55%)" : "hsl(0,0%,60%)"}
+                                    fontWeight={(hoveredIdx === i || selectedIdx === i) ? "700" : "400"}
                                 >
                                     {i + 1}
                                 </text>
@@ -379,13 +594,14 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
                     <div className="pb-1">
                         <ScrollArea className="h-[360px] pr-3">
                             <div className="space-y-4">
-                                {data.map((item) => {
+                                {data.map((item, i) => {
                                     const dialogRatio = item.chapterAnatomy?.dialogue_ratio_percentage || 0;
                                     const narrationRatio = item.chapterAnatomy?.narration_ratio_percentage || 0;
                                     return (
-                                        <div key={item.id} className="space-y-1.5">
+                                        <button key={item.id} onClick={() => selectChapter(i)}
+                                            className={cn("w-full text-left space-y-1.5 chamfered-sm px-2 py-1.5 -mx-2 transition-colors", selectedIdx === i ? "bg-[var(--forge-gold)]/10" : "hover:bg-muted/40")}>
                                             <div className="flex justify-between text-sm">
-                                                <span className="font-medium truncate max-w-[160px]" title={item.chapterTitle}>{item.chapterTitle}</span>
+                                                <span className="font-medium truncate max-w-[160px]" title={item.chapterTitle}><span className="text-muted-foreground tabular-nums mr-1">{i + 1}.</span>{item.chapterTitle}</span>
                                                 <span className="text-xs text-muted-foreground shrink-0 ml-2">
                                                     บรรยาย {narrationRatio}% / สนทนา {dialogRatio}%
                                                 </span>
@@ -394,7 +610,7 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
                                                 <div className="bg-[var(--chart-3)] h-full opacity-70" style={{ width: `${narrationRatio}%` }} />
                                                 <div className="bg-[var(--forge-gold)] h-full opacity-80" style={{ width: `${dialogRatio}%` }} />
                                             </div>
-                                        </div>
+                                        </button>
                                     );
                                 })}
                             </div>

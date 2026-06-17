@@ -1,15 +1,17 @@
 
 import { getChapterOverview } from "@/server/chapter-overview";
 import { getChapter } from "@/server/chapter";
+import { getThreadsByNovelId } from "@/server/plot-threads";
 import { ChapterOverviewBoard } from "@/components/project/timeline/chapter-overview-board";
 
 export default async function ChapterOverviewPage({ params }: { params: Promise<{ id: string, chapterId: string }> }) {
-    const { chapterId } = await params;
+    const { id: novelId, chapterId } = await params;
 
     // Fetch Data Parallelly
-    const [overviewData, chapterData] = await Promise.all([
+    const [overviewData, chapterData, threadsData] = await Promise.all([
         getChapterOverview(chapterId),
-        getChapter(chapterId)
+        getChapter(chapterId),
+        getThreadsByNovelId(novelId),
     ]);
 
     if (!chapterData.success || !chapterData.chapter) {
@@ -24,12 +26,14 @@ export default async function ChapterOverviewPage({ params }: { params: Promise<
     }
 
     const events = overviewData.success ? overviewData.events : [];
+    const threads = threadsData.success ? threadsData.data : [];
 
     return (
         <div className="h-screen w-full overflow-hidden">
             <ChapterOverviewBoard
                 chapterTitle={chapterData.chapter.title}
                 events={events}
+                threads={threads}
             />
         </div>
     );
