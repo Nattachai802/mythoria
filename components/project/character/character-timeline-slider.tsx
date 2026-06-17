@@ -7,7 +7,6 @@ import {
     CharacterStateAtChapter,
 } from "@/server/character-state-queries";
 import { getChapters } from "@/server/chapter";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
@@ -107,44 +106,36 @@ export function CharacterTimelineSlider({
 
     if (isLoading) {
         return (
-            <Card>
-                <CardContent className="py-8 text-center text-muted-foreground">
-                    กำลังโหลด Timeline...
-                </CardContent>
-            </Card>
+            <div className="text-sm text-muted-foreground py-4">กำลังโหลด Timeline…</div>
         );
     }
 
     if (timeline.length === 0) {
         return (
-            <Card>
-                <CardContent className="py-8 text-center text-muted-foreground">
-                    <p>ยังไม่มีข้อมูลสถานะตัวละครในบทใดๆ</p>
-                    <p className="text-sm mt-1">ลองเขียน Note แล้วเชื่อมโยงกับบท</p>
-                </CardContent>
-            </Card>
+            <div className="flex flex-col items-center text-center py-10 chamfered border border-dashed border-border bg-card/40">
+                <p className="text-sm text-muted-foreground">ยังไม่มีข้อมูลสถานะตัวละครในบทใด</p>
+                <p className="text-xs text-muted-foreground/70 mt-1">ลองเขียน Note แล้วเชื่อมโยงกับบท</p>
+            </div>
         );
     }
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                    <span>📊 สถานะตัวละครตาม Timeline</span>
-                    <Button
-                        variant={compareMode ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => {
-                            setCompareMode(!compareMode);
-                            setComparison(null);
-                        }}
-                    >
-                        <GitCompare className="w-4 h-4 mr-2" />
-                        เปรียบเทียบ
-                    </Button>
-                </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
+        <div className="chamfered border border-border bg-card/50 p-5">
+            <div className="flex justify-end mb-4">
+                <Button
+                    variant={compareMode ? "default" : "outline"}
+                    size="sm"
+                    className="chamfered-sm"
+                    onClick={() => {
+                        setCompareMode(!compareMode);
+                        setComparison(null);
+                    }}
+                >
+                    <GitCompare className="w-4 h-4 mr-2" />
+                    เปรียบเทียบ
+                </Button>
+            </div>
+            <div className="space-y-6">
                 {/* Timeline Slider */}
                 <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm text-muted-foreground">
@@ -266,7 +257,7 @@ export function CharacterTimelineSlider({
                         <p className="text-sm">{currentState.notes}</p>
                     </div>
                 )}
-            </CardContent>
-        </Card>
+            </div>
+        </div>
     );
 }

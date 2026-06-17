@@ -7,7 +7,6 @@ import {
     Flame,
     TrendingUp,
     Calendar,
-    PenTool,
     Target,
     BookOpen,
     FileText,
@@ -49,6 +48,12 @@ export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
     const goalProgress = summary?.targetWords
         ? Math.round((summary.totalWords / summary.targetWords) * 100)
         : 0;
+    const remainingWords = summary?.targetWords
+        ? Math.max(0, summary.targetWords - (summary.totalWords ?? 0))
+        : 0;
+    // Daily-scoped derivations for the breakdown tab (distinct from the 7-day chart's own total/avg)
+    const peakDayWords = wordsPerDay.reduce((max, d) => (d.words > max ? d.words : max), 0);
+    const activeDays7 = wordsPerDay.filter((d) => d.words > 0).length;
 
     return (
         <div className="p-8 space-y-6">
@@ -59,7 +64,7 @@ export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
             />
 
             {/* Page title */}
-            <div className="flex items-end justify-between gap-4 flex-wrap">
+            <div className="flex items-end justify-between gap-6 flex-wrap">
                 <div>
                     <h1 className="text-3xl font-display font-bold tracking-tight">ภาพรวมการเขียน</h1>
                     <div className="flex items-center gap-2 mt-1.5">
@@ -72,12 +77,33 @@ export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
                         </span>
                     </div>
                 </div>
+
+                {/* Whole-novel goal — the prime orientation metric, promoted out of the cramped sidebar */}
+                {summary?.targetWords ? (
+                    <div className="flex flex-col gap-1.5 min-w-[220px]">
+                        <div className="flex items-center justify-between gap-4">
+                            <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground flex items-center gap-1.5">
+                                <Target className="h-3 w-3" />เป้าหมายทั้งเรื่อง
+                            </span>
+                            <span className="text-base font-display font-bold tabular-nums leading-none">{goalProgress}%</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-muted chamfered-sm overflow-hidden">
+                            <div
+                                className="h-full bg-[var(--forge-gold)] transition-all"
+                                style={{ width: `${Math.min(100, goalProgress)}%` }}
+                            />
+                        </div>
+                        <span className="text-[10px] text-muted-foreground tabular-nums">
+                            เหลืออีก {remainingWords.toLocaleString()} คำ
+                        </span>
+                    </div>
+                ) : null}
             </div>
 
             {/* Hero instrument row: streak gauge + activity heatmap */}
             <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-4">
                 {/* STREAK GAUGE — molten forge face */}
-                <div className="relative chamfered overflow-hidden noise-texture glow-gold border border-black/10 bg-gradient-to-br from-[var(--forge-gold)] to-[var(--forge-amber)] flex flex-col justify-between p-5 min-h-[220px]">
+                <div className="relative chamfered overflow-hidden noise-texture border border-black/10 bg-gradient-to-br from-[var(--forge-gold)] to-[var(--forge-amber)] flex flex-col justify-between p-5 min-h-[220px]">
                     <div className="relative z-[2] flex items-center justify-between">
                         <span className="font-technical text-[9px] uppercase tracking-[0.2em] text-black/55">
                             ต่อเนื่อง
@@ -108,12 +134,17 @@ export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
 
                 {/* ACTIVITY HEATMAP — the hero */}
                 <div className="chamfered border border-border bg-card/50 p-5 flex flex-col">
-                    <div className="flex items-center justify-between mb-4">
-                        <span className="font-technical text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
-                            แผนผังกิจกรรม · 90 วัน
-                        </span>
+                    <div className="flex items-end justify-between mb-4">
+                        <div className="flex flex-col gap-1">
+                            <span className="font-technical text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
+                                แผนผังกิจกรรม · 90 วัน
+                            </span>
+                            <span className="text-sm font-display font-semibold tracking-tight">
+                                จังหวะการเขียนของคุณ
+                            </span>
+                        </div>
                         <span className="font-technical text-[9px] tabular-nums text-muted-foreground/70">
-                            {activeDays} วันที่ลงมือ
+                            <span className="text-base font-display font-bold text-foreground tabular-nums">{activeDays}</span> วันที่ลงมือ
                         </span>
                     </div>
                     <div className="flex-1 flex items-center">
@@ -195,36 +226,30 @@ export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
                                 </div>
                             </div>
 
-                            <div className="p-5 flex flex-col gap-1.5">
+                            <div className="p-5 flex flex-col gap-1">
                                 <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground flex items-center gap-1.5">
-                                    <Target className="h-3 w-3" />เป้าหมายทั้งเรื่อง
+                                    <TrendingUp className="h-3 w-3" />ทำได้สูงสุด · 7 วัน
                                 </span>
                                 <div className="flex items-baseline gap-1.5">
-                                    <span className="text-3xl font-display font-bold tabular-nums tracking-tight">{goalProgress}%</span>
+                                    <span className="text-3xl font-display font-bold tabular-nums tracking-tight">
+                                        {peakDayWords.toLocaleString()}
+                                    </span>
+                                    <span className="text-sm text-muted-foreground">คำ/วัน</span>
                                 </div>
-                                {/* progress track */}
-                                <div className="h-1.5 w-full bg-muted chamfered-sm overflow-hidden mt-1">
-                                    <div
-                                        className="h-full bg-[var(--forge-gold)] transition-all"
-                                        style={{ width: `${Math.min(100, goalProgress)}%` }}
-                                    />
-                                </div>
-                                <span className="text-[10px] text-muted-foreground tabular-nums">
-                                    {(summary?.totalWords ?? 0).toLocaleString()} / {(summary?.targetWords ?? 0).toLocaleString()} คำ
-                                </span>
+                                <span className="text-[10px] text-muted-foreground">วันที่เขียนได้มากที่สุด</span>
                             </div>
 
                             <div className="p-5 flex flex-col gap-1">
                                 <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground flex items-center gap-1.5">
-                                    <PenTool className="h-3 w-3" />เฉลี่ยต่อวัน
+                                    <Flame className="h-3 w-3" />ลงมือ · 7 วัน
                                 </span>
                                 <div className="flex items-baseline gap-1.5">
                                     <span className="text-3xl font-display font-bold tabular-nums tracking-tight">
-                                        {(summary?.avgWordsPerDay ?? 0).toLocaleString()}
+                                        {activeDays7}
                                     </span>
-                                    <span className="text-sm text-muted-foreground">คำ</span>
+                                    <span className="text-sm text-muted-foreground">/ 7 วัน</span>
                                 </div>
-                                <span className="text-[10px] text-muted-foreground">จากสัปดาห์ล่าสุด</span>
+                                <span className="text-[10px] text-muted-foreground">ความสม่ำเสมอสัปดาห์นี้</span>
                             </div>
                         </div>
                     </div>

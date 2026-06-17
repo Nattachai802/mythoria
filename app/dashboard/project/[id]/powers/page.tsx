@@ -30,19 +30,25 @@ export default async function PowersPage({ params }: PowersPageProps) {
     const novelTitle = novelResult.novel?.title || "Project";
 
     return (
-        <div className="p-8">
+        <div className="p-8 space-y-6">
             <ProjectBreadcrumb
                 novelId={novelId}
                 novelTitle={novelTitle}
-                items={[{ label: "Powers" }]}
+                items={[{ label: "ระบบพลัง" }]}
             />
 
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-end justify-between gap-4 flex-wrap">
                 <div>
-                    <h1 className="text-3xl font-bold">Powers</h1>
-                    <p className="text-muted-foreground mt-1">
-                        Manage abilities and powers in your story
-                    </p>
+                    <h1 className="text-3xl font-display font-bold tracking-tight">ระบบพลัง</h1>
+                    <div className="flex items-center gap-2 mt-1.5">
+                        <span className="relative flex h-1.5 w-1.5">
+                            <span className="absolute inline-flex h-full w-full rounded-full bg-[var(--forge-gold)] opacity-75 animate-forge-pulse" />
+                            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[var(--forge-gold)]" />
+                        </span>
+                        <span className="font-technical text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                            พลังและความสามารถในโลกนิยาย
+                        </span>
+                    </div>
                 </div>
                 <CreatePowerDialog novelId={novelId} />
             </div>

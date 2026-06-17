@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -215,7 +214,7 @@ export function CharacterDesignBoard({ characterId, novelId }: CharacterDesignBo
     return (
         <div className="space-y-8">
             {/* Header Area */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-gradient-to-r from-card to-card/50 p-6 rounded-2xl border border-border/40 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-card/50 p-5 chamfered border border-border">
                 <div className="space-y-1">
                     <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
                         <FolderHeart className="w-6 h-6 text-primary" />
@@ -241,7 +240,7 @@ export function CharacterDesignBoard({ characterId, novelId }: CharacterDesignBo
                         </DialogHeader>
 
                         {/* Reference Type Selector */}
-                        <div className="grid grid-cols-2 gap-2 p-1 bg-muted rounded-lg text-sm mb-4">
+                        <div className="grid grid-cols-2 gap-2 p-1 bg-muted chamfered-sm text-sm mb-4">
                             <button
                                 type="button"
                                 onClick={() => setRefType("image")}
@@ -269,7 +268,7 @@ export function CharacterDesignBoard({ characterId, novelId }: CharacterDesignBo
                             <div className="space-y-4">
                                 <div className="space-y-2">
                                     <Label className="text-sm font-semibold">อัปโหลดรูปภาพเรฟเฟอเรนซ์</Label>
-                                    <div className="flex justify-center p-1 bg-muted/20 border border-dashed rounded-xl">
+                                    <div className="flex justify-center p-1 bg-muted/20 border border-dashed chamfered-sm">
                                         <ImageUpload
                                             folder={`novels/${novelId}/characters/${characterId}/design`}
                                             onChange={setImageUrl}
@@ -450,10 +449,10 @@ export function CharacterDesignBoard({ characterId, novelId }: CharacterDesignBo
                                 {displayColors.map((color) => (
                                     <div
                                         key={color.id}
-                                        className="group relative bg-card border border-border/60 rounded-xl p-3 flex items-center gap-4 hover:shadow-md transition-all duration-300 hover:border-pink-500/20"
+                                        className="group relative bg-card/50 border border-border chamfered p-3 flex items-center gap-4 transition-colors hover:border-[var(--forge-gold)]/40"
                                     >
                                         <div
-                                            className="w-12 h-12 rounded-lg shadow-inner border border-black/10 shrink-0 transition-transform duration-300 group-hover:scale-105"
+                                            className="w-12 h-12 chamfered-sm border border-black/10 shrink-0 transition-transform duration-300 group-hover:scale-105"
                                             style={{ backgroundColor: color.value }}
                                         />
                                         <div className="flex-1 min-w-0">
@@ -495,7 +494,7 @@ export function CharacterDesignBoard({ characterId, novelId }: CharacterDesignBo
                                 {displayImages.map((img) => (
                                     <div
                                         key={img.id}
-                                        className="group relative aspect-[3/4] rounded-2xl overflow-hidden border border-border/50 bg-muted shadow-xs hover:shadow-lg transition-all duration-500 hover:-translate-y-1"
+                                        className="group relative aspect-[3/4] chamfered overflow-hidden border border-border bg-muted transition-colors duration-300 hover:border-[var(--forge-gold)]/40"
                                     >
                                         {/* Image */}
                                         <img

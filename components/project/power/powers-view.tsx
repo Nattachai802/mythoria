@@ -43,39 +43,41 @@ export function PowersView({ powers, novelId }: PowersViewProps) {
     };
 
     return (
-        <div className="space-y-6">
-            {/* Search Bar */}
-            <div className="relative max-w-md">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                    placeholder="ค้นหาพลัง..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-9"
-                />
+        <div className="space-y-5">
+            {/* Search Bar + count */}
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="relative w-full max-w-sm">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        placeholder="ค้นหาพลัง ตามชื่อ ประเภท หรือความหายาก…"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-9 chamfered-sm bg-card/50"
+                    />
+                </div>
+                <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground tabular-nums shrink-0">
+                    {searchQuery
+                        ? `พบ ${filteredPowers.length}${filteredPowers.length !== powers.length ? ` / ${powers.length}` : ""} พลัง`
+                        : `${powers.length} พลัง`}
+                </span>
             </div>
-
-            {/* Results count */}
-            {searchQuery && (
-                <p className="text-sm text-muted-foreground">
-                    พบ {filteredPowers.length} พลัง
-                    {filteredPowers.length !== powers.length && ` (จาก ${powers.length})`}
-                </p>
-            )}
 
             {/* Powers Grid */}
             {filteredPowers.length === 0 ? (
-                <div className="text-center py-12">
-                    <Zap className="w-12 h-12 mx-auto text-muted-foreground/30 mb-4" />
-                    <p className="text-muted-foreground mb-4">
+                <div className="flex flex-col items-center justify-center text-center py-16 chamfered border border-dashed border-border bg-card/40">
+                    <Zap className="w-10 h-10 text-[var(--forge-gold)]/50 mb-4" />
+                    <h3 className="font-display font-semibold text-lg">
+                        {searchQuery ? "ไม่พบพลังที่ค้นหา" : "ยังไม่มีพลังในเรื่องนี้"}
+                    </h3>
+                    <p className="text-muted-foreground mt-1.5 mb-5 max-w-sm text-sm">
                         {searchQuery
-                            ? `ไม่พบพลังที่ตรงกับ "${searchQuery}"`
-                            : "ยังไม่มีพลัง สร้างพลังแรกเลย!"}
+                            ? `ไม่มีพลังที่ตรงกับ "${searchQuery}" — ลองคำค้นอื่นดู`
+                            : "สร้างระบบพลังของโลกนิยาย กำหนดประเภท ความหายาก และระดับพลังได้ที่นี่"}
                     </p>
                     {!searchQuery && <CreatePowerDialog novelId={novelId} />}
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {filteredPowers.map((power) => (
                         <PowerCard
                             key={power.id}

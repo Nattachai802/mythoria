@@ -36,8 +36,8 @@ export default async function ProjectLayout({ params, children }: Props) {
                 projectId={id}
                 projectTitle={result.novel.title}
             />
-            <SidebarInset>
-                <div className="flex flex-1 flex-col gap-4 p-4">
+            <SidebarInset className="min-w-0">
+                <div className="flex flex-1 flex-col gap-4 p-4 min-w-0">
                     {children}
                 </div>
             </SidebarInset>

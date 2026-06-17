@@ -109,9 +109,9 @@ export function CreatePowerDialog({ novelId, trigger }: CreatePowerDialogProps) 
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
                 {trigger || (
-                    <Button>
+                    <Button className="chamfered-sm">
                         <Plus className="h-4 w-4 mr-2" />
-                        New Power
+                        สร้างพลังใหม่
                     </Button>
                 )}
             </DialogTrigger>
