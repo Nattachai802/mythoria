@@ -200,6 +200,23 @@ export default async function ProjectOverviewPage({ params }: Props) {
                         </div>
                     </div>
 
+                    {/* Today's Goal & Status */}
+                    {analytics?.todayGoal != null && analytics.goalStatus !== 'no_target' && (
+                        <div className={`flex items-center justify-between px-2.5 py-2 chamfered-sm text-xs border ${
+                            analytics.goalStatus === 'on_track'
+                                ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-400'
+                                : 'border-amber-500/30 bg-amber-500/5 text-amber-400'
+                        }`}>
+                            <span className="flex items-center gap-1.5">
+                                {analytics.goalStatus === 'on_track' ? '✓' : '⚡'}
+                                เป้าหมายวันนี้: <span className="font-bold tabular-nums">{analytics.todayGoal.toLocaleString()} คำ</span>
+                            </span>
+                            {analytics.daysRemaining !== null && (
+                                <span className="text-[10px] opacity-70">เหลือ {analytics.daysRemaining} วัน</span>
+                            )}
+                        </div>
+                    )}
+
                     {/* Progress Bar */}
                     <div className="space-y-2 pt-2 border-t">
                         <div className="flex justify-between text-xs">

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getNovelByIdSimple } from "@/server/novel";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
 import { GoogleDriveSettingsCard } from "@/components/project/google-drive-settings-card";
+import { WritingGoalsSettingsCard } from "@/components/project/writing-goals-settings-card";
 
 export default async function ProjectSettingsPage({ 
   params 
@@ -15,12 +16,14 @@ export default async function ProjectSettingsPage({
   if (!result.success || !result.novel) {
     notFound();
   }
+
+  const novel = result.novel;
   
   return (
     <div className="flex flex-col gap-6 max-w-4xl mx-auto w-full">
       <ProjectBreadcrumb
         novelId={id}
-        novelTitle={result.novel.title}
+        novelTitle={novel.title}
         items={[{ label: "Settings" }]}
       />
       
@@ -32,9 +35,19 @@ export default async function ProjectSettingsPage({
       </div>
       
       <div className="space-y-6 pt-4">
+        {/* Writing Goals & Deadline Section */}
+        <WritingGoalsSettingsCard
+          novelId={id}
+          initialTargetWordCount={(novel as any).targetWordCount ?? null}
+          initialTargetDeadline={(novel as any).targetDeadline ?? null}
+          initialDailyTargetMode={(novel as any).dailyTargetMode ?? "dynamic"}
+          initialDailyTargetWordCount={(novel as any).dailyTargetWordCount ?? 1000}
+        />
+
         {/* Drive Sync Settings Section */}
         <GoogleDriveSettingsCard />
       </div>
     </div>
   );
 }
+
