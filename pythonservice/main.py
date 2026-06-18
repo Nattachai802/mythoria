@@ -206,6 +206,36 @@ async def sync_all_content(novel_id: str):
             except Exception as e:
                 errors.append(f"Location {loc.get('name')}: {e}")
         
+        # Process remaining entity types via the uniform embeddable endpoint
+        # (lore, faction, power, item, entity, era, timelineEvent, idea, plotThread).
+        # character/location already handled above with richer fields — skip to avoid double embed.
+        try:
+            async with httpx.AsyncClient() as client:
+                emb_resp = await client.get(
+                    f"http://localhost:3000/api/novel/{novel_id}/embeddable",
+                    timeout=30.0,
+                )
+            if emb_resp.status_code == 200:
+                for rec in emb_resp.json().get("records", []):
+                    ctype = rec.get("type")
+                    if ctype in ("character", "location") or not rec.get("text"):
+                        continue
+                    try:
+                        records.append({
+                            "id": rec["id"],
+                            "novel_id": novel_id,
+                            "content_type": ctype,
+                            "title": rec.get("title", ""),
+                            "content": rec["text"][:500],
+                            "metadata": json.dumps({}),
+                            "vector": generate_embedding(rec["text"][:2000]),
+                        })
+                        synced[ctype] = synced.get(ctype, 0) + 1
+                    except Exception as e:
+                        errors.append(f"{ctype} {rec.get('title')}: {e}")
+        except Exception as e:
+            errors.append(f"embeddable fetch: {e}")
+
         # Insert all records
         if records:
             upsert_content(records)
