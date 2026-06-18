@@ -16,6 +16,7 @@ import {
     Zap,
     Globe,
     BarChart3,
+    Share2,
 } from "lucide-react"
 
 import {
@@ -57,6 +58,7 @@ export function ProjectSidebar({ projectId, projectTitle, chapters = [] }: Proje
         { title: "Characters", href: `/dashboard/project/${projectId}/characters`, icon: Users },
         { title: "Ideas", href: `/dashboard/project/${projectId}/idea`, icon: MessageSquareText },
         { title: "World Building", href: `/dashboard/project/${projectId}/worldbuilding`, icon: Globe },
+        { title: "World Graph", href: `/dashboard/project/${projectId}/graph`, icon: Share2 },
         { title: "Powers", href: `/dashboard/project/${projectId}/powers`, icon: Zap },
         { title: "Analytics", href: `/dashboard/project/${projectId}/analytics`, icon: BarChart3 },
     ]
