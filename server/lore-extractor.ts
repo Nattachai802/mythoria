@@ -7,6 +7,7 @@ import { eq, and } from "drizzle-orm";
 import OpenAI from "openai";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { CACHE_TAGS } from "@/lib/cache-config";
+import { addReferences, removeOutgoingReferences, type AddReferenceInput } from "./references";
 
 // Initialize AI clients
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
@@ -223,6 +224,15 @@ Lore Content:
             locations: mergedLocationIds.length,
             items: mergedItemIds.length
         });
+
+        // Context Fabric: mirror lore's entity links as `lore --mentions--> X` (resync)
+        const mentionRefs: AddReferenceInput[] = [
+            ...mergedCharacterIds.map((id) => ({ type: "character" as const, id })),
+            ...mergedLocationIds.map((id) => ({ type: "location" as const, id })),
+            ...mergedItemIds.map((id) => ({ type: "item" as const, id })),
+        ].map((to) => ({ novelId, from: { type: "lore" as const, id: loreId }, to, relation: "mentions" as const, createdBy: "ai" as const }));
+        await removeOutgoingReferences({ type: "lore", id: loreId }, "mentions");
+        if (mentionRefs.length) await addReferences(mentionRefs);
 
         // 5. Insert unmatched entities as new ideas in the detected pool
         if (newIdeas.length > 0) {

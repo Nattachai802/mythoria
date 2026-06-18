@@ -14,6 +14,7 @@ import {
     matchLocationId,
     ExtractedCharacterState,
 } from "./character-state-ai";
+import { addReferences, type AddReferenceInput } from "./references";
 
 // ============================================
 // Exponential Backoff
@@ -329,6 +330,10 @@ async function saveExtractedStates(
     // Start with manually edited ones so we don't overwrite them
     const processedCharacterIds = new Set<string>(manuallyEditedCharacterIds);
 
+    // Context Fabric: AI-detected refs to emit after the loop (note→features→character, →set_in→location)
+    const aiConf = Math.round(confidence <= 1 ? confidence * 100 : confidence);
+    const aiRefs: AddReferenceInput[] = [];
+
     // Insert new states
     let insertedCount = 0;
     for (const state of states) {
@@ -381,7 +386,19 @@ async function saveExtractedStates(
 
         await db.insert(characterStates).values(insertData);
         insertedCount++;
+
+        // ponytail: AI won't clobber a user cast-deck edge (onConflictDoNothing keeps createdBy='user')
+        aiRefs.push({
+            novelId, from: { type: "note", id: noteId }, to: { type: "character", id: characterId },
+            relation: "features", createdBy: "ai", confidence: aiConf,
+        });
+        if (locationId) aiRefs.push({
+            novelId, from: { type: "note", id: noteId }, to: { type: "location", id: locationId },
+            relation: "set_in", createdBy: "ai", confidence: aiConf,
+        });
     }
+
+    if (aiRefs.length) await addReferences(aiRefs);
 
     console.log(`[SaveStates] Saved ${insertedCount} states for note ${noteId} (${states.length - insertedCount} duplicates skipped)`);
 }

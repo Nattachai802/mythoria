@@ -184,6 +184,41 @@ getContextBundle(entity)         // รวม in+out จัดกลุ่มต
 
 ---
 
+## Phase 5 — ร่าง (reuse-first) — @-mention + AI extract + RAG coverage
+
+> หลัก: **~70% เป็นการเดินสายเชื่อมของเดิม ไม่ใช่สร้าง AI/RAG ใหม่**
+> (extractor + LanceDB + embeddings + agent มีอยู่แล้ว) ของที่สร้างใหม่จริงมีแค่ @-mention ใน editor
+
+### Track A — AI auto-extract → references (wiring ล้วน, ไม่มี AI ใหม่)
+extractor เดิมรู้อยู่แล้วว่า entity ไหนโผล่ใน content ไหน — แค่ยังไม่เขียนลง references
+- **A1** `character-state-extractor.ts` (processor หลัง `extractCharacterStatesWithVoting`, รู้ `noteId`+`characterIds`)
+  → emit `note --features--> character`, `createdBy: 'ai'`, `confidence` จาก voting
+- **A2** `lore-extractor.ts` (หลัง LLM detect entity ใน lore text)
+  → emit `lore --mentions--> {character|location|item}`, `createdBy: 'ai'`
+- **A3** `analysis-helper.syncChapterCharactersFromNotes` แยก "cast deck" vs "detect จาก text" อยู่แล้ว (บรรทัด ~74)
+  → map ตรงเป็น `createdBy: 'user'` vs `'ai'` ตอน emit
+- pattern เดียวกับ dual-write ใน `note-character.ts` — แค่ addReference call
+
+### Track B — @-mention ใน editor (ของใหม่จริงอันเดียว)
+- **B0** ยืนยัน editor ก่อน (Quill vs Tiptap — โค้ดมีร่องรอยทั้งคู่) แล้วใช้ **mention plugin ของ lib นั้น** ไม่ hand-roll
+- **B1** พิมพ์ `@` → dropdown จาก `registry.search(novelId, q)` (มีแล้ว) → แทรก mention node
+- **B2** บันทึก → `addReference` `mentions`, `createdBy: 'user'`, เก็บ `sourceSpan`; ลบข้อความ → `removeReferencesBySpan`
+- **B3** render mention เป็นลิงก์ → ใช้ `EntityRef.href` ที่ registry ให้
+
+### Track C — RAG coverage + auto-sync (ขยายของเดิม ไม่ rebuild)
+- **C1** ขยาย `/sync` + source endpoint `/api/novel/[id]/characters` จาก 4 → type ที่ขาด
+  (lore, faction, power, item, entity, timelineEvent, idea) — ใช้ `upsert_content` เดิม
+- **C2** incremental: ตอน save entity → upsert vector ตัวเดียว (เรียก `upsert_content` รายตัว) แทน manual full-rebuild
+- **ไม่แตะ**: LanceDB store, Gemini embeddings, search endpoint — มีครบแล้ว
+
+### ลำดับแนะนำ
+A (wiring เร็ว ได้ข้อมูล ai refs ทันที) → C1 (coverage) → B (@-mention) → C2 (incremental)
+
+### skipped (ยกไป Phase 6)
+agent tools query references, graph rewrite — `ai_agent.py`/`tool_definitions.py` เป็น seed อยู่แล้ว
+
+---
+
 ## Rollout เต็ม (อ้างอิง)
 
 | Phase | ทำอะไร | ของเดิมพังไหม |

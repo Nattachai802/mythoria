@@ -3,6 +3,7 @@
 import { db } from "@/db/drizzle";
 import { chapterCharacters, notes, characters, noteCharacters } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
+import { addReferences, removeOutgoingReferences, type AddReferenceInput } from "./references";
 
 // ฟังก์ชั่นหลักสำหรับ Scan หาตัวละครและอัปเดตข้อมูล (รวม Cast Deck)
 export async function syncChapterCharactersFromNotes(chapterId: string, novelId: string) {
@@ -70,6 +71,7 @@ export async function syncChapterCharactersFromNotes(chapterId: string, novelId:
         await db.delete(chapterCharacters).where(eq(chapterCharacters.chapterId, chapterId));
 
         const insertData = [];
+        const refs: AddReferenceInput[] = [];
         for (const [charId, count] of characterCounts.entries()) {
             // ตรวจสอบว่าตัวละครนี้ถูกเลือกใน Cast Deck หรือแค่ถูก detect จาก text
             const isInCastDeck = linkedNotes.some(note =>
@@ -83,11 +85,21 @@ export async function syncChapterCharactersFromNotes(chapterId: string, novelId:
                 role: isInCastDeck ? "Cast" : "Detected", // Role based on source
                 notes: `Auto-synced from ${linkedNotes.length} notes`
             });
+            // Context Fabric: cast deck = user-chosen, regex match = ai-detected
+            refs.push({
+                novelId, from: { type: "chapter", id: chapterId }, to: { type: "character", id: charId },
+                relation: "features", meta: { frequency: count },
+                createdBy: isInCastDeck ? "user" : "ai",
+            });
         }
 
         if (insertData.length > 0) {
             await db.insert(chapterCharacters).values(insertData);
         }
+
+        // resync: ล้าง features เก่าของ chapter นี้ก่อน (กันตัวที่หลุดออกค้าง) แล้วเขียนใหม่
+        await removeOutgoingReferences({ type: "chapter", id: chapterId }, "features");
+        if (refs.length) await addReferences(refs);
 
         console.log(`Synced ${insertData.length} characters for chapter ${chapterId}`);
 
