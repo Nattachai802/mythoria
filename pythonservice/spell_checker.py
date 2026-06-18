@@ -14,8 +14,13 @@ from pythainlp.util import normalize, dict_trie
 from pythainlp.corpus.common import thai_words
 from build_spell_cache import load_cache, build_cache, save_cache, CACHE_FILE
 
-# โหลด Thai dictionary เป็น set ครั้งเดียวตอน import (O(1) lookup)
-_THAI_DICT: frozenset = frozenset(thai_words())
+# Thai dictionary — lazy load ครั้งแรกที่ใช้ (กัน RAM ค้างตอน service ไม่ได้ spell-check)
+_THAI_DICT_CACHE = None
+def _get_thai_dict() -> frozenset:
+    global _THAI_DICT_CACHE
+    if _THAI_DICT_CACHE is None:
+        _THAI_DICT_CACHE = frozenset(thai_words())
+    return _THAI_DICT_CACHE
 
 # โหลด suggestion cache จาก .pkl (ถ้ามี)
 _SUGGESTION_CACHE: dict = load_cache() or {}
@@ -48,16 +53,21 @@ def ensure_cache_built():
         print(f"[SpellChecker] cache พร้อม — {len(_SUGGESTION_CACHE)} คำ โหลดจาก pkl")
 
 
-# ตรวจว่า attacut ติดตั้งอยู่ไหม
-try:
-    from attacut import Tokenizer as AttacutTokenizer
-    _ATTACUT = AttacutTokenizer("attacut-sc")
-    _USE_ATTACUT = True
-    print("[SpellChecker] tokenizer: attacut-sc")
-except Exception:
-    _ATTACUT = None
-    _USE_ATTACUT = False
-    print("[SpellChecker] tokenizer: newmm (attacut not available)")
+# attacut tokenizer — lazy load (โมเดล neural โหลดตอนใช้ครั้งแรก ไม่ใช่ตอน import)
+_ATTACUT = None
+_ATTACUT_TRIED = False
+def _get_tokenizer():
+    global _ATTACUT, _ATTACUT_TRIED
+    if not _ATTACUT_TRIED:
+        _ATTACUT_TRIED = True
+        try:
+            from attacut import Tokenizer as AttacutTokenizer
+            _ATTACUT = AttacutTokenizer("attacut-sc")
+            print("[SpellChecker] tokenizer: attacut-sc (lazy)")
+        except Exception:
+            _ATTACUT = None
+            print("[SpellChecker] tokenizer: newmm (attacut not available)")
+    return _ATTACUT
 
 
 # ============================================================
@@ -172,7 +182,7 @@ class NovelSpellChecker:
         print(f"[SpellChecker] text length      : {len(text)} chars")
         print(f"[SpellChecker] sentences        : {len(sentences)}")
         print(f"[SpellChecker] whitelist size   : {len(self.custom_whitelist)}")
-        print(f"[SpellChecker] thai dict size   : {len(_THAI_DICT)} words")
+        print(f"[SpellChecker] thai dict size   : {len(_get_thai_dict())} words")
         print(f"[SpellChecker] suggestion cache : {len(_SUGGESTION_CACHE)} words cached")
 
         errors: List[SpellError] = []
@@ -202,7 +212,7 @@ class NovelSpellChecker:
                     continue
 
                 # ตรวจสอบด้วย dictionary lookup (O(1)) — เร็วกว่า spell() มาก
-                in_dict = (word in _THAI_DICT) or (word in self.custom_whitelist)
+                in_dict = (word in _get_thai_dict()) or (word in self.custom_whitelist)
 
                 if not in_dict:
                     # หา suggestions เฉพาะคำที่ผิด โดยใช้ cache
@@ -247,7 +257,7 @@ class NovelSpellChecker:
         if self._should_skip(word):
             return {"word": word, "correct": True, "suggestions": []}
 
-        is_correct = (word in _THAI_DICT) or (word in self.custom_whitelist)
+        is_correct = (word in _get_thai_dict()) or (word in self.custom_whitelist)
         if is_correct:
             return {"word": word, "correct": True, "suggestions": []}
 
@@ -287,9 +297,10 @@ class NovelSpellChecker:
 
     def _tokenize(self, text: str) -> List[str]:
         """Tokenize — ใช้ attacut ถ้ามี, fallback newmm"""
-        if _USE_ATTACUT and _ATTACUT:
+        tok = _get_tokenizer()
+        if tok:
             try:
-                tokens = _ATTACUT.tokenize(text)
+                tokens = tok.tokenize(text)
                 # attacut คืน "|"-delimited string หรือ list ขึ้นกับ version
                 if isinstance(tokens, str):
                     return tokens.split("|")
