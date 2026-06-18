@@ -420,11 +420,9 @@ async def analyze_chapter(
         r["chapter_title"] = chapter_title
     print(f"[analyze_chapter] Found {len(relationships)} relationships")
     
-    # 2. Analyze life events for each character mentioned
     print("[analyze_chapter] Analyzing life events...")
     life_events = []
     
-    # Filter mentioned characters first
     mentioned_characters = [
         char for char in characters
         if char.get("name", "").lower() in content.lower()
