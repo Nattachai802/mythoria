@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/drizzle";
 import { aiChapterReviews, notes } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { retrieveContext } from "@/server/rag";
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
@@ -33,42 +34,20 @@ const JSON_PROMPT = `
 
 async function fetchStoryContext(novelId: string, query: string, currentNoteId: string) {
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 seconds
+    // Graph RAG: vector search + 1-hop reference expansion (server/rag.ts)
+    const { items } = await retrieveContext(novelId, query);
+    const kept = items.filter((it) => it.id !== currentNoteId).slice(0, 8);
 
-    const response = await fetch("http://localhost:8000/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        query,
-        novel_id: novelId,
-        limit: 10, // Fetch more to account for filtering
-      }),
-      signal: controller.signal
-    });
+    console.log(`[RAG] Fetched ${kept.length} context items for AI Review (search+graph).`);
+    if (kept.length === 0) return "";
 
-    clearTimeout(timeoutId);
-
-    if (!response.ok) return "";
-
-    const data = await response.json();
-    if (!Array.isArray(data)) return "";
-
-    // Filter out current note and irrelevant types
-    const validTypes = ["character", "location", "chapter", "note"];
-    const filteredResults = data.filter((item: any) => 
-      item.id !== currentNoteId && validTypes.includes(item.content_type)
-    ).slice(0, 5); // Take top 5 after filtering
-
-    console.log(`[RAG] Fetched ${filteredResults.length} context items for AI Review.`);
-
-    if (filteredResults.length === 0) return "";
-
-    const contextStr = filteredResults
-      .map((item: any) => `[${item.content_type}] ${item.title}: ${item.content}`)
+    return kept
+      .map((it) =>
+        it.via === "search"
+          ? `[${it.type}] ${it.title}: ${it.content ?? ""}`
+          : `[${it.type}] ${it.title} (เกี่ยวข้องผ่าน: ${it.relation})`,
+      )
       .join("\n");
-    
-    return contextStr;
   } catch (error) {
     console.error("[RAG] Context Search Error:", error);
     return "";
