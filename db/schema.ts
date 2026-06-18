@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, integer, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, integer, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 
 // ============================================
@@ -82,6 +82,10 @@ export const novels = pgTable("novels", {
   visibility: text("visibility").notNull().default("private"), // private, public, unlisted
   wordCount: integer("word_count").notNull().default(0),
   targetWordCount: integer("target_word_count"),
+  // Writing Goal & Deadline Tracker
+  targetDeadline: timestamp("target_deadline"),            // วันสิ้นสุดเป้าหมาย
+  dailyTargetMode: text("daily_target_mode").default("dynamic"), // dynamic | static
+  dailyTargetWordCount: integer("daily_target_word_count").default(1000), // เป้าหมายคำ/วัน (โหมด static)
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()
@@ -1665,6 +1669,54 @@ export const locationEntityRelations = relations(locationEntities, ({ one }) => 
   }),
 }));
 
+// ============================================
+// CONTEXT FABRIC — Universal Reference Layer (L1)
+// ชั้นเชื่อมกลางที่ทุก module โยงหากันได้อิสระ
+// docs/context-fabric-plan.md
+// ============================================
+export const references = pgTable("references", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  novelId: text("novel_id")
+    .notNull()
+    .references(() => novels.id, { onDelete: "cascade" }),
+
+  // edge: from --(relation)--> to. type = EntityType (ดู server/registry)
+  fromType: text("from_type").notNull(),
+  fromId: text("from_id").notNull(),
+  toType: text("to_type").notNull(),
+  toId: text("to_id").notNull(),
+
+  relation: text("relation").notNull(), // mentions | features | member_of | wields | advances | ... (controlled vocab)
+  context: text("context"), // ข้อความรอบ mention / คำอธิบายสั้น
+  sourceSpan: jsonb("source_span"), // {start,end} ตำแหน่งใน rich text (ไว้ลบ ref เมื่อลบข้อความ)
+  meta: jsonb("meta"), // attribute ของ junction เดิม (role, level, travelTime...) — nullable
+
+  createdBy: text("created_by").notNull().default("user"), // user | ai | migration
+  confidence: integer("confidence"), // null=manual, 0-100 สำหรับ ai (เก็บเป็น int กัน float drift)
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  fromIdx: index("ref_from_idx").on(table.fromType, table.fromId),
+  toIdx: index("ref_to_idx").on(table.toType, table.toId),
+  novelIdx: index("ref_novel_idx").on(table.novelId),
+  uniqueEdge: uniqueIndex("ref_unique_edge").on(
+    table.fromType,
+    table.fromId,
+    table.toType,
+    table.toId,
+    table.relation,
+  ),
+}));
+
+export const referencesRelations = relations(references, ({ one }) => ({
+  novel: one(novels, {
+    fields: [references.novelId],
+    references: [novels.id],
+  }),
+}));
+
+export type Reference = typeof references.$inferSelect;
+export type InsertReference = typeof references.$inferInsert;
+
 export type User = typeof user.$inferSelect;
 export type Novel = typeof novels.$inferSelect;
 // (chapterStylometry table and relations moved earlier to avoid undefined references)
@@ -1829,4 +1881,7 @@ export const schema = {
   driveCredentials,
   noteAuditIssues,
   noteAuditIssuesRelations,
+  // Context Fabric (L1)
+  references,
+  referencesRelations,
 };
