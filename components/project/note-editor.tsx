@@ -48,7 +48,14 @@ const NoteReferencePanel = dynamic(() => import("@/components/project/note-refer
 
 import "react-quill-new/dist/quill.bubble.css";
 import "react-quill-new/dist/quill.snow.css";
-const ReactQuill = dynamic(() => import("react-quill-new"), { ssr: false });
+import "quill-mention/dist/quill.mention.css";
+import { searchEntities, syncNoteMentions } from "@/server/mentions";
+// register quill-mention on the Quill instance (client-only, ssr:false)
+const ReactQuill = dynamic(async () => {
+    const RQ = await import("react-quill-new");
+    await import("quill-mention/autoregister");
+    return RQ;
+}, { ssr: false });
 
 // A4 page: ~1500 characters (including spaces) per page
 const CHARS_PER_PAGE = 1500;
@@ -199,6 +206,7 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                         title: current.title,
                         content: { text: current.content }
                     })
+                    syncNoteMentions(note.id, novelId, current.content).catch(() => {})
                     // บันทึก version (auto-save)
                     const currentWordCount = current.content
                         .replace(/<[^>]*>/g, ' ')
@@ -233,6 +241,7 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                 title: current.title,
                 content: { text: current.content }
             })
+            syncNoteMentions(note.id, novelId, current.content).catch(() => {})
             // บันทึก version (manual save)
             const currentWordCount = current.content
                 .replace(/<[^>]*>/g, ' ')
@@ -416,6 +425,7 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                 title,
                 content: { text: content }
             })
+            syncNoteMentions(note.id, novelId, content).catch(() => {})
             if (result.success) {
                 // บันทึก version (manual save)
                 await createNoteVersion(note.id, title, { text: content }, wordCount, "manual")
@@ -459,7 +469,21 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
         clipboard: {
             matchVisual: true,
         },
-    }), [])
+        // Context Fabric @-mention — พิมพ์ @ เชื่อม entity ข้ามโมดูล
+        mention: {
+            allowedChars: /^[\p{L}\p{N}_ .]*$/u, // รองรับไทย
+            mentionDenotationChars: ["@"],
+            dataAttributes: ["id", "value", "type", "link", "icon"],
+            source: async (searchTerm: string, renderList: (items: unknown[], term: string) => void) => {
+                try {
+                    const items = await searchEntities(novelId, searchTerm)
+                    renderList(items, searchTerm)
+                } catch {
+                    renderList([], searchTerm)
+                }
+            },
+        },
+    }), [novelId])
 
     // Save status indicator component
     const SaveStatusIndicator = () => {
