@@ -62,6 +62,9 @@ interface EntityAdapter {
   icon: string;
   // สร้าง href จาก novelId + entity id
   href: (novelId: string, id: string) => string;
+  // คอลัมน์ text ที่ใช้ประกอบเนื้อหาสำหรับ embedding (RAG). เว้นว่าง = ไม่ index
+  // หมายเหตุ: note/chapter เนื้อหาเป็น tiptap json ยาว — ฝั่ง python จัดการเอง
+  contentCols?: string[];
 }
 
 const base = (novelId: string) => `/dashboard/project/${novelId}`;
@@ -77,18 +80,21 @@ const REGISTRY: Record<EntityType, EntityAdapter> = {
     displayCol: "name",
     icon: "user",
     href: (n, id) => `${base(n)}/characters/${id}`,
+    contentCols: ["name", "role", "description", "personality", "backstory"],
   },
   location: {
     table: locations,
     displayCol: "name",
     icon: "map-pin",
     href: (n, id) => `${base(n)}/locations/${id}`,
+    contentCols: ["name", "type", "description", "atmosphere", "history"],
   },
   power: {
     table: powers,
     displayCol: "name",
     icon: "zap",
     href: (n, id) => `${base(n)}/powers/${id}`,
+    contentCols: ["name", "type", "description"],
   },
   note: {
     table: notes,
@@ -107,48 +113,56 @@ const REGISTRY: Record<EntityType, EntityAdapter> = {
     displayCol: "title",
     icon: "clapperboard",
     href: (n, id) => `${base(n)}/plot/${id}`,
+    contentCols: ["title", "description", "sceneGoal", "sceneConflict", "sceneOutcome"],
   },
   idea: {
     table: ideas,
     displayCol: "title",
     icon: "lightbulb",
     href: (n, id) => `${base(n)}/idea#${id}`,
+    contentCols: ["title", "category", "summary", "content"],
   },
   plotThread: {
     table: plotThreads,
     displayCol: "title",
     icon: "git-branch",
     href: (n, id) => `${base(n)}/plot#${id}`,
+    contentCols: ["title", "type", "note"],
   },
   faction: {
     table: factions,
     displayCol: "name",
     icon: "flag",
     href: (n, id) => `${base(n)}/worldbuilding#faction-${id}`,
+    contentCols: ["name", "type", "description"],
   },
   lore: {
     table: loreEntries,
     displayCol: "title",
     icon: "scroll",
     href: (n, id) => `${base(n)}/worldbuilding#lore-${id}`,
+    contentCols: ["title", "type", "content"],
   },
   entity: {
     table: entities,
     displayCol: "name",
     icon: "skull",
     href: (n, id) => `${base(n)}/worldbuilding#entity-${id}`,
+    contentCols: ["name", "type", "description", "appearance", "habitat"],
   },
   item: {
     table: items,
     displayCol: "name",
     icon: "package",
     href: (n, id) => `${base(n)}/worldbuilding#item-${id}`,
+    contentCols: ["name", "type", "description", "lore"],
   },
   era: {
     table: eras,
     displayCol: "name",
     icon: "hourglass",
     href: (n, id) => `${base(n)}/worldbuilding#era-${id}`,
+    contentCols: ["name", "description"],
   },
 };
 
@@ -250,6 +264,56 @@ export async function search(
         )
         .limit(limit);
       return (rows as Record<string, unknown>[]).map((row) => toRef(type, row));
+    }),
+  );
+
+  return groups.flat();
+}
+
+export interface EmbeddableRecord {
+  type: EntityType;
+  id: string;
+  novelId: string;
+  title: string;
+  text: string; // เนื้อหารวมสำหรับ embed
+}
+
+/**
+ * เนื้อหาทุก entity ของนิยายในรูปแบบเดียว สำหรับ RAG embedding (Track C)
+ * เฉพาะ type ที่มี contentCols — note/chapter (tiptap ยาว) ฝั่ง python จัดการเอง
+ * identity (type+id) ตรงกับ references → search hit resolve กลับ graph ได้
+ */
+export async function getEmbeddableContent(
+  novelId: string,
+  types?: EntityType[],
+): Promise<EmbeddableRecord[]> {
+  const picked = (types ?? ENTITY_TYPES).filter((t) => REGISTRY[t].contentCols);
+
+  const groups = await Promise.all(
+    picked.map(async (type) => {
+      const adapter = REGISTRY[type];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const t = adapter.table as any;
+      const rows = (await db
+        .select()
+        .from(t)
+        .where(eq(t.novelId, novelId))) as Record<string, unknown>[];
+
+      return rows
+        .map((row) => {
+          const text = adapter
+            .contentCols!.map((c) => row[c])
+            .filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+            .join(". ");
+          return {
+            type,
+            id: row.id as string,
+            novelId,
+            title: (row[adapter.displayCol] as string) ?? "",
+            text,
+          };
+        })
+        .filter((r) => r.text.trim().length >= 3); // ponytail: ข้าม entity ว่างเปล่า
     }),
   );
 
