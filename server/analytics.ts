@@ -223,6 +223,9 @@ async function _getAnalyticsSummary(novelId: string) {
                 wordCount: true,
                 targetWordCount: true,
                 title: true,
+                targetDeadline: true,
+                dailyTargetMode: true,
+                dailyTargetWordCount: true,
             },
         });
 
@@ -270,6 +273,45 @@ async function _getAnalyticsSummary(novelId: string) {
             }
         }
 
+        // === Dynamic Goal & Deadline Pacing Engine ===
+        const totalWords = novel?.wordCount || 0;
+        const targetWords = novel?.targetWordCount || null;
+        const deadline = novel?.targetDeadline || null;
+        const dailyMode = novel?.dailyTargetMode || 'dynamic';
+        const staticDailyTarget = novel?.dailyTargetWordCount || 1000;
+
+        let todayGoal = staticDailyTarget; // default fallback
+        let daysRemaining: number | null = null;
+        let goalStatus: 'on_track' | 'behind' | 'no_target' = 'no_target';
+
+        if (deadline) {
+            const now = new Date();
+            const deadlineDate = new Date(deadline);
+            // Start of today
+            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const deadlineStart = new Date(deadlineDate.getFullYear(), deadlineDate.getMonth(), deadlineDate.getDate());
+            const msPerDay = 86400000;
+            daysRemaining = Math.max(0, Math.ceil((deadlineStart.getTime() - todayStart.getTime()) / msPerDay));
+
+            if (dailyMode === 'dynamic' && targetWords && targetWords > 0) {
+                const wordsLeft = Math.max(0, targetWords - totalWords);
+                if (daysRemaining > 0) {
+                    todayGoal = Math.ceil(wordsLeft / daysRemaining);
+                } else {
+                    todayGoal = wordsLeft; // deadline today or passed
+                }
+            } else {
+                todayGoal = staticDailyTarget;
+            }
+
+            // Status: on_track if today's words >= todayGoal, else behind
+            goalStatus = todayWords >= todayGoal ? 'on_track' : 'behind';
+        } else if (targetWords && targetWords > 0) {
+            // No deadline but has target — use static daily target
+            todayGoal = staticDailyTarget;
+            goalStatus = todayWords >= todayGoal ? 'on_track' : 'behind';
+        }
+
         return {
             success: true as const,
             summary: {
@@ -282,6 +324,13 @@ async function _getAnalyticsSummary(novelId: string) {
                 weekWords,
                 monthWords,
                 avgWordsPerDay: Math.round(weekWords / 7),
+                // Goal & Deadline
+                todayGoal,
+                daysRemaining,
+                goalStatus,
+                targetDeadline: novel?.targetDeadline ?? null,
+                dailyTargetMode: novel?.dailyTargetMode ?? 'dynamic',
+                dailyTargetWordCount: novel?.dailyTargetWordCount ?? 1000,
             },
         };
     } catch (error) {
@@ -302,3 +351,4 @@ export async function getAnalyticsSummary(novelId: string) {
     );
     return cachedFn();
 }
+

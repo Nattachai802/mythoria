@@ -39,31 +39,37 @@
 ```mermaid
 graph TD
     subgraph Client ["Client Side (Browser)"]
-        UI["Next.js Pages (Forge Mode UI)"]
-        Canvas["Visual Canvas (React Flow)"]
-        Editor["Writing Studio (Quill.js)"]
-        GraphVis["Relationship Graph (react-force-graph)"]
+        UI["Next.js Pages Forge Mode UI"]
+        Canvas["Visual Canvas React Flow"]
+        Editor["Writing Studio Quill.js"]
+        GraphVis["Relationship Graph"]
     end
 
-    subgraph WebServer ["Web & Backend Server"]
-        NextServer["Next.js Server Actions / APIs"]
+    subgraph WebServer ["Web and Backend Server"]
+        NextServer["Next.js Server Actions and APIs"]
         BAuth["Better Auth"]
         Drizzle["Drizzle ORM"]
     end
 
-    subgraph AIService ["AI Microservice (Python)"]
-        FastAPI["FastAPI App"]
-        LangChain["LangChain (Agent Orchestration)"]
-        LanceDB[("LanceDB (Vector DB)")]
+    subgraph AIService ["AI Microservice Python FastAPI port 8000"]
+        VectorRAG["Vector and RAG\n/sync /search"]
+        PlotAgent["Plot Hole Agent\n/analyze-plot\n/check-all-notes-stream\n/check-timeline /validate-character"]
+        CharAnalyzer["Character Analyzer\n/analyze-characters\n/analyze-queue SSE"]
+        Stylo["Stylometry\n/analyze-chapter-style\n/analyze-fingerprint-bulk"]
+        SpellSvc["Spell Checker\n/spell-check\n/spell-check-note Background"]
+        LanceDB[("LanceDB Vector DB")]
+        SpellCache[("Spell Cache pkl")]
     end
 
-    subgraph External ["External Services & DB"]
+    subgraph External ["External Services and DB"]
         Postgres[("Neon PostgreSQL")]
-        Typhoon["Typhoon v2.1 API"]
-        Groq["Groq API (Llama)"]
+        GeminiEmbed["Gemini API Embeddings 768d"]
+        Typhoon["Typhoon v2.1 Thai LLM"]
+        Groq["Groq API Llama fast inference"]
+        PyThaiNLP["PyThaiNLP Spell Check"]
         GDrive["Google Drive API"]
-        Discord["Discord Webhooks / API"]
-        Cloudinary["Cloudinary (Asset Store)"]
+        Discord["Discord Webhooks"]
+        Cloudinary["Cloudinary Asset Store"]
     end
 
     UI --> NextServer
@@ -73,18 +79,33 @@ graph TD
 
     NextServer --> BAuth
     NextServer --> Drizzle
-    NextServer --> FastAPI
+    NextServer --> VectorRAG
+    NextServer --> PlotAgent
+    NextServer --> CharAnalyzer
+    NextServer --> Stylo
+    NextServer --> SpellSvc
     NextServer --> GDrive
     NextServer --> Discord
     NextServer --> Cloudinary
 
     Drizzle --> Postgres
 
-    FastAPI --> LangChain
-    LangChain --> LanceDB
-    LangChain --> Typhoon
-    LangChain --> Groq
-    FastAPI --> Postgres
+    VectorRAG --> LanceDB
+    VectorRAG --> GeminiEmbed
+    VectorRAG --> NextServer
+
+    PlotAgent --> Typhoon
+    PlotAgent --> Groq
+    PlotAgent --> NextServer
+
+    CharAnalyzer --> Typhoon
+    CharAnalyzer --> NextServer
+
+    Stylo --> Typhoon
+
+    SpellSvc --> PyThaiNLP
+    SpellSvc --> SpellCache
+    SpellSvc --> NextServer
 ```
 
 ---
