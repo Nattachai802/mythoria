@@ -4,6 +4,12 @@ import { db } from "@/db/drizzle";
 import { noteCharacters, notes, InsertNoteCharacter } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { syncChapterCharactersFromNotes } from "./analysis-helper";
+import { addReference, removeReferenceEdge } from "./references";
+
+// ponytail: dual-write to Context Fabric references (L1). Same pattern for the
+// other MIGRATE junctions — copy these 3 calls when each gets touched.
+const noteCharEdge = (noteId: string, characterId: string) =>
+    ({ from: { type: "note", id: noteId }, to: { type: "character", id: characterId }, relation: "features" } as const);
 
 // Add character to note's cast deck
 export async function addCharacterToNote(noteId: string, characterId: string, role?: string) {
@@ -31,6 +37,10 @@ export async function addCharacterToNote(noteId: string, characterId: string, ro
             where: eq(notes.id, noteId)
         });
 
+        if (note) {
+            await addReference({ novelId: note.novelId, ...noteCharEdge(noteId, characterId), meta: role ? { role } : null });
+        }
+
         if (note?.linkedToChapterId) {
             syncChapterCharactersFromNotes(note.linkedToChapterId, note.novelId)
                 .catch(err => console.error("Background sync failed:", err));
@@ -52,6 +62,8 @@ export async function removeCharacterFromNote(noteId: string, characterId: strin
                 eq(noteCharacters.characterId, characterId)
             )
         );
+
+        await removeReferenceEdge(noteCharEdge(noteId, characterId));
 
         // Trigger sync for chapter if note is linked to a chapter
         const note = await db.query.notes.findFirst({
@@ -99,6 +111,9 @@ export async function updateNoteCharacterRole(noteId: string, characterId: strin
                 )
             )
             .returning();
+
+        const note = await db.query.notes.findFirst({ where: eq(notes.id, noteId) });
+        if (note) await addReference({ novelId: note.novelId, ...noteCharEdge(noteId, characterId), meta: { role } });
 
         return { success: true, noteCharacter: updated };
     } catch (error) {

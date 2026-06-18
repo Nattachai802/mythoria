@@ -167,12 +167,18 @@ getContextBundle(entity)         // รวม in+out จัดกลุ่มต
 
 ## ขั้นตอนปลอดภัย — รอบแรก (L0+L1)
 
-1. `pg_dump` → `backup/pre-reference-layer.sql` + snapshot `vector-db/`
-2. เพิ่มตาราง `references` (`db:push`) — ไม่แตะตารางเดิม
-3. เขียน registry + adapters + references API
-4. **Dual-write**: แก้ junction write paths เดิม (เช่น `addCharacterToNote`) ให้เขียน `references` ด้วย — ของเดิมยังทำงาน 100%
-5. **Backfill script**: copy/mirror ตาม "Junction → Reference Mapping" ด้านบน (flag `migration`)
+1. ✅ `pg_dump` → `backup/pre-reference-layer-*.sql` (6.2M, 51 ตาราง) — vector-db ยังไม่มี local
+2. ✅ เพิ่มตาราง `references` (`db:push`) — additive, ไม่แตะตารางเดิม (migration `0013_context_fabric_references.sql`)
+3. ✅ เขียน registry (`server/registry/entity-registry.ts`) + references API (`server/references.ts`)
+4. ⬜ **Dual-write**: แก้ junction write paths เดิม (เช่น `addCharacterToNote`) ให้เขียน `references` ด้วย — *ยังไม่ทำ (รอบถัดไป)*
+5. ✅ **Backfill script** (`scripts/backfill-references.ts`): copy/mirror ตาม mapping — รันแล้ว 224 edges (flag `migration`), idempotent
 6. **ยังไม่ลบ junction ใดๆ** — รอ Phase 4+ รอบถัดไป
+
+### สถานะรอบแรก (2026-06-17)
+- รากฐาน L0+L1 **สร้างเสร็จ + verify บนข้อมูลจริง**: `getContextBundle` ดึง backlink ได้ถูกต้อง
+- references ปัจจุบัน 224 edges (features 124, set_in 61, connects_to 29, related_to 6, derived_from 2, wields 2) ทั้งหมด `createdBy=migration`
+- **ค้าง**: dual-write (Phase 4 ในแผน), @-mention UI / RAG auto-sync / graph rewrite (Phase 5-6)
+- ⚠️ `references` เป็น SQL reserved word — Drizzle quote ให้อัตโนมัติ, raw SQL ต้องใส่ `"references"`
 
 ผลลัพธ์รอบแรก: reference layer มีข้อมูลครบ, ของเดิมไม่พัง, พร้อมให้ mention UI / graph / RAG เสียบในรอบหน้า
 
