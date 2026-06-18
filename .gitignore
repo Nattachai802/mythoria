@@ -52,3 +52,7 @@ next-env.d.ts
 
 # vector database
 /vector-db
+
+# DB dumps — อย่า commit (มี secret)
+backup.sql
+backup/
