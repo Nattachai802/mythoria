@@ -71,8 +71,8 @@ export function WorldGraph({ novelId, height = 600 }: WorldGraphProps) {
     }, [height]);
 
     const drawNode = useCallback((node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
-        const size = 5 + (node.val || 1) * 1.5;
-        const fontSize = 11 / globalScale;
+        // sqrt scaling + cap กัน node degree สูงบวมเป็นก้อนใหญ่
+        const size = Math.min(14, 3 + Math.sqrt(node.val || 1) * 2);
         const color = colorFor(node.type);
 
         ctx.beginPath();
@@ -80,13 +80,26 @@ export function WorldGraph({ novelId, height = 600 }: WorldGraphProps) {
         ctx.arc(node.x, node.y, size, 0, 2 * Math.PI, false);
         ctx.fill();
 
-        const label = node.label as string;
-        ctx.font = `${fontSize}px Sans-Serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillStyle = theme === "dark" ? "#e2e8f0" : "#1e293b";
-        ctx.fillText(label, node.x, node.y + size + fontSize + 1);
+        // โชว์ label เฉพาะตอนซูมเข้าพอ หรือ node สำคัญ (degree สูง) — กัน label ทับกันรก
+        if (globalScale > 1.4 || (node.val || 1) >= 5) {
+            const fontSize = Math.max(3, 11 / globalScale);
+            const label = (node.label as string)?.slice(0, 24) ?? "";
+            ctx.font = `${fontSize}px Sans-Serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillStyle = theme === "dark" ? "#e2e8f0" : "#1e293b";
+            ctx.fillText(label, node.x, node.y + size + fontSize + 1);
+        }
     }, [theme]);
+
+    // ตั้งแรงผลัก + ระยะเส้น ให้กราฟกระจายไม่กระจุก (เรียกหลังโหลดข้อมูล)
+    useEffect(() => {
+        const fg = fgRef.current;
+        if (!fg || data.nodes.length === 0) return;
+        fg.d3Force("charge")?.strength(-180);
+        fg.d3Force("link")?.distance(70);
+        fg.d3ReheatSimulation?.();
+    }, [data]);
 
     // type ที่ปรากฏจริง สำหรับ legend
     const presentTypes = Array.from(new Set(data.nodes.map((n) => n.type)));
