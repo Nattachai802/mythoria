@@ -109,7 +109,8 @@ export function GlobalSearch() {
         let path = "";
         switch (result.type) {
             case "chapter":
-                path = `/dashboard/project/${result.novelId}/chapter/${result.id}`;
+                // chapter editor ถูกยุบ → ไปหน้า scene board แทน
+                path = `/dashboard/project/${result.novelId}/chapter/${result.id}/overview`;
                 break;
             case "note":
                 path = `/dashboard/project/${result.novelId}/note/${result.id}`;

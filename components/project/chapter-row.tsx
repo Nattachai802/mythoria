@@ -149,15 +149,12 @@ export function ChapterRow({
                     </CollapsibleTrigger>
                 )}
 
-                {/* Chapter Title */}
-                <Link
-                    href={`/dashboard/project/${novelId}/chapter/${chapter.id}`}
-                    className="flex-1 min-w-0"
-                >
-                    <span className="font-medium hover:text-primary transition-colors truncate block">
+                {/* Chapter Title — แค่ label (แก้เนื้อหาที่ note/scene) */}
+                <div className="flex-1 min-w-0">
+                    <span className="font-medium truncate block">
                         {chapter.title}
                     </span>
-                </Link>
+                </div>
 
                 {/* Plot Hole Badge for Chapter */}
                 {totalPlotHoles > 0 && (

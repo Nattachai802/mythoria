@@ -106,7 +106,7 @@ const REGISTRY: Record<EntityType, EntityAdapter> = {
     table: chapters,
     displayCol: "title",
     icon: "book-open",
-    href: (n, id) => `${base(n)}/chapter/${id}`,
+    href: (n, id) => `${base(n)}/chapter/${id}/overview`,
   },
   timelineEvent: {
     table: timelineEvents,
