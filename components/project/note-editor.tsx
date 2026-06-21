@@ -57,8 +57,10 @@ const ReactQuill = dynamic(async () => {
     return RQ;
 }, { ssr: false });
 
-// A4 page: ~1500 characters (including spaces) per page
-const CHARS_PER_PAGE = 1500;
+// A5 page (148×210mm): ~800 ตัวอักษรรวมช่องว่าง ต่อ 1 หน้า (เหมาะกับนิยาย/pocket book)
+const CHARS_PER_PAGE = 800;
+// ขนาดแผ่น A5 ที่ 96dpi (สำหรับ page view + เส้นแบ่งหน้า)
+const A5_SHEET_HEIGHT = 794;
 
 type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error';
 
@@ -124,9 +126,8 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
             }
         }
 
-        // ประเมินหน้ากระดาษ A4 มาตรฐาน (ประมาณ 1500 ตัวอักษรรวมช่องว่าง ต่อ 1 หน้า แบบไม่แน่นเกินไปเหมาะกับนิยาย)
-        const charsPerPage = 1500;
-        const pages = Math.max(1, Math.ceil(charsWithSpaces / charsPerPage));
+        // ประเมินหน้ากระดาษ A5 (≈800 ตัวอักษรรวมช่องว่าง ต่อ 1 หน้า)
+        const pages = Math.max(1, Math.ceil(charsWithSpaces / CHARS_PER_PAGE));
 
         return { words, charsWithSpaces, charsWithoutSpaces, pages };
     }, [content]);
@@ -743,13 +744,28 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                         </>
                     )}
 
+                    {/* Page-view: เส้นแบ่งหน้า A5 (เขียนเต็มหน้า → เห็นเส้นขึ้นหน้าใหม่) */}
+                    <style dangerouslySetInnerHTML={{ __html: `
+                        .note-a5-page .ql-container { background: transparent; }
+                        .note-a5-page .ql-editor {
+                            background-image: repeating-linear-gradient(
+                                to bottom,
+                                transparent 0,
+                                transparent ${A5_SHEET_HEIGHT - 1}px,
+                                rgba(128,128,128,0.28) ${A5_SHEET_HEIGHT - 1}px,
+                                rgba(128,128,128,0.28) ${A5_SHEET_HEIGHT}px
+                            );
+                        }
+                    ` }} />
+
                     {/* Editor */}
                     <div
                         ref={editorContainerRef}
                         className={cn(
-                            "h-full overflow-hidden flex flex-col transition-all duration-300 w-full flex-1 bg-background shadow-md",
-                            !showReference && "max-w-3xl mx-auto",
-                            isFocusMode && "!max-w-2xl px-4 md:px-8 pt-4 shadow-none bg-transparent"
+                            "h-full overflow-hidden flex flex-col transition-all duration-300 w-full flex-1",
+                            isFocusMode
+                                ? "!max-w-2xl mx-auto px-4 md:px-8 pt-4 bg-transparent"
+                                : "note-a5-page bg-muted/40 dark:bg-muted/10"
                         )}
                     >
                         <ReactQuill
@@ -759,8 +775,14 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                             modules={modules}
                             className={cn(
                                 "h-full flex flex-col [&>.ql-container]:flex-1 [&>.ql-container]:overflow-y-auto [&>.ql-container]:text-base [&>.ql-container]:border-none",
-                                "[&>.ql-editor]:px-6 [&>.ql-editor]:py-6 sm:[&>.ql-editor]:px-10",
-                                isFocusMode && "[&>.ql-editor]:text-lg [&>.ql-editor]:leading-relaxed [&>.ql-editor]:px-4 sm:[&>.ql-editor]:px-12"
+                                isFocusMode
+                                    ? "[&>.ql-editor]:text-lg [&>.ql-editor]:leading-relaxed [&>.ql-editor]:px-4 sm:[&>.ql-editor]:px-12 [&>.ql-editor]:py-6"
+                                    : cn(
+                                        // แผ่นกระดาษ A5 กลางพื้นเทา
+                                        "[&>.ql-editor]:w-[559px] [&>.ql-editor]:max-w-full [&>.ql-editor]:mx-auto [&>.ql-editor]:my-6",
+                                        "[&>.ql-editor]:min-h-[794px] [&>.ql-editor]:bg-background [&>.ql-editor]:border [&>.ql-editor]:rounded-sm [&>.ql-editor]:shadow-md",
+                                        "[&>.ql-editor]:!px-12 [&>.ql-editor]:!py-14"
+                                    )
                             )}
                             placeholder="เริ่มเขียนฉากของคุณ..."
                         />
