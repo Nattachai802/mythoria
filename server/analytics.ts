@@ -5,6 +5,7 @@ import { notes, novels, chapters } from "@/db/schema";
 import { eq, and, gte, lte, desc } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import { CACHE_TAGS, CACHE_DURATION } from "@/lib/cache-config";
+import { getNovelsByUserId } from "./novel";
 
 // Get word count from content
 function getWordCount(content: any): number {
@@ -350,5 +351,132 @@ export async function getAnalyticsSummary(novelId: string) {
         }
     );
     return cachedFn();
+}
+
+// ============================================
+// ACCOUNT-LEVEL ANALYTICS — รวมข้ามทุกนิยายของผู้ใช้
+// ============================================
+
+// คำนวณ streak จากเซตของวันที่ที่ "เขียน" (รูปแบบ YYYY-MM-DD)
+function computeStreak(activeDates: Set<string>): { current: number; best: number } {
+    if (activeDates.size === 0) return { current: 0, best: 0 };
+    const sorted = Array.from(activeDates).sort().reverse(); // ใหม่ → เก่า
+
+    const today = new Date().toISOString().split("T")[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+
+    let current = 0;
+    if (sorted[0] === today || sorted[0] === yesterday) {
+        current = 1;
+        const checkDate = new Date(sorted[0]);
+        for (let i = 1; i < sorted.length; i++) {
+            checkDate.setDate(checkDate.getDate() - 1);
+            if (sorted[i] === checkDate.toISOString().split("T")[0]) current++;
+            else break;
+        }
+    }
+
+    let best = 0;
+    let temp = 1;
+    for (let i = 1; i < sorted.length; i++) {
+        const diff = (new Date(sorted[i - 1]).getTime() - new Date(sorted[i]).getTime()) / 86400000;
+        if (diff === 1) temp++;
+        else { best = Math.max(best, temp); temp = 1; }
+    }
+    best = Math.max(best, temp, current);
+
+    return { current, best };
+}
+
+export interface PortfolioNovel {
+    id: string;
+    title: string;
+    wordCount: number;
+    chaptersCount: number;
+    status: string;
+    updatedAt: string;
+    targetWordCount: number | null;
+    progress: number; // 0-100 (0 ถ้าไม่มีเป้า)
+}
+
+type AccountNovelRow = {
+    id: string;
+    title: string;
+    wordCount: number | null;
+    status: string;
+    updatedAt: Date | string;
+    targetWordCount: number | null;
+    chapters?: { id: string }[];
+};
+
+export async function getAccountAnalytics(userId: string) {
+    try {
+        const { novels: novelList } = await getNovelsByUserId(userId);
+        const list = (novelList ?? []) as AccountNovelRow[];
+
+        // รวม activity 90 วัน ข้ามทุกนิยาย (reuse getWritingActivity ที่ cache ไว้)
+        const activityByDate = new Map<string, number>();
+        await Promise.all(
+            list.map(async (nv) => {
+                const r = await getWritingActivity(nv.id, 90);
+                if (!r.success) return;
+                for (const d of r.activity) {
+                    activityByDate.set(d.date, (activityByDate.get(d.date) ?? 0) + d.words);
+                }
+            }),
+        );
+
+        const activity = Array.from(activityByDate.keys())
+            .sort()
+            .map((date) => {
+                const words = activityByDate.get(date) ?? 0;
+                return { date, count: words, words };
+            });
+
+        const activeDateSet = new Set(activity.filter((d) => d.words > 0).map((d) => d.date));
+        const streak = computeStreak(activeDateSet);
+
+        // totals + portfolio
+        const byStatus: Record<string, number> = {};
+        let totalWords = 0;
+        let totalChapters = 0;
+        const portfolio: PortfolioNovel[] = list.map((nv) => {
+            totalWords += nv.wordCount ?? 0;
+            const chaptersCount = nv.chapters?.length ?? 0;
+            totalChapters += chaptersCount;
+            byStatus[nv.status] = (byStatus[nv.status] ?? 0) + 1;
+            const target = nv.targetWordCount ?? null;
+            const progress = target && target > 0
+                ? Math.min(100, Math.round(((nv.wordCount ?? 0) / target) * 100))
+                : 0;
+            return {
+                id: nv.id,
+                title: nv.title,
+                wordCount: nv.wordCount ?? 0,
+                chaptersCount,
+                status: nv.status,
+                updatedAt: new Date(nv.updatedAt).toISOString(),
+                targetWordCount: target,
+                progress,
+            };
+        });
+
+        return {
+            success: true as const,
+            totals: {
+                novels: list.length,
+                words: totalWords,
+                chapters: totalChapters,
+                activeDays: activeDateSet.size,
+                byStatus,
+            },
+            streak,
+            activity,
+            portfolio,
+        };
+    } catch (error) {
+        console.error("Get account analytics error:", error);
+        return { success: false as const, error: "Failed to load account analytics" };
+    }
 }
 
