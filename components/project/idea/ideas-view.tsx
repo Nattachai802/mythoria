@@ -28,10 +28,11 @@ import {
     Save,
     CheckCircle2,
     Plus,
+    CheckCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
-import { updateIdea, deleteIdea } from "@/server/idea";
+import { updateIdea, deleteIdea, acceptMultipleIdeas } from "@/server/idea";
 import { toast } from "sonner";
 
 interface IdeasViewProps {
@@ -192,6 +193,22 @@ export function IdeasView({ ideas, novelId, chapters = [] }: IdeasViewProps) {
         } finally {
             setProcessingIds(prev => ({ ...prev, [ideaId]: null }));
         }
+    };
+
+    const [isBulkAccepting, setIsBulkAccepting] = useState(false);
+
+    const handleAcceptAll = async () => {
+        if (detectedIdeas.length === 0) return;
+        setIsBulkAccepting(true);
+        const ids = detectedIdeas.map(i => i.id);
+        const res = await acceptMultipleIdeas(ids, novelId);
+        if (res.success) {
+            toast.success(`รับ ${res.count} ไอเดียเข้าคลังเรียบร้อย`);
+            router.refresh();
+        } else {
+            toast.error(res.error || "เกิดข้อผิดพลาด");
+        }
+        setIsBulkAccepting(false);
     };
 
     const bubbles = useMemo(() => {
@@ -551,10 +568,21 @@ export function IdeasView({ ideas, novelId, chapters = [] }: IdeasViewProps) {
                                 }
                             `}} />
 
-                            <div className="p-4 rounded-xl border bg-muted/20">
+                            <div className="p-4 rounded-xl border bg-muted/20 flex items-center justify-between gap-4">
                                 <p className="text-sm text-muted-foreground">
                                     💡 <strong>Idea Pool:</strong> คลิกชื่อไอเดียเพื่อดูรายละเอียด กด ✓ เพื่อรับเข้าคลัง หรือ ✕ เพื่อละทิ้ง
                                 </p>
+                                <Button
+                                    size="sm"
+                                    onClick={handleAcceptAll}
+                                    disabled={isBulkAccepting}
+                                    className="shrink-0 gap-1.5"
+                                >
+                                    {isBulkAccepting
+                                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                        : <CheckCheck className="w-3.5 h-3.5" />}
+                                    รับทั้งหมด ({detectedIdeas.length})
+                                </Button>
                             </div>
 
                             <div

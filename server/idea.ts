@@ -277,6 +277,37 @@ export async function deleteAllIdeas(novelId: string) {
     }
 }
 
+// Bulk accept detected ideas (set isDetected = false)
+export async function acceptMultipleIdeas(ideaIds: string[], novelId: string) {
+    try {
+        if (!ideaIds || ideaIds.length === 0) {
+            return { success: false, error: "No ideas selected" };
+        }
+        const accepted = await db
+            .update(ideas)
+            .set({ isDetected: false, updatedAt: new Date() })
+            .where(
+                and(
+                    eq(ideas.novelId, novelId),
+                    inArray(ideas.id, ideaIds)
+                )
+            )
+            .returning();
+
+        revalidateTag(CACHE_TAGS.ideas(novelId), "default");
+        revalidatePath(`/dashboard/project/${novelId}/idea`);
+
+        return {
+            success: true,
+            count: accepted.length,
+            message: `Accepted ${accepted.length} ideas`
+        };
+    } catch (error) {
+        console.error("Error accepting multiple ideas:", error);
+        return { success: false, error: "Failed to accept ideas" };
+    }
+}
+
 export async function deleteMultipleIdeas(ideaIds: string[], novelId: string) {
     try {
         if (!ideaIds || ideaIds.length === 0) {
