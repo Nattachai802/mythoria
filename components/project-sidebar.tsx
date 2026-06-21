@@ -17,7 +17,9 @@ import {
     Globe,
     BarChart3,
     Share2,
+    Keyboard,
 } from "lucide-react"
+import { useKeyboardShortcutsContext } from "@/components/keyboard-shortcuts-provider"
 
 import {
     Sidebar,
@@ -51,6 +53,7 @@ interface ProjectSidebarProps {
 
 export function ProjectSidebar({ projectId, projectTitle, chapters = [] }: ProjectSidebarProps) {
     const pathname = usePathname()
+    const { openHelp } = useKeyboardShortcutsContext()
 
     const navItems = [
         { title: "Overview", href: `/dashboard/project/${projectId}`, icon: LayoutDashboard },
@@ -130,11 +133,11 @@ export function ProjectSidebar({ projectId, projectTitle, chapters = [] }: Proje
                                             <SidebarMenuSub>
                                                 {publishedChapters.map((chapter) => (
                                                     <SidebarMenuSubItem key={chapter.id}>
-                                                        <SidebarMenuSubButton asChild isActive={pathname === `/dashboard/project/${projectId}/chapter/${chapter.id}`}>
-                                                            <Link href={`/dashboard/project/${projectId}/chapter/${chapter.id}`}>
+                                                        <SidebarMenuSubButton asChild className="cursor-default hover:bg-transparent text-muted-foreground">
+                                                            <span>
                                                                 <FileText className="h-4 w-4" />
                                                                 <span>{chapter.title}</span>
-                                                            </Link>
+                                                            </span>
                                                         </SidebarMenuSubButton>
                                                     </SidebarMenuSubItem>
                                                 ))}
@@ -158,11 +161,11 @@ export function ProjectSidebar({ projectId, projectTitle, chapters = [] }: Proje
                                             <SidebarMenuSub>
                                                 {draftChapters.map((chapter) => (
                                                     <SidebarMenuSubItem key={chapter.id}>
-                                                        <SidebarMenuSubButton asChild isActive={pathname === `/dashboard/project/${projectId}/chapter/${chapter.id}`}>
-                                                            <Link href={`/dashboard/project/${projectId}/chapter/${chapter.id}`}>
+                                                        <SidebarMenuSubButton asChild className="cursor-default hover:bg-transparent text-muted-foreground">
+                                                            <span>
                                                                 <FileText className="h-4 w-4" />
                                                                 <span>{chapter.title}</span>
-                                                            </Link>
+                                                            </span>
                                                         </SidebarMenuSubButton>
                                                     </SidebarMenuSubItem>
                                                 ))}
@@ -177,6 +180,13 @@ export function ProjectSidebar({ projectId, projectTitle, chapters = [] }: Proje
             </SidebarContent>
             <SidebarFooter>
                 <SidebarMenu>
+                    <SidebarMenuItem>
+                        <SidebarMenuButton onClick={openHelp} tooltip="คีย์ลัด (?)">
+                            <Keyboard />
+                            <span>คีย์ลัด</span>
+                            <kbd className="ml-auto px-1.5 py-0.5 text-[10px] bg-muted rounded border border-border font-mono">?</kbd>
+                        </SidebarMenuButton>
+                    </SidebarMenuItem>
                     <SidebarMenuItem>
                         <ModeToggle />
                     </SidebarMenuItem>
