@@ -280,6 +280,9 @@ Agent อัจฉริยะที่ใช้ Tool Calling ตรวจสอ
 - วิเคราะห์ **ลายมือเขียน (Writing Style)** ของนักเขียน
 - ตรวจว่าสไตล์การเขียนสม่ำเสมอตลอดทั้งเรื่องหรือไม่
 - **Bulk Analyze**: วิเคราะห์ทุก Note ในนิยายพร้อมกัน
+- statistical NLP ล้วน (PyThaiNLP) — ไม่ใช้ LLM: pacing/mood, author voice, character vibes, lexical richness + author fingerprint (z-score drift)
+
+> 🔭 **Patch 2.5 (วางแผน)** — *Stylometry Deepening*: ยกระดับจาก "รูปนิ่ง 1 ใบ/ตอน" → "วิดีโอ + ลายนิ้วมือ" — MTLD/MATTR แทน TTR, sentence-rhythm curve, function-word profile + Burrows's Delta, rolling-window จับจุดเพี้ยนระดับย่อหน้า · ดูแผนเต็มที่ [`docs/stylometry-deepening-plan.md`](./docs/stylometry-deepening-plan.md)
 
 ### 5. AI Summary (Note & Chapter)
 
