@@ -1,5 +1,5 @@
 import { getNovelById } from "@/server/novel";
-import { WorldGraph } from "@/components/project/world-graph";
+import { GraphWorkspace } from "@/components/project/graph-workspace";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
 
 interface WorldGraphPageProps {
@@ -32,7 +32,7 @@ export default async function WorldGraphPage({ params }: WorldGraphPageProps) {
                 </div>
             </div>
 
-            <WorldGraph novelId={novelId} height={680} />
+            <GraphWorkspace novelId={novelId} height={680} />
         </div>
     );
 }

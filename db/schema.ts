@@ -1717,6 +1717,33 @@ export const referencesRelations = relations(references, ({ one }) => ({
 export type Reference = typeof references.$inferSelect;
 export type InsertReference = typeof references.$inferInsert;
 
+// ============================================
+// LIBRARIAN — บรรณารักษ์ถาม-ตอบ (Graph RAG chat thread)
+// v1: เธรดเดียวต่อนิยาย · manual/opt-in · เก็บประวัติให้ผู้ใช้ย้อนดูได้
+// ============================================
+export const librarianMessages = pgTable("librarian_messages", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  novelId: text("novel_id")
+    .notNull()
+    .references(() => novels.id, { onDelete: "cascade" }),
+  role: text("role").notNull(), // "user" | "assistant"
+  content: text("content").notNull(),
+  sources: jsonb("sources"), // LibrarianSource[] — เฉพาะข้อความ assistant
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  novelIdx: index("librarian_msg_novel_idx").on(table.novelId),
+}));
+
+export const librarianMessagesRelations = relations(librarianMessages, ({ one }) => ({
+  novel: one(novels, {
+    fields: [librarianMessages.novelId],
+    references: [novels.id],
+  }),
+}));
+
+export type LibrarianMessage = typeof librarianMessages.$inferSelect;
+export type InsertLibrarianMessage = typeof librarianMessages.$inferInsert;
+
 export type User = typeof user.$inferSelect;
 export type Novel = typeof novels.$inferSelect;
 // (chapterStylometry table and relations moved earlier to avoid undefined references)
