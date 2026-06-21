@@ -14,7 +14,6 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 
 interface Chapter {
     id: string;
@@ -35,10 +34,38 @@ interface ExportDialogProps {
     notes: Note[];
     novelTitle: string;
     authorName?: string;
+    coverImage?: string | null;
     trigger?: React.ReactNode;
 }
 
-type ExportFormat = "pdf" | "txt";
+type ExportFormat = "pdf" | "txt" | "epub";
+
+/**
+ * escape อักขระพิเศษสำหรับ XHTML (ePub เป็น XML strict)
+ */
+function escapeXml(s: string): string {
+    return s
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&apos;");
+}
+
+/**
+ * แปลง note (HTML) → XHTML paragraphs สำหรับ ePub
+ * ใช้ logic เดียวกับ PDF path: plain text → split \n\n → <p>
+ */
+function noteToXhtml(title: string | undefined, html: string): string {
+    const heading = title ? `<h3>${escapeXml(title)}</h3>` : "";
+    const text = htmlToPlainText(html);
+    const paragraphs = text
+        .split("\n\n")
+        .filter(Boolean)
+        .map((p) => `<p>${escapeXml(p).replace(/\n/g, "<br/>")}</p>`)
+        .join("");
+    return heading + paragraphs;
+}
 
 /**
  * แปลง HTML content เป็น plain text
@@ -71,6 +98,7 @@ export function ExportDialog({
     notes,
     novelTitle,
     authorName,
+    coverImage,
     trigger,
 }: ExportDialogProps) {
     const [open, setOpen] = useState(false);
@@ -167,8 +195,6 @@ export function ExportDialog({
 
     // Export as PDF (using browser print)
     async function exportAsPdf() {
-        const content = generateContent();
-
         // Create a new window with styled content
         const printWindow = window.open("", "_blank");
         if (!printWindow) {
@@ -301,6 +327,58 @@ export function ExportDialog({
         };
     }
 
+    // Export as ePub (client-side, reuse chapter/note grouping)
+    async function exportAsEpub() {
+        // dynamic import: browser bundle (bundles jszip), keep out of SSR + initial chunk
+        const { default: epub } = await import("epub-gen-memory/bundle");
+
+        const sortedChapters = [...chapters]
+            .filter((c) => selectedChapters.has(c.id))
+            .sort((a, b) => a.orderIndex - b.orderIndex);
+
+        const epubChapters = sortedChapters.map((chapter) => {
+            const chapterNotes = notesByChapter.get(chapter.id) || [];
+            const body = chapterNotes
+                .map((n) => noteToXhtml(n.title, n.content?.text || ""))
+                .join("");
+            return {
+                title: `บทที่ ${chapter.orderIndex}: ${chapter.title}`,
+                content: body || "<p></p>",
+            };
+        });
+
+        const baseOptions = {
+            title: novelTitle,
+            author: authorName || "ไม่ระบุผู้เขียน",
+            lang: "th",
+        };
+
+        let blob: Blob;
+        try {
+            blob = await epub(
+                coverImage ? { ...baseOptions, cover: coverImage } : baseOptions,
+                epubChapters,
+            );
+        } catch (e) {
+            // cover fetch (CORS) อาจล้ม → ลองใหม่แบบไม่มีปก
+            if (coverImage) {
+                blob = await epub(baseOptions, epubChapters);
+                toast.warning("ใส่ภาพปกไม่สำเร็จ — export แบบไม่มีปกแทน");
+            } else {
+                throw e;
+            }
+        }
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${novelTitle.replace(/[^a-zA-Z0-9ก-๙]/g, "_")}.epub`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
     // Handle export
     async function handleExport() {
         if (selectedChapters.size === 0) {
@@ -316,6 +394,9 @@ export function ExportDialog({
             } else if (format === "pdf") {
                 await exportAsPdf();
                 toast.success("กรุณา Save as PDF จาก Print dialog");
+            } else if (format === "epub") {
+                await exportAsEpub();
+                toast.success("Export ePub สำเร็จ!");
             }
         } catch (error) {
             console.error("Export error:", error);
@@ -365,6 +446,15 @@ export function ExportDialog({
                             >
                                 <FileType className="h-4 w-4 mr-1" />
                                 PDF
+                            </Button>
+                            <Button
+                                variant={format === "epub" ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => setFormat("epub")}
+                                className="flex-1"
+                            >
+                                <Book className="h-4 w-4 mr-1" />
+                                ePub
                             </Button>
                         </div>
                     </div>

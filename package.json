@@ -66,6 +66,7 @@
     "diff-match-patch": "^1.0.5",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^0.44.7",
+    "epub-gen-memory": "^1.1.2",
     "fuse.js": "^7.1.0",
     "googleapis": "^171.4.0",
     "lucide-react": "^0.554.0",

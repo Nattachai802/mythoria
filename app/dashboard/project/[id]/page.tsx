@@ -315,6 +315,7 @@ export default async function ProjectOverviewPage({ params }: Props) {
                                         notes={notes as any}
                                         novelTitle={novel.title}
                                         authorName={(novel as any).user?.name}
+                                        coverImage={(novel as any).coverImage}
                                     />
                                     <CreateChapterDialog novelId={id} />
                                 </div>
