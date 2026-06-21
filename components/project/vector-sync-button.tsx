@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
+import { rebuildNovelReferences } from "@/server/references";
 
 interface VectorSyncButtonProps {
     novelId: string;
@@ -90,6 +91,8 @@ export function VectorSyncButton({ novelId }: VectorSyncButtonProps) {
             const response = await fetch(`http://localhost:8000/sync/${novelId}`, { method: "POST" });
             const result = await response.json();
             if (result.success) {
+                // rebuild ดัชนี references (graph/RAG) ให้สดพร้อม vector ในคราวเดียว
+                await rebuildNovelReferences(novelId);
                 setStatus("success");
                 toast.success("ซิงค์ข้อมูลสำเร็จ!", { description: `ซิงค์แล้ว ${result.synced} รายการ` });
             } else {

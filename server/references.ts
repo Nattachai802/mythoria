@@ -8,6 +8,7 @@ import {
   type EntityRef,
   type EntityType,
 } from "./registry/entity-registry";
+import { buildDerivedReferences } from "./references-build";
 
 /**
  * Context Fabric — L1 Universal Reference API
@@ -304,6 +305,34 @@ export async function getContextBundle(
     outgoing: groupByRelation(outgoing),
     incoming: groupByRelation(incoming),
   };
+}
+
+/**
+ * Rebuild ดัชนี references ของนิยาย (เรียกตอน Vector Sync)
+ * delete-แล้ว-rebuild แบบ scoped: ลบเฉพาะ derived ('migration') ของเรื่องนี้
+ * แล้วสร้างใหม่จาก junction → สะท้อนการลบ/เพิ่มล่าสุด (ไม่ใช่ snapshot ค้าง)
+ * เก็บ edge ที่ผู้ใช้/AI สร้าง ('user'/'ai') ไว้ไม่แตะ
+ */
+export async function rebuildNovelReferences(novelId: string) {
+  try {
+    await db
+      .delete(references)
+      .where(and(eq(references.novelId, novelId), eq(references.createdBy, "migration")));
+
+    const inputs = await buildDerivedReferences(novelId);
+
+    let inserted = 0;
+    const BATCH = 500;
+    for (let i = 0; i < inputs.length; i += BATCH) {
+      const res = await addReferences(inputs.slice(i, i + BATCH));
+      if (res.success) inserted += res.inserted ?? 0;
+    }
+
+    return { success: true as const, count: inserted };
+  } catch (error) {
+    console.error("[references] rebuildNovelReferences error:", error);
+    return { success: false as const, error: "Failed to rebuild references" };
+  }
 }
 
 /**
