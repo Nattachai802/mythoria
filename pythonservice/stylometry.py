@@ -569,6 +569,82 @@ class PronounAnalyzer:
             "chapter_raw_data": chapter_stats
         }
 
+# ============================================================
+# Patch 2.5 — Lexical diversity (length-robust) + sentence rhythm
+# statistical ล้วน, deterministic, ไม่ใช้ LLM
+# ============================================================
+
+def _mtld_pass(tokens: List[str], threshold: float = 0.72) -> float:
+    """หนึ่งทิศของ MTLD — นับจำนวน 'factor' ที่ TTR ตกถึง threshold"""
+    factors = 0.0
+    types: set = set()
+    count = 0
+    for t in tokens:
+        count += 1
+        types.add(t)
+        if (len(types) / count) <= threshold:
+            factors += 1
+            types = set()
+            count = 0
+    if count > 0:
+        # factor บางส่วนที่ค้างท้าย
+        partial = (1 - (len(types) / count)) / (1 - threshold)
+        factors += partial
+    return len(tokens) / factors if factors > 0 else float(len(tokens))
+
+
+def compute_mtld(tokens: List[str], threshold: float = 0.72) -> float:
+    """MTLD — ความหลากหลายคำศัพท์ที่ทนต่อความยาว (เฉลี่ย forward + backward)"""
+    if len(tokens) < 10:
+        return 0.0
+    fwd = _mtld_pass(tokens, threshold)
+    bwd = _mtld_pass(list(reversed(tokens)), threshold)
+    return round((fwd + bwd) / 2, 1)
+
+
+def compute_mattr(tokens: List[str], window: int = 50) -> float:
+    """MATTR — TTR เฉลี่ยจาก sliding window (เทียบตอนยาว-สั้นได้แฟร์), คืนเป็น %"""
+    n = len(tokens)
+    if n == 0:
+        return 0.0
+    if n <= window:
+        return round(len(set(tokens)) / n * 100, 2)
+    total = 0.0
+    for i in range(n - window + 1):
+        total += len(set(tokens[i:i + window])) / window
+    return round(total / (n - window + 1) * 100, 2)
+
+
+def sentence_rhythm(sentences: List[str]) -> Dict[str, Any]:
+    """เส้นจังหวะประโยค — ความยาว (จำนวนคำ) ของแต่ละประโยคตามลำดับ + สถิติ burstiness"""
+    import statistics
+    lengths: List[int] = []
+    for s in sentences:
+        s = s.strip()
+        if not s:
+            continue
+        toks = word_tokenize(s, engine="newmm", keep_whitespace=False)
+        wc = len([t for t in toks if t.strip()])
+        if wc > 0:
+            lengths.append(wc)
+
+    if not lengths:
+        return {"curve": [], "mean": 0, "stddev": 0, "burstiness": 0, "longest": 0, "shortest": 0}
+
+    mean = statistics.mean(lengths)
+    stdev = statistics.pstdev(lengths) if len(lengths) > 1 else 0.0
+    # burstiness: -1 (สม่ำเสมอ) → +1 (สั้นสลับยาวรุนแรง) = จังหวะ action/บรรยายสลับ
+    burst = (stdev - mean) / (stdev + mean) if (stdev + mean) > 0 else 0.0
+    return {
+        "curve": lengths,            # สำหรับ line chart "จังหวะหัวใจ" ของตอน
+        "mean": round(mean, 1),
+        "stddev": round(stdev, 1),
+        "burstiness": round(burst, 3),
+        "longest": max(lengths),
+        "shortest": min(lengths),
+    }
+
+
 def analyze_single_chapter_style(text: str, character_names: List[str] = None) -> Dict[str, Any]:
     """
     วิเคราะห์สไตล์ของ 1 ตอน (Chapter) ชุดใหญ่
@@ -615,7 +691,10 @@ def analyze_single_chapter_style(text: str, character_names: List[str] = None) -
     total_words = len(filtered_tokens)
     unique_words = len(unique_tokens)
     ttr = round((unique_words / total_words) * 100, 2) if total_words > 0 else 0
-    
+    # Patch 2.5: ตัววัดที่ทนต่อความยาว (แทนการพึ่ง TTR อย่างเดียว)
+    mtld = compute_mtld(filtered_tokens)
+    mattr = compute_mattr(filtered_tokens)
+
     stopwords = thai_stopwords()
     meaningful_words = [t for t in filtered_tokens if t not in stopwords and len(t) > 1]
     top_words = Counter(meaningful_words).most_common(10)
@@ -648,8 +727,12 @@ def analyze_single_chapter_style(text: str, character_names: List[str] = None) -
             "total_words": total_words,
             "unique_words": unique_words,
             "type_token_ratio_percentage": ttr,
+            # Patch 2.5 — length-robust diversity (ใช้ตัดสิน richness แทน TTR)
+            "mtld": mtld,
+            "mattr_percentage": mattr,
             "top_10_frequent_words": top_words,
-            "richness_level": "สูง (คำศัพท์หลากหลาย)" if ttr > 45 else "ปกติ" if ttr > 30 else "ต่ำ (ใช้คำซ้ำเยอะ)"
+            # richness_level อิง MTLD (TTR เก่ายังคืนไว้เพื่อ backward-compat)
+            "richness_level": "สูง (คำศัพท์หลากหลาย)" if mtld > 80 else "ปกติ" if mtld > 50 else "ต่ำ (ใช้คำซ้ำเยอะ)"
         },
         "chapter_anatomy": {
             "total_sentences": total_sentences,
@@ -657,6 +740,9 @@ def analyze_single_chapter_style(text: str, character_names: List[str] = None) -
             "dialogue_ratio_percentage": dialogue_ratio,
             "narration_ratio_percentage": narration_ratio,
             "genre_prediction_hint": genre_hint,
-            "total_dialogue_blocks": len(dialogues_list)
+            "total_dialogue_blocks": len(dialogues_list),
+            # Patch 2.5 — "จังหวะหัวใจ" ของตอน (เส้นความยาวประโยค) — nest ใน anatomy
+            # เพื่อไหลผ่าน chapterAnatomy JSONB เดิม ไม่ต้องแก้ schema/route
+            "sentence_rhythm": sentence_rhythm(sentences)
         }
     }
