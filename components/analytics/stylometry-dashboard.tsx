@@ -30,12 +30,22 @@ interface StylometryDashboardProps {
 
 const FEATURES = [
     {
-        key: "ttr",
-        label: "ความหลากหลายของคลังคำ (TTR)",
-        shortLabel: "คลังคำ TTR",
-        unit: "%",
+        key: "mtld",
+        label: "ความหลากหลายของคลังคำ (MTLD)",
+        shortLabel: "คลังคำ MTLD",
+        unit: "",
         color: "#8b5cf6",
-        extract: (d: StylometryData) => d.lexicalRichness?.type_token_ratio_percentage ?? null,
+        // MTLD ทนต่อความยาวตอน — แม่นกว่า TTR (fallback TTR ถ้าตอนเก่ายังไม่มี mtld)
+        extract: (d: StylometryData) => d.lexicalRichness?.mtld ?? d.lexicalRichness?.type_token_ratio_percentage ?? null,
+    },
+    {
+        key: "burstiness",
+        label: "จังหวะประโยค (สั้น-ยาวสลับ)",
+        shortLabel: "จังหวะ",
+        unit: "",
+        color: "#f43f5e",
+        // -1 = สม่ำเสมอ, +1 = สั้นสลับยาวรุนแรง (action/บรรยายสลับ)
+        extract: (d: StylometryData) => d.chapterAnatomy?.sentence_rhythm?.burstiness ?? null,
     },
     {
         key: "punct",
