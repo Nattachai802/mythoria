@@ -1,15 +1,23 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import {
     BookOpen,
     FileText,
     Users,
     MapPin,
     Sparkles,
-    Search,
-    Clock
+    Clock,
+    LayoutDashboard,
+    ScrollText,
+    MessageSquareText,
+    Globe,
+    Zap,
+    Share2,
+    BarChart3,
+    Settings,
+    CornerDownLeft,
 } from "lucide-react";
 import {
     CommandDialog,
@@ -47,8 +55,41 @@ const typeLabels = {
 
 export function GlobalSearch() {
     const router = useRouter();
+    const pathname = usePathname();
     const { isSearchOpen, setSearchOpen } = useKeyboardShortcutsContext();
     const [query, setQuery] = useState("");
+
+    // novelId จาก path ปัจจุบัน (ถ้าอยู่ในโปรเจกต์) → ใช้ทำ navigation commands
+    const novelId = useMemo(() => pathname?.match(/\/dashboard\/project\/([^/]+)/)?.[1] ?? null, [pathname]);
+
+    // คำสั่ง "ไปที่" — ไม่ต้องจำว่า feature อยู่ไหน พิมพ์ชื่อแล้วกระโดด
+    const navCommands = useMemo(() => {
+        if (!novelId) return [] as { label: string; keywords: string; icon: any; href: string }[];
+        const base = `/dashboard/project/${novelId}`;
+        return [
+            { label: "ภาพรวม (Overview)", keywords: "overview ภาพรวม หน้าหลัก", icon: LayoutDashboard, href: base },
+            { label: "พล็อต (Plot)", keywords: "plot พล็อต timeline ไทม์ไลน์ ฉาก", icon: ScrollText, href: `${base}/plot` },
+            { label: "ไอเดีย (Ideas)", keywords: "idea ไอเดีย canvas", icon: MessageSquareText, href: `${base}/idea` },
+            { label: "ตัวละคร (Characters)", keywords: "character ตัวละคร cast", icon: Users, href: `${base}/characters` },
+            { label: "สร้างโลก (World Building)", keywords: "world building lore สถานที่ ของวิเศษ ก๊ก", icon: Globe, href: `${base}/worldbuilding` },
+            { label: "พลัง (Powers)", keywords: "power พลัง ความสามารถ", icon: Zap, href: `${base}/powers` },
+            { label: "World Graph", keywords: "graph กราฟ ความเชื่อมโยง librarian", icon: Share2, href: `${base}/graph` },
+            { label: "วิเคราะห์ (Analytics)", keywords: "analytics วิเคราะห์ สถิติ stylometry", icon: BarChart3, href: `${base}/analytics` },
+            { label: "ตั้งค่า (Settings)", keywords: "settings ตั้งค่า", icon: Settings, href: `${base}/settings` },
+        ];
+    }, [novelId]);
+
+    const filteredNav = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        if (!q) return navCommands;
+        return navCommands.filter((c) => (c.label + " " + c.keywords).toLowerCase().includes(q));
+    }, [navCommands, query]);
+
+    const goTo = (href: string) => {
+        router.push(href);
+        setSearchOpen(false);
+        setQuery("");
+    };
     const [results, setResults] = useState<SearchResult[]>([]);
     const [recentSearches, setRecentSearches] = useState<SearchResult[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -141,12 +182,12 @@ export function GlobalSearch() {
         <CommandDialog
             open={isSearchOpen}
             onOpenChange={setSearchOpen}
-            title="Search"
-            description="ค้นหาบท, notes, ตัวละคร, สถานที่"
+            title="Command Palette"
+            description="ค้นหา หรือ ไปที่หน้าใดก็ได้"
             shouldFilter={false}
         >
             <CommandInput
-                placeholder="ค้นหาทุกอย่าง..."
+                placeholder="ค้นหา หรือ ไปที่... (ตัวละคร, พล็อต, วิเคราะห์)"
                 value={query}
                 onValueChange={setQuery}
             />
@@ -184,6 +225,24 @@ export function GlobalSearch() {
                                 </CommandItem>
                             );
                         })}
+                    </CommandGroup>
+                )}
+
+                {/* Navigation commands — ไปที่หน้าใดก็ได้โดยไม่ต้องจำว่าอยู่ตรงไหน */}
+                {filteredNav.length > 0 && (
+                    <CommandGroup heading="ไปที่">
+                        {filteredNav.map((cmd) => (
+                            <CommandItem
+                                key={cmd.href}
+                                value={`nav ${cmd.label} ${cmd.keywords}`}
+                                onSelect={() => goTo(cmd.href)}
+                                className="flex items-center gap-2"
+                            >
+                                <cmd.icon className="h-4 w-4 text-muted-foreground" />
+                                <span>{cmd.label}</span>
+                                <CornerDownLeft className="ml-auto h-3 w-3 text-muted-foreground/50" />
+                            </CommandItem>
+                        ))}
                     </CommandGroup>
                 )}
 
