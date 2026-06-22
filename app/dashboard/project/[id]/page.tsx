@@ -19,6 +19,8 @@ import {
     Flame,
     PenTool,
     BarChart3,
+    Check,
+    Zap,
 } from "lucide-react"
 import { ProjectHeaderActions } from "@/components/project/project-header-actions"
 import { CreateChapterDialog } from "@/components/project/create-chapter-dialog"
@@ -126,6 +128,8 @@ export default async function ProjectOverviewPage({ params }: Props) {
     const targetWords = novel.targetWordCount || 50000
     const progress = targetWords > 0 ? Math.min((totalWords / targetWords) * 100, 100) : 0
     const totalChapters = novel.chapters.length
+    // earned disclosure: ซ่อนสถิติ/AI tools จนกว่าจะเริ่มเขียนจริง
+    const hasContent = totalChapters > 0 || totalWords > 0
     const publishedChapters = novel.chapters.filter((c: any) => c.status === "published")
     const draftChapters = novel.chapters.filter((c: any) => c.status === "draft")
     const lastUpdated = novel.updatedAt ? format(new Date(novel.updatedAt), "PP") : "Never"
@@ -172,6 +176,8 @@ export default async function ProjectOverviewPage({ params }: Props) {
                         </div>
                     </div>
 
+                    {/* Stats + AI tools — โผล่เมื่อเริ่มเขียนแล้ว (earned disclosure) */}
+                    {hasContent && (<>
                     {/* Writing Stats Section */}
                     <div className="space-y-1.5 pt-2">
                         <div className="flex items-center justify-between mb-2">
@@ -208,7 +214,9 @@ export default async function ProjectOverviewPage({ params }: Props) {
                                 : 'border-amber-500/30 bg-amber-500/5 text-amber-400'
                         }`}>
                             <span className="flex items-center gap-1.5">
-                                {analytics.goalStatus === 'on_track' ? '✓' : '⚡'}
+                                {analytics.goalStatus === 'on_track'
+                                    ? <Check className="h-3.5 w-3.5" />
+                                    : <Zap className="h-3.5 w-3.5" />}
                                 เป้าหมายวันนี้: <span className="font-bold tabular-nums">{analytics.todayGoal.toLocaleString()} คำ</span>
                             </span>
                             {analytics.daysRemaining !== null && (
@@ -275,6 +283,36 @@ export default async function ProjectOverviewPage({ params }: Props) {
                             />
                         </div>
                     </div>
+                    </>)}
+
+                    {/* First-run guide — นำทางนักเขียนใหม่ แทนกำแพงเลข 0 */}
+                    {!hasContent && (
+                        <div className="border border-border chamfered bg-card/40 p-4 space-y-3">
+                            <div className="flex items-center gap-2">
+                                <div className="p-1.5 bg-[var(--forge-gold)]/10 chamfered-sm">
+                                    <Sparkles className="h-3.5 w-3.5 text-[var(--forge-gold)]" />
+                                </div>
+                                <span className="text-sm font-display font-semibold">เริ่มต้นที่นี่</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground leading-relaxed">
+                                สร้างบทแรก แล้วสถิติ เครื่องมือวิเคราะห์ และ AI จะค่อยๆ ปรากฏเมื่อเรื่องของคุณเติบโต
+                            </p>
+                            <ol className="space-y-2 text-xs">
+                                <li className="flex items-center gap-2">
+                                    <span className="flex h-5 w-5 items-center justify-center chamfered-sm bg-[var(--forge-gold)]/15 text-[var(--forge-gold)] text-[10px] font-semibold shrink-0">1</span>
+                                    เขียนตอนแรก
+                                </li>
+                                <li className="flex items-center gap-2 text-muted-foreground">
+                                    <span className="flex h-5 w-5 items-center justify-center chamfered-sm bg-muted/50 text-[10px] font-semibold shrink-0">2</span>
+                                    <Link href={`/dashboard/project/${id}/characters`} className="hover:text-foreground hover:underline">เพิ่มตัวละคร</Link>
+                                </li>
+                                <li className="flex items-center gap-2 text-muted-foreground">
+                                    <span className="flex h-5 w-5 items-center justify-center chamfered-sm bg-muted/50 text-[10px] font-semibold shrink-0">3</span>
+                                    <Link href={`/dashboard/project/${id}/plot`} className="hover:text-foreground hover:underline">วางพล็อต</Link>
+                                </li>
+                            </ol>
+                        </div>
+                    )}
                 </div>
 
                 {/* RIGHT MAIN - Chapters & Rewrite Queue */}

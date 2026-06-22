@@ -55,15 +55,31 @@ export function ProjectSidebar({ projectId, projectTitle, chapters = [] }: Proje
     const pathname = usePathname()
     const { openHelp } = useKeyboardShortcutsContext()
 
-    const navItems = [
-        { title: "Overview", href: `/dashboard/project/${projectId}`, icon: LayoutDashboard },
-        { title: "Plot", href: `/dashboard/project/${projectId}/plot`, icon: ScrollText },
-        { title: "Characters", href: `/dashboard/project/${projectId}/characters`, icon: Users },
-        { title: "Ideas", href: `/dashboard/project/${projectId}/idea`, icon: MessageSquareText },
-        { title: "World Building", href: `/dashboard/project/${projectId}/worldbuilding`, icon: Globe },
-        { title: "World Graph", href: `/dashboard/project/${projectId}/graph`, icon: Share2 },
-        { title: "Powers", href: `/dashboard/project/${projectId}/powers`, icon: Zap },
-        { title: "Analytics", href: `/dashboard/project/${projectId}/analytics`, icon: BarChart3 },
+    // จัดกลุ่ม nav 3 โซน ลด cognitive load (เขียน / สร้างโลก / วิเคราะห์)
+    const navGroups = [
+        {
+            label: "เขียน",
+            items: [
+                { title: "Overview", href: `/dashboard/project/${projectId}`, icon: LayoutDashboard },
+                { title: "Plot", href: `/dashboard/project/${projectId}/plot`, icon: ScrollText },
+                { title: "Ideas", href: `/dashboard/project/${projectId}/idea`, icon: MessageSquareText },
+            ],
+        },
+        {
+            label: "สร้างโลก",
+            items: [
+                { title: "Characters", href: `/dashboard/project/${projectId}/characters`, icon: Users },
+                { title: "World Building", href: `/dashboard/project/${projectId}/worldbuilding`, icon: Globe },
+                { title: "Powers", href: `/dashboard/project/${projectId}/powers`, icon: Zap },
+                { title: "World Graph", href: `/dashboard/project/${projectId}/graph`, icon: Share2 },
+            ],
+        },
+        {
+            label: "วิเคราะห์",
+            items: [
+                { title: "Analytics", href: `/dashboard/project/${projectId}/analytics`, icon: BarChart3 },
+            ],
+        },
     ]
 
     const publishedChapters = chapters.filter(c => c.status === "published")
@@ -91,28 +107,30 @@ export function ProjectSidebar({ projectId, projectTitle, chapters = [] }: Proje
             </SidebarHeader>
             <SidebarSeparator className="mx-0" />
             <SidebarContent>
-                <SidebarGroup>
-                    <SidebarGroupLabel className="font-technical text-[9px] tracking-[0.2em] uppercase">Project Menu</SidebarGroupLabel>
-                    <SidebarMenu>
-                        {navItems.map((item) => (
-                            <SidebarMenuItem key={item.title}>
-                                <SidebarMenuButton
-                                    asChild
-                                    isActive={
-                                        item.href === `/dashboard/project/${projectId}`
-                                            ? pathname === item.href
-                                            : pathname?.startsWith(item.href)
-                                    }
-                                >
-                                    <Link href={item.href}>
-                                        <item.icon />
-                                        <span>{item.title}</span>
-                                    </Link>
-                                </SidebarMenuButton>
-                            </SidebarMenuItem>
-                        ))}
-                    </SidebarMenu>
-                </SidebarGroup>
+                {navGroups.map((group) => (
+                    <SidebarGroup key={group.label}>
+                        <SidebarGroupLabel className="font-technical text-[9px] tracking-[0.2em] uppercase">{group.label}</SidebarGroupLabel>
+                        <SidebarMenu>
+                            {group.items.map((item) => (
+                                <SidebarMenuItem key={item.title}>
+                                    <SidebarMenuButton
+                                        asChild
+                                        isActive={
+                                            item.href === `/dashboard/project/${projectId}`
+                                                ? pathname === item.href
+                                                : pathname?.startsWith(item.href)
+                                        }
+                                    >
+                                        <Link href={item.href}>
+                                            <item.icon />
+                                            <span>{item.title}</span>
+                                        </Link>
+                                    </SidebarMenuButton>
+                                </SidebarMenuItem>
+                            ))}
+                        </SidebarMenu>
+                    </SidebarGroup>
+                ))}
 
                 {/* Chapters Section */}
                 {chapters.length > 0 && (
