@@ -282,7 +282,8 @@ Agent อัจฉริยะที่ใช้ Tool Calling ตรวจสอ
 - **Bulk Analyze**: วิเคราะห์ทุก Note ในนิยายพร้อมกัน
 - statistical NLP ล้วน (PyThaiNLP) — ไม่ใช้ LLM: pacing/mood, author voice, character vibes, lexical richness + author fingerprint (z-score drift)
 
-> 🔭 **Patch 2.5 (วางแผน)** — *Stylometry Deepening*: ยกระดับจาก "รูปนิ่ง 1 ใบ/ตอน" → "วิดีโอ + ลายนิ้วมือ" — MTLD/MATTR แทน TTR, sentence-rhythm curve, function-word profile + Burrows's Delta, rolling-window จับจุดเพี้ยนระดับย่อหน้า · ดูแผนเต็มที่ [`docs/stylometry-deepening-plan.md`](./docs/stylometry-deepening-plan.md)
+> 🔭 **Patch 2.5 — Stylometry Deepening**: ยกระดับจาก "รูปนิ่ง 1 ใบ/ตอน" → "วิดีโอ + ลายนิ้วมือ"
+> — ✅ **MTLD/MATTR** (แทน TTR) + **sentence-rhythm curve** (จังหวะประโยค + burstiness) ลงแล้ว · ถัดไป: function-word profile + Burrows's Delta, rolling-window จับจุดเพี้ยนระดับย่อหน้า · [`docs/stylometry-deepening-plan.md`](./docs/stylometry-deepening-plan.md)
 
 ### 5. AI Summary (Note & Chapter)
 
@@ -402,6 +403,10 @@ L0  Entity Registry — abstraction เหนือ 48 ตาราง (resolve 
 | 7 | ลบ junction เก่า (cleanup) | ⏳ Planned |
 
 ดูรายละเอียดเต็มได้ที่ [`docs/context-fabric-plan.md`](./docs/context-fabric-plan.md)
+
+### 🔭 ฟีเจอร์ถัดไป
+
+ไอเดียต่อยอด — Consistency Guardian (ตรวจความสอดคล้องข้ามโมดูล), Promise Ledger อัตโนมัติ, Story Codex, Echo detector, Character Voice Distance, Pacing Heatmap — รวมไว้ที่ [`docs/roadmap.md`](./docs/roadmap.md)
 
 ---
 
