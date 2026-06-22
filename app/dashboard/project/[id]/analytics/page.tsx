@@ -13,6 +13,7 @@ import {
     Trophy,
 } from "lucide-react";
 import { ActivityCalendar } from "@/components/analytics/activity-calendar";
+import { ConsistencyGuardianPanel } from "@/components/project/consistency-guardian-panel";
 import { WordsChart } from "@/components/analytics/words-chart";
 import { StylometryDashboard } from "@/components/analytics/stylometry-dashboard";
 import { getNovelStylometry } from "@/server/stylometry";
@@ -193,6 +194,9 @@ export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
                     </div>
                 </div>
             </div>
+
+            {/* Consistency Guardian — ตรวจความขัดแย้งเชิงโครงสร้าง */}
+            <ConsistencyGuardianPanel novelId={novelId} />
 
             {/* Tabs: daily breakdown vs stylometry */}
             <Tabs defaultValue="daily" className="space-y-4 pt-1">

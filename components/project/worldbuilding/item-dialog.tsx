@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogFooter,
-} from "@/components/ui/dialog";
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+    SheetFooter,
+} from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -135,13 +135,13 @@ export function ItemDialog({
     };
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[500px]">
-                <DialogHeader>
-                    <DialogTitle>{isEdit ? "แก้ไขไอเทม" : "สร้างไอเทมใหม่"}</DialogTitle>
-                </DialogHeader>
+        <Sheet open={open} onOpenChange={onOpenChange}>
+            <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+                <SheetHeader>
+                    <SheetTitle>{isEdit ? "แก้ไขไอเทม" : "สร้างไอเทมใหม่"}</SheetTitle>
+                </SheetHeader>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={handleSubmit} className="space-y-4 px-4 pb-4">
                     <div className="grid grid-cols-4 gap-4">
                         <div className="col-span-1">
                             <Label htmlFor="icon">Icon</Label>
@@ -255,7 +255,7 @@ export function ItemDialog({
                         />
                     </div>
 
-                    <DialogFooter>
+                    <SheetFooter className="flex-row justify-end gap-2 px-0">
                         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                             ยกเลิก
                         </Button>
@@ -263,9 +263,9 @@ export function ItemDialog({
                             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             {isEdit ? "บันทึก" : "สร้าง"}
                         </Button>
-                    </DialogFooter>
+                    </SheetFooter>
                 </form>
-            </DialogContent>
-        </Dialog>
+            </SheetContent>
+        </Sheet>
     );
 }
