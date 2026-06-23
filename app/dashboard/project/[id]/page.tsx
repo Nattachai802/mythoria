@@ -267,7 +267,7 @@ export default async function ProjectOverviewPage({ params }: Props) {
                         </div>
 
                         <div className="border border-border chamfered-sm divide-y divide-border/60">
-                            <VectorSyncButton novelId={id} />
+                            <VectorSyncButton novelId={id} lastSyncedAt={novel.lastSyncedAt} />
                             <PlotHoleJobButton novelId={id} />
                             <StylometryBulkAnalyzeButton
                                 novelId={id}

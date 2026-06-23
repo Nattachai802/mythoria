@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { NoteReferencePanel } from "@/components/project/note-reference-panel";
 import { SpellCheckButton } from "@/components/project/spell-check-button";
+import { ThaiSpacingButton } from "@/components/project/thai-spacing-button";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1519,6 +1520,7 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                                 }}
                                 onComplete={() => setIssuesKey(k => k + 1)}
                             />
+                            <ThaiSpacingButton editorRef={quillRef} />
 
                             {/* Filter buttons */}
                             <div className="grid grid-cols-4 gap-1 p-0.5 bg-muted/80 rounded-md border border-steel-800">

@@ -4,10 +4,13 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
+import { formatDistanceToNow } from "date-fns";
+import { th } from "date-fns/locale";
 import { rebuildNovelReferences } from "@/server/references";
 
 interface VectorSyncButtonProps {
     novelId: string;
+    lastSyncedAt?: Date | string | null;
 }
 
 function NodeNetwork() {
@@ -79,9 +82,12 @@ function NodeNetwork() {
     );
 }
 
-export function VectorSyncButton({ novelId }: VectorSyncButtonProps) {
+export function VectorSyncButton({ novelId, lastSyncedAt }: VectorSyncButtonProps) {
     const [isLoading, setIsLoading] = useState(false);
     const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
+    const [lastSync, setLastSync] = useState<string | null>(
+        lastSyncedAt ? new Date(lastSyncedAt).toISOString() : null,
+    );
 
     const handleSync = async () => {
         setIsLoading(true);
@@ -93,6 +99,7 @@ export function VectorSyncButton({ novelId }: VectorSyncButtonProps) {
             if (result.success) {
                 // rebuild ดัชนี references (graph/RAG) ให้สดพร้อม vector ในคราวเดียว
                 await rebuildNovelReferences(novelId);
+                setLastSync(new Date().toISOString());
                 setStatus("success");
                 toast.success("ซิงค์ข้อมูลสำเร็จ!", { description: `ซิงค์แล้ว ${result.synced} รายการ` });
             } else {
@@ -111,7 +118,14 @@ export function VectorSyncButton({ novelId }: VectorSyncButtonProps) {
     return (
         <div className="flex items-center gap-2.5 px-3 py-2">
             <NodeNetwork />
-            <span className="flex-1 text-xs font-medium">ซิงค์ฐานข้อมูล AI</span>
+            <div className="flex-1 min-w-0">
+                <div className="text-xs font-medium">ซิงค์ฐานข้อมูล AI</div>
+                <div className="text-[10px] text-muted-foreground truncate">
+                    {lastSync
+                        ? `ซิงค์ล่าสุด ${formatDistanceToNow(new Date(lastSync), { addSuffix: true, locale: th })}`
+                        : "ยังไม่เคยซิงค์"}
+                </div>
+            </div>
             <Button
                 variant="ghost"
                 size="sm"

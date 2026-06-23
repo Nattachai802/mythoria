@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/db/drizzle";
-import { references } from "@/db/schema";
+import { references, novels } from "@/db/schema";
 import { and, eq, sql } from "drizzle-orm";
 import {
   resolveMany,
@@ -327,6 +327,11 @@ export async function rebuildNovelReferences(novelId: string) {
       const res = await addReferences(inputs.slice(i, i + BATCH));
       if (res.success) inserted += res.inserted ?? 0;
     }
+
+    await db
+      .update(novels)
+      .set({ lastSyncedAt: new Date() })
+      .where(eq(novels.id, novelId));
 
     return { success: true as const, count: inserted };
   } catch (error) {

@@ -147,7 +147,7 @@ export function LibrarianPanel({ novelId, onSources, className }: LibrarianPanel
             <SyncBar novelId={novelId} />
 
             {/* Chat log */}
-            <ScrollArea className="flex-1 px-4">
+            <ScrollArea className="flex-1 min-h-0 px-4">
                 <div className="py-4 space-y-4">
                     {loadingThread ? (
                         <div className="flex justify-center py-8 text-muted-foreground">
@@ -303,6 +303,10 @@ function SyncBar({ novelId }: { novelId: string }) {
     );
 }
 
+// บริบทดิบมาเป็น HTML — ลอก tag + ยุบช่องว่างให้เหลือข้อความล้วน ไม่ตกขอบ
+const stripHtml = (s: string) =>
+    s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+
 function AssistantMessage({
     content,
     sources,
@@ -331,11 +335,11 @@ function AssistantMessage({
                         ทำไมตอบแบบนี้ — ดูบริบทที่ใช้ ({sources!.length})
                     </button>
                     {showContext && (
-                        <div className="space-y-1.5 max-w-[90%] pl-1">
+                        <div className="space-y-1.5 max-w-[90%] min-w-0 pl-1">
                             {sources!.map((s, i) => (
                                 <div
                                     key={i}
-                                    className="rounded-md border bg-muted/30 p-2 text-xs space-y-1"
+                                    className="rounded-md border bg-muted/30 p-2 text-[11px] space-y-1 overflow-hidden"
                                 >
                                     <div className="flex items-center gap-1.5 font-medium">
                                         {s.via === "search" ? (
@@ -343,17 +347,17 @@ function AssistantMessage({
                                         ) : (
                                             <Network className="w-3 h-3 text-muted-foreground shrink-0" />
                                         )}
-                                        <span className="truncate">{s.title}</span>
+                                        <span className="truncate min-w-0">{s.title}</span>
                                         <Badge variant="outline" className="text-[10px] font-normal shrink-0">
                                             {s.type}
                                         </Badge>
                                     </div>
                                     {s.via === "search" && s.content ? (
-                                        <p className="text-muted-foreground line-clamp-4 leading-relaxed">
-                                            {s.content}
+                                        <p className="text-muted-foreground line-clamp-3 leading-relaxed break-words">
+                                            {stripHtml(s.content)}
                                         </p>
                                     ) : (
-                                        <p className="text-muted-foreground italic">
+                                        <p className="text-muted-foreground italic break-words">
                                             เชื่อมโยงผ่าน: {s.relation ?? "—"}
                                         </p>
                                     )}
@@ -368,34 +372,91 @@ function AssistantMessage({
 }
 
 function SourceChips({ sources }: { sources: LibrarianSource[] }) {
+    const search = sources.filter((s) => s.via === "search");
+    const graph = sources.filter((s) => s.via !== "search");
     return (
-        <div className="flex flex-wrap gap-1.5 max-w-[90%]">
-            {sources.map((s, i) => {
-                const Icon = s.via === "search" ? Search : Network;
-                const inner = (
-                    <Badge
-                        variant="outline"
-                        className={cn(
-                            "text-[11px] gap-1 font-normal cursor-default",
-                            s.via === "search"
-                                ? "border-amber-300/60 text-amber-700 dark:text-amber-300"
-                                : "border-border text-muted-foreground",
-                            s.href && "cursor-pointer hover:bg-muted",
-                        )}
-                        title={`${s.type} · ${s.via === "search" ? "ค้นพบ" : "เชื่อมโยง"}`}
+        <div className="flex flex-col gap-2 max-w-[90%]">
+            <SourceGroup
+                icon={Search}
+                label="ค้นพบ"
+                hint="จุดที่คำตอบมาจาก"
+                sources={search}
+                tone="search"
+            />
+            <SourceGroup
+                icon={Network}
+                label="เชื่อมโยง"
+                hint="เอนทิตีที่เกี่ยวข้อง"
+                sources={graph}
+                tone="graph"
+            />
+        </div>
+    );
+}
+
+const CHIP_CAP = 5;
+
+function SourceGroup({
+    icon: Icon,
+    label,
+    hint,
+    sources,
+    tone,
+}: {
+    icon: typeof Search;
+    label: string;
+    hint: string;
+    sources: LibrarianSource[];
+    tone: "search" | "graph";
+}) {
+    const [expanded, setExpanded] = useState(false);
+    if (sources.length === 0) return null;
+    const shown = expanded ? sources : sources.slice(0, CHIP_CAP);
+    const rest = sources.length - shown.length;
+
+    return (
+        <div className="space-y-1">
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted-foreground/80">
+                <Icon className={cn("w-3 h-3", tone === "search" && "text-amber-500")} />
+                <span>{label}</span>
+                <span className="tabular-nums">{sources.length}</span>
+                <span className="text-muted-foreground/50 normal-case tracking-normal">· {hint}</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+                {shown.map((s, i) => {
+                    const inner = (
+                        <Badge
+                            variant="outline"
+                            className={cn(
+                                "text-[11px] gap-1 font-normal cursor-default",
+                                tone === "search"
+                                    ? "border-amber-300/50 text-amber-700/90 dark:text-amber-300/90"
+                                    : "border-border text-muted-foreground",
+                                s.href && "cursor-pointer hover:bg-muted",
+                            )}
+                            title={`${s.title} · ${s.type}`}
+                        >
+                            <Icon className="w-2.5 h-2.5 shrink-0" />
+                            <span className="truncate max-w-[120px]">{s.title}</span>
+                        </Badge>
+                    );
+                    return s.href ? (
+                        <Link key={i} href={s.href}>
+                            {inner}
+                        </Link>
+                    ) : (
+                        <span key={i}>{inner}</span>
+                    );
+                })}
+                {rest > 0 && (
+                    <button
+                        onClick={() => setExpanded(true)}
+                        className="text-[11px] text-muted-foreground hover:text-foreground px-1.5 self-center"
                     >
-                        <Icon className="w-2.5 h-2.5" />
-                        {s.title}
-                    </Badge>
-                );
-                return s.href ? (
-                    <Link key={i} href={s.href}>
-                        {inner}
-                    </Link>
-                ) : (
-                    <span key={i}>{inner}</span>
-                );
-            })}
+                        +{rest} เพิ่มเติม
+                    </button>
+                )}
+            </div>
         </div>
     );
 }

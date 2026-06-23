@@ -86,6 +86,7 @@ export const novels = pgTable("novels", {
   targetDeadline: timestamp("target_deadline"),            // วันสิ้นสุดเป้าหมาย
   dailyTargetMode: text("daily_target_mode").default("dynamic"), // dynamic | static
   dailyTargetWordCount: integer("daily_target_word_count").default(1000), // เป้าหมายคำ/วัน (โหมด static)
+  lastSyncedAt: timestamp("last_synced_at"),                // ซิงค์ฐานข้อมูล AI ล่าสุด (cross-device)
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()
