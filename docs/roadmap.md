@@ -14,14 +14,14 @@
 
 ## 🎯 กลุ่ม A — ใช้พลัง Context Fabric (graph เชื่อมทุกโมดูล)
 
-### A1. Consistency Guardian — ตรวจความสอดคล้องข้ามโมดูล ⭐ เรือธง
-ตัวที่ทำให้ "การเชื่อมทุกอย่างเข้าด้วยกัน" จ่ายเงินคืน
-- เดิน reference graph + agent เดิม (`check-timeline`, `validate-character`) จับความขัดแย้ง:
-  - ตัวละครอยู่ 2 ที่พร้อมกัน
-  - ใช้พลังก่อนได้รับมัน
-  - lore ขัดกันเอง
-  - ตัวละครตายแล้วยังปรากฏ
-- **Value: สูงมาก · Effort: กลาง-สูง · ใช้ของเดิม: graph + agents + character states + timeline**
+### A1. Consistency Guardian — ตรวจความสอดคล้องข้ามโมดูล ⭐ เรือธง · 🚧 เริ่มแล้ว
+ตัวที่ทำให้ "การเชื่อมทุกอย่างเข้าด้วยกัน" จ่ายเงินคืน — `server/consistency-guardian.ts` + panel บนหน้า analytics
+- ✅ **ตายแล้วยังปรากฏ** — `status='dead'` vs `chapterCharacters` เทียบ `orderIndex` (resurrection-aware), deterministic
+- ⬜ ใช้พลังก่อนได้รับ → *รอข้อมูลผูก powerId* (ตอนนี้ fuzzy เกินจะเป็น error)
+- ⬜ ตัวละครอยู่ 2 ที่พร้อมกัน · lore ขัดกันเอง · faction timeline
+- **หลักการ:** ใส่เฉพาะ check ที่ structured จริง (enum/FK) เป็น error · fuzzy = warning หรืออย่าทำ (กันผู้ใช้เลิกเชื่อ)
+- รายละเอียด: [`consistency-guardian-plan.md`](./consistency-guardian-plan.md)
+- **Value: สูงมาก · Effort: กลาง-สูง · ใช้ของเดิม: character states + chapterCharacters**
 
 ### A2. Promise Ledger อัตโนมัติ — ปม setup → payoff
 - relation `foreshadows` / `pays_off` **จองไว้ใน vocab แล้ว** (รอใช้พอดี)

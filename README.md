@@ -4,7 +4,7 @@
 
 **Mythoria** คือแพลตฟอร์มเขียนนิยายยุคใหม่ที่รวมพลัง Project Management + AI อัจฉริยะ + World Building เข้าไว้ในที่เดียว ออกแบบมาสำหรับนักเขียนที่ต้องการเครื่องมือจริงจัง ไม่ใช่แค่ Text Editor ทั่วไป
 
-> **Current Version: `v2.1`** — Librarian Q&A, A5 Page View, ePub Export & Derived Reference Index
+> **Current Version: `v2.2`** — Consistency Guardian, Stylometry Deepening (MTLD + rhythm) & UX upgrade (Cmd+K palette, nav grouping, first-run)
 
 ---
 
@@ -285,35 +285,43 @@ Agent อัจฉริยะที่ใช้ Tool Calling ตรวจสอ
 > 🔭 **Patch 2.5 — Stylometry Deepening**: ยกระดับจาก "รูปนิ่ง 1 ใบ/ตอน" → "วิดีโอ + ลายนิ้วมือ"
 > — ✅ **MTLD/MATTR** (แทน TTR) + **sentence-rhythm curve** (จังหวะประโยค + burstiness) ลงแล้ว · ถัดไป: function-word profile + Burrows's Delta, rolling-window จับจุดเพี้ยนระดับย่อหน้า · [`docs/stylometry-deepening-plan.md`](./docs/stylometry-deepening-plan.md)
 
-### 5. AI Summary (Note & Chapter)
+### 5. Consistency Guardian (ใหม่)
+
+ตรวจความขัดแย้งเชิงโครงสร้างทั้งเล่ม — **deterministic, ไม่ใช้ LLM** (เชื่อถือได้, อธิบายได้)
+
+- ✅ **"ตายแล้วยังปรากฏ"** — เทียบ character state (`dead`) กับการปรากฏในบทถัดมาด้วย `orderIndex` (รู้จักการชุบชีวิต)
+- หลักการ: ใส่เฉพาะ check ที่มาจากข้อมูล structured จริง (enum/FK) เป็น error — เลี่ยง false positive ที่ทำให้ผู้ใช้เลิกเชื่อ
+- panel กดตรวจเองบนหน้า Analytics · ต่อยอด Context Fabric · [`docs/consistency-guardian-plan.md`](./docs/consistency-guardian-plan.md)
+
+### 6. AI Summary (Note & Chapter)
 
 - **Note Summary**: สรุปตอนที่กำลังเขียน
 - **Chapter Summary**: รวบรวมสรุปทุก Note ใน Chapter
 - ใช้ Typhoon v2.1 เพื่อความเข้าใจภาษาไทยได้ดี
 
-### 6. Spell Checker (Background)
+### 7. Spell Checker (Background)
 
 - ตรวจคำผิดอัตโนมัติเมื่อ Note ถูกเปลี่ยนสถานะเป็น **Proofreading**
 - ผลลัพธ์ปรากฏใน Audit Panel ของ Rewrite Workspace พร้อม Auto-fix
 
-### 7. Publish Assistant
+### 8. Publish Assistant
 
 - ผู้ช่วย AI ช่วยวางแผนการ Publish นิยาย
 - วิเคราะห์ความพร้อมของเนื้อหา, แนะนำกลยุทธ์การ Publish
 
-### 8. Word Checker
+### 9. Word Checker
 
 - ตรวจสอบคำที่ใช้บ่อย/น้อยเกินไป
 - ช่วยหาคำที่ใช้ซ้ำซาก และแนะนำทางเลือก
 
-### 9. Graph RAG (Python Microservice + Context Fabric)
+### 10. Graph RAG (Python Microservice + Context Fabric)
 
 - **LanceDB**: เก็บ Embeddings ครอบ **13 entity types** (ตัวละคร/สถานที่/ตำนาน/พลัง/ปม...) ผ่าน embeddable provider
 - **FastAPI**: Service ที่ให้ Next.js ดึง Context ก่อนส่งให้ AI
 - **Graph RAG**: vector search หา "จุดเริ่ม" → เดิน reference graph 1 hop → ได้ context ทั้ง **เชิงความหมาย (similar) + เชิงโครงสร้าง (connected)** ก่อนป้อน LLM
 - Sync เป็น **manual** by design — กด **Vector Sync** ครั้งเดียว rebuild ทั้ง vector embeddings + reference graph index ให้สดพร้อมกัน (ผู้เขียนคุมว่าจะให้ AI เห็นอะไรเมื่อไหร่)
 
-### 10. บรรณารักษ์ (Librarian Q&A) — ใหม่ใน v2.1
+### 11. บรรณารักษ์ (Librarian Q&A) — ใหม่ใน v2.1
 
 ผู้ช่วยถาม-ตอบเกี่ยวกับนิยายของคุณ อยู่บนหน้า **World Graph**:
 
@@ -406,7 +414,10 @@ L0  Entity Registry — abstraction เหนือ 48 ตาราง (resolve 
 
 ### 🔭 ฟีเจอร์ถัดไป
 
-ไอเดียต่อยอด — Consistency Guardian (ตรวจความสอดคล้องข้ามโมดูล), Promise Ledger อัตโนมัติ, Story Codex, Echo detector, Character Voice Distance, Pacing Heatmap — รวมไว้ที่ [`docs/roadmap.md`](./docs/roadmap.md)
+- ✅ **Consistency Guardian** (เริ่มแล้ว — check "ตายแล้วยังปรากฏ") · 🚧 **UX upgrade** (nav grouping, first-run, Cmd+K palette ลงแล้ว; ลด modal กำลังทยอย)
+- ⬜ ถัดไป — Promise Ledger อัตโนมัติ, Story Codex, Echo detector, Character Voice Distance, Pacing Heatmap
+
+รวมไว้ที่ [`docs/roadmap.md`](./docs/roadmap.md) · [`docs/ux-improvement-plan.md`](./docs/ux-improvement-plan.md)
 
 ---
 

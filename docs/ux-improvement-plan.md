@@ -41,16 +41,16 @@
 
 ### 🔴 P0 — แก้ต้นเหตุ "ไม่รู้เริ่มตรงไหน" (effort ต่ำ, ผลสูงสุด)
 
-**P0.1 — First-run guide บน Overview**
+> **สถานะ (อัปเดต):** P0 ✅ · P1.1 ✅ · P2.1 ✅ (Overview) · P1.2 🚧 WorldBuilding เสร็จ, Characters เหลือ
+
+**P0.1 — First-run guide บน Overview** ✅
 - นิยายใหม่ (0 ตอน): แทนกำแพงสถิติ/AI tools ด้วย **เส้นทางนำ 3 ก้าว** — เขียนตอนแรก → เพิ่มตัวละคร → วางพล็อต
-- ใช้ empty-state pattern ที่มีอยู่แล้วเป็นฐาน
 
-**P0.2 — Earned disclosure**
-- ซ่อน "เครื่องมือ AI" (Vector Sync/Plot Hole/Stylometry) บน Overview จนกว่ามีเนื้อหา (ตอน ≥1 หรือคำ ≥500)
-- ซ่อน nav ขั้นสูง (World Graph/Powers/Stylometry) จนกว่ามีข้อมูลที่เกี่ยว
-- Plot board default = view เรียบ; arc/tension/promise อยู่หลัง toggle
+**P0.2 — Earned disclosure** ✅ (Overview) · ⬜ (nav-hide + Plot board เลื่อน)
+- ✅ ซ่อนสถิติ + "เครื่องมือ AI" บน Overview จนกว่ามีเนื้อหา (`hasContent`)
+- ⬜ ซ่อน nav ขั้นสูง / Plot board default เรียบ — ยังไม่ทำ
 
-**P0.3 — จัดกลุ่ม nav 8 อัน → 3 โซน**
+**P0.3 — จัดกลุ่ม nav → 3 โซน** ✅ (เขียน / สร้างโลก / วิเคราะห์)
 ```
 ✍️ เขียน      Overview · Chapters · Plot · Ideas
 🌍 โลก        Characters · World Building · Relationships · Powers · World Graph
@@ -60,18 +60,17 @@
 
 ### 🟡 P1 — ลดภาระความจำ + ขัดจังหวะ
 
-**P1.1 — Command Palette (Cmd+K)** ⭐
-- ยกระดับ `global-search.tsx` → ครอบทุก entity (เพิ่ม lore/power/idea/faction) + actions (สร้างตอน, เพิ่มตัวละคร, เปิด feature) + Librarian Q&A
-- ไม่ต้องจำว่า feature อยู่ไหน — จำแค่ว่าอยากทำอะไร
+**P1.1 — Command Palette (Cmd+K)** ⭐ ✅ (navigation) · ⬜ (actions/entity เพิ่ม)
+- ✅ กลุ่ม "ไปที่" — กระโดดทุกหน้าโปรเจกต์โดยไม่ต้องจำว่า feature อยู่ไหน
+- ⬜ เพิ่ม entity (lore/power/idea/faction) + actions (สร้างตอน/เพิ่มตัวละคร) + Librarian — รอบหน้า
 
-**P1.2 — ลด modal ที่ขัดจังหวะ**
-- flow แก้ไขสั้นๆ (rename, เปลี่ยน field เดียว) → inline edit แทน modal
-- form ยาว → side sheet แทน modal กลางจอ (ไม่บังบริบท)
-- เริ่มที่ WorldBuilding (43) + Characters (27)
+**P1.2 — ลด modal ที่ขัดจังหวะ** 🚧
+- ✅ WorldBuilding dialogs (entity/era/item/lore/lore-group) → sheet แล้ว
+- ⬜ Characters dialogs (27) · flow สั้นๆ → inline edit
 
 ### ⚪ P2 — ขัดเงา
 
-**P2.1 — แทน emoji ด้วย Lucide icon** (Overview `✓⚡`, Analytics ×5) — ตาม skill (emoji ≠ structural icon)
+**P2.1 — แทน emoji ด้วย Lucide icon** ✅ (Overview `✓⚡`) · ⬜ (Analytics ×5)
 **P2.2 — ลบลิงก์/ปุ่มซ้ำ** (Overview "ดูทั้งหมด" ซ้ำ, publish/export ย้ายเข้า overflow)
 **P2.3 — Note Editor: รวมปุ่มรองเข้า overflow** — เหลือเฉพาะ Save + Zen + sidebar toggle เด่น ที่เหลือเข้า `...`
 
