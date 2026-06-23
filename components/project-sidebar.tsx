@@ -49,14 +49,18 @@ interface ProjectSidebarProps {
     projectId: string
     projectTitle?: string
     chapters?: Chapter[]
+    /** นิยายมีเนื้อหาแล้วหรือยัง (wordCount > 0) — earned disclosure ของ nav ขั้นสูง */
+    hasContent?: boolean
 }
 
-export function ProjectSidebar({ projectId, projectTitle, chapters = [] }: ProjectSidebarProps) {
+export function ProjectSidebar({ projectId, projectTitle, chapters = [], hasContent = true }: ProjectSidebarProps) {
     const pathname = usePathname()
     const { openHelp } = useKeyboardShortcutsContext()
 
     // จัดกลุ่ม nav 3 โซน ลด cognitive load (เขียน / สร้างโลก / วิเคราะห์)
-    const navGroups = [
+    // earned disclosure: ซ่อนกลุ่ม "วิเคราะห์" จนกว่ามีเนื้อหา (ว่างเปล่าตอน 0 คำไม่มีอะไรให้ดู)
+    // เข้าถึงได้เสมอผ่าน Cmd+K — ไม่ใช่การตัดฟีเจอร์
+    const allNavGroups = [
         {
             label: "เขียน",
             items: [
@@ -81,6 +85,10 @@ export function ProjectSidebar({ projectId, projectTitle, chapters = [] }: Proje
             ],
         },
     ]
+
+    const navGroups = hasContent
+        ? allNavGroups
+        : allNavGroups.filter((g) => g.label !== "วิเคราะห์")
 
     const publishedChapters = chapters.filter(c => c.status === "published")
     const draftChapters = chapters.filter(c => c.status === "draft")

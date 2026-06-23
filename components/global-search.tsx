@@ -18,6 +18,7 @@ import {
     BarChart3,
     Settings,
     CornerDownLeft,
+    BookMarked,
 } from "lucide-react";
 import {
     CommandDialog,
@@ -29,6 +30,7 @@ import {
     CommandSeparator,
 } from "@/components/ui/command";
 import { useKeyboardShortcutsContext } from "@/components/keyboard-shortcuts-provider";
+import { askLibrarian, type LibrarianSource } from "@/server/librarian";
 
 interface SearchResult {
     id: string;
@@ -93,6 +95,25 @@ export function GlobalSearch() {
     const [results, setResults] = useState<SearchResult[]>([]);
     const [recentSearches, setRecentSearches] = useState<SearchResult[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+
+    // B2 — ถามบรรณารักษ์ได้จากทุกหน้า (reuse askLibrarian)
+    const [libAsking, setLibAsking] = useState(false);
+    const [libAnswer, setLibAnswer] = useState<{ answer: string; sources: LibrarianSource[] } | null>(null);
+
+    const askLib = useCallback(async () => {
+        const q = query.trim();
+        if (!novelId || !q || libAsking) return;
+        setLibAsking(true);
+        setLibAnswer(null);
+        const res = await askLibrarian(novelId, q);
+        setLibAnswer({ answer: res.answer ?? res.error ?? "ตอบไม่สำเร็จ", sources: res.sources ?? [] });
+        setLibAsking(false);
+    }, [novelId, query, libAsking]);
+
+    // คำถามเปลี่ยน → ล้างคำตอบเก่า กันค้าง
+    useEffect(() => {
+        setLibAnswer(null);
+    }, [query]);
 
     // Load recent searches from localStorage
     useEffect(() => {
@@ -243,6 +264,50 @@ export function GlobalSearch() {
                                 <CornerDownLeft className="ml-auto h-3 w-3 text-muted-foreground/50" />
                             </CommandItem>
                         ))}
+                    </CommandGroup>
+                )}
+
+                {/* ถามบรรณารักษ์ (AI) — ได้จากทุกหน้าของโปรเจกต์ */}
+                {novelId && query.trim() && (
+                    <CommandGroup heading="ผู้ช่วย AI">
+                        {!libAnswer && (
+                            <CommandItem
+                                value={`librarian-ask ${query}`}
+                                onSelect={askLib}
+                                className="flex items-center gap-2"
+                            >
+                                <BookMarked className="h-4 w-4 text-[var(--forge-gold,#e0a13c)]" />
+                                <span>
+                                    {libAsking ? "กำลังถามบรรณารักษ์..." : `ถามบรรณารักษ์: "${query}"`}
+                                </span>
+                                {libAsking ? (
+                                    <Sparkles className="ml-auto h-3 w-3 animate-pulse" />
+                                ) : (
+                                    <CornerDownLeft className="ml-auto h-3 w-3 text-muted-foreground/50" />
+                                )}
+                            </CommandItem>
+                        )}
+                        {libAnswer && (
+                            <>
+                                <div className="px-2 py-2 text-sm whitespace-pre-wrap leading-relaxed">
+                                    {libAnswer.answer}
+                                </div>
+                                {libAnswer.sources
+                                    .filter((s) => s.href)
+                                    .map((s, i) => (
+                                        <CommandItem
+                                            key={`libsrc-${i}`}
+                                            value={`libsrc ${s.title} ${i}`}
+                                            onSelect={() => s.href && goTo(s.href)}
+                                            className="flex items-center gap-2"
+                                        >
+                                            <Share2 className="h-4 w-4 text-muted-foreground" />
+                                            <span>{s.title}</span>
+                                            <span className="ml-auto text-xs text-muted-foreground">{s.type}</span>
+                                        </CommandItem>
+                                    ))}
+                            </>
+                        )}
                     </CommandGroup>
                 )}
 

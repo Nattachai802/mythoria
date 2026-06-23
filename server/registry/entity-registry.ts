@@ -16,6 +16,7 @@ import {
 } from "@/db/schema";
 import { and, eq, ilike, inArray } from "drizzle-orm";
 import type { PgTableWithColumns } from "drizzle-orm/pg-core";
+import { revalidatePath } from "next/cache";
 
 /**
  * Context Fabric — L0 Entity Registry
@@ -318,4 +319,140 @@ export async function getEmbeddableContent(
   );
 
   return groups.flat();
+}
+
+/* ---------------------------------------------------------------------------
+ * Generic CRUD — "format ต่อ type" + ฟังก์ชันกลาง 3 ตัว
+ * แหล่งเดียวคุม: tool schema ของผู้ช่วย, validation, ข้อความสรุป
+ * key ของ fields = ชื่อคอลัมน์จริง → เขียนเข้าตารางตรงๆ ผ่าน REGISTRY[type].table
+ * ของที่ไม่ทำ: side-effect เฉพาะ type (เช่น ordering) — ใส่ override เมื่อมี type ที่ต้องการ
+ * ------------------------------------------------------------------------- */
+
+export interface FieldSpec {
+  label: string; // ป้ายไทย (ใช้ใน summary + คำอธิบาย tool)
+  required?: boolean; // create ต้องมี
+  default?: string; // fallback ถ้า DB notNull ไม่มี default (เช่น character.role)
+}
+
+export interface EntityFormat {
+  noun: string; // ชื่อเรียกไทย เช่น "ตัวละคร"
+  fields: Record<string, FieldSpec>;
+}
+
+/** type ที่ผู้ช่วยสร้าง/แก้/ลบ ได้ (ทุกฟิลด์เป็น text — ตรงกับ schema) */
+export const CRUD_FORMAT: Partial<Record<EntityType, EntityFormat>> = {
+  character: { noun: "ตัวละคร", fields: {
+    name: { label: "ชื่อ", required: true },
+    role: { label: "บทบาท", default: "" }, // notNull ไม่มี default ใน DB
+    description: { label: "คำอธิบาย" }, personality: { label: "บุคลิก" },
+    backstory: { label: "ภูมิหลัง" }, appearance: { label: "รูปลักษณ์" },
+  } },
+  location: { noun: "สถานที่", fields: {
+    name: { label: "ชื่อ", required: true }, type: { label: "ประเภท" },
+    description: { label: "คำอธิบาย" }, atmosphere: { label: "บรรยากาศ" },
+    climate: { label: "ภูมิอากาศ" }, history: { label: "ประวัติ" },
+    inhabitants: { label: "ผู้อาศัย" }, secrets: { label: "ความลับ" },
+  } },
+  faction: { noun: "กลุ่ม/ฝ่าย", fields: {
+    name: { label: "ชื่อ", required: true }, type: { label: "ประเภท" },
+    description: { label: "คำอธิบาย" },
+  } },
+  power: { noun: "พลัง", fields: {
+    name: { label: "ชื่อ", required: true }, type: { label: "ประเภท" },
+    rarity: { label: "ความหายาก" }, description: { label: "คำอธิบาย" },
+  } },
+  item: { noun: "ไอเทม", fields: {
+    name: { label: "ชื่อ", required: true }, type: { label: "ประเภท" },
+    rarity: { label: "ความหายาก" }, description: { label: "คำอธิบาย" }, lore: { label: "ที่มา" },
+  } },
+  lore: { noun: "ตำนาน", fields: {
+    title: { label: "หัวข้อ", required: true }, type: { label: "ประเภท" },
+    content: { label: "เนื้อหา" },
+  } },
+  idea: { noun: "ไอเดีย", fields: {
+    title: { label: "หัวข้อ", required: true }, summary: { label: "สรุป" },
+    content: { label: "เนื้อหา" }, category: { label: "หมวด" },
+  } },
+  // ponytail: era ตัดออก — createEra คำนวณ orderIndex (ลำดับยุค) generic insert ข้ามไป
+  // เพิ่มกลับด้วย override เมื่อต้องการสร้างยุคผ่านผู้ช่วย
+  plotThread: { noun: "ปมพล็อต", fields: {
+    title: { label: "หัวข้อ", required: true }, type: { label: "ประเภท" },
+    importance: { label: "ความสำคัญ" }, note: { label: "โน้ต" },
+  } },
+};
+
+export const CRUD_TYPES = Object.keys(CRUD_FORMAT) as EntityType[];
+
+export function isCrudType(value: string): value is EntityType {
+  return value in CRUD_FORMAT;
+}
+
+export type CrudResult =
+  | { success: true; id: string; title: string; novelId: string; href: string }
+  | { success: false; error: string };
+
+/** กรอง input → เฉพาะคอลัมน์ที่ format รู้จัก + เช็ค required + เติม default */
+function cleanFields(
+  type: EntityType,
+  input: Record<string, unknown>,
+  isCreate: boolean,
+): { values: Record<string, unknown> } | { error: string } {
+  const format = CRUD_FORMAT[type];
+  if (!format) return { error: "ชนิดข้อมูลนี้ยังไม่รองรับ" };
+  const values: Record<string, unknown> = {};
+  for (const [key, f] of Object.entries(format.fields)) {
+    let v = input[key];
+    if (typeof v === "string") v = v.trim();
+    if ((v == null || v === "") && isCreate && f.default != null) v = f.default;
+    if (v != null && v !== "") values[key] = v;
+    else if (isCreate && f.required && f.default == null) return { error: `ต้องระบุ${f.label}` };
+  }
+  return { values };
+}
+
+export async function createEntityRow(
+  type: EntityType,
+  novelId: string,
+  input: Record<string, unknown>,
+): Promise<CrudResult> {
+  const cleaned = cleanFields(type, input, true);
+  if ("error" in cleaned) return { success: false, error: cleaned.error };
+  const adapter = REGISTRY[type];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [row] = await db.insert(adapter.table as any).values({ ...cleaned.values, novelId }).returning();
+  if (!row) return { success: false, error: "สร้างไม่สำเร็จ" };
+  revalidatePath(`/dashboard/project/${novelId}`, "layout");
+  const r = row as Record<string, unknown>;
+  return { success: true, id: r.id as string, title: (r[adapter.displayCol] as string) ?? "", novelId, href: adapter.href(novelId, r.id as string) };
+}
+
+export async function updateEntityRow(
+  type: EntityType,
+  id: string,
+  input: Record<string, unknown>,
+): Promise<CrudResult> {
+  const ref = await resolve(type, id);
+  if (!ref) return { success: false, error: "ไม่พบรายการที่จะแก้" };
+  const cleaned = cleanFields(type, input, false);
+  if ("error" in cleaned) return { success: false, error: cleaned.error };
+  const adapter = REGISTRY[type];
+  if (Object.keys(cleaned.values).length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const t = adapter.table as any;
+    await db.update(t).set(cleaned.values).where(eq(t.id, id));
+    revalidatePath(`/dashboard/project/${ref.novelId}`, "layout");
+  }
+  const title = (cleaned.values[adapter.displayCol] as string) ?? ref.title;
+  return { success: true, id, title, novelId: ref.novelId, href: ref.href };
+}
+
+export async function deleteEntityRow(type: EntityType, id: string): Promise<CrudResult> {
+  const ref = await resolve(type, id);
+  if (!ref) return { success: false, error: "ไม่พบรายการที่จะลบ" };
+  const adapter = REGISTRY[type];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const t = adapter.table as any;
+  await db.delete(t).where(eq(t.id, id));
+  revalidatePath(`/dashboard/project/${ref.novelId}`, "layout");
+  return { success: true, id, title: ref.title, novelId: ref.novelId, href: ref.href };
 }

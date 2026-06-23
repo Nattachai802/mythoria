@@ -5,12 +5,12 @@ import { Power, PowerLevel, CharacterPower } from "@/db/schema";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from "@/components/ui/dialog";
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+    SheetTrigger,
+} from "@/components/ui/sheet";
 import {
     Select,
     SelectContent,
@@ -143,17 +143,17 @@ export function CharacterPowerManager({ characterId, novelId }: CharacterPowerMa
                 <span className="font-technical text-[10px] uppercase tracking-[0.15em] text-muted-foreground tabular-nums">
                     {characterPowers.length} พลังที่ถือครอง
                 </span>
-                <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-                    <DialogTrigger asChild>
+                <Sheet open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+                    <SheetTrigger asChild>
                         <Button size="sm" variant="outline" className="chamfered-sm" disabled={unassignedPowers.length === 0}>
                             <Plus className="h-4 w-4 mr-1" />
                             เพิ่มพลัง
                         </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>มอบพลังให้ตัวละคร</DialogTitle>
-                        </DialogHeader>
+                    </SheetTrigger>
+                    <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+                        <SheetHeader>
+                            <SheetTitle>มอบพลังให้ตัวละคร</SheetTitle>
+                        </SheetHeader>
                         <div className="space-y-4">
                             <div className="space-y-2">
                                 <Label>เลือกพลัง</Label>
@@ -212,8 +212,8 @@ export function CharacterPowerManager({ characterId, novelId }: CharacterPowerMa
                                 </Button>
                             </div>
                         </div>
-                    </DialogContent>
-                </Dialog>
+                    </SheetContent>
+                </Sheet>
             </div>
 
             {/* No powers message */}

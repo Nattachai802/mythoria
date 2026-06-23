@@ -6,13 +6,13 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Button } from "@/components/ui/button";
 import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog";
+    Sheet,
+    SheetContent,
+    SheetDescription,
+    SheetFooter,
+    SheetHeader,
+    SheetTitle,
+} from "@/components/ui/sheet";
 import {
     Form,
     FormControl,
@@ -152,14 +152,14 @@ export function ManageFactionDialog({
     };
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                    <DialogTitle>Manage Faction</DialogTitle>
-                    <DialogDescription>
+        <Sheet open={open} onOpenChange={onOpenChange}>
+            <SheetContent className="w-full sm:max-w-[425px] overflow-y-auto">
+                <SheetHeader>
+                    <SheetTitle>Manage Faction</SheetTitle>
+                    <SheetDescription>
                         Assign this character to a faction or create a new one.
-                    </DialogDescription>
-                </DialogHeader>
+                    </SheetDescription>
+                </SheetHeader>
 
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                     <TabsList className="grid w-full grid-cols-2">
@@ -213,12 +213,12 @@ export function ManageFactionDialog({
                                         </FormItem>
                                     )}
                                 />
-                                <DialogFooter>
+                                <SheetFooter>
                                     <Button type="submit" disabled={isSubmitting || factions.length === 0}>
                                         {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                         Join Faction
                                     </Button>
-                                </DialogFooter>
+                                </SheetFooter>
                             </form>
                         </Form>
                     </TabsContent>
@@ -265,17 +265,17 @@ export function ManageFactionDialog({
                                         </FormItem>
                                     )}
                                 />
-                                <DialogFooter>
+                                <SheetFooter>
                                     <Button type="submit" disabled={isSubmitting}>
                                         {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                         Create & Join
                                     </Button>
-                                </DialogFooter>
+                                </SheetFooter>
                             </form>
                         </Form>
                     </TabsContent>
                 </Tabs>
-            </DialogContent>
-        </Dialog>
+            </SheetContent>
+        </Sheet>
     );
 }

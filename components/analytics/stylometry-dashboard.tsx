@@ -383,8 +383,136 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
                             <span className="inline-flex chamfered-sm bg-[var(--forge-gold)]/10 px-2 py-1 text-xs font-medium text-[var(--forge-amber)]">{(selected.characterDialogueVibes?.vibe || "ไม่มีข้อมูล").split("(")[0].trim()}</span>
                         </div>
                     </div>
+
+                    {/* C1 — คำซ้ำใกล้กัน (Echo detector) */}
+                    {Array.isArray(selected.chapterAnatomy?.echoes) && selected.chapterAnatomy.echoes.length > 0 && (
+                        <div className="pt-3 mt-3 border-t border-border/60">
+                            <span className="text-[10px] text-muted-foreground block mb-2">คำซ้ำใกล้กัน (อาจอ่านสะดุด)</span>
+                            <div className="flex flex-col gap-1.5">
+                                {selected.chapterAnatomy.echoes.slice(0, 8).map((e: { term: string; count: number; excerpt: string }, i: number) => (
+                                    <div key={i} className="flex items-start gap-2 text-xs">
+                                        <span className="inline-flex chamfered-sm bg-amber-500/15 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 font-medium shrink-0">
+                                            {e.term} ×{e.count}
+                                        </span>
+                                        <span className="text-muted-foreground line-clamp-2 leading-relaxed">…{e.excerpt}…</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* #4 — Rolling-window drift: จุดสไตล์เพี้ยนระดับย่อหน้า */}
+                    {Array.isArray(selected.chapterAnatomy?.rolling_drift?.windows) && selected.chapterAnatomy.rolling_drift.windows.length > 0 && (
+                        <div className="pt-3 mt-3 border-t border-border/60">
+                            <span className="text-[10px] text-muted-foreground block mb-2">จุดสไตล์เพี้ยนในตอน (จังหวะย่อหน้า)</span>
+                            <div className="flex gap-0.5">
+                                {selected.chapterAnatomy.rolling_drift.windows.map((w: { start_sentence: number; avg_sentence_len: number; z?: number; drift?: boolean }, i: number) => (
+                                    <div
+                                        key={i}
+                                        title={`ประโยค #${w.start_sentence} · เฉลี่ย ${w.avg_sentence_len} คำ · z=${w.z ?? "–"}`}
+                                        className={cn("h-6 flex-1 min-w-[6px] chamfered-sm", w.drift ? "bg-red-500/70" : "bg-emerald-500/25")}
+                                    />
+                                ))}
+                            </div>
+                            {selected.chapterAnatomy.rolling_drift.windows.some((w: { drift?: boolean }) => w.drift) && (
+                                <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1.5">มีย่อหน้าที่จังหวะต่างจากตอนชัดเจน — ตรวจว่าตั้งใจหรือสไตล์หลุด</p>
+                            )}
+                        </div>
+                    )}
+
+                    {/* C2 — Voice distance: ตัวละครเสียงคล้ายกันเกิน */}
+                    {(() => {
+                        const pairs = selected.characterDialogueVibes?.voice_distances?.pairs as { a: string; b: string; distance: number; too_similar?: boolean }[] | undefined;
+                        if (!Array.isArray(pairs) || pairs.length === 0) return null;
+                        const close = pairs.filter((p) => p.too_similar);
+                        return (
+                            <div className="pt-3 mt-3 border-t border-border/60">
+                                <span className="text-[10px] text-muted-foreground block mb-2">เสียงตัวละคร (ระยะห่าง — ใกล้ = คล้ายกัน)</span>
+                                <div className="flex flex-col gap-1 text-xs">
+                                    {(close.length > 0 ? close : pairs.slice(0, 3)).map((p, i) => (
+                                        <div key={i} className="flex items-center gap-2">
+                                            <span className={cn("font-medium", p.too_similar && "text-amber-600 dark:text-amber-400")}>{p.a} ↔ {p.b}</span>
+                                            <span className="ml-auto tabular-nums text-muted-foreground">{p.distance}</span>
+                                            {p.too_similar && <span className="text-[10px] text-amber-600 dark:text-amber-400">คล้ายเกิน</span>}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* #3 — Burrows's Delta: ลายเซ็นคำเล็ก เทียบข้ามตอน */}
+                    {(() => {
+                        const profiles = data.map((d) => d.lexicalRichness?.function_words).filter(Boolean) as Record<string, number>[];
+                        const cur = selected.lexicalRichness?.function_words as Record<string, number> | undefined;
+                        if (profiles.length < 2 || !cur) return null;
+                        const keys = Object.keys(cur);
+                        let sum = 0; const tops: { k: string; z: number }[] = [];
+                        for (const k of keys) {
+                            const vals = profiles.map((p) => p[k]).filter((v) => typeof v === "number");
+                            if (vals.length < 2) continue;
+                            const m = vals.reduce((a, b) => a + b, 0) / vals.length;
+                            const sd = Math.sqrt(vals.reduce((a, b) => a + (b - m) ** 2, 0) / vals.length) || 0.001;
+                            const z = ((cur[k] ?? 0) - m) / sd;
+                            sum += Math.abs(z); tops.push({ k, z });
+                        }
+                        const delta = keys.length ? sum / keys.length : 0;
+                        tops.sort((a, b) => Math.abs(b.z) - Math.abs(a.z));
+                        return (
+                            <div className="pt-3 mt-3 border-t border-border/60">
+                                <span className="text-[10px] text-muted-foreground block mb-1.5">
+                                    ลายเซ็นคำเล็ก (Burrows Δ ข้ามตอน): <span className={cn("font-bold tabular-nums", delta >= 1.5 ? "text-red-500" : delta >= 1.0 ? "text-amber-500" : "text-emerald-500")}>{delta.toFixed(2)}</span>
+                                </span>
+                                <div className="text-[11px] text-muted-foreground">
+                                    {tops.slice(0, 4).map((t) => `${t.k} ${t.z > 0 ? "+" : ""}${t.z.toFixed(1)}`).join(" · ")}
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
             )}
+
+            {/* ── C3 Pacing Heatmap — จังหวะทั้งเล่มในแวบเดียว ── */}
+            {data.length > 1 && (() => {
+                const pace = data.map((d) => d.chapterAnatomy?.avg_words_per_sentence ?? null);
+                const valid = pace.filter((v): v is number => v !== null);
+                if (valid.length < 2) return null;
+                const min = Math.min(...valid), max = Math.max(...valid);
+                const colorFor = (v: number | null) => {
+                    if (v === null) return "var(--muted)";
+                    const t = max > min ? (v - min) / (max - min) : 0.5; // 0=รัว → 1=อืด
+                    return `hsl(${140 - t * 140}, 64%, 50%)`; // เขียว(รัว) → แดง(อืด)
+                };
+                return (
+                    <div className="chamfered border bg-card/50 p-4 mb-6">
+                        <div className="flex items-center justify-between mb-3 gap-2">
+                            <span className="font-technical text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
+                                จังหวะทั้งเล่ม (ความยาวประโยคเฉลี่ย)
+                            </span>
+                            <span className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0">
+                                รัว
+                                <span className="inline-block w-8 h-2 rounded-sm" style={{ background: "linear-gradient(90deg, hsl(140,64%,50%), hsl(70,64%,50%), hsl(0,64%,50%))" }} />
+                                อืด
+                            </span>
+                        </div>
+                        <div className="flex gap-0.5">
+                            {data.map((d, i) => (
+                                <button
+                                    key={d.id}
+                                    onClick={() => setSelectedIdx(i)}
+                                    title={`${i + 1}. ${d.chapterTitle} · ${pace[i] ?? "–"} คำ/ประโยค`}
+                                    className={cn(
+                                        "h-7 flex-1 min-w-[8px] chamfered-sm transition-all hover:opacity-80",
+                                        selectedIdx === i && "ring-2 ring-[var(--forge-gold)]",
+                                    )}
+                                    style={{ backgroundColor: colorFor(pace[i]) }}
+                                    aria-label={`ตอนที่ ${i + 1}`}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* ── Main Multi-line Chart ── */}
             <div className="chamfered border border-border bg-card/50 p-5">

@@ -15,12 +15,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogFooter,
-} from "@/components/ui/dialog";
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+    SheetFooter,
+} from "@/components/ui/sheet";
 import {
     Select,
     SelectContent,
@@ -297,14 +297,14 @@ export function CharacterLifeEvents({ characterId, novelId }: CharacterLifeEvent
                 </div>
             )}
 
-            {/* Add/Edit Dialog */}
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                <DialogContent className="max-w-md">
-                    <DialogHeader>
-                        <DialogTitle>
+            {/* Add/Edit Sheet */}
+            <Sheet open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+                    <SheetHeader>
+                        <SheetTitle>
                             {editingEvent ? "แก้ไขเหตุการณ์" : "เพิ่มเหตุการณ์สำคัญ"}
-                        </DialogTitle>
-                    </DialogHeader>
+                        </SheetTitle>
+                    </SheetHeader>
 
                     <div className="space-y-4 py-4">
                         <div className="space-y-2">
@@ -392,16 +392,16 @@ export function CharacterLifeEvents({ characterId, novelId }: CharacterLifeEvent
                         </div>
                     </div>
 
-                    <DialogFooter>
+                    <SheetFooter>
                         <Button variant="ghost" onClick={() => setIsDialogOpen(false)}>
                             ยกเลิก
                         </Button>
                         <Button onClick={handleSave} disabled={isSaving}>
                             {isSaving ? "กำลังบันทึก..." : "บันทึก"}
                         </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+                    </SheetFooter>
+                </SheetContent>
+            </Sheet>
 
             {/* Delete Confirmation */}
             <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>

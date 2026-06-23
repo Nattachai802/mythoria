@@ -239,12 +239,7 @@ export default async function ProjectOverviewPage({ params }: Props) {
                     <div className="space-y-2 pt-2">
                         <div className="flex items-center justify-between">
                             <span className="font-technical text-[9px] uppercase tracking-[0.2em] text-muted-foreground">กิจกรรม 14 วัน</span>
-                            <Link
-                                href={`/dashboard/project/${id}/analytics`}
-                                className="text-[10px] text-primary hover:underline"
-                            >
-                                ดูทั้งหมด
-                            </Link>
+                            {/* ลิงก์ "ดูทั้งหมด → analytics" มีอยู่แล้วที่ส่วนสถิติด้านบน — ไม่ซ้ำ */}
                         </div>
                         <div className="grid grid-cols-7 gap-1">
                             {activityData.slice(-14).map((day: { date: string; count: number }, i: number) => (
@@ -343,18 +338,23 @@ export default async function ProjectOverviewPage({ params }: Props) {
                                     {totalChapters} บท · {publishedChapters.length} เผยแพร่แล้ว
                                 </p>
                                 <div className="flex items-center gap-2">
-                                    <PublishAssistant
-                                        chapters={novel.chapters}
-                                        notes={notes as any}
-                                        novelTitle={novel.title}
-                                    />
-                                    <ExportDialog
-                                        chapters={novel.chapters}
-                                        notes={notes as any}
-                                        novelTitle={novel.title}
-                                        authorName={(novel as any).user?.name}
-                                        coverImage={(novel as any).coverImage}
-                                    />
+                                    {/* publish/export โผล่เมื่อมีบทแล้ว (earned disclosure — กันรกตอนยังไม่มีอะไรให้เผยแพร่) */}
+                                    {totalChapters > 0 && (
+                                        <>
+                                            <PublishAssistant
+                                                chapters={novel.chapters}
+                                                notes={notes as any}
+                                                novelTitle={novel.title}
+                                            />
+                                            <ExportDialog
+                                                chapters={novel.chapters}
+                                                notes={notes as any}
+                                                novelTitle={novel.title}
+                                                authorName={(novel as any).user?.name}
+                                                coverImage={(novel as any).coverImage}
+                                            />
+                                        </>
+                                    )}
                                     <CreateChapterDialog novelId={id} />
                                 </div>
                             </div>

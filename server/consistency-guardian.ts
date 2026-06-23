@@ -72,7 +72,8 @@ export async function getConsistencyIssues(
 
         const deadCharIds = [...deathByChar.keys()];
 
-        // 3.5 ชุบชีวิต: ถ้ามี state ไม่ใช่ dead ในบทหลังบทที่ตาย → ฟื้นแล้ว ข้ามตัวนั้น
+        // 3.5 ชุบชีวิต: เก็บบทที่ "ฟื้น" (non-dead state แรกสุดหลังบทตาย) ต่อตัวละคร
+        //     → เตือนเฉพาะการปรากฏในช่วง ตาย→ก่อนฟื้น (ปรากฏหลังฟื้น = ปกติ ไม่เตือน)
         const aliveStates = (await db
             .select({ noteId: characterStates.noteId, characterId: characterStates.characterId })
             .from(characterStates)
@@ -83,13 +84,16 @@ export async function getConsistencyIssues(
                     inArray(characterStates.characterId, deadCharIds),
                 ),
             )) as { noteId: string; characterId: string }[];
+        const revivalByChar = new Map<string, number>();
         for (const s of aliveStates) {
             const death = deathByChar.get(s.characterId);
             const chId = s.noteId ? noteChapter.get(s.noteId) : null;
             const ch = chId ? chapterById.get(chId) : null;
-            if (death && ch && ch.orderIndex > death.order) deathByChar.delete(s.characterId);
+            if (death && ch && ch.orderIndex > death.order) {
+                const prev = revivalByChar.get(s.characterId);
+                if (prev === undefined || ch.orderIndex < prev) revivalByChar.set(s.characterId, ch.orderIndex);
+            }
         }
-        if (deathByChar.size === 0) return { success: true, issues: [] };
 
         // 4. ชื่อตัวละคร
         const charRows = (await db
@@ -115,7 +119,9 @@ export async function getConsistencyIssues(
             const death = deathByChar.get(ap.characterId);
             const appearCh = chapterById.get(ap.chapterId);
             if (!death || !appearCh) continue;
-            if (appearCh.orderIndex > death.order) {
+            // เตือนเฉพาะช่วงตาย→ก่อนฟื้น: ปรากฏหลังบทตาย และ (ยังไม่ฟื้น หรือ ก่อนบทที่ฟื้น)
+            const revival = revivalByChar.get(ap.characterId);
+            if (appearCh.orderIndex > death.order && (revival === undefined || appearCh.orderIndex < revival)) {
                 const deathCh = chapterById.get(death.chapterId)!;
                 const name = nameById.get(ap.characterId) ?? "ตัวละคร";
                 issues.push({

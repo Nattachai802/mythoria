@@ -645,6 +645,119 @@ def sentence_rhythm(sentences: List[str]) -> Dict[str, Any]:
     }
 
 
+# Patch 2.5 — C1 Echo detector: จับคำที่โผล่ซ้ำในระยะใกล้ (เธอ...เธอ...เธอ / "นั่นเอง" รัวๆ)
+# statistical ล้วน · ข้าม connector/particle ที่ซ้ำได้ตามธรรมชาติ แต่คงสรรพนาม (ปัญหาคลาสสิก web novel ไทย)
+ECHO_IGNORE = {
+    "และ", "ที่", "ก็", "แล้ว", "ของ", "ใน", "เป็น", "มี", "ได้", "จะ", "ไม่", "ว่า",
+    "ให้", "กับ", "แต่", "หรือ", "ๆ", "มา", "ไป", "อยู่", "นั้น", "นี้", "คือ", "เมื่อ", "ซึ่ง", "โดย",
+}
+
+def detect_echoes(tokens: List[str], exclude: set = None,
+                  window: int = 40, min_count: int = 3, max_results: int = 15) -> List[Dict[str, Any]]:
+    """หาคำ content ที่ซ้ำ >= min_count ภายในหน้าต่าง window โทเคน → คืนคำ + จำนวน + ตัวอย่าง"""
+    exclude = exclude or set()
+    positions: Dict[str, List[int]] = {}
+    for i, t in enumerate(tokens):
+        tt = t.strip()
+        if not tt or len(tt) <= 1 or tt in exclude or tt in ECHO_IGNORE:
+            continue
+        positions.setdefault(tt, []).append(i)
+
+    echoes: List[Dict[str, Any]] = []
+    for term, idxs in positions.items():
+        if len(idxs) < min_count:
+            continue
+        # หาหน้าต่างที่หนาแน่นสุด (sliding two-pointer บนตำแหน่งของคำนั้น)
+        best, best_lo, lo = 0, idxs[0], 0
+        for hi in range(len(idxs)):
+            while idxs[hi] - idxs[lo] > window:
+                lo += 1
+            if hi - lo + 1 > best:
+                best, best_lo = hi - lo + 1, idxs[lo]
+        if best >= min_count:
+            s, e = max(0, best_lo - 4), min(len(tokens), best_lo + 12)
+            excerpt = "".join(tokens[s:e]).strip()
+            echoes.append({"term": term, "count": best, "excerpt": excerpt})
+
+    echoes.sort(key=lambda x: x["count"], reverse=True)
+    return echoes[:max_results]
+
+
+# Patch 2.6 — #3 Function-word profile (input ของ Burrows's Delta ที่คำนวณ cross-chapter ฝั่ง dashboard)
+# คำเล็กที่ใช้โดยไม่รู้ตัว = ลายเซ็นผู้แต่ง (topic-independent) · vocabulary คงที่เพื่อเทียบข้ามตอนได้
+THAI_FUNCTION_WORDS = [
+    "และ", "แต่", "หรือ", "ก็", "ที่", "ซึ่ง", "โดย", "เพราะ", "จึง", "แล้ว", "ก่อน", "หลัง",
+    "ของ", "ใน", "บน", "กับ", "แก่", "ต่อ", "จาก", "ถึง", "ตาม", "เพื่อ",
+    "จะ", "ได้", "ต้อง", "ควร", "อาจ", "กำลัง", "เคย", "ยัง", "ไม่",
+    "นี้", "นั้น", "นั่น", "นี่", "เอง", "อยู่", "มา", "ไป", "ขึ้น", "ลง",
+    "ว่า", "คือ", "เป็น", "มี", "ให้", "อย่าง", "ๆ", "นะ", "สิ", "เถอะ",
+]
+
+def function_word_profile(tokens: List[str]) -> Dict[str, float]:
+    """ความถี่ function word ต่อ 1000 โทเคน (vocabulary คงที่)"""
+    from collections import Counter
+    n = len(tokens) or 1
+    c = Counter(tokens)
+    return {w: round(c.get(w, 0) / n * 1000, 2) for w in THAI_FUNCTION_WORDS}
+
+
+def rolling_drift(sentences: List[str], win: int = 8, step: int = 4) -> Dict[str, Any]:
+    """#4 — เลื่อนหน้าต่างประโยคในตอน หา window ที่ความยาวประโยคเฉลี่ยเพี้ยนจากค่ากลางของตอน
+    (ชี้จุดสไตล์หลุดระดับย่อหน้า → จับ AI แทรก / ghostwriter)"""
+    sents = [s.strip() for s in sentences if s.strip()]
+    if len(sents) < win * 2:
+        return {"windows": [], "note": "ตอนสั้นเกินวิเคราะห์ระดับย่อหน้า"}
+    windows = []
+    i = 0
+    while i + max(3, win // 2) <= len(sents):
+        chunk = sents[i:i + win]
+        wc = [len(word_tokenize(s, engine="newmm", keep_whitespace=False)) for s in chunk]
+        windows.append({
+            "start_sentence": i,
+            "avg_sentence_len": round(sum(wc) / len(wc), 1),
+            "excerpt": (" ".join(chunk))[:120],
+        })
+        i += step
+    vals = [w["avg_sentence_len"] for w in windows]
+    if len(vals) >= 2:
+        m = sum(vals) / len(vals)
+        sd = (sum((v - m) ** 2 for v in vals) / len(vals)) ** 0.5 or 0.001
+        for w in windows:
+            w["z"] = round((w["avg_sentence_len"] - m) / sd, 2)
+            w["drift"] = abs(w["z"]) >= 1.5
+    return {"windows": windows}
+
+
+def voice_distances(extracted: List[Dict[str, Any]], particle_analyzer, min_lines: int = 3) -> Dict[str, Any]:
+    """C2 — per-character particle fingerprint → ระยะห่างระหว่างตัวละคร (ใกล้กันเกิน = เสียงไม่แตกต่าง)
+    หมายเหตุ: อิง guessed_speaker (fuzzy) + ระดับตอนเดียว → ถือเป็น approximate"""
+    import itertools, math
+    by_char: Dict[str, List[str]] = {}
+    for d in extracted:
+        if not d.get("is_dialog"):
+            continue
+        spk = (d.get("metadata") or {}).get("guessed_speaker")
+        if spk:
+            by_char.setdefault(spk, []).append(d["text"])
+    vecs: Dict[str, Dict[str, float]] = {}
+    for spk, lines in by_char.items():
+        if len(lines) < min_lines:
+            continue
+        cats = particle_analyzer.analyze("\n".join(lines)).get("category_counts", {})
+        tot = sum(cats.values()) or 1
+        vecs[spk] = {k: v / tot for k, v in cats.items()}
+    keys = list(vecs)
+    if len(keys) < 2:
+        return {"pairs": [], "note": "ตัวละครที่มีบทพูดพอวิเคราะห์ < 2 คน"}
+    allcats = set().union(*[set(v) for v in vecs.values()])
+    pairs = []
+    for a, b in itertools.combinations(keys, 2):
+        dist = math.sqrt(sum((vecs[a].get(c, 0) - vecs[b].get(c, 0)) ** 2 for c in allcats))
+        pairs.append({"a": a, "b": b, "distance": round(dist, 3), "too_similar": dist < 0.15})
+    pairs.sort(key=lambda x: x["distance"])
+    return {"pairs": pairs[:10]}
+
+
 def analyze_single_chapter_style(text: str, character_names: List[str] = None) -> Dict[str, Any]:
     """
     วิเคราะห์สไตล์ของ 1 ตอน (Chapter) ชุดใหญ่
@@ -680,6 +793,8 @@ def analyze_single_chapter_style(text: str, character_names: List[str] = None) -
     # 4. วิเคราะห์ Character Vibes (Particles ในบทสนทนา)
     particle_analyzer = ParticleAnalyzer()
     char_vibes = particle_analyzer.analyze(dialogue_text)
+    # C2 — ระยะห่างเสียงตัวละคร (nest ใน characterDialogueVibes JSONB เดิม)
+    char_vibes["voice_distances"] = voice_distances(extracted, particle_analyzer)
     
     # 5. วิเคราะห์คลังคำศัพท์ (Lexical Richness) ของผู้แต่ง
     import string
@@ -731,6 +846,8 @@ def analyze_single_chapter_style(text: str, character_names: List[str] = None) -
             "mtld": mtld,
             "mattr_percentage": mattr,
             "top_10_frequent_words": top_words,
+            # #3 — function-word profile (dashboard ใช้คำนวณ Burrows's Delta ข้ามตอน)
+            "function_words": function_word_profile(filtered_tokens),
             # richness_level อิง MTLD (TTR เก่ายังคืนไว้เพื่อ backward-compat)
             "richness_level": "สูง (คำศัพท์หลากหลาย)" if mtld > 80 else "ปกติ" if mtld > 50 else "ต่ำ (ใช้คำซ้ำเยอะ)"
         },
@@ -743,6 +860,10 @@ def analyze_single_chapter_style(text: str, character_names: List[str] = None) -
             "total_dialogue_blocks": len(dialogues_list),
             # Patch 2.5 — "จังหวะหัวใจ" ของตอน (เส้นความยาวประโยค) — nest ใน anatomy
             # เพื่อไหลผ่าน chapterAnatomy JSONB เดิม ไม่ต้องแก้ schema/route
-            "sentence_rhythm": sentence_rhythm(sentences)
+            "sentence_rhythm": sentence_rhythm(sentences),
+            # Patch 2.5 — C1 Echo detector (nest ใน anatomy → ไหลผ่าน chapterAnatomy JSONB เดิม ไม่ต้องแก้ schema/route)
+            "echoes": detect_echoes(all_tokens, exclude_chars),
+            # #4 — rolling-window drift (จุดสไตล์เพี้ยนระดับย่อหน้า)
+            "rolling_drift": rolling_drift(sentences)
         }
     }

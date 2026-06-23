@@ -26,6 +26,7 @@ import { th } from "date-fns/locale";
 import { rebuildNovelReferences } from "@/server/references";
 import {
     askLibrarian,
+    retrieveLibrarianSources,
     getLibrarianThread,
     clearLibrarianThread,
     type LibrarianSource,
@@ -85,6 +86,11 @@ export function LibrarianPanel({ novelId, onSources, className }: LibrarianPanel
         setMessages((prev) => [...prev, { role: "user", content: q }]);
         setInput("");
         setIsAsking(true);
+
+        // early highlight: ไฮไลต์กราฟทันทีที่ retrieval เสร็จ ไม่ต้องรอ LLM ตอบ (ขนานกัน)
+        retrieveLibrarianSources(novelId, q).then((r) => {
+            if (r.sources.length) onSources?.(r.sources);
+        });
 
         const res = await askLibrarian(novelId, q);
 

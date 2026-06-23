@@ -129,13 +129,22 @@ export async function askLibrarian(
         return { success: false, error: "บรรณารักษ์ไม่ว่างชั่วคราว ลองใหม่อีกครั้ง" };
     }
 
-    // 3. resolve source ให้คลิกไปหน้า entity ได้
+    // 3. resolve source + บันทึกเธรด
+    const sources = await buildSources(items);
+    await persistTurn(novelId, q, answer, sources);
+
+    return { success: true, answer, sources };
+}
+
+type RetrievedItems = Awaited<ReturnType<typeof retrieveContext>>["items"];
+
+/** แปลง retrieval items → LibrarianSource (resolve href ผ่าน registry) */
+async function buildSources(items: RetrievedItems): Promise<LibrarianSource[]> {
     const pointers = items
         .filter((it) => isEntityType(it.type))
         .map((it) => ({ type: it.type as EntityType, id: it.id }));
     const resolved = await resolveMany(pointers);
-
-    const sources: LibrarianSource[] = items.map((it) => ({
+    return items.map((it) => ({
         type: it.type,
         id: it.id,
         title: it.title,
@@ -144,11 +153,25 @@ export async function askLibrarian(
         content: it.content,
         relation: it.relation,
     }));
+}
 
-    // 4. บันทึกเธรด
-    await persistTurn(novelId, q, answer, sources);
-
-    return { success: true, answer, sources };
+/**
+ * ดึงเฉพาะ sources (retrieval อย่างเดียว ไม่เรียก LLM) — ให้กราฟไฮไลต์ทันทีก่อน LLM ตอบ
+ * ponytail: retrieveContext รันซ้ำกับใน askLibrarian (1 vector query) — รับได้เพราะ librarian เป็น manual/ความถี่ต่ำ
+ */
+export async function retrieveLibrarianSources(
+    novelId: string,
+    question: string,
+): Promise<{ sources: LibrarianSource[] }> {
+    const q = question.trim();
+    if (!q) return { sources: [] };
+    try {
+        const { items } = await retrieveContext(novelId, q);
+        return { sources: await buildSources(items) };
+    } catch (e) {
+        console.error("[librarian] retrieveLibrarianSources error:", e);
+        return { sources: [] };
+    }
 }
 
 /** ดึงประวัติสนทนาทั้งเธรดของนิยาย (เรียงเก่า → ใหม่) */

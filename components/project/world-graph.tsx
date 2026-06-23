@@ -47,9 +47,11 @@ const FILTERS: { key: Filter; label: string; icon: typeof Users | null }[] = [
 interface WorldGraphProps {
     novelId: string;
     height?: number;
+    /** node key (`type:id`) ที่บรรณารักษ์ใช้ตอบ — search = จุดที่ค้นเจอ, graph = เพื่อนบ้าน */
+    highlight?: { search: string[]; graph: string[] };
 }
 
-export function WorldGraph({ novelId, height = 640 }: WorldGraphProps) {
+export function WorldGraph({ novelId, height = 640, highlight }: WorldGraphProps) {
     const { theme } = useTheme();
     const router = useRouter();
     const fgRef = useRef<any>(null);
@@ -71,6 +73,11 @@ export function WorldGraph({ novelId, height = 640 }: WorldGraphProps) {
     }, [novelId, filter]);
 
     useEffect(() => { fetchData(); }, [fetchData]);
+
+    // librarian traversal highlight — node.id เป็น `type:id` ตรงกับ key ที่ส่งมาอยู่แล้ว
+    const searchSet = useMemo(() => new Set(highlight?.search ?? []), [highlight]);
+    const graphSet = useMemo(() => new Set(highlight?.graph ?? []), [highlight]);
+    const hasHighlight = searchSet.size > 0 || graphSet.size > 0;
 
     // adjacency สำหรับ highlight เพื่อนบ้านตอน hover
     const adjacency = useMemo(() => {
@@ -116,33 +123,40 @@ export function WorldGraph({ novelId, height = 640 }: WorldGraphProps) {
         const size = Math.min(13, 3 + Math.sqrt(node.val || 1) * 1.9);
         const { color } = metaFor(node.type);
 
-        const active = hover === null
+        const inSearch = searchSet.has(node.id);
+        const inGraph = graphSet.has(node.id);
+        // มี highlight จากบรรณารักษ์ → เด่นเฉพาะ search/graph; ไม่งั้นใช้ logic hover เดิม
+        const hoverActive = hover === null
             || hover === node.id
             || adjacency.get(hover)?.has(node.id);
+        const active = hasHighlight ? (inSearch || inGraph) : hoverActive;
         ctx.globalAlpha = active ? 1 : 0.12;
+
+        const glow = hover === node.id || inSearch;   // search node = จุดที่ตอบมาจาก → เรืองเด่น
+        const ring = hover === node.id || inSearch || inGraph;
 
         // glow บางๆ ให้รู้สึก "มีชีวิต"
         ctx.beginPath();
         ctx.arc(node.x, node.y, size, 0, 2 * Math.PI, false);
         ctx.fillStyle = color;
-        if (hover === node.id) {
-            ctx.shadowColor = color;
+        if (glow) {
+            ctx.shadowColor = inSearch ? "#e0a13c" : color;
             ctx.shadowBlur = 16;
         }
         ctx.fill();
         ctx.shadowBlur = 0;
 
-        // วงแหวนทองตอน hover
-        if (hover === node.id) {
+        // วงแหวนทอง: hover / search (หนา) / graph neighbor
+        if (ring) {
             ctx.beginPath();
             ctx.arc(node.x, node.y, size + 2.5, 0, 2 * Math.PI, false);
-            ctx.lineWidth = 1.5;
+            ctx.lineWidth = inSearch ? 2 : 1.5;
             ctx.strokeStyle = "#e0a13c";
             ctx.stroke();
         }
 
-        // label เฉพาะตอนซูมเข้า / node สำคัญ / hover
-        if (globalScale > 1.5 || (node.val || 1) >= 6 || hover === node.id) {
+        // label เฉพาะตอนซูมเข้า / node สำคัญ / hover / highlight
+        if (globalScale > 1.5 || (node.val || 1) >= 6 || hover === node.id || inSearch || inGraph) {
             const fontSize = Math.max(3.5, 11 / globalScale);
             const label = (node.label as string)?.slice(0, 22) ?? "";
             ctx.font = `${fontSize}px var(--font-sarabun), sans-serif`;
@@ -152,17 +166,23 @@ export function WorldGraph({ novelId, height = 640 }: WorldGraphProps) {
             ctx.fillText(label, node.x, node.y + size + fontSize + 1);
         }
         ctx.globalAlpha = 1;
-    }, [hover, adjacency, isDark]);
+    }, [hover, adjacency, isDark, searchSet, graphSet, hasHighlight]);
 
     const linkColor = useCallback((link: any) => {
+        const s = typeof link.source === "object" ? link.source.id : link.source;
+        const t = typeof link.target === "object" ? link.target.id : link.target;
+        const dim = isDark ? "rgba(120,130,150,0.06)" : "rgba(100,116,139,0.08)";
+        // traversal: เส้นที่เชื่อม node ที่ไฮไลต์ → ทอง, ที่เหลือหรี่
+        if (hasHighlight) {
+            const lit = (k: string) => searchSet.has(k) || graphSet.has(k);
+            return lit(s) && lit(t) ? "#e0a13c" : dim;
+        }
         if (hover) {
-            const s = typeof link.source === "object" ? link.source.id : link.source;
-            const t = typeof link.target === "object" ? link.target.id : link.target;
             if (s === hover || t === hover) return "#e0a13c";
-            return isDark ? "rgba(120,130,150,0.06)" : "rgba(100,116,139,0.08)";
+            return dim;
         }
         return isDark ? "rgba(120,130,150,0.22)" : "rgba(100,116,139,0.25)";
-    }, [hover, isDark]);
+    }, [hover, isDark, searchSet, graphSet, hasHighlight]);
 
     const empty = !loading && data.nodes.length === 0;
 
