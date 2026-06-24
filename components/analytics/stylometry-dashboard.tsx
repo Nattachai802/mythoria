@@ -483,6 +483,115 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
                         </div>
                     )}
 
+                    {/* #5C — POS n-gram: ไวยากรณ์เชิงสไตล์ (พรรณนา vs แอ็กชัน) */}
+                    {(() => {
+                        const pos = selected.chapterAnatomy?.pos_profile as
+                            | { distribution?: Record<string, number>; ratios?: { descriptive_vs_action?: number | null; modifier_density?: number; noun_ratio?: number }; lean?: string }
+                            | undefined;
+                        const dist = pos?.distribution;
+                        if (!dist || Object.keys(dist).length === 0) return null;
+                        const LABELS: Record<string, string> = {
+                            noun: "นาม", pron: "สรรพนาม", verb_action: "กริยา (กระทำ)", verb_desc: "กริยา/ขยาย",
+                            aux: "กริยาช่วย", adv: "วิเศษณ์", conj: "เชื่อม", prep: "บุพบท", det: "กำหนด", clas: "ลักษณนาม", neg: "ปฏิเสธ", intj: "อุทาน",
+                        };
+                        const COLORS: Record<string, string> = {
+                            verb_action: "bg-sky-500/70", verb_desc: "bg-violet-500/70", noun: "bg-emerald-500/40",
+                        };
+                        const top = Object.entries(dist).slice(0, 6);
+                        const leanTone = pos?.lean === "แอ็กชัน-heavy" ? "text-sky-600 dark:text-sky-400"
+                            : pos?.lean === "พรรณนา-heavy" ? "text-violet-600 dark:text-violet-400"
+                            : "text-muted-foreground";
+                        return (
+                            <div className="pt-3 mt-3 border-t border-border/60">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-[10px] text-muted-foreground">ไวยากรณ์เชิงสไตล์ (ชนิดคำ)</span>
+                                    {pos?.lean && <span className={cn("text-[11px] font-medium", leanTone)}>{pos.lean}</span>}
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    {top.map(([k, v]) => (
+                                        <div key={k} className="flex items-center gap-2 text-xs">
+                                            <span className="w-20 shrink-0 text-muted-foreground">{LABELS[k] ?? k}</span>
+                                            <div className="flex-1 h-3 bg-muted/40 chamfered-sm overflow-hidden">
+                                                <div className={cn("h-full", COLORS[k] ?? "bg-foreground/25")} style={{ width: `${Math.min(v, 100)}%` }} />
+                                            </div>
+                                            <span className="w-10 shrink-0 text-right tabular-nums text-muted-foreground">{v}%</span>
+                                        </div>
+                                    ))}
+                                </div>
+                                <p className="text-[11px] text-muted-foreground/80 mt-1.5">
+                                    กริยากระทำมาก = จังหวะแอ็กชัน · กริยาขยาย/นามมาก = เน้นพรรณนา
+                                    {typeof pos?.ratios?.descriptive_vs_action === "number" && ` · พรรณนา:กระทำ = ${pos.ratios.descriptive_vs_action}`}
+                                </p>
+                            </div>
+                        );
+                    })()}
+
+                    {/* #5D — Emotional arc: เส้นอารมณ์ตลอดตอน */}
+                    {(() => {
+                        const arc = selected.chapterAnatomy?.emotional_arc as
+                            | { curve?: number[]; valence?: number; volatility?: number; trajectory?: string; positive_words?: number; negative_words?: number }
+                            | undefined;
+                        const curve = arc?.curve;
+                        if (!Array.isArray(curve) || curve.length === 0) return null;
+                        const peak = Math.max(1, ...curve.map((v) => Math.abs(v)));
+                        return (
+                            <div className="pt-3 mt-3 border-t border-border/60">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-[10px] text-muted-foreground">เส้นอารมณ์ (ลบ = มืด · บวก = สว่าง)</span>
+                                    {arc?.trajectory && <span className="text-[11px] font-medium text-muted-foreground">{arc.trajectory}</span>}
+                                </div>
+                                {/* baseline ตรงกลาง: บาร์ขึ้นบน = บวก, ลงล่าง = ลบ */}
+                                <div className="flex items-end gap-0.5 h-12 border-y border-border/40">
+                                    {curve.map((v, i) => {
+                                        const h = Math.round((Math.abs(v) / peak) * 50);
+                                        return (
+                                            <div key={i} className="flex-1 min-w-[3px] flex flex-col justify-center" title={`ประโยค #${i + 1} · ${v > 0 ? "+" : ""}${v}`}>
+                                                <div className="flex-1 flex items-end">
+                                                    {v > 0 && <div className="w-full bg-emerald-500/60 chamfered-sm" style={{ height: `${h}%` }} />}
+                                                </div>
+                                                <div className="flex-1 flex items-start">
+                                                    {v < 0 && <div className="w-full bg-rose-500/60 chamfered-sm" style={{ height: `${h}%` }} />}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <div className="flex gap-3 text-[11px] text-muted-foreground mt-1.5">
+                                    <span>โทนรวม <span className="tabular-nums text-foreground/80">{arc?.valence}</span></span>
+                                    <span>แกว่ง <span className="tabular-nums text-foreground/80">{arc?.volatility}</span></span>
+                                    <span className="text-emerald-600 dark:text-emerald-400">+{arc?.positive_words ?? 0}</span>
+                                    <span className="text-rose-600 dark:text-rose-400">−{arc?.negative_words ?? 0}</span>
+                                </div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* #5D — Sensory density: "showing" เชิงปริมาณ */}
+                    {(() => {
+                        const sen = selected.chapterAnatomy?.sensory_density as
+                            | { per_1000?: number; by_sense?: Record<string, number>; dominant_sense?: string | null }
+                            | undefined;
+                        if (!sen || typeof sen.per_1000 !== "number") return null;
+                        const SENSE_TH: Record<string, string> = { sight: "ภาพ", sound: "เสียง", touch: "สัมผัส", smell: "กลิ่น", taste: "รส" };
+                        const by = sen.by_sense ?? {};
+                        return (
+                            <div className="pt-3 mt-3 border-t border-border/60">
+                                <div className="flex items-center justify-between mb-1.5">
+                                    <span className="text-[10px] text-muted-foreground">ความหนาแน่นประสาทสัมผัส (โชว์ภาพ)</span>
+                                    <span className="text-[11px] tabular-nums text-foreground/80">{sen.per_1000}/พันคำ</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {Object.entries(by).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
+                                        <span key={k} className={cn("inline-flex chamfered-sm px-1.5 py-0.5 text-[11px]", k === sen.dominant_sense ? "bg-[var(--forge-gold)]/15 text-[var(--forge-gold)] font-medium" : "bg-muted/50 text-muted-foreground")}>
+                                            {SENSE_TH[k] ?? k} {v}
+                                        </span>
+                                    ))}
+                                </div>
+                                <p className="text-[11px] text-muted-foreground/80 mt-1.5">สูง = เขียนให้ผู้อ่านเห็น/ได้ยิน/สัมผัส (showing) · ต่ำ = เล่าลอยๆ (telling)</p>
+                            </div>
+                        );
+                    })()}
+
                     {/* C2 — Voice distance: ตัวละครเสียงคล้ายกันเกิน */}
                     {(() => {
                         const pairs = selected.characterDialogueVibes?.voice_distances?.pairs as { a: string; b: string; distance: number; too_similar?: boolean }[] | undefined;

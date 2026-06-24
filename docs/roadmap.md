@@ -13,12 +13,10 @@
 
 ---
 
-## ⬜ ยังไม่ทำ (unblocked — ทำได้เลย)
+## ✅ เพิ่งเสร็จ
+- Stylometry #5 — POS n-gram (ไวยากรณ์เชิงสไตล์) + Emotional arc (เส้นอารมณ์ + sensory density) — ดู [`stylometry-deepening-plan.md`](./stylometry-deepening-plan.md)
 
-### Stylometry #5 — POS n-gram + Emotional arc
-- ลำดับชนิดคำ (adjective/verb-heavy) + เส้นอารมณ์จาก sentiment lexicon + sensory-word density
-- reuse `pos_tag` ที่มี · nest ใน chapterAnatomy JSONB ตาม pattern เดิม
-- **Effort: สูง · ไม่แตะ pipeline อื่น**
+## ⬜ ยังไม่ทำ (unblocked — ทำได้เลย)
 
 ### C5 — ของเสริมเล็ก (stylometry)
 - Thai readability score (sentence/word length + MTLD → "ความยากในการอ่าน")

@@ -728,6 +728,157 @@ def rolling_drift(sentences: List[str], win: int = 8, step: int = 4) -> Dict[str
     return {"windows": windows}
 
 
+# Patch 2.6 — #5C POS n-gram profile (ไวยากรณ์เชิงสไตล์: พรรณนา-heavy vs แอ็กชัน-heavy)
+# orchid tagset ไม่มี ADJ แยก — คำขยายไทยคือ VATT (attributive verb) / VSTA (stative)
+# map tag ละเอียด → หมวดหยาบ เพื่อ distribution + bigram ที่เสถียรพอเทียบข้ามตอน
+ORCHID_COARSE = {
+    # นาม
+    "NCMN": "noun", "NPRP": "noun", "NONM": "noun", "NLBL": "noun", "NCNM": "noun", "NTTL": "noun",
+    # สรรพนาม
+    "PPRS": "pron", "PDMN": "pron", "PNTR": "pron", "PREL": "pron",
+    # กริยา — แยกการกระทำ (action) กับสภาพ/ขยาย (descriptive)
+    "VACT": "verb_action",
+    "VSTA": "verb_desc", "VATT": "verb_desc",
+    # กริยาช่วย
+    "XVBM": "aux", "XVAM": "aux", "XVMM": "aux", "XVBB": "aux", "XVAE": "aux",
+    # วิเศษณ์
+    "ADVN": "adv", "ADVI": "adv", "ADVP": "adv", "ADVS": "adv",
+    # เชื่อม / บุพบท / กำหนด / ลักษณนาม
+    "JCRG": "conj", "JCMP": "conj", "JSBR": "conj",
+    "RPRE": "prep",
+    "DDAN": "det", "DDAC": "det", "DDBQ": "det", "DDAQ": "det",
+    "CNIT": "clas", "CLTV": "clas", "CMTR": "clas", "CFQC": "clas", "CVBL": "clas",
+    # อื่นๆ
+    "NEG": "neg", "INT": "intj",
+}
+# tag ที่ไม่นับใน distribution (เครื่องหมาย/ช่องว่าง)
+_POS_SKIP = {"PUNC"}
+
+
+def pos_ngram_profile(tokens: List[str], top_bigrams: int = 8) -> Dict[str, Any]:
+    """#5C — tag ชนิดคำทั้งตอน → สัดส่วนหมวด + bigram ที่พบบ่อย + ratio บอกแนวสไตล์
+    reuse perceptron/orchid tagger เดิม ไม่มี lexicon ใหม่"""
+    from collections import Counter
+    if not tokens:
+        return {"distribution": {}, "top_bigrams": [], "ratios": {}, "lean": "ไม่พอวิเคราะห์"}
+
+    tags = pos_tag(tokens, engine="perceptron", corpus="orchid")
+    coarse = [ORCHID_COARSE.get(t, "other") for w, t in tags if t not in _POS_SKIP]
+    coarse = [c for c in coarse if c != "other"]
+    n = len(coarse)
+    if n < 20:
+        return {"distribution": {}, "top_bigrams": [], "ratios": {}, "lean": "ตอนสั้นเกินวิเคราะห์"}
+
+    cnt = Counter(coarse)
+    distribution = {k: round(v / n * 100, 1) for k, v in cnt.most_common()}
+
+    bg = Counter(zip(coarse, coarse[1:]))
+    top_bg = [{"pair": f"{a}→{b}", "pct": round(c / (n - 1) * 100, 1)}
+              for (a, b), c in bg.most_common(top_bigrams)]
+
+    desc = cnt.get("verb_desc", 0)
+    act = cnt.get("verb_action", 0)
+    noun = cnt.get("noun", 0) or 1
+    ratios = {
+        # >1 = พรรณนาเยอะกว่ากริยาการกระทำ
+        "descriptive_vs_action": round(desc / act, 2) if act else None,
+        # ความหนาแน่นคำขยาย (adv + กริยาขยาย) ต่อ 100 โทเคน
+        "modifier_density": round((cnt.get("adv", 0) + desc) / n * 100, 1),
+        "noun_ratio": round(noun / n * 100, 1),
+    }
+
+    r = ratios["descriptive_vs_action"]
+    lean = "สมดุล" if r is None else "พรรณนา-heavy" if r >= 1.3 else "แอ็กชัน-heavy" if r <= 0.7 else "สมดุล"
+
+    return {"distribution": distribution, "top_bigrams": top_bg, "ratios": ratios, "lean": lean}
+
+
+# Patch 2.6 — #5D Emotional arc + sensory density (statistical ล้วน, lexicon คัดมือสำหรับนิยายไทย)
+# ไม่ใช้ LLM — เร็ว, deterministic, อธิบายได้ · คำคัดจากอารมณ์ในงานบรรยาย ไม่ใช่รีวิวสินค้า
+THAI_SENTIMENT_POS = {
+    "รัก", "ชอบ", "สุข", "มีความสุข", "ยิ้ม", "หัวเราะ", "ดีใจ", "ปลื้ม", "อบอุ่น", "สดใส",
+    "งดงาม", "สวย", "หวาน", "อ่อนโยน", "นุ่มนวล", "สงบ", "ผ่อนคลาย", "หวัง", "ภูมิใจ", "มั่นใจ",
+    "ปลอดภัย", "อิ่มเอม", "ตื่นเต้น", "สนุก", "ขอบคุณ", "เมตตา", "ปีติ", "เบิกบาน", "ชื่นชม", "ประทับใจ",
+    "โล่ง", "ยินดี", "รื่นรมย์", "เปล่งประกาย", "อ่อนหวาน", "ละมุน",
+}
+THAI_SENTIMENT_NEG = {
+    "เกลียด", "โกรธ", "แค้น", "เศร้า", "เสียใจ", "ร้องไห้", "น้ำตา", "กลัว", "หวาดกลัว", "สะพรึง",
+    "เจ็บ", "ปวด", "ทรมาน", "ทุกข์", "สิ้นหวัง", "หมดหวัง", "มืด", "หนาวเหน็บ", "เปลี่ยวเหงา", "เหงา",
+    "โดดเดี่ยว", "ตาย", "ความตาย", "เลือด", "สั่น", "หวั่น", "วิตก", "กังวล", "อึดอัด", "หดหู่",
+    "ขมขื่น", "โหดร้าย", "น่ากลัว", "สยอง", "อาฆาต", "ผิดหวัง", "ว้าเหว่", "ระทม", "โศก", "ตื่นตระหนก",
+}
+NEGATORS = {"ไม่", "ไม่ได้", "มิ", "ไร้", "ปราศจาก", "หมด", "เลิก"}
+
+SENSORY_LEXICON = {
+    "sight": {"เห็น", "มอง", "จ้อง", "แสง", "เงา", "สี", "สว่าง", "มืด", "ประกาย", "ภาพ", "วาววับ", "พร่างพราย", "ริบหรี่", "สลัว", "เปล่งแสง"},
+    "sound": {"ได้ยิน", "เสียง", "ดัง", "เงียบ", "กระซิบ", "ตะโกน", "ก้อง", "แว่ว", "ครืน", "ดนตรี", "ร้อง", "คำราม", "อึกทึก", "แผ่วเบา"},
+    "touch": {"สัมผัส", "เย็น", "ร้อน", "อุ่น", "นุ่ม", "แข็ง", "หยาบ", "ลื่น", "เปียก", "แห้ง", "สั่น", "อ่อนนุ่ม", "หนาว", "ชื้น"},
+    "smell": {"กลิ่น", "หอม", "เหม็น", "ฉุน", "อบอวล", "กรุ่น", "คาว", "หืน"},
+    "taste": {"รส", "หวาน", "เปรี้ยว", "เค็ม", "ขม", "เผ็ด", "จืด", "กลมกล่อม", "ฝาด"},
+}
+
+
+def emotional_arc(sentences: List[str]) -> Dict[str, Any]:
+    """#5D — ไล่ sentiment ทีละประโยค → เส้นอารมณ์ตลอดตอน (รองรับ negation: 'ไม่สุข' → ลบ)"""
+    import statistics
+    curve: List[int] = []
+    pos_total = neg_total = 0
+    for s in sentences:
+        s = s.strip()
+        if not s:
+            continue
+        toks = word_tokenize(s, engine="newmm", keep_whitespace=False)
+        score = 0
+        for i, t in enumerate(toks):
+            pol = 1 if t in THAI_SENTIMENT_POS else -1 if t in THAI_SENTIMENT_NEG else 0
+            if pol == 0:
+                continue
+            # negation ภายใน 2 โทเคนก่อนหน้า → กลับขั้ว
+            if any(toks[j] in NEGATORS for j in range(max(0, i - 2), i)):
+                pol = -pol
+            score += pol
+            if pol > 0:
+                pos_total += 1
+            else:
+                neg_total += 1
+        curve.append(score)
+
+    if not curve:
+        return {"curve": [], "valence": 0, "volatility": 0, "trajectory": "ไม่พบคำบ่งอารมณ์", "positive_words": 0, "negative_words": 0}
+
+    emo = pos_total + neg_total
+    valence = round((pos_total - neg_total) / emo, 2) if emo else 0  # -1 (มืด) → +1 (สว่าง)
+    volatility = round(statistics.pstdev(curve), 2) if len(curve) > 1 else 0.0
+    # ทิศทาง: เทียบครึ่งแรก vs ครึ่งหลังของตอน
+    half = len(curve) // 2 or 1
+    delta = (sum(curve[half:]) / max(1, len(curve) - half)) - (sum(curve[:half]) / half)
+    trajectory = "พุ่งขึ้น (จบสว่างกว่าเปิด)" if delta > 0.4 else "ดิ่งลง (จบมืดกว่าเปิด)" if delta < -0.4 else "ทรงตัว"
+    return {
+        "curve": curve,                      # line chart เส้นอารมณ์
+        "valence": valence,
+        "volatility": volatility,            # แกว่งมาก = อารมณ์ขึ้นลงรุนแรง
+        "trajectory": trajectory,
+        "positive_words": pos_total,
+        "negative_words": neg_total,
+    }
+
+
+def sensory_density(tokens: List[str]) -> Dict[str, Any]:
+    """#5D — ความหนาแน่นคำประสาทสัมผัส (proxy ของ 'showing') ต่อ 1000 โทเคน + ประสาทเด่น"""
+    n = len(tokens) or 1
+    # substring match — newmm รวมเป็น compound บ่อย ("แสงแดด"⊃"แสง", "อบอุ่น"⊃"อุ่น")
+    # คำประสาทสัมผัสเป็นรากคำ จึงปลอดภัยพอ (proxy ความหนาแน่น ไม่ใช่การนับเป๊ะ)
+    counts = {sense: sum(1 for t in tokens if any(w in t for w in words))
+              for sense, words in SENSORY_LEXICON.items()}
+    total = sum(counts.values())
+    dominant = max(counts, key=counts.get) if total else None
+    return {
+        "per_1000": round(total / n * 1000, 1),   # สูง = เขียนให้เห็นภาพ (showing) มาก
+        "by_sense": counts,
+        "dominant_sense": dominant,
+    }
+
+
 def voice_distances(extracted: List[Dict[str, Any]], particle_analyzer, min_lines: int = 3) -> Dict[str, Any]:
     """C2 — per-character particle fingerprint → ระยะห่างระหว่างตัวละคร (ใกล้กันเกิน = เสียงไม่แตกต่าง)
     หมายเหตุ: อิง guessed_speaker (fuzzy) + ระดับตอนเดียว → ถือเป็น approximate"""
@@ -864,6 +1015,11 @@ def analyze_single_chapter_style(text: str, character_names: List[str] = None) -
             # Patch 2.5 — C1 Echo detector (nest ใน anatomy → ไหลผ่าน chapterAnatomy JSONB เดิม ไม่ต้องแก้ schema/route)
             "echoes": detect_echoes(all_tokens, exclude_chars),
             # #4 — rolling-window drift (จุดสไตล์เพี้ยนระดับย่อหน้า)
-            "rolling_drift": rolling_drift(sentences)
+            "rolling_drift": rolling_drift(sentences),
+            # #5C — POS n-gram (ไวยากรณ์เชิงสไตล์: พรรณนา vs แอ็กชัน) — reuse all_tokens
+            "pos_profile": pos_ngram_profile(all_tokens),
+            # #5D — เส้นอารมณ์ + ความหนาแน่นประสาทสัมผัส (showing) — reuse sentences/all_tokens
+            "emotional_arc": emotional_arc(sentences),
+            "sensory_density": sensory_density(all_tokens)
         }
     }

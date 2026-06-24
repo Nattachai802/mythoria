@@ -81,9 +81,11 @@
 | 2 | Sentence-rhythm curve (①) | ✅ เสร็จ |
 | 3 | Function-word profile + Burrows Delta (②+A) | ✅ เสร็จ (dashboard คำนวณ Burrows Δ ข้ามตอน) |
 | 4 | Rolling window drift localization (B) | ✅ เสร็จ (แถบ drift ในการ์ดตอน) |
-| 5 | **POS n-gram (C) + Emotional arc (D)** | ⬜ ยังไม่ทำ — งานที่เหลืออันเดียว |
+| 5 | **POS n-gram (C) + Emotional arc (D)** | ✅ เสร็จ — `pos_profile` / `emotional_arc` / `sensory_density` ใน chapterAnatomy + การ์ดใน dashboard |
 
-> เหลือแค่ **#5** (POS n-gram + Emotional arc) — reuse `pos_tag` + sentiment lexicon, nest ใน chapterAnatomy JSONB ตาม pattern เดิม
+> #5 เสร็จครบ statistical pipeline แล้ว (no LLM ตามหลักการ)
+> - **C** POS n-gram: reuse tagger orchid, lean พรรณนา/แอ็กชัน — ⚠️ tagger ไทยจับคำขยายเป็น noun บ่อย → `lean` เป็น hint
+> - **D** Emotional arc: sentiment lexicon คัดมือ (+negation flip) + sensory density (substring match กัน compound) — lexicon ต่อยอดเพิ่มคำได้
 
 ---
 
