@@ -4,6 +4,7 @@ import { db } from "@/db/drizzle";
 import { characterPowers, powers, powerLevels, CharacterPower } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { addReference, removeReferenceEdge } from "./references"; // Context Fabric dual-write (P4)
 
 // ============================================
 // CHARACTER POWER CRUD
@@ -50,6 +51,18 @@ export async function assignPowerToCharacter(data: {
             })
             .returning();
 
+        // dual-write: character --wields--> power (novelId มาจากตาราง powers)
+        const [pw] = await db.select({ novelId: powers.novelId }).from(powers).where(eq(powers.id, data.powerId)).limit(1);
+        if (pw) {
+            await addReference({
+                novelId: pw.novelId,
+                from: { type: "character", id: data.characterId },
+                to: { type: "power", id: data.powerId },
+                relation: "wields",
+                meta: { currentLevel: data.currentLevel ?? 1, acquiredMethod: data.acquiredMethod },
+            });
+        }
+
         return { success: true, data: newCharacterPower };
     } catch (error) {
         console.error("Error assigning power to character:", error);
@@ -67,6 +80,12 @@ export async function removePowerFromCharacter(characterPowerId: string) {
         if (!deleted) {
             return { success: false, error: "Character power not found" };
         }
+
+        await removeReferenceEdge({
+            from: { type: "character", id: deleted.characterId },
+            to: { type: "power", id: deleted.powerId },
+            relation: "wields",
+        });
 
         return { success: true, data: deleted };
     } catch (error) {

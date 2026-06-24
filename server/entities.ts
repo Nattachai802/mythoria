@@ -4,6 +4,7 @@ import { db } from "@/db/drizzle";
 import { entities, locationEntities, locations } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { addReference, removeReferenceEdge } from "./references"; // Context Fabric dual-write (P4)
 
 export async function createEntity(data: {
     name: string;
@@ -143,6 +144,18 @@ export async function assignEntityToLocation(data: {
     notes?: string;
 }) {
     try {
+        // dual-write (idempotent → คุมทั้ง create/update): entity --inhabits--> location
+        const [loc] = await db.select({ novelId: locations.novelId }).from(locations).where(eq(locations.id, data.locationId)).limit(1);
+        if (loc) {
+            await addReference({
+                novelId: loc.novelId,
+                from: { type: "entity", id: data.entityId },
+                to: { type: "location", id: data.locationId },
+                relation: "inhabits",
+                meta: data.population ? { population: data.population } : null,
+            });
+        }
+
         // Check if already assigned
         const existing = await db.query.locationEntities.findFirst({
             where: and(
@@ -189,6 +202,12 @@ export async function removeEntityFromLocation(locationEntityId: string) {
         if (!deleted) {
             return { success: false, error: "Assignment not found" };
         }
+
+        await removeReferenceEdge({
+            from: { type: "entity", id: deleted.entityId },
+            to: { type: "location", id: deleted.locationId },
+            relation: "inhabits",
+        });
 
         return { success: true, data: deleted };
     } catch (error) {

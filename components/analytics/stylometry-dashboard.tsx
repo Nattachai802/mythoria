@@ -97,6 +97,48 @@ function computeZScores(data: StylometryData[], feat: typeof FEATURES[0]) {
     }));
 }
 
+// แปล z-score แต่ละมิติ → ภาษานักเขียน (เทียบกับ "ค่าปกติของคุณเอง" ไม่ใช่คะแนน)
+const FEATURE_PLAIN: Record<string, { name: string; high: string; low: string }> = {
+    mtld: { name: "คลังคำ", high: "คำศัพท์หลากหลายกว่าปกติ", low: "ใช้คำซ้ำเยอะกว่าปกติ" },
+    burstiness: { name: "จังหวะ", high: "สั้น-ยาวสลับแรง (action/ดราม่า)", low: "สม่ำเสมอ ราบเรียบ" },
+    punct: { name: "เครื่องหมาย", high: "เยอะ อารมณ์พุ่ง", low: "น้อย โทนสงบ" },
+    sentlen: { name: "ความยาวประโยค", high: "ประโยคยาว บรรยายไหล", low: "ประโยคสั้น กระชับเร็ว" },
+    dialogue: { name: "บทสนทนา", high: "บทสนทนาเยอะ", low: "เน้นบรรยาย" },
+    particle: { name: "คำลงท้าย", high: "เยอะ น้ำเสียงตัวละครชัด", low: "น้อย" },
+};
+
+/** สรุปตอนเป็นภาษาคน — เลขเป็นหลักฐาน คำเป็นคำตอบ */
+function ChapterVerdict({ scores }: { scores: { key: string; z: number; raw: number | null }[] }) {
+    const valid = scores.filter((s) => s.raw !== null);
+    const maxZ = valid.length ? Math.max(...valid.map((s) => Math.abs(s.z))) : 0;
+    const notable = valid.filter((s) => Math.abs(s.z) >= 1.0).sort((a, b) => Math.abs(b.z) - Math.abs(a.z));
+    const headline =
+        maxZ >= 1.96
+            ? { text: "ตอนนี้ต่างจากเล่มชัดเจน", amber: true, note: "ถ้าตั้งใจ (flashback / เปลี่ยนมุมมอง / ไคลแม็กซ์) ไม่ต้องกังวล" }
+            : maxZ >= 1.0
+                ? { text: "ต่างจากเล่มเล็กน้อย", amber: true, note: null }
+                : { text: "กลมกลืนกับทั้งเล่ม", amber: false, note: null };
+    return (
+        <div className="mb-4 rounded-lg border bg-muted/30 p-3">
+            <span className={cn("text-sm font-semibold", headline.amber ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400")}>
+                {headline.text}
+            </span>
+            {notable.length > 0 ? (
+                <ul className="text-xs text-muted-foreground space-y-0.5 mt-1.5">
+                    {notable.slice(0, 4).map((s) => {
+                        const p = FEATURE_PLAIN[s.key];
+                        if (!p) return null;
+                        return <li key={s.key}>• {p.name}: {s.z > 0 ? p.high : p.low}</li>;
+                    })}
+                </ul>
+            ) : (
+                <p className="text-xs text-muted-foreground mt-1.5">ทุกมิติอยู่ในช่วงปกติของคุณ</p>
+            )}
+            {headline.note && <p className="text-[11px] text-muted-foreground/80 mt-1.5 italic">{headline.note}</p>}
+        </div>
+    );
+}
+
 export function StylometryDashboard({ data }: StylometryDashboardProps) {
     const [visibleFeatures, setVisibleFeatures] = useState<Set<string>>(
         new Set(FEATURES.map(f => f.key))
@@ -105,6 +147,7 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
     const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
     const [search, setSearch] = useState("");
     const [anomalyOnly, setAnomalyOnly] = useState(false);
+    const [showNumbers, setShowNumbers] = useState(false); // พับตัวเลข z-score ดิบ (writer-friendly default)
     const svgRef = useRef<SVGSVGElement>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -331,6 +374,14 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
                         </button>
                     </div>
 
+                    {/* สรุปภาษาคน (นำก่อนตัวเลข) */}
+                    <ChapterVerdict
+                        scores={FEATURES.map((f) => {
+                            const s = featureZScores.find((x) => x.key === f.key)!.scores[selectedIdx];
+                            return { key: f.key, z: s.z, raw: s.raw };
+                        })}
+                    />
+
                     {/* narration vs dialogue */}
                     {(() => {
                         const dia = selected.chapterAnatomy?.dialogue_ratio_percentage || 0;
@@ -348,7 +399,14 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
                         );
                     })()}
 
-                    {/* feature z-scores */}
+                    {/* feature z-scores — เชิงลึก พับไว้ default (เลขเป็นหลักฐาน ไม่ใช่พระเอก) */}
+                    <button
+                        onClick={() => setShowNumbers((v) => !v)}
+                        className="text-[11px] text-muted-foreground hover:text-foreground mb-2 underline decoration-dotted underline-offset-2"
+                    >
+                        {showNumbers ? "ซ่อนตัวเลขเชิงลึก" : "ดูตัวเลขเชิงลึก (z-score รายมิติ)"}
+                    </button>
+                    {showNumbers && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 mb-4">
                         {FEATURES.map(f => {
                             const s = featureZScores.find(x => x.key === f.key)!.scores[selectedIdx];
@@ -358,7 +416,10 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
                                 <div key={f.key} className="flex items-center justify-between gap-3">
                                     <span className="flex items-center gap-1.5 min-w-0">
                                         <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: f.color }} />
-                                        <span className="text-xs text-muted-foreground truncate">{f.shortLabel}</span>
+                                        <span
+                                            className="text-xs text-muted-foreground truncate cursor-help"
+                                            title={FEATURE_PLAIN[f.key] ? `${FEATURE_PLAIN[f.key].name} — สูง: ${FEATURE_PLAIN[f.key].high} · ต่ำ: ${FEATURE_PLAIN[f.key].low}` : f.label}
+                                        >{f.shortLabel}</span>
                                     </span>
                                     <span className="flex items-center gap-2 shrink-0 tabular-nums">
                                         <span className="text-[11px] text-muted-foreground font-mono">{s.raw?.toFixed(1) ?? "–"}{s.raw !== null ? f.unit : ""}</span>
@@ -371,6 +432,7 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
                             );
                         })}
                     </div>
+                    )}
 
                     {/* mood + char vibe */}
                     <div className="grid grid-cols-2 gap-3 pt-3 border-t border-border/60">
@@ -387,7 +449,8 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
                     {/* C1 — คำซ้ำใกล้กัน (Echo detector) */}
                     {Array.isArray(selected.chapterAnatomy?.echoes) && selected.chapterAnatomy.echoes.length > 0 && (
                         <div className="pt-3 mt-3 border-t border-border/60">
-                            <span className="text-[10px] text-muted-foreground block mb-2">คำซ้ำใกล้กัน (อาจอ่านสะดุด)</span>
+                            <span className="text-[10px] text-muted-foreground block mb-1">คำซ้ำใกล้กัน (อาจอ่านสะดุด)</span>
+                            <p className="text-[11px] text-muted-foreground/80 mb-2">ลองทำ: แทนด้วยสรรพนาม/คำใกล้เคียง หรือตัดทิ้งบางตัว</p>
                             <div className="flex flex-col gap-1.5">
                                 {selected.chapterAnatomy.echoes.slice(0, 8).map((e: { term: string; count: number; excerpt: string }, i: number) => (
                                     <div key={i} className="flex items-start gap-2 text-xs">
@@ -415,7 +478,7 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
                                 ))}
                             </div>
                             {selected.chapterAnatomy.rolling_drift.windows.some((w: { drift?: boolean }) => w.drift) && (
-                                <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1.5">มีย่อหน้าที่จังหวะต่างจากตอนชัดเจน — ตรวจว่าตั้งใจหรือสไตล์หลุด</p>
+                                <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1.5">มีย่อหน้าที่จังหวะต่างจากตอนชัดเจน — ลองอ่านออกเสียงช่วงสีแดงเทียบจังหวะ ว่าตั้งใจหรือสไตล์หลุด</p>
                             )}
                         </div>
                     )}
@@ -437,6 +500,9 @@ export function StylometryDashboard({ data }: StylometryDashboardProps) {
                                         </div>
                                     ))}
                                 </div>
+                                {close.length > 0 && (
+                                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1.5">ลองทำ: เพิ่มคำติดปาก/มุมมองเฉพาะตัว ให้แต่ละเสียงต่างกันชัดขึ้น</p>
+                                )}
                             </div>
                         );
                     })()}

@@ -4,6 +4,7 @@ import { db } from "@/db/drizzle";
 import { powers, powerLevels, powerCombinations, Power, PowerLevel, PowerCombination } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { addReference, removeReferenceEdge } from "./references"; // Context Fabric dual-write (P4)
 
 // ============================================
 // POWER CRUD
@@ -249,6 +250,17 @@ export async function createPowerCombination(data: {
             })
             .returning();
 
+        // dual-write: แต่ละพลังต้นทาง --combines_into--> พลังผลลัพธ์
+        for (const sourceId of data.sourcePowerIds) {
+            await addReference({
+                novelId: data.novelId,
+                from: { type: "power", id: sourceId },
+                to: { type: "power", id: data.resultPowerId },
+                relation: "combines_into",
+                meta: { requiredLevels: data.requiredLevels },
+            });
+        }
+
         revalidatePath(`/dashboard/project/${data.novelId}/powers`);
 
         return { success: true, data: combination };
@@ -283,6 +295,14 @@ export async function deletePowerCombination(combinationId: string) {
 
         if (!deleted) {
             return { success: false, error: "Power combination not found" };
+        }
+
+        for (const sourceId of (deleted.sourcePowerIds as string[] | null) ?? []) {
+            await removeReferenceEdge({
+                from: { type: "power", id: sourceId },
+                to: { type: "power", id: deleted.resultPowerId },
+                relation: "combines_into",
+            });
         }
 
         revalidatePath(`/dashboard/project/${deleted.novelId}/powers`);

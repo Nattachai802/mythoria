@@ -4,6 +4,7 @@ import { db } from "@/db/drizzle";
 import { factions, characterFactions, Faction } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { addReference, removeReferenceEdge } from "./references"; // Context Fabric dual-write (P4)
 
 // --- Factions CRUD ---
 
@@ -98,6 +99,14 @@ export async function addCharacterToFaction(data: {
             })
             .returning();
 
+        await addReference({
+            novelId: data.novelId,
+            from: { type: "character", id: data.characterId },
+            to: { type: "faction", id: data.factionId },
+            relation: "member_of",
+            meta: { role: data.role, startChapterId: data.startChapterId, endChapterId: data.endChapterId },
+        });
+
         revalidatePath(`/dashboard/project/${data.novelId}/relationships`);
         return { success: true, data: membership };
     } catch (error) {
@@ -149,6 +158,11 @@ export async function removeCharacterFromFaction(membershipId: string, novelId: 
             .returning();
 
         if (deleted) {
+            await removeReferenceEdge({
+                from: { type: "character", id: deleted.characterId },
+                to: { type: "faction", id: deleted.factionId },
+                relation: "member_of",
+            });
             revalidatePath(`/dashboard/project/${novelId}/relationships`);
         }
 

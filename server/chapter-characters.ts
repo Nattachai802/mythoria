@@ -4,6 +4,7 @@ import { db } from "@/db/drizzle";
 import { chapterCharacters } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { addReference, removeReferenceEdge } from "./references"; // Context Fabric dual-write (P4)
 
 // Get all characters that appear in a specific chapter
 export async function getCharactersInChapter(chapterId: string) {
@@ -49,6 +50,14 @@ export async function addCharacterToChapter(data: {
             notes: data.notes
         });
 
+        await addReference({
+            novelId: data.novelId,
+            from: { type: "chapter", id: data.chapterId },
+            to: { type: "character", id: data.characterId },
+            relation: "features",
+            meta: data.role ? { role: data.role } : null,
+        });
+
         revalidatePath(`/dashboard/project/${data.novelId}/chapters/${data.chapterId}`);
         return { success: true };
     } catch (error) {
@@ -60,7 +69,20 @@ export async function addCharacterToChapter(data: {
 // Remove a character from a chapter
 export async function removeCharacterFromChapter(id: string, novelId: string, chapterId: string) {
     try {
+        // ดึง characterId ก่อนลบ เพื่อลบ reference edge ให้ตรง
+        const [row] = await db
+            .select({ characterId: chapterCharacters.characterId, chapterId: chapterCharacters.chapterId })
+            .from(chapterCharacters)
+            .where(eq(chapterCharacters.id, id))
+            .limit(1);
         await db.delete(chapterCharacters).where(eq(chapterCharacters.id, id));
+        if (row) {
+            await removeReferenceEdge({
+                from: { type: "chapter", id: row.chapterId },
+                to: { type: "character", id: row.characterId },
+                relation: "features",
+            });
+        }
         revalidatePath(`/dashboard/project/${novelId}/chapters/${chapterId}`);
         return { success: true };
     } catch (error) {

@@ -4,6 +4,7 @@ import { db } from "@/db/drizzle";
 import { locationConnections, locations } from "@/db/schema";
 import { eq, and, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { addReference, removeReferenceEdge } from "./references"; // Context Fabric dual-write (P4)
 
 export async function createLocationConnection(data: {
     sourceLocationId: string;
@@ -39,6 +40,14 @@ export async function createLocationConnection(data: {
                 customLabel: data.connectionType === 'custom' ? data.customLabel : null,
             })
             .returning();
+
+        await addReference({
+            novelId: data.novelId,
+            from: { type: "location", id: data.sourceLocationId },
+            to: { type: "location", id: data.targetLocationId },
+            relation: "connects_to",
+            meta: { connectionType: data.connectionType, customLabel: data.customLabel, isBidirectional: data.isBidirectional },
+        });
 
         revalidatePath(`/dashboard/project/${data.novelId}/locations`);
 
@@ -76,6 +85,12 @@ export async function deleteLocationConnection(connectionId: string, novelId: st
         if (!deleted) {
             return { success: false, error: "Connection not found" };
         }
+
+        await removeReferenceEdge({
+            from: { type: "location", id: deleted.sourceLocationId },
+            to: { type: "location", id: deleted.targetLocationId },
+            relation: "connects_to",
+        });
 
         revalidatePath(`/dashboard/project/${novelId}/locations`);
 

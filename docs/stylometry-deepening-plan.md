@@ -75,15 +75,15 @@
 
 ## ลำดับการทำ (impact ต่อ effort)
 
-| # | งาน | effort | เหตุผล |
-|---|-----|--------|--------|
-| 1 | **MTLD/MATTR แทน TTR** | ต่ำ | แก้จุดบกพร่องเชิงวิธีการ ผลชัดทันที |
-| 2 | **Sentence-rhythm curve** (①) | ต่ำ | ได้ pacing จริง · reuse `sent_tokenize` |
-| 3 | **Function-word profile + Burrows Delta** (②+A) | กลาง | ยกระดับ authorship เป็นมาตรฐานจริง |
-| 4 | **Rolling window drift localization** (B) | กลาง-สูง | ฟีเจอร์ wow จับจุดเพี้ยนระดับย่อหน้า |
-| 5 | POS n-gram (C) + Emotional arc (D) | สูง | เสริมความลึกหลังแกนหลักนิ่ง |
+| # | งาน | สถานะ |
+|---|-----|--------|
+| 1 | MTLD/MATTR แทน TTR | ✅ เสร็จ |
+| 2 | Sentence-rhythm curve (①) | ✅ เสร็จ |
+| 3 | Function-word profile + Burrows Delta (②+A) | ✅ เสร็จ (dashboard คำนวณ Burrows Δ ข้ามตอน) |
+| 4 | Rolling window drift localization (B) | ✅ เสร็จ (แถบ drift ในการ์ดตอน) |
+| 5 | **POS n-gram (C) + Emotional arc (D)** | ⬜ ยังไม่ทำ — งานที่เหลืออันเดียว |
 
-**แนะนำเริ่ม #1 + #2** — effort ต่ำ ได้ความลึกเพิ่มทันที reuse tokenizer เดิม ไม่แตะ pipeline อื่น
+> เหลือแค่ **#5** (POS n-gram + Emotional arc) — reuse `pos_tag` + sentiment lexicon, nest ใน chapterAnatomy JSONB ตาม pattern เดิม
 
 ---
 

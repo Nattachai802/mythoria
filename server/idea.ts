@@ -5,6 +5,9 @@ import { ideas, ideaConnections, Idea } from "@/db/schema";
 import { eq, and, inArray, ilike } from "drizzle-orm";
 import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
 import { CACHE_TAGS, CACHE_DURATION } from "@/lib/cache-config";
+import { addReference, removeReferenceEdge } from "./references"; // Context Fabric dual-write (P4)
+
+const ideaRelation = (t?: string): "derived_from" | "linked_to" => (t === "ancestor" ? "derived_from" : "linked_to");
 
 async function findIdeaByTitle(novelId: string, title: string) {
     const [existing] = await db
@@ -388,6 +391,14 @@ export async function createIdeaConnection(data: {
             })
             .returning();
 
+        await addReference({
+            novelId: data.novelId,
+            from: { type: "idea", id: data.sourceIdeaId },
+            to: { type: "idea", id: data.targetIdeaId },
+            relation: ideaRelation(data.connectionType),
+            meta: data.label ? { label: data.label } : null,
+        });
+
         revalidatePath(`/dashboard/project/${data.novelId}/idea`);
 
         return { success: true, data: connection };
@@ -533,6 +544,12 @@ export async function deleteIdeaConnection(connectionId: string) {
         if (!deleted) {
             return { success: false, error: "Connection not found" };
         }
+
+        await removeReferenceEdge({
+            from: { type: "idea", id: deleted.sourceIdeaId },
+            to: { type: "idea", id: deleted.targetIdeaId },
+            relation: ideaRelation(deleted.connectionType),
+        });
 
         revalidatePath(`/dashboard/project/${deleted.novelId}/idea`);
 

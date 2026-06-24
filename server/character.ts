@@ -5,6 +5,7 @@ import { characters, characterRelationships, relationshipHistory, chapters } fro
 import { eq, and, desc, asc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { v2 as cloudinary } from "cloudinary";
+import { addReference, removeReferenceEdge } from "./references"; // Context Fabric dual-write (P4)
 
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -210,6 +211,14 @@ export async function createCharacterRelationship(data: {
             })
             .returning();
 
+        await addReference({
+            novelId: data.novelId,
+            from: { type: "character", id: data.sourceCharacterId },
+            to: { type: "character", id: data.targetCharacterId },
+            relation: "related_to",
+            meta: { type: data.type, opinionLevel: data.opinionLevel ?? 50, sentiment: data.sentiment ?? "neutral" },
+        });
+
         revalidatePath(`/dashboard/project/${data.novelId}/characters`);
 
         return { success: true, data: newRelationship };
@@ -302,6 +311,12 @@ export async function deleteCharacterRelationship(relationshipId: string) {
         if (!deleted) {
             return { success: false, error: "Relationship not found" };
         }
+
+        await removeReferenceEdge({
+            from: { type: "character", id: deleted.sourceCharacterId },
+            to: { type: "character", id: deleted.targetCharacterId },
+            relation: "related_to",
+        });
 
         revalidatePath(`/dashboard/project/${deleted.novelId}/characters`);
 
