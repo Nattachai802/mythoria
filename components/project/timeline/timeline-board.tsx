@@ -22,7 +22,7 @@ import {
 import { Chapter, TimelineEvent, Character, Location } from "@/db/schema"
 import { ChapterColumn } from "./chapter-column"
 import { EventCard } from "./event-card"
-import { Clock, Film, CheckCircle2, Layers, FolderOpen, Filter, X, Activity } from "lucide-react"
+import { Clock, CheckCircle2, FolderOpen, SlidersHorizontal, Eye, X, Activity } from "lucide-react"
 import { reorderTimelineEvents, updateTimelineEvent } from "@/server/timeline"
 import { useMemo } from "react"
 import { toast } from "sonner"
@@ -35,7 +35,10 @@ import {
 } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { PlotThreadLedger } from "./plot-thread-ledger"
+import { StoryStructureCheatSheet } from "./story-structure-cheatsheet"
+import { StructureOverlay, POSITIONAL_STRUCTURES } from "./structure-overlay"
 import type { ThreadWithBeats } from "@/server/plot-threads"
 import { ArcStrip } from "./arc-strip"
 import { TensionCurve } from "./tension-curve"
@@ -80,6 +83,15 @@ function Stat({
     )
 }
 
+function FilterRow({ label, children }: { label: string; children: React.ReactNode }) {
+    return (
+        <label className="flex items-center gap-2">
+            <span className="text-[11px] text-muted-foreground w-16 shrink-0">{label}</span>
+            <div className="flex-1 min-w-0">{children}</div>
+        </label>
+    )
+}
+
 interface TimelineBoardProps {
     novelId: string
     chapters: Chapter[]
@@ -109,6 +121,7 @@ export function TimelineBoard({
     const [filterLocation, setFilterLocation] = useState<string>("all")
     const [filterThread, setFilterThread] = useState<string>("all")
     const [showTension, setShowTension] = useState(false)
+    const [structureId, setStructureId] = useState<string>("none")
 
     // ── event → threads map ──
     const eventThreadsMap = useMemo(() => {
@@ -131,10 +144,11 @@ export function TimelineBoard({
         return new Set(t.beats.map(b => b.eventId))
     }, [threads, filterThread])
 
-    const isFiltering =
-        filterType !== "all" || filterStatus !== "all" ||
-        filterCharacter !== "all" || filterLocation !== "all" ||
-        filterThread !== "all"
+    const activeFilterCount =
+        [filterType, filterStatus, filterCharacter, filterLocation, filterThread]
+            .filter(v => v !== "all").length
+    const isFiltering = activeFilterCount > 0
+    const lensCount = (showTension ? 1 : 0) + (structureId !== "none" ? 1 : 0)
 
     const matchEvent = (e: TimelineEvent) => {
         if (filterType !== "all" && (e.eventType || "scene") !== filterType) return false
@@ -316,16 +330,14 @@ export function TimelineBoard({
             <div className="h-full flex flex-col relative">
                 {/* Overview + Filter toolbar */}
                 <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-border/60">
-                    {/* Overview stats */}
+                    {/* Overview stats — เหลือเฉพาะที่ต้องลงมือ: ความคืบหน้า + บทที่ยังว่าง */}
                     <div className="flex items-center divide-x divide-border/60 chamfered-sm border border-border bg-card/50">
-                        <Stat icon={<Film className="h-3 w-3" />} label="ฉากทั้งหมด" value={totalScenes} />
                         <Stat
                             icon={<CheckCircle2 className="h-3 w-3" />}
                             label="เสร็จแล้ว"
                             value={`${completedPct}%`}
-                            sub={`${completedScenes}/${totalScenes}`}
+                            sub={`${completedScenes}/${totalScenes} ฉาก`}
                         />
-                        <Stat icon={<Layers className="h-3 w-3" />} label="บท" value={chapters.length} />
                         <Stat
                             icon={<FolderOpen className="h-3 w-3" />}
                             label="บทที่ยังว่าง"
@@ -334,100 +346,161 @@ export function TimelineBoard({
                         />
                     </div>
 
-                    {/* Filters */}
+                    {/* Tools · Filters · Views */}
                     <div className="flex flex-wrap items-center gap-2">
+                        <StoryStructureCheatSheet />
                         <PlotThreadLedger
                             novelId={novelId}
                             threads={threads}
                             events={events}
                             chapters={chapters}
                         />
-                        {threads.length > 0 && (
-                            <>
-                                <span className="h-5 w-px bg-border mx-0.5" />
-                                {threads.map(t => (
-                                    <button
-                                        key={t.id}
-                                        onClick={() => setFilterThread(filterThread === t.id ? "all" : t.id)}
-                                        className={cn(
-                                            "flex items-center gap-1.5 h-7 px-2.5 chamfered-sm border transition-all duration-150",
-                                            "font-technical text-[9px] uppercase tracking-[0.08em]",
-                                            filterThread === t.id
-                                                ? "bg-zinc-900 text-zinc-100 border-zinc-600"
-                                                : "border-border/60 text-muted-foreground hover:text-foreground hover:border-border bg-transparent"
-                                        )}
-                                        style={filterThread === t.id ? {
-                                            borderTopColor: t.color ?? "#f59e0b",
-                                        } : {}}
-                                    >
-                                        <span
-                                            className="h-1.5 w-1.5 chamfered-sm shrink-0"
-                                            style={{ background: t.color ?? "#f59e0b" }}
-                                        />
-                                        <span className="max-w-[80px] truncate">{t.title}</span>
-                                    </button>
-                                ))}
-                            </>
-                        )}
+
                         <span className="h-5 w-px bg-border mx-0.5" />
-                        <Filter className="h-3.5 w-3.5 text-muted-foreground" />
-                        <Select value={filterType} onValueChange={setFilterType}>
-                            <SelectTrigger className="h-8 w-[112px] text-xs"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">ทุกประเภท</SelectItem>
-                                {Object.entries(EVENT_TYPE_LABELS).map(([k, v]) => (
-                                    <SelectItem key={k} value={k}>{v}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        <Select value={filterStatus} onValueChange={setFilterStatus}>
-                            <SelectTrigger className="h-8 w-[104px] text-xs"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">ทุกสถานะ</SelectItem>
-                                <SelectItem value="completed">เสร็จแล้ว</SelectItem>
-                                <SelectItem value="draft">ฉบับร่าง</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        {characters.length > 0 && (
-                            <Select value={filterCharacter} onValueChange={setFilterCharacter}>
-                                <SelectTrigger className="h-8 w-[124px] text-xs"><SelectValue placeholder="ตัวละคร" /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">ทุกตัวละคร</SelectItem>
-                                    {characters.map(c => (
-                                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        )}
-                        {locations.length > 0 && (
-                            <Select value={filterLocation} onValueChange={setFilterLocation}>
-                                <SelectTrigger className="h-8 w-[124px] text-xs"><SelectValue placeholder="สถานที่" /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">ทุกสถานที่</SelectItem>
-                                    {locations.map(l => (
-                                        <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        )}
-                        {isFiltering && (
-                            <Button variant="ghost" size="sm" onClick={clearFilters} className="h-8 px-2 text-xs text-muted-foreground">
-                                <X className="h-3 w-3 mr-1" />ล้าง
-                            </Button>
-                        )}
-                        <span className="h-5 w-px bg-border mx-0.5" />
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setShowTension(v => !v)}
-                            className={cn(
-                                "h-8 gap-1.5 chamfered-sm font-technical text-[9px] uppercase tracking-[0.08em]",
-                                showTension && "border-[var(--forge-amber)]/50 text-[var(--forge-amber)]"
-                            )}
-                        >
-                            <Activity className="h-3.5 w-3.5" />
-                            เส้น tension
-                        </Button>
+
+                        {/* ตัวกรอง — รวมทุก filter ไว้ที่เดียว */}
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className={cn(
+                                        "h-8 gap-1.5 text-xs",
+                                        isFiltering && "border-[var(--forge-amber)]/50 text-[var(--forge-amber)]"
+                                    )}
+                                >
+                                    <SlidersHorizontal className="h-3.5 w-3.5" />
+                                    ตัวกรอง
+                                    {activeFilterCount > 0 && (
+                                        <span className="ml-0.5 inline-flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-[var(--forge-amber)] text-[10px] font-bold tabular-nums text-black">
+                                            {activeFilterCount}
+                                        </span>
+                                    )}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent align="end" className="w-64 p-3 space-y-2.5">
+                                <div className="flex items-center justify-between">
+                                    <span className="font-technical text-[10px] uppercase tracking-[0.12em] text-muted-foreground">ตัวกรองฉาก</span>
+                                    {isFiltering && (
+                                        <button onClick={clearFilters} className="inline-flex items-center gap-0.5 text-[11px] text-muted-foreground hover:text-foreground">
+                                            <X className="h-3 w-3" />ล้าง
+                                        </button>
+                                    )}
+                                </div>
+                                <FilterRow label="ประเภท">
+                                    <Select value={filterType} onValueChange={setFilterType}>
+                                        <SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">ทุกประเภท</SelectItem>
+                                            {Object.entries(EVENT_TYPE_LABELS).map(([k, v]) => (
+                                                <SelectItem key={k} value={k}>{v}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </FilterRow>
+                                <FilterRow label="สถานะ">
+                                    <Select value={filterStatus} onValueChange={setFilterStatus}>
+                                        <SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">ทุกสถานะ</SelectItem>
+                                            <SelectItem value="completed">เสร็จแล้ว</SelectItem>
+                                            <SelectItem value="draft">ฉบับร่าง</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </FilterRow>
+                                {characters.length > 0 && (
+                                    <FilterRow label="ตัวละคร">
+                                        <Select value={filterCharacter} onValueChange={setFilterCharacter}>
+                                            <SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">ทุกตัวละคร</SelectItem>
+                                                {characters.map(c => (
+                                                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </FilterRow>
+                                )}
+                                {locations.length > 0 && (
+                                    <FilterRow label="สถานที่">
+                                        <Select value={filterLocation} onValueChange={setFilterLocation}>
+                                            <SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">ทุกสถานที่</SelectItem>
+                                                {locations.map(l => (
+                                                    <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </FilterRow>
+                                )}
+                                {threads.length > 0 && (
+                                    <FilterRow label="ปม">
+                                        <Select value={filterThread} onValueChange={setFilterThread}>
+                                            <SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">ทุกปม</SelectItem>
+                                                {threads.map(t => (
+                                                    <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </FilterRow>
+                                )}
+                            </PopoverContent>
+                        </Popover>
+
+                        {/* มุมมอง — เลเยอร์ที่ทาบบนกระดาน */}
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className={cn(
+                                        "h-8 gap-1.5 text-xs",
+                                        lensCount > 0 && "border-[var(--forge-amber)]/50 text-[var(--forge-amber)]"
+                                    )}
+                                >
+                                    <Eye className="h-3.5 w-3.5" />
+                                    มุมมอง
+                                    {lensCount > 0 && (
+                                        <span className="ml-0.5 inline-flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-[var(--forge-amber)] text-[10px] font-bold tabular-nums text-black">
+                                            {lensCount}
+                                        </span>
+                                    )}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent align="end" className="w-60 p-3 space-y-3">
+                                <span className="font-technical text-[10px] uppercase tracking-[0.12em] text-muted-foreground">เลเยอร์ทาบกระดาน</span>
+                                <FilterRow label="ทาบโครงเรื่อง">
+                                    <Select value={structureId} onValueChange={setStructureId}>
+                                        <SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none">ไม่ทาบ</SelectItem>
+                                            {POSITIONAL_STRUCTURES.map(s => (
+                                                <SelectItem key={s.id} value={s.id}>{s.nameTh}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </FilterRow>
+                                <button
+                                    onClick={() => setShowTension(v => !v)}
+                                    className={cn(
+                                        "w-full flex items-center justify-between h-8 px-2.5 chamfered-sm border text-xs transition-colors",
+                                        showTension
+                                            ? "border-[var(--forge-amber)]/50 text-[var(--forge-amber)] bg-[var(--forge-amber)]/5"
+                                            : "border-border text-muted-foreground hover:text-foreground"
+                                    )}
+                                >
+                                    <span className="inline-flex items-center gap-1.5">
+                                        <Activity className="h-3.5 w-3.5" />เส้น tension
+                                    </span>
+                                    <span className="font-technical text-[9px] uppercase tracking-[0.08em]">
+                                        {showTension ? "เปิด" : "ปิด"}
+                                    </span>
+                                </button>
+                            </PopoverContent>
+                        </Popover>
                     </div>
                 </div>
 
@@ -440,6 +513,11 @@ export function TimelineBoard({
                             chapters={sortedChapters}
                             arcs={arcs}
                         />
+
+                        {/* Structure overlay (template guide) */}
+                        {structureId !== "none" && (
+                            <StructureOverlay structureId={structureId} chapters={sortedChapters} />
+                        )}
 
                         {/* Tension curve (A2) */}
                         {showTension && (
