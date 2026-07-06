@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
     DndContext,
     DragOverlay,
@@ -22,7 +22,7 @@ import {
 import { Chapter, TimelineEvent, Character, Location } from "@/db/schema"
 import { ChapterColumn } from "./chapter-column"
 import { EventCard } from "./event-card"
-import { Clock, CheckCircle2, FolderOpen, SlidersHorizontal, Eye, X, Activity } from "lucide-react"
+import { Clock, CheckCircle2, FolderOpen, SlidersHorizontal, Eye, X, Activity, AlertTriangle } from "lucide-react"
 import { reorderTimelineEvents, updateTimelineEvent } from "@/server/timeline"
 import { useMemo } from "react"
 import { toast } from "sonner"
@@ -42,7 +42,9 @@ import { StructureOverlay, POSITIONAL_STRUCTURES } from "./structure-overlay"
 import type { ThreadWithBeats } from "@/server/plot-threads"
 import { ArcStrip } from "./arc-strip"
 import { TensionCurve } from "./tension-curve"
+import { TimelineConflictsPanel } from "./timeline-conflicts-panel"
 import type { StoryArc } from "@/db/schema"
+import { detectTimelineConflicts, type TimelineConflict } from "@/server/timeline-conflicts"
 
 type ThreadDot = { color: string; title: string }
 
@@ -122,6 +124,14 @@ export function TimelineBoard({
     const [filterThread, setFilterThread] = useState<string>("all")
     const [showTension, setShowTension] = useState(false)
     const [structureId, setStructureId] = useState<string>("none")
+    const [conflicts, setConflicts] = useState<TimelineConflict[] | null>(null)
+
+    // Load timeline conflicts once for the toolbar chip (B1). Manual planning board — one eager query is fine.
+    useEffect(() => {
+        detectTimelineConflicts(novelId)
+            .then(res => { if (res.success) setConflicts(res.conflicts) })
+            .catch(() => setConflicts([]))
+    }, [novelId])
 
     // ── event → threads map ──
     const eventThreadsMap = useMemo(() => {
@@ -355,6 +365,34 @@ export function TimelineBoard({
                             events={events}
                             chapters={chapters}
                         />
+
+                        {/* ข้อขัดแย้ง timeline (B1) — เดินทางข้ามสถานที่เร็วเกินจริง */}
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className={cn(
+                                        "h-8 gap-1.5 text-xs",
+                                        conflicts && conflicts.length > 0 ? "border-amber-500/50 text-amber-500" : ""
+                                    )}
+                                >
+                                    <AlertTriangle className="h-3.5 w-3.5" />
+                                    ข้อขัดแย้ง
+                                    {conflicts && conflicts.length > 0 ? (
+                                        <span className="ml-0.5 inline-flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold tabular-nums text-black">
+                                            {conflicts.length}
+                                        </span>
+                                    ) : null}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent align="end" className="w-80 p-3">
+                                <span className="font-technical text-[10px] uppercase tracking-[0.12em] text-muted-foreground">ข้อขัดแย้งบนเส้นเวลา</span>
+                                <div className="mt-2">
+                                    <TimelineConflictsPanel novelId={novelId} conflicts={conflicts ?? []} />
+                                </div>
+                            </PopoverContent>
+                        </Popover>
 
                         <span className="h-5 w-px bg-border mx-0.5" />
 

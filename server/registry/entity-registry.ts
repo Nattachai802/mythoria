@@ -356,6 +356,10 @@ export const CRUD_FORMAT: Partial<Record<EntityType, EntityFormat>> = {
   faction: { noun: "กลุ่ม/ฝ่าย", fields: {
     name: { label: "ชื่อ", required: true }, type: { label: "ประเภท" },
     description: { label: "คำอธิบาย" },
+    status: { label: "สถานะ (active/disbanded/defected/neutral/allied_gov)" },
+    alignment: { label: "จุดยืนศีลธรรม (good/neutral/gray/evil)" },
+    goal: { label: "เป้าหมาย/จุดยืน" },
+    element: { label: "ธาตุ/มิติ" },
   } },
   power: { noun: "พลัง", fields: {
     name: { label: "ชื่อ", required: true }, type: { label: "ประเภท" },

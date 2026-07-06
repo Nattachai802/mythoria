@@ -19,6 +19,7 @@ import {
     Share2,
     Keyboard,
     BookText,
+    Shield,
 } from "lucide-react"
 import { useKeyboardShortcutsContext } from "@/components/keyboard-shortcuts-provider"
 
@@ -74,6 +75,7 @@ export function ProjectSidebar({ projectId, projectTitle, chapters = [], hasCont
             label: "สร้างโลก",
             items: [
                 { title: "Characters", href: `/dashboard/project/${projectId}/characters`, icon: Users },
+                { title: "Factions", href: `/dashboard/project/${projectId}/factions`, icon: Shield },
                 { title: "World Building", href: `/dashboard/project/${projectId}/worldbuilding`, icon: Globe },
                 { title: "Powers", href: `/dashboard/project/${projectId}/powers`, icon: Zap },
                 { title: "World Graph", href: `/dashboard/project/${projectId}/graph`, icon: Share2 },
