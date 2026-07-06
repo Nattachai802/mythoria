@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 interface TimelineConflictsPanelProps {
     novelId: string;
     characterId?: string; // If provided, show conflicts for this character only
+    conflicts?: TimelineConflict[]; // if provided, skip self-fetch (parent already loaded them)
 }
 
 const METHOD_ICONS: Record<string, string> = {
@@ -68,12 +69,12 @@ function ConflictCard({ conflict, novelId }: { conflict: TimelineConflict; novel
                     <p className="text-muted-foreground">{conflict.message}</p>
 
                     <div className="flex gap-2">
-                        <Link href={`/dashboard/project/${novelId}/notes/${conflict.fromLocation.noteId}`}>
+                        <Link href={`/dashboard/project/${novelId}/note/${conflict.fromLocation.noteId}`}>
                             <Button variant="outline" size="sm" className="h-7 text-xs">
                                 📄 {conflict.fromLocation.noteTitle || "Note"}
                             </Button>
                         </Link>
-                        <Link href={`/dashboard/project/${novelId}/notes/${conflict.toLocation.noteId}`}>
+                        <Link href={`/dashboard/project/${novelId}/note/${conflict.toLocation.noteId}`}>
                             <Button variant="outline" size="sm" className="h-7 text-xs">
                                 📄 {conflict.toLocation.noteTitle || "Note"}
                             </Button>
@@ -85,12 +86,14 @@ function ConflictCard({ conflict, novelId }: { conflict: TimelineConflict; novel
     );
 }
 
-export function TimelineConflictsPanel({ novelId, characterId }: TimelineConflictsPanelProps) {
-    const [conflicts, setConflicts] = useState<TimelineConflict[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+export function TimelineConflictsPanel({ novelId, characterId, conflicts: conflictsProp }: TimelineConflictsPanelProps) {
+    const [fetched, setFetched] = useState<TimelineConflict[]>([]);
+    const [isLoading, setIsLoading] = useState(conflictsProp === undefined);
     const [isExpanded, setIsExpanded] = useState(true);
+    const conflicts = conflictsProp ?? fetched;
 
     useEffect(() => {
+        if (conflictsProp !== undefined) return; // parent supplied them
         async function fetchConflicts() {
             setIsLoading(true);
             try {
@@ -99,7 +102,7 @@ export function TimelineConflictsPanel({ novelId, characterId }: TimelineConflic
                     : await detectTimelineConflicts(novelId);
 
                 if (result.success) {
-                    setConflicts(result.conflicts);
+                    setFetched(result.conflicts);
                 }
             } catch (error) {
                 console.error("Failed to fetch conflicts:", error);
@@ -108,7 +111,7 @@ export function TimelineConflictsPanel({ novelId, characterId }: TimelineConflic
             }
         }
         fetchConflicts();
-    }, [novelId, characterId]);
+    }, [novelId, characterId, conflictsProp]);
 
     if (isLoading) {
         return (

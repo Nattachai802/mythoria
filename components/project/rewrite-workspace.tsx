@@ -238,8 +238,21 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
     const [bookmarks, setBookmarks] = useState<number[]>(initialNote.content?.bookmarks || []);
     const lastSavedBookmarks = useRef<number[]>(initialNote.content?.bookmarks || []);
 
+    // ย่อหน้าที่พิสูจน์อักษรแล้ว — เก็บเป็น index array ใน content (แบบเดียวกับ bookmarks)
+    const [proofread, setProofread] = useState<number[]>(initialNote.content?.proofread || []);
+    const lastSavedProofread = useRef<number[]>(initialNote.content?.proofread || []);
+
     const toggleBookmark = (index: number) => {
         setBookmarks(prev => {
+            const exists = prev.includes(index);
+            const next = exists ? prev.filter(i => i !== index) : [...prev, index];
+            setSaveStatus("unsaved");
+            return next;
+        });
+    };
+
+    const toggleProofread = (index: number) => {
+        setProofread(prev => {
             const exists = prev.includes(index);
             const next = exists ? prev.filter(i => i !== index) : [...prev, index];
             setSaveStatus("unsaved");
@@ -446,6 +459,11 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
         updated[index] = newText;
         setEditingParagraphs(updated);
 
+        // แก้ข้อความแล้ว → ยกเลิกสถานะพิสูจน์อักษรของย่อหน้านั้น (ต้องตรวจใหม่)
+        if (proofread.includes(index)) {
+            setProofread(prev => prev.filter(i => i !== index));
+        }
+
         // Sync back to content html string
         const newHtml = rebuildParagraphsToHtml(updated);
         setContent(newHtml);
@@ -467,6 +485,7 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
         // Shift bookmarks
         const updatedBookmarks = bookmarks.map(bIdx => bIdx > index ? bIdx + 1 : bIdx);
         setBookmarks(updatedBookmarks);
+        setProofread(proofread.map(pIdx => pIdx > index ? pIdx + 1 : pIdx));
 
         const newHtml = rebuildParagraphsToHtml(updatedEdit);
         setContent(newHtml);
@@ -496,6 +515,9 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
             .filter(bIdx => bIdx !== index)
             .map(bIdx => bIdx > index ? bIdx - 1 : bIdx);
         setBookmarks(updatedBookmarks);
+        setProofread(proofread
+            .filter(pIdx => pIdx !== index)
+            .map(pIdx => pIdx > index ? pIdx - 1 : pIdx));
 
         const newHtml = rebuildParagraphsToHtml(updatedEdit);
         setContent(newHtml);
@@ -530,6 +552,11 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
             return bIdx;
         });
         setBookmarks(updatedBookmarks);
+        setProofread(proofread.map(pIdx => {
+            if (pIdx === index) return targetIndex;
+            if (pIdx === targetIndex) return index;
+            return pIdx;
+        }));
 
         const newHtml = rebuildParagraphsToHtml(updatedEdit);
         setContent(newHtml);
@@ -612,14 +639,15 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
         try {
             const res = await updateNote(note.id, {
                 title,
-                content: { text: content, bookmarks }
+                content: { text: content, bookmarks, proofread }
             });
             if (res.success) {
                 const wordCount = content.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").trim().split(/\s+/).length;
-                await createNoteVersion(note.id, title, { text: content, bookmarks }, wordCount, "manual");
+                await createNoteVersion(note.id, title, { text: content, bookmarks, proofread }, wordCount, "manual");
                 lastSavedContent.current = content;
                 lastSavedTitle.current = title;
                 lastSavedBookmarks.current = bookmarks;
+                lastSavedProofread.current = proofread;
                 setSaveStatus("saved");
                 toast.success("บันทึกเนื้อหาเรียบร้อย");
 
@@ -646,8 +674,9 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
         const hasContentChanged = content !== lastSavedContent.current;
         const hasTitleChanged = title !== lastSavedTitle.current;
         const hasBookmarksChanged = JSON.stringify(bookmarks) !== JSON.stringify(lastSavedBookmarks.current);
+        const hasProofreadChanged = JSON.stringify(proofread) !== JSON.stringify(lastSavedProofread.current);
 
-        if (!hasContentChanged && !hasTitleChanged && !hasBookmarksChanged) return;
+        if (!hasContentChanged && !hasTitleChanged && !hasBookmarksChanged && !hasProofreadChanged) return;
 
         setSaveStatus("unsaved");
 
@@ -657,14 +686,15 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                 try {
                     const res = await updateNote(note.id, {
                         title,
-                        content: { text: content, bookmarks }
+                        content: { text: content, bookmarks, proofread }
                     });
                     if (res.success) {
                         const wordCount = content.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").trim().split(/\s+/).length;
-                        await createNoteVersion(note.id, title, { text: content, bookmarks }, wordCount, "auto");
+                        await createNoteVersion(note.id, title, { text: content, bookmarks, proofread }, wordCount, "auto");
                         lastSavedContent.current = content;
                         lastSavedTitle.current = title;
                         lastSavedBookmarks.current = bookmarks;
+                        lastSavedProofread.current = proofread;
                         setSaveStatus("saved");
 
                         // Refresh version history in background
@@ -693,7 +723,7 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
             clearTimeout(timer);
             autoSaveTimerRef.current = null;
         };
-    }, [content, title, note.id]);
+    }, [content, title, note.id, bookmarks, proofread]);
 
     // Change note status
     const handleStatusChange = async (newStatus: NoteStatus) => {
@@ -1337,6 +1367,19 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                                                                             <Button
                                                                                 size="icon"
                                                                                 variant="ghost"
+                                                                                onClick={() => toggleProofread(i)}
+                                                                                className={cn(
+                                                                                    "h-5 w-5 rounded hover:bg-steel-800 transition-colors",
+                                                                                    proofread.includes(i) ? "text-emerald-500 hover:text-emerald-400" : "text-muted-foreground hover:text-foreground"
+                                                                                )}
+                                                                                title={proofread.includes(i) ? "ยกเลิกสถานะพิสูจน์อักษรแล้ว" : "ทำเครื่องหมายว่าพิสูจน์อักษรแล้ว"}
+                                                                            >
+                                                                                <CheckCircle2 className={cn("h-3.5 w-3.5", proofread.includes(i) && "fill-current")} />
+                                                                            </Button>
+
+                                                                            <Button
+                                                                                size="icon"
+                                                                                variant="ghost"
                                                                                 onClick={() => setShowDiff(!showDiff)}
                                                                                 className="h-5 w-5 rounded hover:bg-steel-800 text-muted-foreground hover:text-foreground"
                                                                                 title={showDiff ? "ซ่อนการเปรียบเทียบคำ (Word Diff)" : "แสดงการเปรียบเทียบคำ (Word Diff)"}
@@ -1375,8 +1418,9 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                                                                     </div>
                                                                 </div>
                                                             ) : (
-                                                                <p className="text-sm leading-relaxed text-muted-foreground pl-4">
-                                                                    [{i + 1}] {para || <span className="text-muted-foreground/30 italic">[ย่อหน้าว่าง]</span>}
+                                                                <p className="text-sm leading-relaxed text-muted-foreground pl-4 flex items-start gap-1.5">
+                                                                    {proofread.includes(i) && <CheckCircle2 className="h-3 w-3 text-emerald-500 fill-emerald-500/20 shrink-0 mt-1" />}
+                                                                    <span>[{i + 1}] {para || <span className="text-muted-foreground/30 italic">[ย่อหน้าว่าง]</span>}</span>
                                                                 </p>
                                                             )}
                                                         </div>
@@ -1432,6 +1476,10 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                                 </span>
                                 <span className="hidden md:inline text-[10px] font-mono text-muted-foreground/50">
                                     • กดยืนยันบันทึกด้วย Ctrl + Enter
+                                </span>
+                                <span className="inline-flex items-center gap-1 text-xs font-mono text-emerald-600 dark:text-emerald-400">
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                    พิสูจน์อักษรแล้ว {proofread.length}/{editingParagraphs.length}
                                 </span>
                             </div>
 

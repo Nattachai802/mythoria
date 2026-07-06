@@ -384,6 +384,20 @@ export const factions = pgTable("factions", {
   description: text("description"),
   type: text("type"), // e.g. "Guild", "Family", "Kingdom"
   color: text("color").default("#64748b"), // Slate-500 default
+
+  // Hierarchy - แผนก/สาขาซ้อนใต้ฝ่ายแม่ (เช่น แผนก → กปธ., 13 ตระกูล → หมวด)
+  parentFactionId: text("parent_faction_id").references((): any => factions.id, { onDelete: "set null" }),
+
+  // Story fields
+  status: text("status").default("active"), // "active" | "disbanded" | "defected" | "neutral" | "allied_gov"
+  alignment: text("alignment"), // "good" | "neutral" | "gray" | "evil"
+  goal: text("goal"), // เป้าหมาย/จุดยืนของฝ่าย
+  element: text("element"), // ธาตุ-มิติ (โลกเฉพาะเรื่อง)
+  leaderId: text("leader_id").references((): any => characters.id, { onDelete: "set null" }),
+  icon: text("icon"),
+  importance: integer("importance").default(5), // 1-10
+  orderIndex: integer("order_index").default(0),
+
   novelId: text("novel_id")
     .notNull()
     .references(() => novels.id, { onDelete: "cascade" }),
@@ -393,6 +407,31 @@ export const factions = pgTable("factions", {
     .$onUpdate(() => new Date())
     .notNull(),
 });
+
+// Faction ↔ Faction relationships — พันธมิตร/ศัตรู/ขึ้นตรง/แตกออกมา (ขนานกับ characterRelationships)
+export const factionRelationships = pgTable("faction_relationships", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  novelId: text("novel_id")
+    .notNull()
+    .references(() => novels.id, { onDelete: "cascade" }),
+  sourceFactionId: text("source_faction_id")
+    .notNull()
+    .references(() => factions.id, { onDelete: "cascade" }),
+  targetFactionId: text("target_faction_id")
+    .notNull()
+    .references(() => factions.id, { onDelete: "cascade" }),
+  type: text("type").notNull(), // "ally" | "enemy" | "subsidiary" | "splinter" | "rival" | "neutral"
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+}, (table) => ({
+  novelIdIdx: index("faction_rel_novel_id_idx").on(table.novelId),
+  sourceIdx: index("faction_rel_source_idx").on(table.sourceFactionId),
+  targetIdx: index("faction_rel_target_idx").on(table.targetFactionId),
+}));
 
 export const characterFactions = pgTable("character_factions", {
   id: text("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -1406,6 +1445,33 @@ export const factionRelations = relations(factions, ({ one, many }) => ({
     references: [novels.id],
   }),
   members: many(characterFactions),
+  parent: one(factions, {
+    fields: [factions.parentFactionId],
+    references: [factions.id],
+    relationName: "faction_hierarchy",
+  }),
+  children: many(factions, { relationName: "faction_hierarchy" }),
+  leader: one(characters, {
+    fields: [factions.leaderId],
+    references: [characters.id],
+  }),
+}));
+
+export const factionRelationshipRelations = relations(factionRelationships, ({ one }) => ({
+  novel: one(novels, {
+    fields: [factionRelationships.novelId],
+    references: [novels.id],
+  }),
+  sourceFaction: one(factions, {
+    fields: [factionRelationships.sourceFactionId],
+    references: [factions.id],
+    relationName: "faction_rel_source",
+  }),
+  targetFaction: one(factions, {
+    fields: [factionRelationships.targetFactionId],
+    references: [factions.id],
+    relationName: "faction_rel_target",
+  }),
 }));
 
 export const characterFactionRelations = relations(characterFactions, ({ one }) => ({
@@ -1757,6 +1823,7 @@ export type TimelineEvent = typeof timelineEvents.$inferSelect;
 export type Note = typeof notes.$inferSelect;
 export type Tag = typeof tags.$inferSelect;
 export type Faction = typeof factions.$inferSelect;
+export type FactionRelationship = typeof factionRelationships.$inferSelect;
 export type CharacterFaction = typeof characterFactions.$inferSelect;
 export type NoteCharacter = typeof noteCharacters.$inferSelect;
 export type CharacterState = typeof characterStates.$inferSelect;
