@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, Sparkles, BookType, AlignLeft } from "lucide-react"
+import { Plus, Sparkles, BookType, AlignLeft, FileInput } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -21,6 +21,7 @@ import { toast } from "sonner"
 export function CreateProjectButton({ userId }: { userId: string }) {
     const [open, setOpen] = useState(false)
     const [loading, setLoading] = useState(false)
+    const [importBible, setImportBible] = useState(false)
     const router = useRouter()
 
     async function onSubmit(formData: FormData) {
@@ -47,7 +48,12 @@ export function CreateProjectButton({ userId }: { userId: string }) {
         if (result.success) {
             toast.success("Project created successfully")
             setOpen(false)
-            router.refresh()
+            // เตรียมข้อมูลจาก Story Bible → พาไปหน้า import ต่อ (reuse flow เดิม)
+            if (importBible && result.novel) {
+                router.push(`/dashboard/project/${result.novel.id}/import-bible`)
+            } else {
+                router.refresh()
+            }
         } else {
             toast.error(result.message)
         }
@@ -109,6 +115,25 @@ export function CreateProjectButton({ userId }: { userId: string }) {
                             placeholder="Briefly describe your story..."
                         />
                     </div>
+
+                    <button
+                        type="button"
+                        onClick={() => setImportBible(v => !v)}
+                        className={`flex items-start gap-3 rounded-md border p-3 text-left transition-colors ${importBible ? "border-primary bg-primary/5" : "border-input hover:bg-muted/40"}`}
+                    >
+                        <span className={`mt-0.5 flex h-4 w-4 items-center justify-center rounded border ${importBible ? "bg-primary border-primary" : "border-muted-foreground/40"}`}>
+                            {importBible && <span className="h-1.5 w-1.5 rounded-sm bg-primary-foreground" />}
+                        </span>
+                        <span className="flex-1">
+                            <span className="flex items-center gap-1.5 text-sm font-medium">
+                                <FileInput className="h-3.5 w-3.5 text-muted-foreground" />
+                                เตรียมข้อมูลจาก Story Bible
+                            </span>
+                            <span className="mt-0.5 block text-xs text-muted-foreground">
+                                มีเอกสารไบเบิลอยู่แล้ว? สร้างเสร็จจะพาไปสกัดตัวละคร/ตระกูล/ผี/ระบบ ให้อัตโนมัติ
+                            </span>
+                        </span>
+                    </button>
 
                     <DialogFooter className="pt-4">
                         <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={loading}>

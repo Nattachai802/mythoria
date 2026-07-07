@@ -6,6 +6,8 @@ import {
     type EntityType,
 } from "./registry/entity-registry";
 import { applyProposal, type Proposal, type ProposalDetail } from "./assistant";
+import { createWorldSystem } from "./world-systems";
+import type { WorldSystemEntry } from "@/db/schema";
 
 /**
  * Story Bible Import — Phase 1 engine
@@ -35,17 +37,59 @@ const EXTRACT_PROMPT = `คุณคือตัวสกัดข้อมู�
 - field ที่เอกสารไม่ได้ระบุ = เว้นว่าง (อย่าใส่ค่ามั่ว)
 - ตัวละคร/ผี/ตระกูล/ของ/พลัง/สถานที่/ปม ที่มีชื่อชัดเจนเท่านั้น อย่าดึงแนวคิดลอยๆ
 - คืน JSON object เท่านั้น: {"entities":[{"entityType":"...","fields":{...}}]}
-- entityType ต้องเป็นหนึ่งใน: ${EXTRACT_TYPES.join(", ")}
+- entityType ต้องเป็นหนึ่งใน: ${EXTRACT_TYPES.join(", ")}, worldSystem
 - fields key ตามชนิด (* = จำเป็น ต้องมี):
-${FIELD_CATALOG}`;
+${FIELD_CATALOG}
+- worldSystem (ระบบ/สารบบ เช่น ยศ, ลำดับชั้น, taxonomy, องค์กร, กฎ, กระบวนการ — เนื้อหาที่เป็น "ตาราง/รายการเรียงลำดับ" ไม่ใช่ตัวละคร/ของเดี่ยวๆ):
+  รูปแบบ: {"entityType":"worldSystem","fields":{"name*":"ชื่อระบบ","category":"rank|hierarchy|taxonomy|org|ruleset|process","description":"เกริ่นสั้น"},"entries":[{"label":"ชื่อรายการ","attrs":{"คอลัมน์":"ค่า"}}]}
+  ตัวอย่าง: ตารางยศ 8 ชั้น → 1 worldSystem category=rank, entries=แต่ละยศ, attrs=คอลัมน์อื่นในตาราง (เช่น EN, Threat Level)`;
 
 interface RawEntity {
     entityType: string;
     fields: Record<string, unknown>;
+    entries?: unknown; // worldSystem เท่านั้น
+}
+
+const ORDERED_CATEGORIES = new Set(["rank", "hierarchy", "process"]);
+
+/** normalize entries ดิบจาก LLM → WorldSystemEntry[] + รวม attrKeys */
+function normalizeEntries(raw: unknown): { entries: WorldSystemEntry[]; attrKeys: string[] } {
+    if (!Array.isArray(raw)) return { entries: [], attrKeys: [] };
+    const keys: string[] = [];
+    const entries: WorldSystemEntry[] = raw.map((e, i) => {
+        const label = String((e?.label ?? e?.name ?? "")).trim();
+        const attrsRaw = (e?.attrs && typeof e.attrs === "object") ? e.attrs as Record<string, unknown> : {};
+        const attrs: Record<string, string> = {};
+        for (const [k, v] of Object.entries(attrsRaw)) {
+            if (v == null || String(v).trim() === "") continue;
+            attrs[k] = String(v);
+            if (!keys.includes(k)) keys.push(k);
+        }
+        return { label, order: i, note: "", attrs };
+    }).filter(e => e.label);
+    return { entries, attrKeys: keys };
 }
 
 /** ประกอบ Proposal (create) จาก raw — reuse CRUD_FORMAT ทำ details/summary */
-function toProposal(type: EntityType, fields: Record<string, unknown>): Proposal {
+function toProposal(type: EntityType, fields: Record<string, unknown>, rawEntries?: unknown): Proposal {
+    // worldSystem: เก็บ entries/attrKeys ไว้ใน fields สำหรับ apply, details = จำนวนรายการ
+    if (type === "worldSystem") {
+        const format = CRUD_FORMAT.worldSystem!;
+        const title = String(fields.name ?? "(ไม่มีชื่อ)");
+        const { entries, attrKeys } = normalizeEntries(rawEntries);
+        const category = String(fields.category ?? "taxonomy");
+        const details: ProposalDetail[] = [{ label: "รายการ", value: `${entries.length}` }];
+        if (attrKeys.length) details.push({ label: "คอลัมน์", value: attrKeys.join(", ") });
+        return {
+            tool: "create_entity",
+            entityType: type,
+            fields: { name: title, category, description: fields.description, entries, attrKeys },
+            noun: format.noun,
+            title,
+            details,
+            summary: `สร้าง${format.noun} "${title}" (${entries.length} รายการ)`,
+        };
+    }
     const format = CRUD_FORMAT[type]!;
     const title = String(fields.name ?? fields.title ?? "(ไม่มีชื่อ)");
     const details: ProposalDetail[] = Object.entries(fields)
@@ -122,13 +166,13 @@ export async function extractBible(markdown: string): Promise<ExtractResult> {
     for (const e of raw) {
         if (!isCrudType(e.entityType)) continue;
         const type = e.entityType as EntityType;
-        if (!EXTRACT_TYPES.includes(type)) continue;
+        if (type !== "worldSystem" && !EXTRACT_TYPES.includes(type)) continue;
         const fields = (e.fields && typeof e.fields === "object") ? e.fields as Record<string, unknown> : {};
         const nameVal = String(fields.name ?? fields.title ?? "").trim();
         if (!nameVal) continue; // ต้องมีชื่อ
         rawCount++;
         const key = `${type}:${nameVal.toLowerCase()}`;
-        const prop = toProposal(type, fields);
+        const prop = toProposal(type, fields, e.entries);
         const existing = byKey.get(key);
         if (!existing || prop.details.length > existing.details.length) byKey.set(key, prop);
     }
@@ -153,6 +197,22 @@ export async function applyBibleProposals(novelId: string, proposals: Proposal[]
     let created = 0, failed = 0;
     const errors: string[] = [];
     for (const p of proposals) {
+        // worldSystem: เขียนผ่าน createWorldSystem ตรงๆ (entries เป็น jsonb เกิน generic CRUD)
+        if (p.entityType === "worldSystem") {
+            const category = String(p.fields.category ?? "taxonomy");
+            const r = await createWorldSystem({
+                novelId,
+                name: p.title,
+                category,
+                description: p.fields.description ? String(p.fields.description) : undefined,
+                ordered: ORDERED_CATEGORIES.has(category),
+                attrKeys: (p.fields.attrKeys as string[]) ?? [],
+                entries: (p.fields.entries as WorldSystemEntry[]) ?? [],
+            });
+            if (r.success) created++;
+            else { failed++; errors.push(`${p.title}: ${r.error}`); }
+            continue;
+        }
         const r = await applyProposal(novelId, p);
         if (r.success) created++;
         else { failed++; errors.push(`${p.title}: ${r.error}`); }
