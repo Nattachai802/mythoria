@@ -13,6 +13,7 @@ import {
   eras,
   timelineEvents,
   plotThreads,
+  worldSystems,
 } from "@/db/schema";
 import { and, eq, ilike, inArray } from "drizzle-orm";
 import type { PgTableWithColumns } from "drizzle-orm/pg-core";
@@ -41,6 +42,7 @@ export type EntityType =
   | "chapter"
   | "entity"
   | "timelineEvent"
+  | "worldSystem"
   | "idea";
 
 export interface EntityRef {
@@ -164,6 +166,13 @@ const REGISTRY: Record<EntityType, EntityAdapter> = {
     icon: "hourglass",
     href: (n, id) => `${base(n)}/worldbuilding#era-${id}`,
     contentCols: ["name", "description"],
+  },
+  worldSystem: {
+    table: worldSystems,
+    displayCol: "name",
+    icon: "sitemap",
+    href: (n, id) => `${base(n)}/worldbuilding#system-${id}`,
+    contentCols: ["name", "category", "description"],
   },
 };
 
@@ -372,6 +381,21 @@ export const CRUD_FORMAT: Partial<Record<EntityType, EntityFormat>> = {
   lore: { noun: "ตำนาน", fields: {
     title: { label: "หัวข้อ", required: true }, type: { label: "ประเภท" },
     content: { label: "เนื้อหา" },
+  } },
+  entity: { noun: "สิ่งมีชีวิต/ผี", fields: {
+    name: { label: "ชื่อ", required: true },
+    type: { label: "ประเภท (creature/monster/spirit/beast/humanoid/plant)" },
+    threatLevel: { label: "ระดับภัย (harmless/low/medium/high/extreme/legendary)" },
+    description: { label: "คำอธิบาย" },
+    appearance: { label: "รูปลักษณ์" },
+    habitat: { label: "ถิ่นอาศัย" },
+    // ponytail: abilities/weaknesses เป็น jsonb array — CRUD text-only ข้ามไป, ใส่ผ่าน UI ทีหลัง
+  } },
+  worldSystem: { noun: "ระบบ", fields: {
+    name: { label: "ชื่อ", required: true },
+    category: { label: "หมวด (rank/hierarchy/taxonomy/org/ruleset/process)", default: "taxonomy" },
+    description: { label: "คำอธิบาย" },
+    // ponytail: entries/attrKeys เป็น jsonb — สร้าง shell ผ่าน CRUD, เติม entry ผ่าน world-systems actions
   } },
   idea: { noun: "ไอเดีย", fields: {
     title: { label: "หัวข้อ", required: true }, summary: { label: "สรุป" },

@@ -4,10 +4,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Package, ScrollText, Bug, MapPin } from "lucide-react";
+import { Package, ScrollText, Bug, MapPin, Network } from "lucide-react";
 import { ItemsView } from "./items-view";
 import { LoreTimeline } from "./lore-timeline";
 import { EntitiesView } from "./entities-view";
+import { SystemsView } from "./systems-view";
 import { LocationsView } from "@/components/project/location/locations-view";
 import { CreateLocationDialog } from "@/components/project/location/create-location-dialog";
 import { LoreMonitor } from "./lore-monitor";
@@ -48,6 +49,7 @@ interface WorldBuildingContentProps {
     eras: any[];
     entities: any[];
     connections: any[];
+    worldSystems: any[];
 }
 
 export function WorldBuildingContent({
@@ -59,6 +61,7 @@ export function WorldBuildingContent({
     eras,
     entities,
     connections,
+    worldSystems,
 }: WorldBuildingContentProps) {
     const router = useRouter();
     const characters = (novel as any).characters || [];
@@ -207,7 +210,7 @@ export function WorldBuildingContent({
             </div>
 
             {/* Stats Cards */}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
                 <Card
                     className={`cursor-pointer transition-colors ${activeTab === "locations" ? "border-primary" : "hover:bg-muted/50"}`}
                     onClick={() => setActiveTab("locations")}
@@ -263,6 +266,20 @@ export function WorldBuildingContent({
                         <p className="text-xs text-muted-foreground">สิ่งมีชีวิตและมอนสเตอร์</p>
                     </CardContent>
                 </Card>
+
+                <Card
+                    className={`cursor-pointer transition-colors ${activeTab === "systems" ? "border-primary" : "hover:bg-muted/50"}`}
+                    onClick={() => setActiveTab("systems")}
+                >
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                        <CardTitle className="text-sm font-medium">Systems</CardTitle>
+                        <Network className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">{worldSystems.length}</div>
+                        <p className="text-xs text-muted-foreground">ยศ ลำดับชั้น taxonomy</p>
+                    </CardContent>
+                </Card>
             </div>
 
             {/* Create Location Button */}
@@ -274,7 +291,7 @@ export function WorldBuildingContent({
 
             {/* Tabs */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="grid w-full max-w-lg grid-cols-4">
+                <TabsList className="grid w-full max-w-xl grid-cols-5">
                     <TabsTrigger value="locations" className="gap-2">
                         <MapPin className="h-4 w-4" />
                         Locations
@@ -290,6 +307,10 @@ export function WorldBuildingContent({
                     <TabsTrigger value="entities" className="gap-2">
                         <Bug className="h-4 w-4" />
                         Entities
+                    </TabsTrigger>
+                    <TabsTrigger value="systems" className="gap-2">
+                        <Network className="h-4 w-4" />
+                        Systems
                     </TabsTrigger>
                 </TabsList>
 
@@ -335,6 +356,14 @@ export function WorldBuildingContent({
                 <TabsContent value="entities" className="mt-6">
                     <EntitiesView
                         entities={entities}
+                        novelId={novelId}
+                        onRefresh={handleRefresh}
+                    />
+                </TabsContent>
+
+                <TabsContent value="systems" className="mt-6">
+                    <SystemsView
+                        systems={worldSystems}
                         novelId={novelId}
                         onRefresh={handleRefresh}
                     />

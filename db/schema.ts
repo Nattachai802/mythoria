@@ -960,6 +960,44 @@ export const locationEntities = pgTable("location_entities", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// World Systems - "ระบบ/สารบบ" ทั่วไปของโลก (ยศ, ลำดับชั้น, taxonomy, องค์กร, กฎ)
+// primitive กลาง: รายการ entry ที่เรียง/จัดกลุ่มได้ + attribute อิสระต่อ entry (jsonb)
+// ครอบทุกโครงสร้างที่ไม่ใช่ instance เดี่ยว โดยไม่ต้องมีตารางต่อชนิด
+export const worldSystems = pgTable("world_systems", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  novelId: text("novel_id")
+    .notNull()
+    .references(() => novels.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  category: text("category").notNull().default("taxonomy"), // rank | hierarchy | taxonomy | org | ruleset | process
+  description: text("description"),
+  ordered: boolean("ordered").notNull().default(false), // เป็นบันไดเรียงลำดับไหม
+  // entries: [{ label, order, note, attrs: { [key]: string } }]
+  entries: jsonb("entries").notNull().default(sql`'[]'::jsonb`),
+  // attrKeys: ลำดับคอลัมน์ attribute ที่ผู้ใช้กำหนด เช่น ["EN","Threat"]
+  attrKeys: jsonb("attr_keys").notNull().default(sql`'[]'::jsonb`),
+  color: text("color").default("#6366f1"),
+  icon: text("icon"),
+  orderIndex: integer("order_index").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+export const worldSystemRelations = relations(worldSystems, ({ one }) => ({
+  novel: one(novels, { fields: [worldSystems.novelId], references: [novels.id] }),
+}));
+
+export type WorldSystem = typeof worldSystems.$inferSelect;
+export interface WorldSystemEntry {
+  label: string;
+  order: number;
+  note?: string;
+  attrs: Record<string, string>;
+}
+
 // ============================================
 // SCENE ELEMENT DETAILS - ใคร ทำอะไร ที่ไหน อย่างไร
 // ============================================
@@ -1901,6 +1939,7 @@ export const schema = {
   tags,
   chapterTags,
   factions,
+  factionRelationships,
   characterFactions,
   aliasCache,
   aiChapterReviews,
@@ -1917,6 +1956,7 @@ export const schema = {
   chapterTagRelations,
   characterRelationshipRelations,
   factionRelations,
+  factionRelationshipRelations,
   characterFactionRelations,
   chapterCharacters,
   chapterCharacterRelations,
@@ -1966,6 +2006,8 @@ export const schema = {
   entityRelations,
   locationEntities,
   locationEntityRelations,
+  worldSystems,
+  worldSystemRelations,
   // Scene Element Details
   sceneElementDetails,
   sceneElementDetailsRelations,

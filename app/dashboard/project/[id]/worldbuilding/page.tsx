@@ -4,6 +4,7 @@ import { getLoreGroupsByNovelId } from "@/server/lore-groups";
 import { getErasByNovelId } from "@/server/eras";
 import { getEntitiesByNovelId } from "@/server/entities";
 import { getLocationConnections } from "@/server/location-connections";
+import { getWorldSystemsByNovelId } from "@/server/world-systems";
 import { getNovelById } from "@/server/novel";
 import { WorldBuildingContent } from "@/components/project/worldbuilding/worldbuilding-content";
 import { notFound } from "next/navigation";
@@ -20,13 +21,14 @@ export default async function WorldBuildingPage({
         notFound();
     }
 
-    const [itemsResult, loreResult, loreGroupsResult, erasResult, entitiesResult, connectionsResult] = await Promise.all([
+    const [itemsResult, loreResult, loreGroupsResult, erasResult, entitiesResult, connectionsResult, systemsResult] = await Promise.all([
         getItemsByNovelId(id),
         getLoreEntriesByNovelId(id),
         getLoreGroupsByNovelId(id),
         getErasByNovelId(id),
         getEntitiesByNovelId(id),
         getLocationConnections(id),
+        getWorldSystemsByNovelId(id),
     ]);
 
     return (
@@ -39,6 +41,7 @@ export default async function WorldBuildingPage({
             eras={erasResult.data || []}
             entities={entitiesResult.data || []}
             connections={connectionsResult.success ? connectionsResult.data || [] : []}
+            worldSystems={systemsResult.data || []}
         />
     );
 }
