@@ -3,12 +3,13 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { User, MapPin, Lightbulb, X, Link as LinkIcon, Pencil, CheckCircle2, XCircle, Clock, StickyNote, Maximize2, Minimize2, ExternalLink, Copy, GitBranchPlus } from "lucide-react";
+import { User, MapPin, Lightbulb, X, Link as LinkIcon, Pencil, CheckCircle2, XCircle, Clock, StickyNote, Maximize2, Minimize2, ExternalLink, Copy, GitBranchPlus, Shield, Plus } from "lucide-react";
 import { useCallback, useState } from "react";
 import { SceneElementDetails } from "@/db/schema";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 // For items already on the canvas (moveable)
 export function DraggableCanvasItem({
@@ -26,6 +27,7 @@ export function DraggableCanvasItem({
   onSetAncestor,
   ancestorConnections,
   onRemoveAncestor,
+  onAddDummy,
 }: {
   item: any;
   onRemove: () => void;
@@ -41,6 +43,7 @@ export function DraggableCanvasItem({
   onSetAncestor?: () => void;
   ancestorConnections?: Array<{ id: string; sourceIdeaId: string; targetIdeaId: string; label?: string | null; targetIdeaTitle?: string | null; targetIdeaContent?: string | null; targetIdeaCategory?: string | null; targetIdeaNotes?: string[] }>;
   onRemoveAncestor?: (connectionId: string) => void;
+  onAddDummy?: (ideaId: string, name: string, type: 'dummy_character' | 'dummy_faction') => void;
 }) {
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
     id: item.id,
@@ -104,6 +107,7 @@ export function DraggableCanvasItem({
         onSetAncestor={onSetAncestor}
         ancestorConnections={ancestorConnections}
         onRemoveAncestor={onRemoveAncestor}
+        onAddDummy={onAddDummy}
       />
     </div>
   );
@@ -243,6 +247,7 @@ export function CanvasItem({
   onSetAncestor,
   ancestorConnections,
   onRemoveAncestor,
+  onAddDummy,
 }: {
   item: any;
   onRemove?: () => void;
@@ -260,6 +265,7 @@ export function CanvasItem({
   onSetAncestor?: () => void;
   ancestorConnections?: Array<{ id: string; sourceIdeaId: string; targetIdeaId: string; label?: string | null; targetIdeaTitle?: string | null; targetIdeaContent?: string | null; targetIdeaCategory?: string | null; targetIdeaNotes?: string[] }>;
   onRemoveAncestor?: (connectionId: string) => void;
+  onAddDummy?: (ideaId: string, name: string, type: 'dummy_character' | 'dummy_faction') => void;
 }) {
   // If use Sticky Note
   if (item.type === 'sticky-note') {
@@ -268,6 +274,9 @@ export function CanvasItem({
   }
 
   const [isExpanded, setIsExpanded] = useState(false);
+  const [dummyNameInput, setDummyNameInput] = useState("");
+  const [dummyTypeInput, setDummyTypeInput] = useState<'dummy_character' | 'dummy_faction'>("dummy_character");
+  const [dummyPopoverOpen, setDummyPopoverOpen] = useState(false);
 
   const Icon = () => {
     if (item.type === 'character') return <User className="w-4 h-4" />;
@@ -742,26 +751,32 @@ Sticky Notes: ${stickyNotes}`;
           )}
 
           {/* Children Area for Ideas */}
-          {isContainer && item.children && item.children.length > 0 && (
+          {isContainer && (
             <div className="space-y-3 pt-2 border-t mt-2 bg-muted/20 rounded p-2">
 
-              {/* Characters Section */}
-              {item.children.some((c: any) => c.type === 'character') && (
+              {/* Characters Section (Real & Dummy) */}
+              {item.children && item.children.some((c: any) => c.type === 'character' || c.type === 'dummy_character') && (
                 <div className="space-y-1">
                   <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider mb-1 flex items-center gap-1">
                     <User className="w-3 h-3" /> Characters
                   </p>
                   {item.children
-                    .filter((c: any) => c.type === 'character')
+                    .filter((c: any) => c.type === 'character' || c.type === 'dummy_character')
                     .map((child: any) => {
                       const detail = getChildDetail(child);
                       const hasDetail = detail && (detail.action || detail.how || detail.goal);
+                      const isDummy = child.type === 'dummy_character';
                       const roleColors = getCharacterRoleColors(child.role);
                       return (
-                        <div key={child.id} className={`p-1.5 rounded border shadow-sm text-xs group/item ${roleColors.bg} ${roleColors.border}`}>
+                        <div key={child.id} className={cn(
+                          "p-1.5 rounded border shadow-sm text-xs group/item",
+                          isDummy ? "border-dashed border-zinc-300 dark:border-zinc-800 bg-zinc-50/50" : `${roleColors.bg} ${roleColors.border}`
+                        )}>
                           <div className="flex items-center gap-2">
-                            <User className={`w-3 h-3 shrink-0 ${roleColors.icon}`} />
-                            <span className="truncate flex-1 font-medium">{child.title}</span>
+                            <User className={cn("w-3 h-3 shrink-0", isDummy ? "text-zinc-400" : roleColors.icon)} />
+                            <span className={cn("truncate flex-1 font-medium", isDummy && "italic text-muted-foreground")}>
+                              {child.title} {isDummy && <span className="text-[8px] text-muted-foreground font-normal">(Dummy)</span>}
+                            </span>
                             <OutcomeIcon outcome={detail?.outcome} />
                             {onEditChild && (
                               <button
@@ -769,7 +784,7 @@ Sticky Notes: ${stickyNotes}`;
                                   e.stopPropagation();
                                   onEditChild({ ...child, canvasItemId: item.id });
                                 }}
-                                className={`opacity-0 group-hover/item:opacity-100 hover:${roleColors.icon} transition-opacity`}
+                                className={cn("opacity-0 group-hover/item:opacity-100 transition-opacity", isDummy ? "hover:text-primary" : `hover:${roleColors.icon}`)}
                                 title="แก้ไขรายละเอียด"
                               >
                                 <Pencil className="w-3 h-3" />
@@ -788,7 +803,70 @@ Sticky Notes: ${stickyNotes}`;
                             )}
                           </div>
                           {hasDetail && (
-                            <div className="mt-1 pl-5 text-[10px] text-muted-foreground space-y-0.5">
+                            <div className="mt-1 pl-5 text-[10px] text-muted-foreground space-y-0.5 border-t border-zinc-100/10 pt-1">
+                              {detail.action && (
+                                <p className="truncate">📌 {detail.action}{detail.how ? ` • ${detail.how}` : ''}</p>
+                              )}
+                              {detail.goal && (
+                                <p className="truncate text-muted-foreground/70">🎯 {detail.goal}</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+
+              {/* Factions Section (Real & Dummy) */}
+              {item.children && item.children.some((c: any) => c.type === 'faction' || c.type === 'dummy_faction') && (
+                <div className="space-y-1">
+                  <p className="text-[10px] uppercase font-bold text-emerald-500/80 tracking-wider mb-1 flex items-center gap-1">
+                    <Shield className="w-3 h-3" /> Factions
+                  </p>
+                  {item.children
+                    .filter((c: any) => c.type === 'faction' || c.type === 'dummy_faction')
+                    .map((child: any) => {
+                      const detail = getChildDetail(child);
+                      const hasDetail = detail && (detail.action || detail.how || detail.goal);
+                      const isDummy = child.type === 'dummy_faction';
+                      return (
+                        <div key={child.id} className={cn(
+                          "bg-background p-1.5 rounded border shadow-sm text-xs group/item border-l-2",
+                          isDummy ? "border-dashed border-zinc-300 dark:border-zinc-800 border-l-zinc-400" : "border-l-emerald-500"
+                        )}>
+                          <div className="flex items-center gap-2">
+                            <Shield className={cn("w-3 h-3 shrink-0", isDummy ? "text-zinc-400" : "text-emerald-500")} />
+                            <span className={cn("truncate flex-1 font-medium", isDummy && "italic text-muted-foreground")}>
+                              {child.title} {isDummy && <span className="text-[8px] text-muted-foreground font-normal">(Dummy)</span>}
+                            </span>
+                            <OutcomeIcon outcome={detail?.outcome} />
+                            {onEditChild && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onEditChild({ ...child, canvasItemId: item.id });
+                                }}
+                                className="opacity-0 group-hover/item:opacity-100 hover:text-emerald-500 transition-opacity"
+                                title="แก้ไขรายละเอียด"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </button>
+                            )}
+                            {onRemoveChild && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onRemoveChild(child.id);
+                                }}
+                                className="opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-opacity"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                          {hasDetail && (
+                            <div className="mt-1 pl-5 text-[10px] text-muted-foreground space-y-0.5 border-t border-emerald-100/10 pt-1">
                               {detail.action && (
                                 <p className="truncate">📌 {detail.action}{detail.how ? ` • ${detail.how}` : ''}</p>
                               )}
@@ -804,7 +882,7 @@ Sticky Notes: ${stickyNotes}`;
               )}
 
               {/* Locations Section */}
-              {item.children.some((c: any) => c.type === 'location') && (
+              {item.children && item.children.some((c: any) => c.type === 'location') && (
                 <div className="space-y-1">
                   <p className="text-[10px] uppercase font-bold text-green-500/80 tracking-wider mb-1 flex items-center gap-1">
                     <MapPin className="w-3 h-3" /> Locations
@@ -845,7 +923,7 @@ Sticky Notes: ${stickyNotes}`;
                             )}
                           </div>
                           {hasDetail && (
-                            <div className="mt-1 pl-5 text-[10px] text-muted-foreground space-y-0.5">
+                            <div className="mt-1 pl-5 text-[10px] text-muted-foreground space-y-0.5 border-t border-zinc-100/10 pt-1">
                               {detail.action && (
                                 <p className="truncate">📌 {detail.action}{detail.how ? ` • ${detail.how}` : ''}</p>
                               )}
@@ -860,12 +938,12 @@ Sticky Notes: ${stickyNotes}`;
                 </div>
               )}
 
-              {/* Others Section (if any non-char/non-loc/non-sticky items get dropped) */}
-              {item.children.some((c: any) => c.type !== 'character' && c.type !== 'location' && c.type !== 'sticky-note') && (
+              {/* Others Section */}
+              {item.children && item.children.some((c: any) => c.type !== 'character' && c.type !== 'dummy_character' && c.type !== 'faction' && c.type !== 'dummy_faction' && c.type !== 'location' && c.type !== 'sticky-note') && (
                 <div className="space-y-1">
                   <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider mb-1">Others</p>
                   {item.children
-                    .filter((c: any) => c.type !== 'character' && c.type !== 'location' && c.type !== 'sticky-note')
+                    .filter((c: any) => c.type !== 'character' && c.type !== 'dummy_character' && c.type !== 'faction' && c.type !== 'dummy_faction' && c.type !== 'location' && c.type !== 'sticky-note')
                     .map((child: any) => (
                       <div key={child.id} className="flex items-center gap-2 bg-background p-1.5 rounded border shadow-sm text-xs group/item">
                         <Lightbulb className="w-3 h-3 text-yellow-500" />
@@ -886,6 +964,72 @@ Sticky Notes: ${stickyNotes}`;
                 </div>
               )}
 
+              {/* Add Dummy Trigger */}
+              {onAddDummy && (
+                <div className="pt-1.5 border-t border-dashed flex justify-end">
+                  <Popover open={dummyPopoverOpen} onOpenChange={setDummyPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        className="h-5 px-1 text-[8px] font-technical uppercase text-muted-foreground hover:text-primary gap-0.5 shrink-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDummyNameInput("");
+                        }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        <Plus className="w-2.5 h-2.5" /> เพิ่ม Dummy
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      side="bottom"
+                      align="end"
+                      className="w-48 p-2.5 space-y-2 text-xs"
+                      onClick={(e) => e.stopPropagation()}
+                      onPointerDown={(e) => e.stopPropagation()}
+                    >
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-technical text-muted-foreground uppercase">ชื่อตัวละคร/ฝ่าย</label>
+                        <input
+                          type="text"
+                          value={dummyNameInput}
+                          onChange={(e) => setDummyNameInput(e.target.value)}
+                          placeholder="เช่น ทหารลับ, กิลด์นักฆ่า"
+                          className="w-full h-7 px-1.5 text-xs bg-background border rounded focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-technical text-muted-foreground uppercase">ประเภท</label>
+                        <select
+                          value={dummyTypeInput}
+                          onChange={(e) => setDummyTypeInput(e.target.value as any)}
+                          className="w-full h-7 px-1 text-xs bg-background border rounded text-foreground"
+                        >
+                          <option value="dummy_character">ตัวละครชั่วคราว</option>
+                          <option value="dummy_faction">กลุ่มฝ่ายชั่วคราว</option>
+                        </select>
+                      </div>
+                      <Button
+                        size="sm"
+                        className="w-full h-7 text-[10px]"
+                        onClick={() => {
+                          if (!dummyNameInput.trim()) {
+                            toast.error("กรุณากรอกชื่อ");
+                            return;
+                          }
+                          onAddDummy(item.id, dummyNameInput, dummyTypeInput);
+                          setDummyPopoverOpen(false);
+                          setDummyNameInput("");
+                          toast.success("เพิ่ม Dummy สำเร็จ");
+                        }}
+                      >
+                        เพิ่มเข้าการ์ด
+                      </Button>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              )}
             </div>
           )}
           {isContainer && isOver && (!item.children || item.children.length === 0) && (

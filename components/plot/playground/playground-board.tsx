@@ -39,6 +39,7 @@ interface PlaygroundBoardProps {
     locations: any[];
     ideas: any[];
     threads?: ThreadWithBeats[];
+    factions?: any[];
 }
 
 // Red String Connection (ด้ายแดงแบบนักสืบ)
@@ -435,6 +436,7 @@ export function PlaygroundBoard({
     locations,
     ideas,
     threads = [],
+    factions = [],
 }: PlaygroundBoardProps) {
     const [items, setItems] = useState<any[]>(initialItems.filter((i: any) => i.type !== 'group'));
     const [groups, setGroups] = useState<CanvasGroup[]>(
@@ -1013,6 +1015,25 @@ export function PlaygroundBoard({
         }));
     };
 
+    const handleAddDummy = useCallback((ideaId: string, name: string, type: 'dummy_character' | 'dummy_faction') => {
+        setItems(prev => prev.map(item => {
+            if (item.id === ideaId) {
+                const newDummy = {
+                    id: crypto.randomUUID(),
+                    type,
+                    referenceId: null,
+                    title: name.trim(),
+                    content: "",
+                };
+                return {
+                    ...item,
+                    children: [...(item.children || []), newDummy]
+                };
+            }
+            return item;
+        }));
+    }, []);
+
     // Callback to receive canvas ref from child component
     const handleCanvasRefChange = useCallback((element: HTMLDivElement | null) => {
         canvasRef.current = element;
@@ -1316,6 +1337,7 @@ export function PlaygroundBoard({
                         characters={characters}
                         locations={locations}
                         ideas={ideas}
+                        factions={factions}
                     />
                 </div>
 
@@ -1642,6 +1664,7 @@ export function PlaygroundBoard({
                                         };
                                     }) : undefined}
                                 onRemoveAncestor={item.type === 'idea' ? handleRemoveAncestor : undefined}
+                                onAddDummy={handleAddDummy}
                             />
                         ))}
                     </DroppableCanvas>

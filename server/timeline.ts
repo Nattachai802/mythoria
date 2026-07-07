@@ -12,6 +12,9 @@ export async function getTimeLineEvents(novelId: string) {
         const events = await db.query.timelineEvents.findMany({
             where: (eq(timelineEvents.novelId, novelId)),
             orderBy: [asc(timelineEvents.orderIndex)],
+            with: {
+                elementDetails: true
+            }
         })
         return { success: true, events }
     } catch (err) {
@@ -113,6 +116,9 @@ export async function getTimelineEventById(id: string) {
     try {
         const event = await db.query.timelineEvents.findFirst({
             where: eq(timelineEvents.id, id),
+            with: {
+                elementDetails: true
+            }
         });
 
         return { success: true, event };
@@ -137,4 +143,4 @@ export async function updateTimelineCanvas(id: string, canvasData: any) {
         console.error("Error updating canvas:", error);
         return { success: false, error: "Failed to update canvas" };
     }
-}
+}

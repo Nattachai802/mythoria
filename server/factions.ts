@@ -1,9 +1,11 @@
 'use server';
 
 import { db } from "@/db/drizzle";
-import { factions, characterFactions, factionRelationships, characters, Faction } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { factions, characterFactions, factionRelationships, characters, factionStatusPresets, Faction, FactionStatusPreset } from "@/db/schema";
+import { eq, and, or, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
 import { addReference, removeReferenceEdge } from "./references"; // Context Fabric dual-write (P4)
 
 // --- Factions CRUD ---
@@ -298,5 +300,103 @@ export async function deleteFactionRelationship(relId: string, novelId: string) 
     } catch (error) {
         console.error("Error deleting faction relationship:", error);
         return { success: false, error: "Failed to delete faction relationship" };
+    }
+}
+
+// --- Faction Status Presets ---
+
+/** ดึง presets ทั้ง global (novelId IS NULL) + novel-specific รวมกัน เรียงตาม orderIndex */
+export async function getFactionStatusPresets(novelId: string) {
+    try {
+        const session = await auth.api.getSession({ headers: await headers() });
+        if (!session?.user?.id) return { success: false, error: "Unauthorized" };
+
+        const rows = await db
+            .select()
+            .from(factionStatusPresets)
+            .where(
+                and(
+                    eq(factionStatusPresets.userId, session.user.id),
+                    or(
+                        isNull(factionStatusPresets.novelId),
+                        eq(factionStatusPresets.novelId, novelId),
+                    ),
+                ),
+            )
+            .orderBy(factionStatusPresets.orderIndex);
+
+        return { success: true, data: rows };
+    } catch (error) {
+        console.error("Error fetching faction status presets:", error);
+        return { success: false, error: "Failed to fetch presets" };
+    }
+}
+
+/** สร้าง preset ใหม่ — novelId=null → global, มีค่า → novel-specific */
+export async function createFactionStatusPreset(data: {
+    key: string;
+    label: string;
+    color: string;
+    novelId: string | null; // null = global
+    orderIndex?: number;
+}) {
+    try {
+        const session = await auth.api.getSession({ headers: await headers() });
+        if (!session?.user?.id) return { success: false, error: "Unauthorized" };
+
+        const [row] = await db
+            .insert(factionStatusPresets)
+            .values({
+                key: data.key.trim().toLowerCase().replace(/\s+/g, "_"),
+                label: data.label.trim(),
+                color: data.color,
+                novelId: data.novelId,
+                userId: session.user.id,
+                orderIndex: data.orderIndex ?? 99,
+            })
+            .returning();
+
+        if (data.novelId) revalidatePath(`/dashboard/project/${data.novelId}/factions`);
+        return { success: true, data: row };
+    } catch (error) {
+        console.error("Error creating faction status preset:", error);
+        return { success: false, error: "Failed to create preset" };
+    }
+}
+
+/** แก้ไข preset */
+export async function updateFactionStatusPreset(
+    presetId: string,
+    data: Partial<Pick<FactionStatusPreset, "key" | "label" | "color" | "orderIndex">>,
+    novelId?: string,
+) {
+    try {
+        const [row] = await db
+            .update(factionStatusPresets)
+            .set({ ...data, updatedAt: new Date() })
+            .where(eq(factionStatusPresets.id, presetId))
+            .returning();
+
+        if (novelId) revalidatePath(`/dashboard/project/${novelId}/factions`);
+        return { success: true, data: row };
+    } catch (error) {
+        console.error("Error updating faction status preset:", error);
+        return { success: false, error: "Failed to update preset" };
+    }
+}
+
+/** ลบ preset */
+export async function deleteFactionStatusPreset(presetId: string, novelId?: string) {
+    try {
+        const [deleted] = await db
+            .delete(factionStatusPresets)
+            .where(eq(factionStatusPresets.id, presetId))
+            .returning();
+
+        if (novelId) revalidatePath(`/dashboard/project/${novelId}/factions`);
+        return { success: true, data: deleted };
+    } catch (error) {
+        console.error("Error deleting faction status preset:", error);
+        return { success: false, error: "Failed to delete preset" };
     }
 }

@@ -23,7 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { User, MapPin, Loader2, CheckCircle2, XCircle, Clock, HelpCircle } from "lucide-react";
+import { User, MapPin, Loader2, CheckCircle2, XCircle, Clock, HelpCircle, Shield } from "lucide-react";
 import { upsertSceneElementDetail } from "@/server/scene-element-details";
 import { toast } from "sonner";
 import { SceneElementDetails } from "@/db/schema";
@@ -41,7 +41,7 @@ type DetailFormData = z.infer<typeof detailSchema>;
 interface SceneElementDetailDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
-    elementType: "character" | "location";
+    elementType: "character" | "location" | "faction" | "dummy_character" | "dummy_faction";
     elementId: string;
     elementName: string;
     sceneId: string;
@@ -123,8 +123,12 @@ export function SceneElementDetailDialog({
         setIsSubmitting(false);
     };
 
-    const TypeIcon = elementType === "character" ? User : MapPin;
-    const typeColor = elementType === "character" ? "text-blue-500" : "text-green-500";
+    const TypeIcon = (elementType === "character" || elementType === "dummy_character") ? User 
+                   : (elementType === "faction" || elementType === "dummy_faction") ? Shield 
+                   : MapPin;
+    const typeColor = (elementType === "character" || elementType === "dummy_character") ? "text-blue-500"
+                    : (elementType === "faction" || elementType === "dummy_faction") ? "text-emerald-500"
+                    : "text-green-500";
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -146,8 +150,8 @@ export function SceneElementDetailDialog({
                                     <FormLabel>ทำอะไร (Action)</FormLabel>
                                     <FormControl>
                                         <Input
-                                            placeholder={elementType === "character"
-                                                ? "เช่น สู้กับมอนสเตอร์, ค้นหาสมบัติ"
+                                            placeholder={(elementType === "character" || elementType === "dummy_character" || elementType === "faction" || elementType === "dummy_faction")
+                                                ? "เช่น สู้กับมอนสเตอร์, ค้นหาสมบัติ, เจรจา"
                                                 : "เช่น สถานที่เกิดเหตุ, จุดพบปะ"
                                             }
                                             {...field}
@@ -166,8 +170,8 @@ export function SceneElementDetailDialog({
                                     <FormLabel>อย่างไร (How)</FormLabel>
                                     <FormControl>
                                         <Input
-                                            placeholder={elementType === "character"
-                                                ? "เช่น ใช้ดาบวิเศษ, ร่ายเวทมนตร์"
+                                            placeholder={(elementType === "character" || elementType === "dummy_character" || elementType === "faction" || elementType === "dummy_faction")
+                                                ? "เช่น ใช้ดาบวิเศษ, เจรจาลับ, ทรยศ"
                                                 : "เช่น มีหมอกหนา, ตอนกลางคืน"
                                             }
                                             {...field}
@@ -186,8 +190,8 @@ export function SceneElementDetailDialog({
                                     <FormLabel>เป้าหมาย/แรงจูงใจ (Goal)</FormLabel>
                                     <FormControl>
                                         <Input
-                                            placeholder={elementType === "character"
-                                                ? "เช่น เพื่อปกป้องหมู่บ้าน, ต้องการล้างแค้น"
+                                            placeholder={(elementType === "character" || elementType === "dummy_character" || elementType === "faction" || elementType === "dummy_faction")
+                                                ? "เช่น เพื่อปกป้องหมู่บ้าน, แย่งชิงพื้นที่, สอดแนม"
                                                 : "เช่น จุดหมายปลายทาง, สถานที่ซ่อนตัว"
                                             }
                                             {...field}

@@ -433,6 +433,34 @@ export const factionRelationships = pgTable("faction_relationships", {
   targetIdx: index("faction_rel_target_idx").on(table.targetFactionId),
 }));
 
+// Faction Status Presets — user-defined statuses (global หรือ novel-specific)
+export const factionStatusPresets = pgTable("faction_status_presets", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  key: text("key").notNull(),           // slug ใช้เก็บใน factions.status เช่น "active", "ลี้ภัย"
+  label: text("label").notNull(),       // ป้าย Thai ที่แสดงใน UI
+  color: text("color").notNull().default("#64748b"), // hex สีจุด
+
+  // novelId = NULL  → global preset (ใช้ได้ทุกนิยายของ user)
+  // novelId = <id>  → เฉพาะนิยายนั้น
+  novelId: text("novel_id").references(() => novels.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+
+  orderIndex: integer("order_index").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+}, (table) => ({
+  userIdIdx: index("faction_status_presets_user_id_idx").on(table.userId),
+  novelIdIdx: index("faction_status_presets_novel_id_idx").on(table.novelId),
+}));
+
+export type FactionStatusPreset = typeof factionStatusPresets.$inferSelect;
+export type NewFactionStatusPreset = typeof factionStatusPresets.$inferInsert;
+
 export const characterFactions = pgTable("character_factions", {
   id: text("id").primaryKey().default(sql`gen_random_uuid()`),
   factionId: text("faction_id")
@@ -2021,4 +2049,6 @@ export const schema = {
   // Context Fabric (L1)
   references,
   referencesRelations,
+  // Faction Status Presets
+  factionStatusPresets,
 };

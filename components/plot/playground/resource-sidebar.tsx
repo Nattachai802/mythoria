@@ -3,7 +3,7 @@
 import { useDraggable } from "@dnd-kit/core";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
-import { User, MapPin, Lightbulb, Search, Filter, X } from "lucide-react";
+import { User, MapPin, Lightbulb, Search, Filter, X, Shield } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
@@ -14,21 +14,23 @@ interface ResourceSidebarProps {
   characters: any[];
   locations: any[];
   ideas: any[];
+  factions?: any[];
 }
 
 export function ResourceSidebar({
   characters,
   locations,
   ideas,
+  factions = [],
 }: ResourceSidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
 
   // Filter Logic
-  const filterItems = (items: any[], type: 'character' | 'location' | 'idea') => {
+  const filterItems = (items: any[], type: 'character' | 'location' | 'idea' | 'faction') => {
     return items.filter(item => {
       // 1. Text Search
-      const resourceName = type === 'character' || type === 'location' ? item.name : item.title;
+      const resourceName = type === 'character' || type === 'location' || type === 'faction' ? item.name : item.title;
       const matchesSearch = resourceName?.toLowerCase().includes(searchQuery.toLowerCase()) || false;
 
       // 2. Role Filter (Only for characters)
@@ -49,6 +51,7 @@ export function ResourceSidebar({
   const filteredCharacters = filterItems(characters, 'character');
   const filteredLocations = filterItems(locations, 'location');
   const filteredIdeas = filterItems(ideas, 'idea');
+  const filteredFactions = filterItems(factions, 'faction');
 
   // Role filters for characters
   const roles = [
@@ -63,8 +66,9 @@ export function ResourceSidebar({
       <Tabs defaultValue="characters" className="flex-1 flex flex-col overflow-hidden">
         <div className="px-2 pt-2 pb-0 space-y-2">
           {/* Tabs */}
-          <TabsList className="w-full grid grid-cols-3 h-9">
+          <TabsList className="w-full grid grid-cols-4 h-9">
             <TabsTrigger value="characters" title="Characters"><User className="w-4 h-4" /></TabsTrigger>
+            <TabsTrigger value="factions" title="Factions"><Shield className="w-4 h-4" /></TabsTrigger>
             <TabsTrigger value="locations" title="Locations"><MapPin className="w-4 h-4" /></TabsTrigger>
             <TabsTrigger value="ideas" title="Ideas"><Lightbulb className="w-4 h-4" /></TabsTrigger>
           </TabsList>
@@ -87,19 +91,6 @@ export function ResourceSidebar({
               </button>
             )}
           </div>
-
-          {/* Character Filters (conditionally shown or always shown but functional only on chars tab? 
-              Lets simplify effectively: show filters if active tab is characters OR just show them always but they only affect characters) 
-             Let's show them conditionally based on tab. Wait, Tabs content is separated. 
-             If we put filters outside TransContent, they show for all tabs. 
-             Ideally filter pills are most useful for characters. */}
-
-          {/* We can inspect the active tab via state if we wanted, but for now let's put the filter pills INSIDE the characters tab content or just make them generic. 
-              Actually, let's put them below search, only active when filtering characters.
-              But since Shadcn Tabs don't expose active state easily without being controlled, 
-              Let's just show them. If user filters 'Protagonist' while on Locations, it just does nothing or we assume user knows.
-              BETTER: Put Filter bar inside TabsContent for Characters.
-           */}
         </div>
 
         <TabsContent value="characters" className="flex-1 p-0 m-0 flex flex-col">
@@ -141,6 +132,26 @@ export function ResourceSidebar({
                     type="character"
                     title={char.name}
                     data={char}
+                  />
+                ))
+              )}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+        <TabsContent value="factions" className="flex-1 p-0 m-0 overflow-hidden">
+          <ScrollArea className="h-full px-2 py-2">
+            <div className="space-y-1.5">
+              {filteredFactions.length === 0 ? (
+                <div className="text-center py-4 text-xs text-muted-foreground">No factions found</div>
+              ) : (
+                filteredFactions.map(faction => (
+                  <DraggableResource
+                    key={faction.id}
+                    id={faction.id}
+                    type="faction"
+                    title={faction.name}
+                    data={faction}
                   />
                 ))
               )}
@@ -236,6 +247,13 @@ function DraggableResource({ id, type, title, data }: any) {
         bg: ''
       };
     }
+    if (type === 'faction') {
+      return {
+        border: 'border-l-emerald-500 hover:border-l-emerald-600',
+        icon: 'text-emerald-500',
+        bg: 'bg-emerald-50/20'
+      };
+    }
     // idea
     return {
       border: 'border-l-yellow-500 hover:border-l-yellow-600',
@@ -274,6 +292,7 @@ function DraggableResource({ id, type, title, data }: any) {
     >
       <div className={`shrink-0 ${colors.icon}`}>
         {type === "character" && <User className="w-3.5 h-3.5" />}
+        {type === "faction" && <Shield className="w-3.5 h-3.5" />}
         {type === "location" && <MapPin className="w-3.5 h-3.5" />}
         {type === "idea" && <Lightbulb className="w-3.5 h-3.5" />}
       </div>

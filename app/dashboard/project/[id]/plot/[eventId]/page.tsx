@@ -5,6 +5,7 @@ import { getIdeasByNovelId } from "@/server/idea";
 import { getChapters } from "@/server/chapter";
 import { getNovelById } from "@/server/novel";
 import { getThreadsByNovelId } from "@/server/plot-threads";
+import { getFactionsByNovelId } from "@/server/factions";
 import { PlaygroundBoard } from "@/components/plot/playground/playground-board";
 import { SceneNavigator } from "@/components/plot/playground/scene-navigator";
 import { SceneDramaticPanel } from "@/components/plot/playground/scene-dramatic-panel";
@@ -24,7 +25,7 @@ export default async function PlotPlaygroundPage({
   const { id: novelId, eventId } = await params;
 
   // Fetch all necessary data in parallel
-  const [eventRes, charactersRes, locationsRes, ideasRes, eventsRes, chaptersRes, novelRes, threadsRes] = await Promise.all([
+  const [eventRes, charactersRes, locationsRes, ideasRes, eventsRes, chaptersRes, novelRes, threadsRes, factionsRes] = await Promise.all([
     getTimelineEventById(eventId),
     getCharactersByNovelId(novelId),
     getLocationsByNovelId(novelId),
@@ -33,6 +34,7 @@ export default async function PlotPlaygroundPage({
     getChapters(novelId),
     getNovelById(novelId),
     getThreadsByNovelId(novelId),
+    getFactionsByNovelId(novelId),
   ]);
 
   if (!eventRes.success || !eventRes.event) {
@@ -74,6 +76,7 @@ export default async function PlotPlaygroundPage({
           locations={locationsRes.data || []}
           ideas={ideasRes.data || []}
           threads={threadsRes.data || []}
+          factions={factionsRes.data || []}
         />
       </div>
     </div>

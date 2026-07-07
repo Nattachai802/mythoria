@@ -1,10 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { Loader2, Sparkles, Check, ChevronDown, ChevronRight, Upload } from "lucide-react"
+import { Loader2, Sparkles, Check, ChevronDown, ChevronRight, Upload, FileText } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { extractBible, applyBibleProposals } from "@/server/bible-import"
@@ -18,6 +18,37 @@ export function BibleImportView({ novelId }: { novelId: string }) {
     const [proposals, setProposals] = useState<Proposal[] | null>(null)
     const [selected, setSelected] = useState<Set<number>>(new Set())
     const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+    const [isDragging, setIsDragging] = useState(false)
+    const [fileName, setFileName] = useState<string | null>(null)
+    const fileInputRef = useRef<HTMLInputElement>(null)
+
+    const readFile = useCallback((file: File) => {
+        if (!file.name.match(/\.(md|txt)$/i)) {
+            toast.error("รองรับเฉพาะไฟล์ .md และ .txt")
+            return
+        }
+        const reader = new FileReader()
+        reader.onload = (e) => {
+            const text = e.target?.result as string
+            setMarkdown(text)
+            setFileName(file.name)
+            toast.success(`โหลด "${file.name}" สำเร็จ`)
+        }
+        reader.readAsText(file, "utf-8")
+    }, [])
+
+    const handleDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault()
+        setIsDragging(false)
+        const file = e.dataTransfer.files[0]
+        if (file) readFile(file)
+    }, [readFile])
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (file) readFile(file)
+        e.target.value = ""
+    }
 
     const handleExtract = async () => {
         if (!markdown.trim()) { toast.error("วางเอกสาร Story Bible ก่อน"); return }
@@ -72,11 +103,52 @@ export function BibleImportView({ novelId }: { novelId: string }) {
         <div className="space-y-4">
             {!proposals && (
                 <>
+                    {/* Drop Zone */}
+                    <div
+                        onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
+                        onDragLeave={() => setIsDragging(false)}
+                        onDrop={handleDrop}
+                        onClick={() => fileInputRef.current?.click()}
+                        className={cn(
+                            "relative flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-6 py-8 cursor-pointer transition-colors",
+                            isDragging
+                                ? "border-primary bg-primary/5"
+                                : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30"
+                        )}
+                    >
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept=".md,.txt"
+                            className="hidden"
+                            onChange={handleFileChange}
+                        />
+                        <Upload className={cn("h-8 w-8", isDragging ? "text-primary" : "text-muted-foreground")} />
+                        <div className="text-center">
+                            <p className="text-sm font-medium">
+                                {isDragging ? "วางไฟล์ที่นี่" : "ลากไฟล์มาวาง หรือคลิกเพื่อเลือก"}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-0.5">รองรับ .md และ .txt</p>
+                        </div>
+                        {fileName && (
+                            <div className="flex items-center gap-1.5 text-xs text-primary font-medium">
+                                <FileText className="h-3.5 w-3.5" />
+                                {fileName}
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="relative flex items-center gap-3">
+                        <div className="flex-1 border-t" />
+                        <span className="text-xs text-muted-foreground">หรือวางข้อความโดยตรง</span>
+                        <div className="flex-1 border-t" />
+                    </div>
+
                     <Textarea
                         value={markdown}
-                        onChange={e => setMarkdown(e.target.value)}
+                        onChange={e => { setMarkdown(e.target.value); setFileName(null) }}
                         placeholder="วางเอกสาร Story Bible (markdown) ที่นี่… แบ่งหัวข้อด้วย ## — AI จะสกัด ตัวละคร ตระกูล ผี ของ พลัง ปม ออกมาให้ review ก่อนสร้าง"
-                        className="min-h-[280px] font-mono text-xs"
+                        className="min-h-[180px] font-mono text-xs"
                     />
                     <div className="flex items-center justify-between">
                         <p className="text-xs text-muted-foreground">

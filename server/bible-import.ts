@@ -106,8 +106,16 @@ function toProposal(type: EntityType, fields: Record<string, unknown>, rawEntrie
     };
 }
 
-/** เรียก LLM สกัด 1 section */
-async function extractSection(text: string): Promise<RawEntity[]> {
+/** parse เวลาหน่วง (ms) จาก error message ของ Groq: "Please try again in X.Xs" */
+function parseRetryAfterMs(msg: string): number {
+    const m = msg.match(/try again in ([\d.]+)s/);
+    return m ? Math.ceil(parseFloat(m[1]) * 1000) + 500 : 5000; // +500ms buffer
+}
+
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+/** เรียก LLM สกัด 1 section — retry สูงสุด 3 ครั้งเมื่อ rate limit */
+async function extractSection(text: string, attempt = 1): Promise<RawEntity[]> {
     const res = await fetch(GROQ_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_API_KEY}` },
@@ -122,6 +130,19 @@ async function extractSection(text: string): Promise<RawEntity[]> {
             max_tokens: 3000,
         }),
     });
+
+    if (res.status === 429) {
+        const errText = await res.text();
+        if (attempt >= 3) {
+            console.error("[bible-import] rate limit — หมด retry:", errText.slice(0, 120));
+            return [];
+        }
+        const waitMs = parseRetryAfterMs(errText);
+        console.warn(`[bible-import] rate limit — รอ ${waitMs}ms แล้ว retry (attempt ${attempt}/3)`);
+        await sleep(waitMs);
+        return extractSection(text, attempt + 1);
+    }
+
     if (!res.ok) {
         console.error("[bible-import] groq error:", await res.text());
         return [];
@@ -157,8 +178,15 @@ export async function extractBible(markdown: string): Promise<ExtractResult> {
     if (!markdown.trim()) return { success: false, error: "เอกสารว่างเปล่า" };
 
     const sections = splitSections(markdown);
-    const results = await Promise.all(sections.map((s) => extractSection(s)));
-    const raw = results.flat();
+
+    // Sequential — ส่งทีละ section ไม่ parallel เพื่อไม่กิน TPM limit
+    const raw: RawEntity[] = [];
+    for (let i = 0; i < sections.length; i++) {
+        const entities = await extractSection(sections[i]);
+        raw.push(...entities);
+        // หน่วงเล็กน้อยระหว่าง section (ยกเว้น section สุดท้าย)
+        if (i < sections.length - 1) await sleep(1200);
+    }
 
     // dedupe ตาม type + ชื่อ (case-insensitive) — เก็บอันแรกที่มี field มากสุด
     const byKey = new Map<string, Proposal>();

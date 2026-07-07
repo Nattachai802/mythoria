@@ -14,27 +14,28 @@ import { Textarea } from "@/components/ui/textarea";
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Shield, X, Trash2, Users, Crown, Link2, LayoutGrid, ListTree, ChevronRight } from "lucide-react";
+import { Plus, Shield, X, Trash2, Users, Crown, Link2, LayoutGrid, ListTree, ChevronRight, Settings2 } from "lucide-react";
 import {
     createFaction, updateFaction, deleteFaction,
     createFactionRelationship, deleteFactionRelationship,
+    createFactionStatusPreset, updateFactionStatusPreset, deleteFactionStatusPreset,
 } from "@/server/factions";
+import type { FactionStatusPreset } from "@/db/schema";
 
-// ── vocab (Thai labels) — สีดึงจาก steel/forge + semantic เดิมของแอป (ไม่มี hex ดิบ) ──
-const STATUS_META: Record<string, { label: string; dot: string }> = {
-    active: { label: "ยังปฏิบัติการ", dot: "bg-emerald-500" },
-    allied_gov: { label: "ร่วมกับรัฐ", dot: "bg-[var(--forge-amber)]" },
-    defected: { label: "ย้ายฝั่ง", dot: "bg-red-500" },
-    neutral: { label: "ไม่สังกัดฝ่าย", dot: "bg-steel-400" },
-    disbanded: { label: "สาบสูญ/ยุบ", dot: "bg-steel-600" },
-};
-const STATUS_ORDER = ["active", "allied_gov", "defected", "neutral", "disbanded"];
+// ── fallback presets (ใช้เมื่อ user ยังไม่ได้ตั้งค่าเลย)
+const DEFAULT_PRESETS: FactionStatusPreset[] = [
+    { id: "_active",     key: "active",     label: "ยังปฏิบัติการ", color: "#10b981", novelId: null, userId: "", orderIndex: 0, createdAt: new Date(), updatedAt: new Date() },
+    { id: "_allied_gov", key: "allied_gov", label: "ร่วมกับรัฐ",    color: "#f59e0b", novelId: null, userId: "", orderIndex: 1, createdAt: new Date(), updatedAt: new Date() },
+    { id: "_defected",  key: "defected",  label: "ย้ายฝั่ง",      color: "#ef4444", novelId: null, userId: "", orderIndex: 2, createdAt: new Date(), updatedAt: new Date() },
+    { id: "_neutral",   key: "neutral",   label: "ไม่สังกัดฝ่าย", color: "#94a3b8", novelId: null, userId: "", orderIndex: 3, createdAt: new Date(), updatedAt: new Date() },
+    { id: "_disbanded", key: "disbanded", label: "สาบสูญ/ยุบ",    color: "#475569", novelId: null, userId: "", orderIndex: 4, createdAt: new Date(), updatedAt: new Date() },
+];
 
 const ALIGNMENT_META: Record<string, { label: string; cls: string }> = {
-    good: { label: "ฝ่ายดี", cls: "text-emerald-500 border-emerald-500/40" },
-    neutral: { label: "เป็นกลาง", cls: "text-steel-400 border-steel-400/40" },
-    gray: { label: "สีเทา", cls: "text-[var(--forge-amber)] border-[var(--forge-amber)]/40" },
-    evil: { label: "ฝ่ายร้าย", cls: "text-red-500 border-red-500/40" },
+    good:    { label: "ฝ่ายดี",    cls: "text-emerald-500 border-emerald-500/40" },
+    neutral: { label: "เป็นกลาง",  cls: "text-steel-400 border-steel-400/40" },
+    gray:    { label: "สีเทา",     cls: "text-[var(--forge-amber)] border-[var(--forge-amber)]/40" },
+    evil:    { label: "ฝ่ายร้าย",  cls: "text-red-500 border-red-500/40" },
 };
 
 const REL_TYPES: Record<string, string> = {
@@ -51,6 +52,7 @@ interface Props {
     initialFactions: Faction[];
     initialRelationships: FactionRel[];
     characters: Character[];
+    initialStatusPresets: FactionStatusPreset[];
 }
 
 const EMPTY_FORM = {
@@ -59,7 +61,7 @@ const EMPTY_FORM = {
     leaderId: "", parentFactionId: "",
 };
 
-export function FactionsContent({ novelId, initialFactions, initialRelationships, characters }: Props) {
+export function FactionsContent({ novelId, initialFactions, initialRelationships, characters, initialStatusPresets }: Props) {
     const [factions, setFactions] = useState<Faction[]>(initialFactions);
     const [rels, setRels] = useState<FactionRel[]>(initialRelationships);
     const [view, setView] = useState<"status" | "tree">("status");
@@ -69,6 +71,15 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
     const [saving, setSaving] = useState(false);
     const [dragId, setDragId] = useState<string | null>(null);
     const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+    // Status presets
+    const [statusPresets, setStatusPresets] = useState<FactionStatusPreset[]>(
+        initialStatusPresets.length > 0 ? initialStatusPresets : DEFAULT_PRESETS
+    );
+    const [showPresetManager, setShowPresetManager] = useState(false);
+    const [presetForm, setPresetForm] = useState({ label: "", color: "#64748b", scope: "novel" as "global" | "novel" });
+    const [savingPreset, setSavingPreset] = useState(false);
+    const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
 
     // faction-relationship add form
     const [relTarget, setRelTarget] = useState("");
@@ -86,14 +97,14 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
 
     const byStatus = useMemo(() => {
         const m: Record<string, Faction[]> = {};
-        for (const s of STATUS_ORDER) m[s] = [];
+        for (const s of statusPresets) m[s.key] = [];
         const other: Faction[] = [];
         for (const f of factions) {
-            const key = f.status && m[f.status] ? f.status : null;
-            (key ? m[key] : other).push(f);
+            const preset = statusPresets.find(p => p.key === f.status);
+            (preset ? m[preset.key] : other).push(f);
         }
         return { m, other };
-    }, [factions]);
+    }, [factions, statusPresets]);
 
     const childrenOf = (pid: string | null) =>
         factions.filter((f) => (f.parentFactionId ?? null) === pid);
@@ -180,7 +191,8 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
         if (!prev || prev.status === status) return;
         patchLocal(id, { status });
         const res = await updateFaction(id, { status });
-        if (res.success) toast.success(`ย้ายไป "${STATUS_META[status]?.label ?? status}"`);
+        const preset = statusPresets.find(p => p.key === status);
+        if (res.success) toast.success(`ย้ายไป "${preset?.label ?? status}"`);
         else { patchLocal(id, { status: prev.status }); toast.error("ย้ายไม่สำเร็จ"); }
     };
 
@@ -242,6 +254,44 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
     const panelOpen = isCreating || !!selected;
     const dragFaction = dragId ? factions.find((f) => f.id === dragId) : null;
 
+    // ── Preset Manager handlers ──
+    const handleCreatePreset = async () => {
+        if (!presetForm.label.trim()) { toast.error("ใส่ชื่อสถานะก่อน"); return; }
+        setSavingPreset(true);
+        const key = presetForm.label.trim().toLowerCase().replace(/[^a-z0-9ก-๙]/g, "_");
+        const res = await createFactionStatusPreset({
+            key,
+            label: presetForm.label.trim(),
+            color: presetForm.color,
+            novelId: presetForm.scope === "novel" ? novelId : null,
+            orderIndex: statusPresets.length,
+        });
+        setSavingPreset(false);
+        if (res.success && res.data) {
+            setStatusPresets(p => [...p, res.data!]);
+            setPresetForm({ label: "", color: "#64748b", scope: "novel" });
+            toast.success(`เพิ่มสถานะ "${res.data.label}" แล้ว`);
+        } else toast.error(res.error || "เพิ่มไม่สำเร็จ");
+    };
+
+    const handleDeletePreset = async (presetId: string) => {
+        // ไม่ลบ fallback presets (id ขึ้นต้นด้วย _)
+        if (presetId.startsWith("_")) { toast.error("ไม่สามารถลบค่าเริ่มต้นได้"); return; }
+        const res = await deleteFactionStatusPreset(presetId, novelId);
+        if (res.success) {
+            setStatusPresets(p => p.filter(x => x.id !== presetId));
+            toast.success("ลบสถานะแล้ว");
+        } else toast.error("ลบไม่สำเร็จ");
+    };
+
+    const handleUpdatePresetLabel = async (presetId: string, label: string) => {
+        if (presetId.startsWith("_")) return; // fallback ไม่แก้ใน DB
+        const res = await updateFactionStatusPreset(presetId, { label }, novelId);
+        if (res.success && res.data) {
+            setStatusPresets(p => p.map(x => x.id === presetId ? res.data! : x));
+        }
+    };
+
     return (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragEnd={onDragEnd}>
             <div className="h-full flex relative">
@@ -257,11 +307,83 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                                 <ViewBtn active={view === "status"} onClick={() => setView("status")} icon={<LayoutGrid className="h-3 w-3" />} label="สถานะ" />
                                 <ViewBtn active={view === "tree"} onClick={() => setView("tree")} icon={<ListTree className="h-3 w-3" />} label="ลำดับชั้น" />
                             </div>
+                            {/* Preset manager toggle */}
+                            {view === "status" && (
+                                <button
+                                    onClick={() => setShowPresetManager(v => !v)}
+                                    className={cn(
+                                        "inline-flex items-center gap-1 px-2 py-1 chamfered-sm font-technical text-[10px] uppercase tracking-wide transition-colors border border-steel-800",
+                                        showPresetManager ? "bg-[var(--forge-amber)] text-black border-[var(--forge-amber)]" : "text-muted-foreground hover:text-foreground",
+                                    )}
+                                >
+                                    <Settings2 className="h-3 w-3" /> จัดการสถานะ
+                                </button>
+                            )}
                         </div>
                         <Button size="sm" className="h-8 gap-1.5 text-xs chamfered-sm" onClick={openCreate}>
                             <Plus className="h-3.5 w-3.5" /> เพิ่มฝ่าย
                         </Button>
                     </div>
+
+                    {/* Preset Manager Panel */}
+                    {showPresetManager && (
+                        <div className="border-b border-steel-800/60 bg-muted/20 px-6 py-3 space-y-3">
+                            <p className="font-technical text-[10px] uppercase tracking-[0.12em] text-muted-foreground">สถานะที่มีอยู่</p>
+                            <div className="flex flex-wrap gap-2">
+                                {statusPresets.map(p => (
+                                    <div key={p.id} className="group inline-flex items-center gap-1.5 px-2 py-1 chamfered-sm border border-steel-800 bg-card/50">
+                                        <span className="h-2 w-2 rounded-full shrink-0" style={{ background: p.color }} />
+                                        {editingPresetId === p.id ? (
+                                            <input
+                                                autoFocus
+                                                defaultValue={p.label}
+                                                className="text-xs bg-transparent border-b border-steel-600 outline-none w-20"
+                                                onBlur={e => { handleUpdatePresetLabel(p.id, e.target.value); setEditingPresetId(null); }}
+                                                onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                                            />
+                                        ) : (
+                                            <span
+                                                className="text-xs cursor-pointer hover:text-foreground"
+                                                onDoubleClick={() => setEditingPresetId(p.id)}
+                                                title="ดับเบิลคลิกเพื่อเปลี่ยนชื่อ"
+                                            >{p.label}</span>
+                                        )}
+                                        <span className="text-[9px] text-muted-foreground/50">{p.novelId ? "นิยายนี้" : "global"}</span>
+                                        {!p.id.startsWith("_") && (
+                                            <button onClick={() => handleDeletePreset(p.id)} className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-500 transition-opacity">
+                                                <X className="h-3 w-3" />
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                            {/* Add new preset form */}
+                            <div className="flex items-center gap-2">
+                                <input
+                                    type="color" value={presetForm.color}
+                                    onChange={e => setPresetForm(f => ({ ...f, color: e.target.value }))}
+                                    className="h-7 w-7 chamfered-sm border border-steel-800 cursor-pointer bg-transparent"
+                                />
+                                <Input
+                                    value={presetForm.label}
+                                    onChange={e => setPresetForm(f => ({ ...f, label: e.target.value }))}
+                                    placeholder="ชื่อสถานะใหม่…"
+                                    className="h-7 text-xs border-steel-800 w-40"
+                                    onKeyDown={e => e.key === "Enter" && handleCreatePreset()}
+                                />
+                                <Select value={presetForm.scope} onValueChange={(v) => setPresetForm(f => ({ ...f, scope: v as "global" | "novel" }))}>
+                                    <SelectTrigger className="h-7 text-xs border-steel-800 w-32"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="novel">เฉพาะนิยายนี้</SelectItem>
+                                        <SelectItem value="global">ทุกนิยาย (global)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <Button size="sm" variant="outline" className="h-7 text-xs chamfered-sm border-steel-800" onClick={handleCreatePreset} disabled={savingPreset}>
+                                    <Plus className="h-3 w-3 mr-1" /> เพิ่ม
+                                </Button>
+                            </div>
+                        </div>
+                    )}
 
                     {factions.length === 0 ? (
                         <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-3">
@@ -270,12 +392,18 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                         </div>
                     ) : view === "status" ? (
                         <div className="flex-1 flex gap-5 p-6 min-w-max overflow-y-hidden">
-                            {STATUS_ORDER.map((s) => (
-                                <StatusColumn key={s} statusKey={s} meta={STATUS_META[s]} factions={byStatus.m[s]}
-                                    selectedId={selectedId} onSelect={openInspector} nameById={nameById} charName={charName} />
+                            {statusPresets.map((preset) => (
+                                <StatusColumn
+                                    key={preset.key}
+                                    statusKey={preset.key}
+                                    meta={{ label: preset.label, color: preset.color }}
+                                    factions={byStatus.m[preset.key] ?? []}
+                                    selectedId={selectedId} onSelect={openInspector}
+                                    nameById={nameById} charName={charName}
+                                />
                             ))}
                             {byStatus.other.length > 0 && (
-                                <StatusColumn statusKey={null} meta={{ label: "ไม่ระบุสถานะ", dot: "bg-steel-600" }} factions={byStatus.other}
+                                <StatusColumn statusKey={null} meta={{ label: "ไม่ระบุสถานะ", color: "#475569" }} factions={byStatus.other}
                                     selectedId={selectedId} onSelect={openInspector} nameById={nameById} charName={charName} />
                             )}
                         </div>
@@ -328,11 +456,11 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                                     <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
                                         <SelectTrigger className="h-8 text-xs border-steel-800"><SelectValue /></SelectTrigger>
                                         <SelectContent>
-                                            {STATUS_ORDER.map((s) => (
-                                                <SelectItem key={s} value={s}>
+                                            {statusPresets.map((p) => (
+                                                <SelectItem key={p.key} value={p.key}>
                                                     <span className="inline-flex items-center gap-1.5">
-                                                        <span className={cn("h-2 w-2 rounded-full", STATUS_META[s].dot)} />
-                                                        {STATUS_META[s].label}
+                                                        <span className="h-2 w-2 rounded-full" style={{ background: p.color }} />
+                                                        {p.label}
                                                     </span>
                                                 </SelectItem>
                                             ))}
@@ -508,7 +636,7 @@ function StatusColumn({
     statusKey, meta, factions, selectedId, onSelect, nameById, charName,
 }: {
     statusKey: string | null;
-    meta: { label: string; dot: string };
+    meta: { label: string; color: string };
     factions: Faction[];
     selectedId: string | null;
     onSelect: (f: Faction) => void;
@@ -520,7 +648,7 @@ function StatusColumn({
     return (
         <div ref={setNodeRef} className={cn("w-64 shrink-0 flex flex-col h-full chamfered-sm transition-colors", isOver && "bg-[var(--forge-amber)]/5 ring-1 ring-[var(--forge-amber)]/40")}>
             <div className="flex items-center gap-2 mb-3 px-1 pt-1">
-                <span className={cn("h-2 w-2 rounded-full", meta.dot)} />
+                <span className="h-2 w-2 rounded-full shrink-0" style={{ background: meta.color }} />
                 <span className="font-technical text-[10px] uppercase tracking-[0.14em] text-foreground">{meta.label}</span>
                 <span className="text-[10px] text-muted-foreground tabular-nums ml-auto">{factions.length}</span>
             </div>

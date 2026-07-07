@@ -18,7 +18,8 @@ import {
     CheckCircle2,
     Circle,
     TrendingUp,
-    TrendingDown
+    TrendingDown,
+    Shield
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
@@ -101,15 +102,97 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
     const typeConfig = EVENT_TYPES[eventType] || EVENT_TYPES.scene
     const TypeIcon = typeConfig.icon
 
-    // Get related characters (max 3 shown for minimal look)
-    const relatedCharacterIds = (event.relatedCharacterIds as string[]) || []
-    const relatedCharacters = characters.filter(c => relatedCharacterIds.includes(c.id))
-    const displayedCharacters = relatedCharacters.slice(0, 3)
-    const remainingCount = relatedCharacters.length - 3
-
     // Get related location (first one)
     const relatedLocationIds = (event.relatedLocationIds as string[]) || []
     const relatedLocation = locations.find(l => relatedLocationIds.includes(l.id))
+
+    // Handle scene participants from canvas children and their elementDetails (per Idea level)
+    const elementDetails = (event as any).elementDetails || []
+    const canvasItems = (event.canvasData as any[]) || []
+    
+    const uniqueCharsMap = new Map<string, any>()
+    const uniqueFactionsMap = new Map<string, any>()
+
+    canvasItems.forEach((item: any) => {
+        if (item.children && Array.isArray(item.children)) {
+            item.children.forEach((child: any) => {
+                const targetId = child.referenceId || child.id;
+                const detail = elementDetails.find((d: any) => 
+                    d.canvasItemId === item.id && 
+                    d.elementId === targetId &&
+                    d.elementType === child.type
+                );
+                
+                const key = `${child.type}-${targetId}`;
+                
+                if (child.type === 'character' || child.type === 'dummy_character') {
+                    const realChar = child.type === 'character' ? characters.find(c => c.id === targetId) : null;
+                    const existing = uniqueCharsMap.get(key);
+                    const actionText = detail?.action ? `${detail.action}` : '';
+                    
+                    if (existing) {
+                        if (actionText && !existing.actions.includes(actionText)) {
+                            existing.actions.push(actionText);
+                        }
+                    } else {
+                        uniqueCharsMap.set(key, {
+                            id: child.id,
+                            name: child.title || realChar?.name || "ตัวละครชั่วคราว",
+                            image: realChar?.image || null,
+                            isDummy: child.type === 'dummy_character',
+                            actions: actionText ? [actionText] : [],
+                        });
+                    }
+                } else if (child.type === 'faction' || child.type === 'dummy_faction') {
+                    const existing = uniqueFactionsMap.get(key);
+                    const actionText = detail?.action ? `${detail.action}` : '';
+                    
+                    if (existing) {
+                        if (actionText && !existing.actions.includes(actionText)) {
+                            existing.actions.push(actionText);
+                        }
+                    } else {
+                        uniqueFactionsMap.set(key, {
+                            id: child.id,
+                            name: child.title,
+                            isDummy: child.type === 'dummy_faction',
+                            actions: actionText ? [actionText] : [],
+                        });
+                    }
+                }
+            });
+        }
+    });
+
+    const charactersList = Array.from(uniqueCharsMap.values()).map(c => ({
+        ...c,
+        action: c.actions.join(' | ') || null
+    }));
+    const factionsList = Array.from(uniqueFactionsMap.values()).map(f => ({
+        ...f,
+        action: f.actions.join(' | ') || null
+    }));
+
+    let displayedAvatars: any[] = []
+    let remainingAvatarsCount = 0
+    let factionParts: any[] = factionsList
+
+    if (charactersList.length > 0) {
+        displayedAvatars = charactersList.slice(0, 3)
+        remainingAvatarsCount = charactersList.length - 3
+    } else {
+        // Fallback to relatedCharacterIds
+        const relatedCharacterIds = (event.relatedCharacterIds as string[]) || []
+        const relatedCharacters = characters.filter(c => relatedCharacterIds.includes(c.id))
+        displayedAvatars = relatedCharacters.slice(0, 3).map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            image: c.image,
+            isDummy: false,
+            action: null,
+        }))
+        remainingAvatarsCount = relatedCharacters.length - 3
+    }
 
     // Handle completion toggle — state lives in TimelineBoard (optimistic)
     const handleToggleComplete = (e: React.MouseEvent) => {
@@ -218,9 +301,16 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
                         </div>
                     </div>
 
+                    {/* Description */}
+                    {event.description && (
+                        <p className="text-[11px] text-zinc-500 dark:text-muted-foreground line-clamp-2 mb-2 leading-relaxed px-0.5">
+                            {event.description}
+                        </p>
+                    )}
+
                     {/* Thread dots — colored edge marks แบบฟิล์มตัดต่อ */}
                     {threadDots && threadDots.length > 0 && (
-                        <div className="flex items-center gap-1 mb-1.5">
+                        <div className="flex items-center gap-1 mb-2">
                             {threadDots.slice(0, 5).map((dot, i) => (
                                 <TooltipProvider key={i} delayDuration={100}>
                                     <Tooltip>
@@ -243,9 +333,9 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
                     )}
 
                     {/* Metadata Footer */}
-                    <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center justify-between text-[10px] mt-1 pt-1.5 border-t border-zinc-100/10">
                         {/* Left: Type & Location */}
-                        <div className="flex items-center gap-2 text-zinc-600 dark:text-muted-foreground">
+                        <div className="flex items-center gap-1.5 text-zinc-600 dark:text-muted-foreground flex-wrap">
                             {/* Event Type */}
                             <div className={cn("flex items-center gap-1 transition-colors", typeConfig.color)}>
                                 <TypeIcon className="w-3 h-3" />
@@ -262,6 +352,19 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
                                         <MapPin className="w-3 h-3 shrink-0" />
                                         <span className="truncate text-[9px]">
                                             {relatedLocation.name}
+                                        </span>
+                                    </div>
+                                </>
+                            )}
+
+                            {/* Faction Participants */}
+                            {factionParts.length > 0 && (
+                                <>
+                                    <span className="text-zinc-400">·</span>
+                                    <div className="flex items-center gap-1 text-emerald-500">
+                                        <Shield className="w-3 h-3 shrink-0" />
+                                        <span className="text-[9px] uppercase tracking-wide font-medium">
+                                            {factionParts.length} ฝ่าย
                                         </span>
                                     </div>
                                 </>
@@ -287,39 +390,43 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
                         </div>
 
                         {/* Right: Character Avatars */}
-                        {displayedCharacters.length > 0 && (
+                        {displayedAvatars.length > 0 && (
                             <div className="flex -space-x-1.5">
-                                {displayedCharacters.map((char) => (
-                                    <TooltipProvider key={char.id} delayDuration={100}>
+                                {displayedAvatars.map((char, i) => (
+                                    <TooltipProvider key={char.id || i} delayDuration={100}>
                                         <Tooltip>
                                             <TooltipTrigger asChild>
                                                 <Avatar className={cn(
-                                                    "h-5 w-5 border-2 border-[#f5f5f0] ring-1 ring-zinc-300/40",
+                                                    "h-5 w-5 border-2 border-[#f5f5f0] dark:border-zinc-900 ring-1 ring-zinc-300/40",
                                                     "transition-transform duration-200",
-                                                    isHovered && "scale-110"
+                                                    isHovered && "scale-110",
+                                                    char.isDummy && "border-dashed"
                                                 )}>
                                                     {char.image ? (
                                                         <AvatarImage src={char.image} alt={char.name} />
                                                     ) : null}
-                                                    <AvatarFallback className="text-[8px] bg-primary/20 text-primary">
+                                                    <AvatarFallback className={cn("text-[8px]", char.isDummy ? "bg-zinc-800 text-zinc-400" : "bg-primary/20 text-primary")}>
                                                         {char.name.slice(0, 1).toUpperCase()}
                                                     </AvatarFallback>
                                                 </Avatar>
                                             </TooltipTrigger>
-                                            <TooltipContent side="bottom" className="text-xs">
-                                                {char.name}
+                                            <TooltipContent side="bottom" className="text-xs max-w-xs p-2 space-y-1">
+                                                <p className="font-semibold">{char.name} {char.isDummy && "(ชั่วคราว)"}</p>
+                                                {char.action && (
+                                                    <p className="text-[10px] text-zinc-400 leading-normal"><span className="text-[var(--forge-amber)] font-medium">Action:</span> {char.action}</p>
+                                                )}
                                             </TooltipContent>
                                         </Tooltip>
                                     </TooltipProvider>
                                 ))}
-                                {remainingCount > 0 && (
+                                {remainingAvatarsCount > 0 && (
                                     <div className={cn(
-                                        "h-5 w-5 rounded-full bg-zinc-300 border-2 border-[#f5f5f0]",
-                                        "flex items-center justify-center text-[8px] text-zinc-600 font-semibold",
+                                        "h-5 w-5 rounded-full bg-zinc-300 dark:bg-zinc-800 border-2 border-[#f5f5f0] dark:border-zinc-900",
+                                        "flex items-center justify-center text-[8px] text-zinc-600 dark:text-zinc-400 font-semibold",
                                         "transition-transform duration-200",
                                         isHovered && "scale-110"
                                     )}>
-                                        +{remainingCount}
+                                        +{remainingAvatarsCount}
                                     </div>
                                 )}
                             </div>
