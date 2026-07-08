@@ -249,6 +249,7 @@ export function ChapterColumn({
                                                 isDimmed={isFiltering && !!matchedIds && !matchedIds.has(event.id)}
                                                 threadDots={eventThreadsMap?.get(event.id)}
                                                 onToggleComplete={onToggleComplete}
+                                                isFirstScene={isFirst && index === 0}
                                             />
                                             <div className="h-[2px] bg-zinc-300/60 mx-1" />
                                         </div>

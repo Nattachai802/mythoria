@@ -63,7 +63,7 @@ export default async function PlotPlaygroundPage({
             events={eventsRes.events || []}
             chapters={chaptersRes.chapters || []}
           />
-          <SceneDramaticPanel event={eventRes.event} />
+          <SceneDramaticPanel event={eventRes.event} characters={charactersRes.data || []} events={eventsRes.events || []} />
         </div>
       </div>
 

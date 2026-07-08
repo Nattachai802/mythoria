@@ -1015,19 +1015,12 @@ export function PlaygroundBoard({
         }));
     };
 
-    const handleAddDummy = useCallback((ideaId: string, name: string, type: 'dummy_character' | 'dummy_faction') => {
+    const handleAddChild = useCallback((ideaId: string, child: any) => {
         setItems(prev => prev.map(item => {
             if (item.id === ideaId) {
-                const newDummy = {
-                    id: crypto.randomUUID(),
-                    type,
-                    referenceId: null,
-                    title: name.trim(),
-                    content: "",
-                };
                 return {
                     ...item,
-                    children: [...(item.children || []), newDummy]
+                    children: [...(item.children || []), child]
                 };
             }
             return item;
@@ -1664,7 +1657,11 @@ export function PlaygroundBoard({
                                         };
                                     }) : undefined}
                                 onRemoveAncestor={item.type === 'idea' ? handleRemoveAncestor : undefined}
-                                onAddDummy={handleAddDummy}
+                                sceneId={eventId}
+                                characters={characters}
+                                factions={factions}
+                                onAddChild={handleAddChild}
+                                onDetailSaved={handleDetailSaved}
                             />
                         ))}
                     </DroppableCanvas>

@@ -10,6 +10,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { SceneParticipantsPanel } from "./scene-participants-panel";
 
 // For items already on the canvas (moveable)
 export function DraggableCanvasItem({
@@ -27,7 +28,11 @@ export function DraggableCanvasItem({
   onSetAncestor,
   ancestorConnections,
   onRemoveAncestor,
-  onAddDummy,
+  sceneId,
+  characters,
+  factions,
+  onAddChild,
+  onDetailSaved,
 }: {
   item: any;
   onRemove: () => void;
@@ -43,7 +48,11 @@ export function DraggableCanvasItem({
   onSetAncestor?: () => void;
   ancestorConnections?: Array<{ id: string; sourceIdeaId: string; targetIdeaId: string; label?: string | null; targetIdeaTitle?: string | null; targetIdeaContent?: string | null; targetIdeaCategory?: string | null; targetIdeaNotes?: string[] }>;
   onRemoveAncestor?: (connectionId: string) => void;
-  onAddDummy?: (ideaId: string, name: string, type: 'dummy_character' | 'dummy_faction') => void;
+  sceneId?: string;
+  characters?: any[];
+  factions?: any[];
+  onAddChild?: (ideaId: string, child: any) => void;
+  onDetailSaved?: (detail: SceneElementDetails) => void;
 }) {
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
     id: item.id,
@@ -107,7 +116,11 @@ export function DraggableCanvasItem({
         onSetAncestor={onSetAncestor}
         ancestorConnections={ancestorConnections}
         onRemoveAncestor={onRemoveAncestor}
-        onAddDummy={onAddDummy}
+        sceneId={sceneId}
+        characters={characters}
+        factions={factions}
+        onAddChild={onAddChild}
+        onDetailSaved={onDetailSaved}
       />
     </div>
   );
@@ -247,7 +260,11 @@ export function CanvasItem({
   onSetAncestor,
   ancestorConnections,
   onRemoveAncestor,
-  onAddDummy,
+  sceneId,
+  characters,
+  factions,
+  onAddChild,
+  onDetailSaved,
 }: {
   item: any;
   onRemove?: () => void;
@@ -265,7 +282,11 @@ export function CanvasItem({
   onSetAncestor?: () => void;
   ancestorConnections?: Array<{ id: string; sourceIdeaId: string; targetIdeaId: string; label?: string | null; targetIdeaTitle?: string | null; targetIdeaContent?: string | null; targetIdeaCategory?: string | null; targetIdeaNotes?: string[] }>;
   onRemoveAncestor?: (connectionId: string) => void;
-  onAddDummy?: (ideaId: string, name: string, type: 'dummy_character' | 'dummy_faction') => void;
+  sceneId?: string;
+  characters?: any[];
+  factions?: any[];
+  onAddChild?: (ideaId: string, child: any) => void;
+  onDetailSaved?: (detail: SceneElementDetails) => void;
 }) {
   // If use Sticky Note
   if (item.type === 'sticky-note') {
@@ -274,9 +295,6 @@ export function CanvasItem({
   }
 
   const [isExpanded, setIsExpanded] = useState(false);
-  const [dummyNameInput, setDummyNameInput] = useState("");
-  const [dummyTypeInput, setDummyTypeInput] = useState<'dummy_character' | 'dummy_faction'>("dummy_character");
-  const [dummyPopoverOpen, setDummyPopoverOpen] = useState(false);
 
   const Icon = () => {
     if (item.type === 'character') return <User className="w-4 h-4" />;
@@ -964,70 +982,20 @@ Sticky Notes: ${stickyNotes}`;
                 </div>
               )}
 
-              {/* Add Dummy Trigger */}
-              {onAddDummy && (
+              {/* Scene Participants Panel (ผู้เข้าร่วมระดับไอเดีย) */}
+              {onAddChild && sceneId && novelId && onDetailSaved && (
                 <div className="pt-1.5 border-t border-dashed flex justify-end">
-                  <Popover open={dummyPopoverOpen} onOpenChange={setDummyPopoverOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        className="h-5 px-1 text-[8px] font-technical uppercase text-muted-foreground hover:text-primary gap-0.5 shrink-0"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDummyNameInput("");
-                        }}
-                        onPointerDown={(e) => e.stopPropagation()}
-                      >
-                        <Plus className="w-2.5 h-2.5" /> เพิ่ม Dummy
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent
-                      side="bottom"
-                      align="end"
-                      className="w-48 p-2.5 space-y-2 text-xs"
-                      onClick={(e) => e.stopPropagation()}
-                      onPointerDown={(e) => e.stopPropagation()}
-                    >
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-technical text-muted-foreground uppercase">ชื่อตัวละคร/ฝ่าย</label>
-                        <input
-                          type="text"
-                          value={dummyNameInput}
-                          onChange={(e) => setDummyNameInput(e.target.value)}
-                          placeholder="เช่น ทหารลับ, กิลด์นักฆ่า"
-                          className="w-full h-7 px-1.5 text-xs bg-background border rounded focus:outline-none focus:ring-1 focus:ring-primary text-foreground"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[9px] font-technical text-muted-foreground uppercase">ประเภท</label>
-                        <select
-                          value={dummyTypeInput}
-                          onChange={(e) => setDummyTypeInput(e.target.value as any)}
-                          className="w-full h-7 px-1 text-xs bg-background border rounded text-foreground"
-                        >
-                          <option value="dummy_character">ตัวละครชั่วคราว</option>
-                          <option value="dummy_faction">กลุ่มฝ่ายชั่วคราว</option>
-                        </select>
-                      </div>
-                      <Button
-                        size="sm"
-                        className="w-full h-7 text-[10px]"
-                        onClick={() => {
-                          if (!dummyNameInput.trim()) {
-                            toast.error("กรุณากรอกชื่อ");
-                            return;
-                          }
-                          onAddDummy(item.id, dummyNameInput, dummyTypeInput);
-                          setDummyPopoverOpen(false);
-                          setDummyNameInput("");
-                          toast.success("เพิ่ม Dummy สำเร็จ");
-                        }}
-                      >
-                        เพิ่มเข้าการ์ด
-                      </Button>
-                    </PopoverContent>
-                  </Popover>
+                  <SceneParticipantsPanel
+                    ideaItem={item}
+                    sceneId={sceneId}
+                    novelId={novelId}
+                    characters={characters || []}
+                    factions={factions || []}
+                    elementDetails={elementDetails}
+                    onAddChild={onAddChild}
+                    onRemoveChild={(childId) => onRemoveChild?.(childId)}
+                    onDetailSaved={onDetailSaved}
+                  />
                 </div>
               )}
             </div>

@@ -2,15 +2,18 @@
 
 import { useState, useTransition, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { TimelineEvent } from "@/db/schema"
+import { TimelineEvent, Character } from "@/db/schema"
 import { updateTimelineEvent } from "@/server/timeline"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
     Target, Swords, Drama, Loader2, TrendingUp, TrendingDown, Minus, HelpCircle,
-    CheckCircle2, XCircle, Clock,
+    CheckCircle2, XCircle, Clock, Eye, GitCommitHorizontal,
 } from "lucide-react"
+import {
+    Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 
@@ -44,9 +47,17 @@ function decodeShift(shift: number | null, storedOutcome: string | null): { outc
 
 interface Props {
     event: TimelineEvent
+    characters?: Character[]
+    events?: TimelineEvent[] // ฉากทั้งเรื่อง (เรียงตามลำดับเล่า) สำหรับเลือกฉากต้นเหตุ
 }
 
-export function SceneDramaticPanel({ event }: Props) {
+// ห่วงโซ่เหตุ-ผล (P2)
+const CAUSE_KINDS = [
+    { value: "therefore", label: "ดังนั้น", desc: "ฉากนี้เป็นผลต่อเนื่อง", cls: "text-emerald-500 border-emerald-500/50 bg-emerald-500/10" },
+    { value: "but", label: "แต่ว่า", desc: "ฉากนี้หักเห/ขัดขวาง", cls: "text-red-500 border-red-500/50 bg-red-500/10" },
+] as const
+
+export function SceneDramaticPanel({ event, characters = [], events = [] }: Props) {
     const router = useRouter()
     const [open, setOpen] = useState(false)
     const [isPending, startTransition] = useTransition()
@@ -56,6 +67,10 @@ export function SceneDramaticPanel({ event }: Props) {
     const initial = decodeShift(event.valueShift ?? null, event.sceneOutcome ?? null)
     const [outcome, setOutcome] = useState(initial.outcome)
     const [mag, setMag] = useState(initial.mag)
+    const [povId, setPovId] = useState(event.povCharacterId ?? "none")
+    const [causeKind, setCauseKind] = useState(event.causeKind ?? "none")
+    const [causeEventId, setCauseEventId] = useState(event.causeEventId ?? "none")
+    const [causeNote, setCauseNote] = useState(event.causeNote ?? "")
 
     useEffect(() => {
         if (open) {
@@ -64,11 +79,15 @@ export function SceneDramaticPanel({ event }: Props) {
             const d = decodeShift(event.valueShift ?? null, event.sceneOutcome ?? null)
             setOutcome(d.outcome)
             setMag(d.mag)
+            setPovId(event.povCharacterId ?? "none")
+            setCauseKind(event.causeKind ?? "none")
+            setCauseEventId(event.causeEventId ?? "none")
+            setCauseNote(event.causeNote ?? "")
         }
     }, [open, event])
 
     const shift = computeShift(outcome, mag)
-    const hasData = event.sceneGoal || event.sceneConflict || event.sceneOutcome || event.valueShift != null
+    const hasData = event.sceneGoal || event.sceneConflict || event.sceneOutcome || event.valueShift != null || event.povCharacterId
 
     const handleSave = () => {
         startTransition(async () => {
@@ -77,6 +96,10 @@ export function SceneDramaticPanel({ event }: Props) {
                 sceneConflict: conflict.trim() || null,
                 sceneOutcome: outcome,
                 valueShift: shift,
+                povCharacterId: povId === "none" ? null : povId,
+                causeKind: causeKind === "none" ? null : causeKind,
+                causeEventId: causeKind === "none" || causeEventId === "none" ? null : causeEventId,
+                causeNote: causeKind === "none" ? null : (causeNote.trim() || null),
             })
             if (res.success) {
                 toast.success("บันทึกโครงฉากแล้ว")
@@ -119,6 +142,79 @@ export function SceneDramaticPanel({ event }: Props) {
                 </div>
 
                 <div className="p-3 space-y-3">
+                    {/* POV (P1) — ฉากนี้เล่าผ่านสายตาใคร */}
+                    <div className="space-y-1">
+                        <label className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                            <Eye className="h-3 w-3" />มุมมอง (POV) — เล่าผ่านสายตาใคร
+                        </label>
+                        <Select value={povId} onValueChange={setPovId}>
+                            <SelectTrigger className="h-8 text-xs chamfered-sm">
+                                <SelectValue placeholder="ยังไม่กำหนด" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="none">— ยังไม่กำหนด —</SelectItem>
+                                {characters.map(c => (
+                                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* Causal chain (P2) — Therefore/But */}
+                    <div className="space-y-1.5">
+                        <label className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                            <GitCommitHorizontal className="h-3 w-3" />ฉากนี้ต่อจากเรื่องก่อนหน้าแบบไหน
+                        </label>
+                        <div className="flex gap-1.5">
+                            {CAUSE_KINDS.map(k => (
+                                <button
+                                    key={k.value}
+                                    onClick={() => setCauseKind(causeKind === k.value ? "none" : k.value)}
+                                    title={k.desc}
+                                    className={cn(
+                                        "flex-1 h-7 chamfered-sm border text-[11px] transition-colors",
+                                        causeKind === k.value ? k.cls : "border-border/60 text-muted-foreground hover:border-border"
+                                    )}
+                                >
+                                    {k.label}
+                                </button>
+                            ))}
+                            <button
+                                onClick={() => setCauseKind("none")}
+                                title={'ยังไม่ระบุ = "แล้วก็" (จุดอ่อนพล็อต)'}
+                                className={cn(
+                                    "flex-1 h-7 chamfered-sm border text-[11px] transition-colors",
+                                    causeKind === "none"
+                                        ? "text-zinc-400 border-zinc-500/50 bg-zinc-500/10"
+                                        : "border-border/60 text-muted-foreground hover:border-border"
+                                )}
+                            >
+                                แล้วก็…
+                            </button>
+                        </div>
+                        {causeKind !== "none" && (
+                            <div className="space-y-1.5 pl-1 border-l-2 border-border/40 ml-0.5">
+                                <Select value={causeEventId} onValueChange={setCauseEventId}>
+                                    <SelectTrigger className="h-8 text-xs chamfered-sm">
+                                        <SelectValue placeholder="ฉากต้นเหตุ (ไม่บังคับ)" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">— ฉากก่อนหน้า / ไม่ระบุ —</SelectItem>
+                                        {events.filter(e => e.id !== event.id).map(e => (
+                                            <SelectItem key={e.id} value={e.id}>{e.title}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <Input
+                                    value={causeNote}
+                                    onChange={e => setCauseNote(e.target.value)}
+                                    placeholder={causeKind === "therefore" ? "เพราะ… ดังนั้นฉากนี้จึง…" : "ทั้งที่… แต่ฉากนี้กลับ…"}
+                                    className="h-8 text-xs chamfered-sm"
+                                />
+                            </div>
+                        )}
+                    </div>
+
                     {/* Goal */}
                     <div className="space-y-1">
                         <label className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">

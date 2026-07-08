@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, integer, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, integer, jsonb, index, uniqueIndex, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 
 // ============================================
@@ -301,6 +301,11 @@ export const timelineEvents = pgTable("timeline_events", {
   sceneConflict: text("scene_conflict"),     // อุปสรรค: อะไรขวาง
   sceneOutcome: text("scene_outcome"),       // ผลลัพธ์: success | failure | ongoing | unknown
   valueShift: integer("value_shift"),        // ทิศ/ความเข้มของการเปลี่ยนค่า −5…+5 (ป้อน tension curve A2)
+  povCharacterId: text("pov_character_id").references(() => characters.id, { onDelete: "set null" }), // ฉากนี้เล่าผ่านสายตาใคร (P1)
+  // Causal chain (P2) — Therefore/But: ฉากนี้เกิดขึ้นเพราะ/ทั้งที่ฉากไหน
+  causeEventId: text("cause_event_id").references((): AnyPgColumn => timelineEvents.id, { onDelete: "set null" }),
+  causeKind: text("cause_kind"),   // "therefore" (ดังนั้น) | "but" (แต่ว่า) — null = "แล้วก็" (and then, จุดอ่อนพล็อต)
+  causeNote: text("cause_note"),   // อธิบายเหตุ-ผลสั้นๆ
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()
@@ -1051,6 +1056,7 @@ export const sceneElementDetails = pgTable("scene_element_details", {
   how: text("how"),                 // อย่างไร: "ใช้ดาบวิเศษ", "ร่ายเวทมนตร์"
   goal: text("goal"),               // เป้าหมาย/แรงจูงใจ: "เพื่อปกป้องหมู่บ้าน"
   outcome: text("outcome"),         // ผลลัพธ์: "success" | "failure" | "ongoing" | "unknown"
+  role: text("role"),               // บทบาทในไอเดีย: "protagonist" | "antagonist" | "witness" | "victim"
   notes: text("notes"),             // หมายเหตุเพิ่มเติม
 
   // Novel reference for easy querying

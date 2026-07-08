@@ -22,7 +22,7 @@ import {
 import { Chapter, TimelineEvent, Character, Location } from "@/db/schema"
 import { ChapterColumn } from "./chapter-column"
 import { EventCard } from "./event-card"
-import { Clock, CheckCircle2, FolderOpen, SlidersHorizontal, Eye, X, Activity, AlertTriangle } from "lucide-react"
+import { Clock, CheckCircle2, FolderOpen, SlidersHorizontal, Eye, X, Activity, AlertTriangle, Route } from "lucide-react"
 import { reorderTimelineEvents, updateTimelineEvent } from "@/server/timeline"
 import { useMemo } from "react"
 import { toast } from "sonner"
@@ -42,6 +42,7 @@ import { StructureOverlay, POSITIONAL_STRUCTURES } from "./structure-overlay"
 import type { ThreadWithBeats } from "@/server/plot-threads"
 import { ArcStrip } from "./arc-strip"
 import { TensionCurve } from "./tension-curve"
+import { ThreadRibbon } from "./thread-ribbon"
 import { TimelineConflictsPanel } from "./timeline-conflicts-panel"
 import type { StoryArc } from "@/db/schema"
 import { detectTimelineConflicts, type TimelineConflict } from "@/server/timeline-conflicts"
@@ -123,6 +124,7 @@ export function TimelineBoard({
     const [filterLocation, setFilterLocation] = useState<string>("all")
     const [filterThread, setFilterThread] = useState<string>("all")
     const [showTension, setShowTension] = useState(false)
+    const [showRibbon, setShowRibbon] = useState(false)
     const [structureId, setStructureId] = useState<string>("none")
     const [conflicts, setConflicts] = useState<TimelineConflict[] | null>(null)
 
@@ -158,7 +160,7 @@ export function TimelineBoard({
         [filterType, filterStatus, filterCharacter, filterLocation, filterThread]
             .filter(v => v !== "all").length
     const isFiltering = activeFilterCount > 0
-    const lensCount = (showTension ? 1 : 0) + (structureId !== "none" ? 1 : 0)
+    const lensCount = (showTension ? 1 : 0) + (showRibbon ? 1 : 0) + (structureId !== "none" ? 1 : 0)
 
     const matchEvent = (e: TimelineEvent) => {
         if (filterType !== "all" && (e.eventType || "scene") !== filterType) return false
@@ -537,6 +539,22 @@ export function TimelineBoard({
                                         {showTension ? "เปิด" : "ปิด"}
                                     </span>
                                 </button>
+                                <button
+                                    onClick={() => setShowRibbon(v => !v)}
+                                    className={cn(
+                                        "w-full flex items-center justify-between h-8 px-2.5 chamfered-sm border text-xs transition-colors",
+                                        showRibbon
+                                            ? "border-[var(--forge-amber)]/50 text-[var(--forge-amber)] bg-[var(--forge-amber)]/5"
+                                            : "border-border text-muted-foreground hover:text-foreground"
+                                    )}
+                                >
+                                    <span className="inline-flex items-center gap-1.5">
+                                        <Route className="h-3.5 w-3.5" />เลนปม
+                                    </span>
+                                    <span className="font-technical text-[9px] uppercase tracking-[0.08em]">
+                                        {showRibbon ? "เปิด" : "ปิด"}
+                                    </span>
+                                </button>
                             </PopoverContent>
                         </Popover>
                     </div>
@@ -560,6 +578,11 @@ export function TimelineBoard({
                         {/* Tension curve (A2) */}
                         {showTension && (
                             <TensionCurve chapters={sortedChapters} events={events} />
+                        )}
+
+                        {/* Thread ribbon (L3) — เลนปมพาดบท */}
+                        {showRibbon && (
+                            <ThreadRibbon threads={threads} chapters={sortedChapters} events={events} />
                         )}
 
                         {/* Chapter columns */}

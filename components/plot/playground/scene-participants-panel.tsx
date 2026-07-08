@@ -1,7 +1,6 @@
 "use client"
 
-import { useState, useTransition, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useTransition } from "react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,36 +12,12 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import {
-    Users, User, Crown, Trash2, Plus, Check, X, Shield,
-    Swords, HelpCircle, Loader2, Sparkles
+    Users, User, Trash2, Plus, Check, Shield, Loader2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
-import { addSceneParticipant, updateSceneParticipant, deleteSceneParticipant } from "@/server/timeline"
-
-// Define TypeScript interfaces for our props
-interface SceneParticipantWithRelations {
-    id: string
-    eventId: string
-    novelId: string
-    characterId: string | null
-    factionId: string | null
-    dummyName: string | null
-    dummyType: string | null
-    action: string | null
-    outcome: string | null
-    role: string | null
-    character?: { id: string; name: string } | null
-    faction?: { id: string; name: string } | null
-}
-
-interface Props {
-    eventId: string
-    novelId: string
-    characters: any[]
-    factions: any[]
-    initialParticipants: SceneParticipantWithRelations[]
-}
+import { upsertSceneElementDetail, deleteSceneElementDetail } from "@/server/scene-element-details"
+import { SceneElementDetails } from "@/db/schema"
 
 const ROLES = [
     { value: "protagonist", label: "ตัวหลัก/ผู้ร่วมมือ", cls: "text-amber-500 bg-amber-500/10 border-amber-500/20" },
@@ -51,33 +26,59 @@ const ROLES = [
     { value: "victim", label: "ผู้รับเคราะห์/เหยื่อ", cls: "text-purple-500 bg-purple-500/10 border-purple-500/20" },
 ]
 
-export function SceneParticipantsPanel({ eventId, novelId, characters, factions, initialParticipants }: Props) {
-    const router = useRouter()
+const PARTICIPANT_TYPES = ["character", "faction", "dummy_character", "dummy_faction"]
+
+interface Props {
+    ideaItem: any // canvas item ที่เป็น idea (มี children)
+    sceneId: string
+    novelId: string
+    characters: any[]
+    factions: any[]
+    elementDetails?: Map<string, SceneElementDetails>
+    onAddChild: (ideaId: string, child: any) => void
+    onRemoveChild: (childId: string) => void
+    onDetailSaved: (detail: SceneElementDetails) => void
+}
+
+// key format ต้องตรงกับ playground-board: canvasItemId-elementType-elementId
+const detailKey = (ideaId: string, child: any) =>
+    `${ideaId}-${child.type}-${child.referenceId || child.refId || child.id}`
+
+export function SceneParticipantsPanel({
+    ideaItem, sceneId, novelId, characters, factions,
+    elementDetails, onAddChild, onRemoveChild, onDetailSaved,
+}: Props) {
     const [open, setOpen] = useState(false)
     const [isPending, startTransition] = useTransition()
-    const [participants, setParticipants] = useState<SceneParticipantWithRelations[]>(initialParticipants)
 
-    // Form states
-    const [partType, setPartType] = useState<"character" | "faction" | "dummy_char" | "dummy_fact">("character")
-    const [selectedEntityId, setSelectedEntityId] = useState<string>("")
+    // Add form
+    const [partType, setPartType] = useState<"character" | "faction" | "dummy_character" | "dummy_faction">("character")
+    const [selectedEntityId, setSelectedEntityId] = useState("")
     const [dummyName, setDummyName] = useState("")
     const [action, setAction] = useState("")
     const [outcome, setOutcome] = useState("")
     const [role, setRole] = useState("protagonist")
 
-    // Editing states
-    const [editingId, setEditingId] = useState<string | null>(null)
-    const [editForm, setEditForm] = useState({ action: "", outcome: "", dummyName: "" })
+    // Inline edit
+    const [editingChildId, setEditingChildId] = useState<string | null>(null)
+    const [editForm, setEditForm] = useState({ action: "", outcome: "", role: "protagonist" })
 
-    // Sync with initialParticipants prop changes
-    useEffect(() => {
-        setParticipants(initialParticipants)
-    }, [initialParticipants])
+    const participants = (ideaItem.children || []).filter((c: any) => PARTICIPANT_TYPES.includes(c.type))
+    const isDummyType = partType === "dummy_character" || partType === "dummy_faction"
 
     const handleAdd = () => {
-        if (partType === "character" || partType === "faction") {
+        let title = ""
+        let referenceId: string | null = null
+        if (!isDummyType) {
             if (!selectedEntityId) {
                 toast.error("กรุณาเลือกตัวละครหรือกลุ่มฝ่าย")
+                return
+            }
+            const list = partType === "character" ? characters : factions
+            title = list.find(e => e.id === selectedEntityId)?.name || ""
+            referenceId = selectedEntityId
+            if (participants.some((p: any) => p.referenceId === selectedEntityId)) {
+                toast.error("มีผู้เข้าร่วมนี้ในไอเดียแล้ว")
                 return
             }
         } else {
@@ -85,93 +86,89 @@ export function SceneParticipantsPanel({ eventId, novelId, characters, factions,
                 toast.error("กรุณากรอกชื่อ Dummy")
                 return
             }
+            title = dummyName.trim()
+        }
+
+        const child = {
+            id: crypto.randomUUID(),
+            type: partType,
+            referenceId,
+            title,
+            content: "",
+            role,
         }
 
         startTransition(async () => {
-            const payload = {
-                eventId,
-                novelId,
-                characterId: partType === "character" ? selectedEntityId : null,
-                factionId: partType === "faction" ? selectedEntityId : null,
-                dummyName: (partType === "dummy_char" || partType === "dummy_fact") ? dummyName.trim() : null,
-                dummyType: partType === "dummy_char" ? "character" : partType === "dummy_fact" ? "faction" : null,
-                action: action.trim() || null,
-                outcome: outcome.trim() || null,
+            onAddChild(ideaItem.id, child)
+
+            // บันทึก role/action/outcome ลง scene_element_details
+            const res = await upsertSceneElementDetail({
+                sceneId,
+                elementType: partType,
+                elementId: referenceId || child.id,
+                canvasItemId: ideaItem.id,
+                action: action.trim() || undefined,
+                outcome: outcome.trim() || undefined,
                 role,
-            }
-
-            const res = await addSceneParticipant(payload)
+                novelId,
+            })
             if (res.success && res.data) {
+                onDetailSaved(res.data)
                 toast.success("เพิ่มผู้เข้าร่วมแล้ว")
-                
-                // Construct mock relation for immediate UI render before revalidation
-                let entityName = ""
-                if (partType === "character") {
-                    entityName = characters.find(c => c.id === selectedEntityId)?.name || ""
-                } else if (partType === "faction") {
-                    entityName = factions.find(f => f.id === selectedEntityId)?.name || ""
-                }
-
-                const newPart: SceneParticipantWithRelations = {
-                    ...res.data,
-                    character: partType === "character" ? { id: selectedEntityId, name: entityName } : null,
-                    faction: partType === "faction" ? { id: selectedEntityId, name: entityName } : null,
-                }
-
-                setParticipants(prev => [...prev, newPart])
-
-                // Reset form
-                setDummyName("")
-                setSelectedEntityId("")
-                setAction("")
-                setOutcome("")
-                router.refresh()
             } else {
-                toast.error(res.error || "ไม่สามารถเพิ่มได้")
+                toast.error(res.error || "บันทึกรายละเอียดไม่สำเร็จ")
             }
+
+            setDummyName("")
+            setSelectedEntityId("")
+            setAction("")
+            setOutcome("")
         })
     }
 
-    const handleDelete = (id: string) => {
+    const handleDelete = (child: any) => {
         startTransition(async () => {
-            const res = await deleteSceneParticipant(id, novelId, eventId)
-            if (res.success) {
-                setParticipants(prev => prev.filter(p => p.id !== id))
-                toast.success("ลบผู้เข้าร่วมแล้ว")
-                router.refresh()
-            } else {
-                toast.error("ลบไม่สำเร็จ")
+            onRemoveChild(child.id)
+            const detail = elementDetails?.get(detailKey(ideaItem.id, child))
+            if (detail) {
+                await deleteSceneElementDetail(detail.id, novelId, sceneId)
             }
+            toast.success("ลบผู้เข้าร่วมแล้ว")
         })
     }
 
-    const startEdit = (p: SceneParticipantWithRelations) => {
-        setEditingId(p.id)
+    const startEdit = (child: any) => {
+        const detail = elementDetails?.get(detailKey(ideaItem.id, child))
+        setEditingChildId(child.id)
         setEditForm({
-            action: p.action || "",
-            outcome: p.outcome || "",
-            dummyName: p.dummyName || "",
+            action: detail?.action || "",
+            outcome: detail?.outcome || "",
+            role: detail?.role || child.role || "protagonist",
         })
     }
 
-    const saveEdit = (id: string) => {
+    const saveEdit = (child: any) => {
         startTransition(async () => {
-            const res = await updateSceneParticipant(id, editForm, novelId, eventId)
-            if (res.success) {
-                setParticipants(prev => prev.map(p => {
-                    if (p.id === id) {
-                        return {
-                            ...p,
-                            action: editForm.action.trim() || null,
-                            outcome: editForm.outcome.trim() || null,
-                            dummyName: p.dummyName ? (editForm.dummyName.trim() || p.dummyName) : null
-                        }
-                    }
-                    return p
-                }))
-                setEditingId(null)
+            const detail = elementDetails?.get(detailKey(ideaItem.id, child))
+            const res = await upsertSceneElementDetail({
+                id: detail?.id,
+                sceneId,
+                elementType: child.type,
+                elementId: child.referenceId || child.refId || child.id,
+                canvasItemId: ideaItem.id,
+                action: editForm.action.trim() || undefined,
+                outcome: editForm.outcome.trim() || undefined,
+                role: editForm.role,
+                // คงค่า field ที่ panel นี้ไม่ได้แก้ (แก้ผ่าน dialog ดินสอ)
+                how: detail?.how || undefined,
+                goal: detail?.goal || undefined,
+                notes: detail?.notes || undefined,
+                novelId,
+            })
+            if (res.success && res.data) {
+                onDetailSaved(res.data)
+                setEditingChildId(null)
                 toast.success("อัปเดตข้อมูลผู้เข้าร่วมแล้ว")
-                router.refresh()
             } else {
                 toast.error("อัปเดตไม่สำเร็จ")
             }
@@ -182,35 +179,43 @@ export function SceneParticipantsPanel({ eventId, novelId, characters, factions,
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
                 <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
                     className={cn(
-                        "h-8 gap-1.5 chamfered-sm font-technical text-[9px] uppercase tracking-[0.08em]",
-                        participants.length > 0 && "border-[var(--forge-amber)]/50 text-[var(--forge-amber)]"
+                        "h-5 px-1 text-[8px] font-technical uppercase gap-0.5 shrink-0",
+                        participants.length > 0
+                            ? "text-[var(--forge-amber)] hover:text-[var(--forge-amber)]"
+                            : "text-muted-foreground hover:text-primary"
                     )}
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
                 >
-                    <Users className="h-3.5 w-3.5" />
-                    ผู้เข้าร่วมฉาก ({participants.length})
+                    <Users className="w-2.5 h-2.5" />
+                    ผู้เข้าร่วม ({participants.length})
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[420px] p-0 overflow-hidden" align="start">
+            <PopoverContent
+                className="w-[380px] p-0 overflow-hidden"
+                align="start"
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+            >
                 {/* Header */}
                 <div className="flex items-center gap-2 px-3 py-2 bg-zinc-900 border-b border-zinc-700/60">
                     <Users className="h-3.5 w-3.5 text-[var(--forge-amber)]" />
-                    <span className="font-technical text-[10px] uppercase tracking-widest text-zinc-300">
-                        ผู้เข้าร่วมและการกระทำในฉาก
+                    <span className="font-technical text-[10px] uppercase tracking-widest text-zinc-300 truncate">
+                        ผู้เข้าร่วม: {ideaItem.title}
                     </span>
                 </div>
 
-                <div className="p-3 space-y-4 max-h-[80vh] overflow-y-auto">
+                <div className="p-3 space-y-4 max-h-[70vh] overflow-y-auto">
                     {/* Add Form */}
                     <div className="bg-muted/30 p-2.5 rounded border border-border/40 space-y-2.5">
                         <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-technical font-semibold flex items-center gap-1">
-                            <Plus className="w-3.5 h-3.5 text-[var(--forge-amber)]" /> เพิ่มผู้ร่วมฉาก
+                            <Plus className="w-3.5 h-3.5 text-[var(--forge-amber)]" /> เพิ่มผู้ร่วมไอเดีย
                         </span>
 
                         <div className="grid grid-cols-2 gap-2">
-                            {/* Type Select */}
                             <div className="space-y-1">
                                 <label className="text-[9px] font-technical text-muted-foreground uppercase">ประเภท</label>
                                 <Select value={partType} onValueChange={(v: any) => { setPartType(v); setSelectedEntityId("") }}>
@@ -220,13 +225,12 @@ export function SceneParticipantsPanel({ eventId, novelId, characters, factions,
                                     <SelectContent>
                                         <SelectItem value="character">ตัวละครจริง</SelectItem>
                                         <SelectItem value="faction">กลุ่มฝ่ายจริง</SelectItem>
-                                        <SelectItem value="dummy_char">ตัวละครชั่วคราว (Dummy)</SelectItem>
-                                        <SelectItem value="dummy_fact">กลุ่มฝ่ายชั่วคราว (Dummy)</SelectItem>
+                                        <SelectItem value="dummy_character">ตัวละครชั่วคราว (Dummy)</SelectItem>
+                                        <SelectItem value="dummy_faction">กลุ่มฝ่ายชั่วคราว (Dummy)</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
 
-                            {/* Role Select */}
                             <div className="space-y-1">
                                 <label className="text-[9px] font-technical text-muted-foreground uppercase">บทบาท</label>
                                 <Select value={role} onValueChange={setRole}>
@@ -235,41 +239,23 @@ export function SceneParticipantsPanel({ eventId, novelId, characters, factions,
                                     </SelectTrigger>
                                     <SelectContent>
                                         {ROLES.map(r => (
-                                            <SelectItem key={r.value} value={r.value}>
-                                                {r.label}
-                                            </SelectItem>
+                                            <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
                             </div>
                         </div>
 
-                        {/* Entity Selector or Dummy Input */}
                         <div className="space-y-1">
-                            <label className="text-[9px] font-technical text-muted-foreground uppercase">ชื่อผู้ร่วมฉาก</label>
-                            {partType === "character" ? (
+                            <label className="text-[9px] font-technical text-muted-foreground uppercase">ชื่อผู้ร่วมไอเดีย</label>
+                            {!isDummyType ? (
                                 <Select value={selectedEntityId} onValueChange={setSelectedEntityId}>
                                     <SelectTrigger className="h-8 text-xs border-steel-800">
-                                        <SelectValue placeholder="เลือกตัวละคร..." />
+                                        <SelectValue placeholder={partType === "character" ? "เลือกตัวละคร..." : "เลือกกลุ่มฝ่าย..."} />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {characters.map(c => (
-                                            <SelectItem key={c.id} value={c.id}>
-                                                {c.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            ) : partType === "faction" ? (
-                                <Select value={selectedEntityId} onValueChange={setSelectedEntityId}>
-                                    <SelectTrigger className="h-8 text-xs border-steel-800">
-                                        <SelectValue placeholder="เลือกกลุ่มฝ่าย..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {factions.map(f => (
-                                            <SelectItem key={f.id} value={f.id}>
-                                                {f.name}
-                                            </SelectItem>
+                                        {(partType === "character" ? characters : factions).map(e => (
+                                            <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
@@ -277,13 +263,12 @@ export function SceneParticipantsPanel({ eventId, novelId, characters, factions,
                                 <Input
                                     value={dummyName}
                                     onChange={e => setDummyName(e.target.value)}
-                                    placeholder={partType === "dummy_char" ? "เช่น ทหารยาม, ชายสวมผ้าคลุม" : "เช่น กองกำลังไม่ทราบชื่อ"}
+                                    placeholder={partType === "dummy_character" ? "เช่น ทหารยาม, ชายสวมผ้าคลุม" : "เช่น กองกำลังไม่ทราบชื่อ"}
                                     className="h-8 text-xs chamfered-sm"
                                 />
                             )}
                         </div>
 
-                        {/* Action & Outcome Inputs */}
                         <div className="grid grid-cols-2 gap-2">
                             <div className="space-y-1">
                                 <label className="text-[9px] font-technical text-muted-foreground uppercase">การกระทำ (Action)</label>
@@ -307,7 +292,7 @@ export function SceneParticipantsPanel({ eventId, novelId, characters, factions,
 
                         <Button size="sm" className="w-full h-8 gap-1 chamfered-sm text-xs" onClick={handleAdd} disabled={isPending}>
                             {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-                            เพิ่มเข้าฉาก
+                            เพิ่มเข้าไอเดีย
                         </Button>
                     </div>
 
@@ -319,59 +304,41 @@ export function SceneParticipantsPanel({ eventId, novelId, characters, factions,
 
                         {participants.length === 0 ? (
                             <p className="text-xs text-muted-foreground text-center py-6 bg-muted/10 rounded border border-dashed border-border/40">
-                                ยังไม่มีผู้เข้าร่วมในฉากนี้
+                                ยังไม่มีผู้เข้าร่วมในไอเดียนี้
                             </p>
                         ) : (
                             <div className="space-y-2">
-                                {participants.map(p => {
-                                    const isEditing = editingId === p.id
-                                    const currentRole = ROLES.find(r => r.value === p.role) || ROLES[0]
-                                    
-                                    // Resolve name & type icon
-                                    let displayName = p.dummyName || ""
-                                    let isDummy = !!p.dummyName
-                                    let isFaction = p.factionId || p.dummyType === "faction"
-
-                                    if (p.characterId && p.character) displayName = p.character.name
-                                    else if (p.factionId && p.faction) displayName = p.faction.name
-
+                                {participants.map((child: any) => {
+                                    const detail = elementDetails?.get(detailKey(ideaItem.id, child))
+                                    const isEditing = editingChildId === child.id
+                                    const currentRole = ROLES.find(r => r.value === (detail?.role || child.role)) || ROLES[0]
+                                    const isDummy = child.type === "dummy_character" || child.type === "dummy_faction"
+                                    const isFaction = child.type === "faction" || child.type === "dummy_faction"
                                     const TypeIcon = isFaction ? Shield : User
 
                                     return (
                                         <div
-                                            key={p.id}
+                                            key={child.id}
                                             className={cn(
                                                 "p-2.5 rounded border text-xs relative group transition-colors",
                                                 isDummy ? "border-dashed border-zinc-800 bg-zinc-950/20" : "border-border bg-card"
                                             )}
                                         >
-                                            {/* Top row: Name, Icon, Role Badge, Delete btn */}
                                             <div className="flex items-center justify-between gap-2 mb-1.5">
-                                                <div className="flex items-center gap-1.5">
-                                                    <TypeIcon className={cn("w-3.5 h-3.5", isDummy ? "text-muted-foreground" : isFaction ? "text-emerald-500" : "text-blue-500")} />
-                                                    {isEditing && p.dummyName ? (
-                                                        <Input
-                                                            value={editForm.dummyName}
-                                                            onChange={e => setEditForm({ ...editForm, dummyName: e.target.value })}
-                                                            className="h-6 text-xs w-28 py-0 px-1 border-steel-800"
-                                                        />
-                                                    ) : (
-                                                        <span className="font-semibold text-zinc-200">
-                                                            {displayName}
-                                                            {isDummy && <span className="text-[8px] text-muted-foreground ml-1">(Dummy)</span>}
-                                                        </span>
-                                                    )}
+                                                <div className="flex items-center gap-1.5 min-w-0">
+                                                    <TypeIcon className={cn("w-3.5 h-3.5 shrink-0", isDummy ? "text-muted-foreground" : isFaction ? "text-emerald-500" : "text-blue-500")} />
+                                                    <span className="font-semibold text-zinc-200 truncate">
+                                                        {child.title}
+                                                        {isDummy && <span className="text-[8px] text-muted-foreground ml-1">(Dummy)</span>}
+                                                    </span>
                                                 </div>
 
-                                                <div className="flex items-center gap-1">
-                                                    {/* Role Badge */}
+                                                <div className="flex items-center gap-1 shrink-0">
                                                     <span className={cn("px-1.5 py-0.5 rounded-[3px] text-[8px] font-technical uppercase border tracking-wider", currentRole.cls)}>
                                                         {currentRole.label}
                                                     </span>
-
-                                                    {/* Delete Button */}
                                                     <button
-                                                        onClick={() => handleDelete(p.id)}
+                                                        onClick={() => handleDelete(child)}
                                                         className="text-muted-foreground hover:text-red-500 p-0.5 transition-colors opacity-0 group-hover:opacity-100"
                                                         title="ลบ"
                                                     >
@@ -380,7 +347,6 @@ export function SceneParticipantsPanel({ eventId, novelId, characters, factions,
                                                 </div>
                                             </div>
 
-                                            {/* Details: Action / Outcome */}
                                             {isEditing ? (
                                                 <div className="space-y-2 mt-2 pt-2 border-t border-border/40">
                                                     <div className="grid grid-cols-2 gap-2">
@@ -401,11 +367,24 @@ export function SceneParticipantsPanel({ eventId, novelId, characters, factions,
                                                             />
                                                         </div>
                                                     </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[8px] font-technical text-muted-foreground uppercase">บทบาท</label>
+                                                        <Select value={editForm.role} onValueChange={v => setEditForm({ ...editForm, role: v })}>
+                                                            <SelectTrigger className="h-6 text-xs border-steel-800">
+                                                                <SelectValue />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {ROLES.map(r => (
+                                                                    <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
                                                     <div className="flex justify-end gap-1.5">
-                                                        <Button size="xs" variant="ghost" className="h-6 text-[10px]" onClick={() => setEditingId(null)}>
+                                                        <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={() => setEditingChildId(null)}>
                                                             ยกเลิก
                                                         </Button>
-                                                        <Button size="xs" className="h-6 text-[10px] gap-0.5" onClick={() => saveEdit(p.id)} disabled={isPending}>
+                                                        <Button size="sm" className="h-6 text-[10px] gap-0.5" onClick={() => saveEdit(child)} disabled={isPending}>
                                                             <Check className="w-3 h-3" /> บันทึก
                                                         </Button>
                                                     </div>
@@ -413,24 +392,24 @@ export function SceneParticipantsPanel({ eventId, novelId, characters, factions,
                                             ) : (
                                                 <div
                                                     className="text-[11px] text-muted-foreground space-y-1 mt-1 cursor-pointer hover:bg-muted/10 p-1 rounded transition-colors"
-                                                    onClick={() => startEdit(p)}
+                                                    onClick={() => startEdit(child)}
                                                     title="คลิกเพื่อแก้ไข"
                                                 >
-                                                    {(p.action || p.outcome) ? (
+                                                    {(detail?.action || detail?.outcome) ? (
                                                         <>
-                                                            {p.action && (
+                                                            {detail?.action && (
                                                                 <div>
-                                                                    <span className="font-semibold text-zinc-400">ทำ:</span> {p.action}
+                                                                    <span className="font-semibold text-zinc-400">ทำ:</span> {detail.action}
                                                                 </div>
                                                             )}
-                                                            {p.outcome && (
+                                                            {detail?.outcome && (
                                                                 <div>
-                                                                    <span className="font-semibold text-zinc-400">เกิด:</span> {p.outcome}
+                                                                    <span className="font-semibold text-zinc-400">เกิด:</span> {detail.outcome}
                                                                 </div>
                                                             )}
                                                         </>
                                                     ) : (
-                                                        <span className="text-[10px] italic text-muted-foreground/60 flex items-center gap-0.5">
+                                                        <span className="text-[10px] italic text-muted-foreground/60">
                                                             คลิกเพื่อเพิ่มการกระทำ/ผลลัพธ์...
                                                         </span>
                                                     )}

@@ -64,6 +64,7 @@ export async function upsertSceneElementDetail(data: {
     how?: string;
     goal?: string;
     outcome?: string;
+    role?: string;
     notes?: string;
     novelId: string;
     forceCreate?: boolean;
@@ -78,6 +79,7 @@ export async function upsertSceneElementDetail(data: {
                     how: data.how,
                     goal: data.goal,
                     outcome: data.outcome,
+                    role: data.role,
                     notes: data.notes,
                     updatedAt: new Date(),
                 })
@@ -99,6 +101,7 @@ export async function upsertSceneElementDetail(data: {
                 how: data.how || null,
                 goal: data.goal || null,
                 outcome: data.outcome || null,
+                role: data.role || null,
                 notes: data.notes || null,
                 novelId: data.novelId,
             };
@@ -133,6 +136,7 @@ export async function upsertSceneElementDetail(data: {
                     how: data.how,
                     goal: data.goal,
                     outcome: data.outcome,
+                    role: data.role,
                     notes: data.notes,
                     updatedAt: new Date(),
                 })
@@ -153,6 +157,7 @@ export async function upsertSceneElementDetail(data: {
             how: data.how || null,
             goal: data.goal || null,
             outcome: data.outcome || null,
+            role: data.role || null,
             notes: data.notes || null,
             novelId: data.novelId,
         };

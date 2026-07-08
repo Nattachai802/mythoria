@@ -19,7 +19,8 @@ import {
     Circle,
     TrendingUp,
     TrendingDown,
-    Shield
+    Shield,
+    Eye
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
@@ -75,9 +76,10 @@ interface EventCardProps {
     isDimmed?: boolean
     threadDots?: ThreadDot[]
     onToggleComplete?: (id: string) => void
+    isFirstScene?: boolean // ฉากแรกของเรื่อง — ไม่ต้องเตือน "แล้วก็"
 }
 
-export function EventCard({ event, characters = [], locations = [], isDimmed = false, threadDots, onToggleComplete }: EventCardProps) {
+export function EventCard({ event, characters = [], locations = [], isDimmed = false, threadDots, onToggleComplete, isFirstScene = false }: EventCardProps) {
     const router = useRouter()
     const [isHovered, setIsHovered] = useState(false)
 
@@ -105,6 +107,9 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
     // Get related location (first one)
     const relatedLocationIds = (event.relatedLocationIds as string[]) || []
     const relatedLocation = locations.find(l => relatedLocationIds.includes(l.id))
+
+    // POV character (P1)
+    const povCharacter = event.povCharacterId ? characters.find(c => c.id === event.povCharacterId) : null
 
     // Handle scene participants from canvas children and their elementDetails (per Idea level)
     const elementDetails = (event as any).elementDetails || []
@@ -336,6 +341,41 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
                     <div className="flex items-center justify-between text-[10px] mt-1 pt-1.5 border-t border-zinc-100/10">
                         {/* Left: Type & Location */}
                         <div className="flex items-center gap-1.5 text-zinc-600 dark:text-muted-foreground flex-wrap">
+                            {/* POV (P1) */}
+                            {povCharacter && (
+                                <>
+                                    <div className="flex items-center gap-1 text-violet-400 max-w-[90px]">
+                                        <Eye className="w-3 h-3 shrink-0" />
+                                        <span className="truncate text-[9px] uppercase tracking-wide font-medium">
+                                            {povCharacter.name}
+                                        </span>
+                                    </div>
+                                    <span className="text-zinc-400">·</span>
+                                </>
+                            )}
+                            {/* Causal chain badge (P2) — ดังนั้น/แต่ว่า, ไม่มี = "แล้วก็" (จุดอ่อน) */}
+                            {event.causeKind === "therefore" ? (
+                                <>
+                                    <span className="text-[9px] uppercase tracking-wide font-medium text-emerald-500" title={event.causeNote || "ผลต่อเนื่องจากเรื่องก่อนหน้า"}>
+                                        ดังนั้น
+                                    </span>
+                                    <span className="text-zinc-400">·</span>
+                                </>
+                            ) : event.causeKind === "but" ? (
+                                <>
+                                    <span className="text-[9px] uppercase tracking-wide font-medium text-red-500" title={event.causeNote || "หักเหจากเรื่องก่อนหน้า"}>
+                                        แต่ว่า
+                                    </span>
+                                    <span className="text-zinc-400">·</span>
+                                </>
+                            ) : !isFirstScene ? (
+                                <>
+                                    <span className="text-[9px] uppercase tracking-wide font-medium text-zinc-500/70 border-b border-dashed border-zinc-500/40" title={'ยังไม่ระบุเหตุ-ผลกับเรื่องก่อนหน้า — พล็อตแบบ "แล้วก็" ตั้งได้ในโครงฉากดราม่า'}>
+                                        แล้วก็…
+                                    </span>
+                                    <span className="text-zinc-400">·</span>
+                                </>
+                            ) : null}
                             {/* Event Type */}
                             <div className={cn("flex items-center gap-1 transition-colors", typeConfig.color)}>
                                 <TypeIcon className="w-3 h-3" />
