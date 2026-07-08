@@ -19,7 +19,7 @@ import { toast } from "sonner"
 import { upsertSceneElementDetail, deleteSceneElementDetail } from "@/server/scene-element-details"
 import { SceneElementDetails } from "@/db/schema"
 
-const ROLES = [
+export const ROLES = [
     { value: "protagonist", label: "ตัวหลัก/ผู้ร่วมมือ", cls: "text-amber-500 bg-amber-500/10 border-amber-500/20" },
     { value: "antagonist", label: "ฝ่ายตรงข้าม", cls: "text-red-500 bg-red-500/10 border-red-500/20" },
     { value: "witness", label: "ผู้เห็นเหตุการณ์", cls: "text-blue-500 bg-blue-500/10 border-blue-500/20" },
@@ -216,10 +216,10 @@ export function SceneParticipantsPanel({
                         </span>
 
                         <div className="grid grid-cols-2 gap-2">
-                            <div className="space-y-1">
+                            <div className="space-y-1 min-w-0">
                                 <label className="text-[9px] font-technical text-muted-foreground uppercase">ประเภท</label>
                                 <Select value={partType} onValueChange={(v: any) => { setPartType(v); setSelectedEntityId("") }}>
-                                    <SelectTrigger className="h-8 text-xs border-steel-800">
+                                    <SelectTrigger className="h-8 w-full text-xs border-steel-800 [&>span]:truncate">
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -231,10 +231,10 @@ export function SceneParticipantsPanel({
                                 </Select>
                             </div>
 
-                            <div className="space-y-1">
+                            <div className="space-y-1 min-w-0">
                                 <label className="text-[9px] font-technical text-muted-foreground uppercase">บทบาท</label>
                                 <Select value={role} onValueChange={setRole}>
-                                    <SelectTrigger className="h-8 text-xs border-steel-800">
+                                    <SelectTrigger className="h-8 w-full text-xs border-steel-800 [&>span]:truncate">
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -321,13 +321,13 @@ export function SceneParticipantsPanel({
                                             key={child.id}
                                             className={cn(
                                                 "p-2.5 rounded border text-xs relative group transition-colors",
-                                                isDummy ? "border-dashed border-zinc-800 bg-zinc-950/20" : "border-border bg-card"
+                                                isDummy ? "border-dashed border-border bg-muted/40" : "border-border bg-card"
                                             )}
                                         >
                                             <div className="flex items-center justify-between gap-2 mb-1.5">
                                                 <div className="flex items-center gap-1.5 min-w-0">
                                                     <TypeIcon className={cn("w-3.5 h-3.5 shrink-0", isDummy ? "text-muted-foreground" : isFaction ? "text-emerald-500" : "text-blue-500")} />
-                                                    <span className="font-semibold text-zinc-200 truncate">
+                                                    <span className="font-semibold text-foreground truncate">
                                                         {child.title}
                                                         {isDummy && <span className="text-[8px] text-muted-foreground ml-1">(Dummy)</span>}
                                                     </span>
@@ -399,12 +399,12 @@ export function SceneParticipantsPanel({
                                                         <>
                                                             {detail?.action && (
                                                                 <div>
-                                                                    <span className="font-semibold text-zinc-400">ทำ:</span> {detail.action}
+                                                                    <span className="font-semibold text-muted-foreground">ทำ:</span> {detail.action}
                                                                 </div>
                                                             )}
                                                             {detail?.outcome && (
                                                                 <div>
-                                                                    <span className="font-semibold text-zinc-400">เกิด:</span> {detail.outcome}
+                                                                    <span className="font-semibold text-muted-foreground">เกิด:</span> {detail.outcome}
                                                                 </div>
                                                             )}
                                                         </>

@@ -1052,7 +1052,15 @@ export function PlaygroundBoard({
                     .filter((c: any) => c.type !== 'location' && c.type !== 'sticky-note')
                     .map((c: any) => ({ ...c, id: crypto.randomUUID() }));
                 const existingRefIds = new Set((targetItem?.children || []).map((c: any) => c.referenceId));
-                newChildren = childrenToCopy.filter((c: any) => c.referenceId && !existingRefIds.has(c.referenceId));
+                newChildren = childrenToCopy.filter((c: any) => {
+                        if (!c.referenceId) {
+                            // dummy_character / dummy_faction ไม่มี referenceId → เช็คซ้ำด้วย title+type แทน
+                            return !(targetItem?.children || []).some(
+                                (ec: any) => !ec.referenceId && ec.title === c.title && ec.type === c.type
+                            );
+                        }
+                        return !existingRefIds.has(c.referenceId);
+                    });
             }
 
             return prev.map(item => {
@@ -1482,6 +1490,11 @@ export function PlaygroundBoard({
         setIsSaving(false);
     };
 
+    // ทาสีการ์ด (ป้ายจัดกลุ่มบนกระดาน) — เก็บใน item.color, persist ผ่าน handleSave เดิม
+    const handleSetColor = (id: string, color: string | null) => {
+        setItems(prev => prev.map(item => item.id === id ? { ...item, color } : item));
+    };
+
     const handleRemoveItem = async (id: string) => {
         const removedItem = items.find(item => item.id === id);
 
@@ -1903,6 +1916,7 @@ export function PlaygroundBoard({
                                 factions={factions}
                                 onAddChild={handleAddChild}
                                 onDetailSaved={handleDetailSaved}
+                                onSetColor={(c) => handleSetColor(item.id, c)}
                             />
                         ))}
                     </DroppableCanvas>

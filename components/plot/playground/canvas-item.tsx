@@ -3,7 +3,17 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { User, MapPin, Lightbulb, X, Link as LinkIcon, Pencil, CheckCircle2, XCircle, Clock, StickyNote, Maximize2, Minimize2, ExternalLink, Copy, GitBranchPlus, Shield, Plus } from "lucide-react";
+import { User, MapPin, Lightbulb, X, Link as LinkIcon, Pencil, CheckCircle2, XCircle, Clock, StickyNote, Maximize2, Minimize2, ExternalLink, Copy, GitBranchPlus, Shield, Plus, Palette, Check, MoreVertical } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+// ป้ายสีจัดกลุ่มการ์ด (reuse palette เดียวกับ Story Arc)
+const CARD_COLORS = ["#f59e0b", "#fb923c", "#f43f5e", "#a78bfa", "#6366f1", "#22d3ee", "#34d399", "#facc15", "#e879f9", "#94a3b8"];
 import { useCallback, useState } from "react";
 import { SceneElementDetails } from "@/db/schema";
 import Link from "next/link";
@@ -33,9 +43,11 @@ export function DraggableCanvasItem({
   factions,
   onAddChild,
   onDetailSaved,
+  onSetColor,
 }: {
   item: any;
   onRemove: () => void;
+  onSetColor?: (color: string | null) => void;
   onRemoveChild?: (id: string) => void;
   onLinkStart?: (id: string) => void;
   onLinkComplete?: (id: string) => void;
@@ -121,6 +133,7 @@ export function DraggableCanvasItem({
         factions={factions}
         onAddChild={onAddChild}
         onDetailSaved={onDetailSaved}
+        onSetColor={onSetColor}
       />
     </div>
   );
@@ -265,8 +278,10 @@ export function CanvasItem({
   factions,
   onAddChild,
   onDetailSaved,
+  onSetColor,
 }: {
   item: any;
+  onSetColor?: (color: string | null) => void;
   onRemove?: () => void;
   onRemoveChild?: (id: string) => void;
   isDragging?: boolean;
@@ -303,19 +318,14 @@ export function CanvasItem({
   }
 
   // Helper to get character role-based colors
-  const getCharacterRoleColors = (role?: string) => {
-    switch (role?.toLowerCase()) {
-      case 'protagonist':
-        return { icon: 'text-amber-500', bg: 'bg-amber-50', border: 'border-amber-200' };
-      case 'antagonist':
-        return { icon: 'text-red-500', bg: 'bg-red-50', border: 'border-red-200' };
-      case 'supporting':
-        return { icon: 'text-green-400', bg: 'bg-green-50', border: 'border-green-200' };
-      case 'minor':
-      default:
-        return { icon: 'text-slate-400', bg: 'bg-slate-50', border: 'border-slate-200' };
-    }
+  // ต้องตรงกับ ROLES ใน scene-participants-panel — dark-friendly, มี label + chip + เส้นขอบ
+  const ROLE_META: Record<string, { label: string; text: string; chip: string; dot: string }> = {
+    protagonist: { label: 'ตัวหลัก', text: 'text-amber-600 dark:text-amber-400', chip: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25', dot: 'bg-amber-500' },
+    antagonist: { label: 'ฝ่ายตรงข้าม', text: 'text-red-600 dark:text-red-400', chip: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/25', dot: 'bg-red-500' },
+    witness: { label: 'ผู้เห็นเหตุ', text: 'text-blue-600 dark:text-blue-400', chip: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/25', dot: 'bg-blue-500' },
+    victim: { label: 'เหยื่อ', text: 'text-purple-600 dark:text-purple-400', chip: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/25', dot: 'bg-purple-500' },
   };
+  const roleMeta = (role?: string) => ROLE_META[(role || 'protagonist').toLowerCase()] ?? ROLE_META.protagonist;
 
   const colorClass =
     item.type === 'character' ? 'border-l-4 border-l-blue-500' :
@@ -431,15 +441,19 @@ Sticky Notes: ${stickyNotes}`;
 
   return (
     <div
-      className="relative"
+      className="relative group"
       style={{ transform: `rotate(${rotation}deg)` }}
     >
-      {/* Tape effect on top */}
+      {/* Tape effect on top — ทาสีตามป้ายจัดกลุ่มถ้ามี */}
       <div
-        className="absolute -top-2 left-1/2 -translate-x-1/2 w-12 h-4 bg-gradient-to-b from-amber-100/80 to-amber-200/60 rounded-sm shadow-sm z-10"
+        className={cn(
+          "absolute -top-2 left-1/2 -translate-x-1/2 h-4 rounded-sm shadow-sm z-10",
+          item.color ? "w-16" : "w-12 bg-gradient-to-b from-amber-100/80 to-amber-200/60"
+        )}
         style={{
           transform: `rotate(${-rotation + (rotation > 0 ? 2 : -2)}deg)`,
-          backdropFilter: 'blur(1px)'
+          backdropFilter: 'blur(1px)',
+          ...(item.color ? { background: item.color } : {}),
         }}
       />
 
@@ -454,7 +468,8 @@ Sticky Notes: ${stickyNotes}`;
           border-4 border-white
       `}
         style={{
-          boxShadow: '0 4px 6px -1px rgba(0,0,0,0.2), 0 10px 15px -3px rgba(0,0,0,0.15), 0 2px 4px -1px rgba(0,0,0,0.1)'
+          boxShadow: '0 4px 6px -1px rgba(0,0,0,0.2), 0 10px 15px -3px rgba(0,0,0,0.15), 0 2px 4px -1px rgba(0,0,0,0.1)',
+          ...(item.color ? { borderColor: item.color } : {}),
         }}
       >
         <div className="p-3">
@@ -476,89 +491,7 @@ Sticky Notes: ${stickyNotes}`;
 
             {/* Actions */}
             <div className="flex flex-col gap-1 -mr-1 -mt-1">
-              {onRemove && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 text-muted-foreground hover:text-destructive shrink-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    onRemove();
-                  }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                >
-                  <X className="w-3 h-3" />
-                </Button>
-              )}
-              {onLinkStart && (
-                <Button
-                  variant={isLinkingSource ? "default" : "ghost"}
-                  size="icon"
-                  className={`h-6 w-6 shrink-0 ${isLinkingSource ? 'bg-blue-500 text-white hover:bg-blue-600' : 'text-muted-foreground hover:text-blue-500'}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    onLinkStart();
-                  }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  title="Connect to..."
-                >
-                  <LinkIcon className="w-3 h-3" />
-                </Button>
-              )}
-              {/* Add Note button for Ideas */}
-              {isContainer && onAddNote && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 text-muted-foreground hover:text-yellow-500 shrink-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    onAddNote(item);
-                  }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  title="เพิ่ม Note"
-                >
-                  <StickyNote className="w-3 h-3" />
-                </Button>
-              )}
-              {/* Copy button for Ideas */}
-              {isContainer && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 text-muted-foreground hover:text-green-500 shrink-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    copyToClipboard();
-                  }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  title="คัดลอกข้อมูล"
-                >
-                  <Copy className="w-3 h-3" />
-                </Button>
-              )}
-              {/* Set Ancestor button for Ideas */}
-              {isContainer && onSetAncestor && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 text-muted-foreground hover:text-blue-500 shrink-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    onSetAncestor();
-                  }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  title="เชื่อมเหตุผล (Ancestor Idea)"
-                >
-                  <GitBranchPlus className="w-3 h-3" />
-                </Button>
-              )}
-              {/* Expand/Collapse button */}
+              {/* Expand/Collapse — always visible */}
               <Button
                 variant="ghost"
                 size="icon"
@@ -573,6 +506,105 @@ Sticky Notes: ${stickyNotes}`;
               >
                 {isExpanded ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
               </Button>
+
+              {/* Three-dot menu */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-muted-foreground hover:text-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    title="เมนู"
+                  >
+                    <MoreVertical className="w-3 h-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  className="w-44"
+                  onClick={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  {/* Link */}
+                  {onLinkStart && (
+                    <DropdownMenuItem
+                      className={isLinkingSource ? 'text-blue-500 font-medium' : ''}
+                      onSelect={(e) => { onLinkStart(); }}
+                    >
+                      <LinkIcon className="w-3.5 h-3.5 mr-2" />
+                      {isLinkingSource ? 'กำลังเชื่อม...' : 'เชื่อมการ์ด'}
+                    </DropdownMenuItem>
+                  )}
+
+                  {/* Note (idea only) */}
+                  {isContainer && onAddNote && (
+                    <DropdownMenuItem onSelect={() => onAddNote(item)}>
+                      <StickyNote className="w-3.5 h-3.5 mr-2" />
+                      เพิ่ม Note
+                    </DropdownMenuItem>
+                  )}
+
+                  {/* Ancestor (idea only) */}
+                  {isContainer && onSetAncestor && (
+                    <DropdownMenuItem onSelect={() => onSetAncestor()}>
+                      <GitBranchPlus className="w-3.5 h-3.5 mr-2" />
+                      เชื่อมเหตุผล
+                    </DropdownMenuItem>
+                  )}
+
+                  {/* Copy (idea only) */}
+                  {isContainer && (
+                    <DropdownMenuItem onSelect={() => copyToClipboard()}>
+                      <Copy className="w-3.5 h-3.5 mr-2" />
+                      คัดลอกข้อมูล
+                    </DropdownMenuItem>
+                  )}
+
+                  {/* Color picker */}
+                  {onSetColor && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <div className="px-2 py-1.5">
+                        <p className="text-[10px] text-muted-foreground mb-1.5 uppercase tracking-wide">สีการ์ด</p>
+                        <div className="flex flex-wrap gap-1">
+                          {CARD_COLORS.map((c) => (
+                            <button
+                              key={c}
+                              className="h-4 w-4 rounded-full flex items-center justify-center transition-transform hover:scale-110"
+                              style={{ background: c, outline: item.color === c ? `2px solid ${c}` : "none", outlineOffset: 2 }}
+                              onClick={(e) => { e.stopPropagation(); onSetColor(c); }}
+                            >
+                              {item.color === c && <Check className="h-2.5 w-2.5 text-white" />}
+                            </button>
+                          ))}
+                          <button
+                            className="h-4 w-4 rounded-full border border-dashed border-muted-foreground/50 flex items-center justify-center text-muted-foreground hover:text-foreground"
+                            onClick={(e) => { e.stopPropagation(); onSetColor(null); }}
+                          >
+                            <X className="h-2.5 w-2.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Remove */}
+                  {onRemove && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onSelect={() => onRemove()}
+                      >
+                        <X className="w-3.5 h-3.5 mr-2" />
+                        นำออกจาก canvas
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 
@@ -652,11 +684,11 @@ Sticky Notes: ${stickyNotes}`;
 
           {/* Sticky Notes for Ideas */}
           {isContainer && thisIdeaNotes.length > 0 && (
-            <div className="space-y-1 mb-2">
+            <div className="space-y-1 mb-1.5">
               {thisIdeaNotes.map((note) => (
                 <div
                   key={note.id}
-                  className="bg-yellow-50 border border-yellow-200 rounded p-2 text-xs cursor-pointer hover:bg-yellow-100 transition-colors group/note"
+                  className="bg-muted/40 border border-border rounded p-1.5 text-xs cursor-pointer hover:bg-muted/70 transition-colors group/note"
                   onClick={(e) => {
                     e.stopPropagation();
                     // Click to edit existing note
@@ -665,9 +697,9 @@ Sticky Notes: ${stickyNotes}`;
                     }
                   }}
                 >
-                  <div className="flex items-start gap-1">
-                    <StickyNote className="w-3 h-3 text-yellow-600 shrink-0 mt-0.5" />
-                    <p className="text-yellow-800 whitespace-pre-wrap line-clamp-3">{note.notes}</p>
+                  <div className="flex items-start gap-1.5">
+                    <StickyNote className="w-3 h-3 text-muted-foreground shrink-0 mt-0.5" />
+                    <p className="text-foreground/90 whitespace-pre-wrap line-clamp-3">{note.notes}</p>
                   </div>
                 </div>
               ))}
@@ -784,25 +816,25 @@ Sticky Notes: ${stickyNotes}`;
                       const detail = getChildDetail(child);
                       const hasDetail = detail && (detail.action || detail.how || detail.goal);
                       const isDummy = child.type === 'dummy_character';
-                      const roleColors = getCharacterRoleColors(child.role);
+                      const rm = roleMeta(detail?.role || child.role);
                       return (
                         <div key={child.id} className={cn(
-                          "p-1.5 rounded border shadow-sm text-xs group/item",
-                          isDummy ? "border-dashed border-zinc-300 dark:border-zinc-800 bg-zinc-50/50" : `${roleColors.bg} ${roleColors.border}`
+                          "px-2 py-1.5 rounded-md border bg-card text-xs group/item transition-colors hover:border-border/80",
+                          isDummy ? "border-dashed" : "border-border"
                         )}>
                           <div className="flex items-center gap-2">
-                            <User className={cn("w-3 h-3 shrink-0", isDummy ? "text-zinc-400" : roleColors.icon)} />
-                            <span className={cn("truncate flex-1 font-medium", isDummy && "italic text-muted-foreground")}>
-                              {child.title} {isDummy && <span className="text-[8px] text-muted-foreground font-normal">(Dummy)</span>}
+                            <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", rm.dot)} />
+                            <span className={cn("truncate flex-1 font-medium text-foreground", isDummy && "italic text-muted-foreground")}>
+                              {child.title}{isDummy && <span className="text-[8px] text-muted-foreground font-normal ml-1">(Dummy)</span>}
+                            </span>
+                            <span className={cn("px-1.5 py-0.5 rounded text-[8px] font-medium border shrink-0", rm.chip)}>
+                              {rm.label}
                             </span>
                             <OutcomeIcon outcome={detail?.outcome} />
                             {onEditChild && (
                               <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onEditChild({ ...child, canvasItemId: item.id });
-                                }}
-                                className={cn("opacity-0 group-hover/item:opacity-100 transition-opacity", isDummy ? "hover:text-primary" : `hover:${roleColors.icon}`)}
+                                onClick={(e) => { e.stopPropagation(); onEditChild({ ...child, canvasItemId: item.id }); }}
+                                className="opacity-0 group-hover/item:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
                                 title="แก้ไขรายละเอียด"
                               >
                                 <Pencil className="w-3 h-3" />
@@ -810,23 +842,20 @@ Sticky Notes: ${stickyNotes}`;
                             )}
                             {onRemoveChild && (
                               <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onRemoveChild(child.id);
-                                }}
-                                className="opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-opacity"
+                                onClick={(e) => { e.stopPropagation(); onRemoveChild(child.id); }}
+                                className="opacity-0 group-hover/item:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
                               >
                                 <X className="w-3 h-3" />
                               </button>
                             )}
                           </div>
                           {hasDetail && (
-                            <div className="mt-1 pl-5 text-[10px] text-muted-foreground space-y-0.5 border-t border-zinc-100/10 pt-1">
+                            <div className="mt-1 pl-3.5 text-[10px] text-muted-foreground space-y-0.5 border-t border-border/50 pt-1">
                               {detail.action && (
-                                <p className="truncate">📌 {detail.action}{detail.how ? ` • ${detail.how}` : ''}</p>
+                                <p className="truncate"><span className={rm.text}>ทำ</span> · {detail.action}{detail.how ? ` • ${detail.how}` : ''}</p>
                               )}
                               {detail.goal && (
-                                <p className="truncate text-muted-foreground/70">🎯 {detail.goal}</p>
+                                <p className="truncate text-muted-foreground/70">เป้า · {detail.goal}</p>
                               )}
                             </div>
                           )}
@@ -850,13 +879,13 @@ Sticky Notes: ${stickyNotes}`;
                       const isDummy = child.type === 'dummy_faction';
                       return (
                         <div key={child.id} className={cn(
-                          "bg-background p-1.5 rounded border shadow-sm text-xs group/item border-l-2",
-                          isDummy ? "border-dashed border-zinc-300 dark:border-zinc-800 border-l-zinc-400" : "border-l-emerald-500"
+                          "px-2 py-1.5 rounded-md border bg-card text-xs group/item transition-colors hover:border-border/80",
+                          isDummy ? "border-dashed" : "border-border"
                         )}>
                           <div className="flex items-center gap-2">
-                            <Shield className={cn("w-3 h-3 shrink-0", isDummy ? "text-zinc-400" : "text-emerald-500")} />
-                            <span className={cn("truncate flex-1 font-medium", isDummy && "italic text-muted-foreground")}>
-                              {child.title} {isDummy && <span className="text-[8px] text-muted-foreground font-normal">(Dummy)</span>}
+                            <Shield className={cn("w-3 h-3 shrink-0", isDummy ? "text-muted-foreground" : "text-emerald-500")} />
+                            <span className={cn("truncate flex-1 font-medium text-foreground", isDummy && "italic text-muted-foreground")}>
+                              {child.title}{isDummy && <span className="text-[8px] text-muted-foreground font-normal ml-1">(Dummy)</span>}
                             </span>
                             <OutcomeIcon outcome={detail?.outcome} />
                             {onEditChild && (

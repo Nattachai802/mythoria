@@ -21,18 +21,25 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
-import { User, MapPin, Loader2, CheckCircle2, XCircle, Clock, HelpCircle, Shield } from "lucide-react";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { User, MapPin, Loader2, Shield } from "lucide-react";
 import { upsertSceneElementDetail } from "@/server/scene-element-details";
 import { toast } from "sonner";
 import { SceneElementDetails } from "@/db/schema";
+import { ROLES } from "./scene-participants-panel";
 
 const detailSchema = z.object({
     action: z.string().optional(),
     how: z.string().optional(),
     goal: z.string().optional(),
     outcome: z.string().optional(),
+    role: z.string().optional(),
     notes: z.string().optional(),
 });
 
@@ -50,13 +57,6 @@ interface SceneElementDetailDialogProps {
     existingDetail?: SceneElementDetails | null;
     onSaved?: (detail: SceneElementDetails) => void;
 }
-
-const outcomeOptions = [
-    { value: "unknown", label: "ยังไม่ทราบ", icon: HelpCircle, color: "text-muted-foreground" },
-    { value: "success", label: "สำเร็จ", icon: CheckCircle2, color: "text-green-500" },
-    { value: "failure", label: "ล้มเหลว", icon: XCircle, color: "text-red-500" },
-    { value: "ongoing", label: "กำลังดำเนินการ", icon: Clock, color: "text-yellow-500" },
-];
 
 export function SceneElementDetailDialog({
     open,
@@ -78,7 +78,8 @@ export function SceneElementDetailDialog({
             action: "",
             how: "",
             goal: "",
-            outcome: "unknown",
+            outcome: "",
+            role: "protagonist",
             notes: "",
         },
     });
@@ -90,7 +91,8 @@ export function SceneElementDetailDialog({
                 action: existingDetail?.action || "",
                 how: existingDetail?.how || "",
                 goal: existingDetail?.goal || "",
-                outcome: existingDetail?.outcome || "unknown",
+                outcome: existingDetail?.outcome || "",
+                role: existingDetail?.role || "protagonist",
                 notes: existingDetail?.notes || "",
             });
         }
@@ -109,6 +111,7 @@ export function SceneElementDetailDialog({
             how: data.how || undefined,
             goal: data.goal || undefined,
             outcome: data.outcome || undefined,
+            role: data.role || undefined,
             notes: data.notes || undefined,
             novelId,
         });
@@ -202,40 +205,43 @@ export function SceneElementDetailDialog({
                             )}
                         />
 
-                        <FormField
-                            control={form.control}
-                            name="outcome"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>ผลลัพธ์ (Outcome)</FormLabel>
-                                    <FormControl>
-                                        <RadioGroup
-                                            onValueChange={field.onChange}
-                                            value={field.value}
-                                            className="flex flex-wrap gap-3"
-                                        >
-                                            {outcomeOptions.map((option) => {
-                                                const Icon = option.icon;
-                                                return (
-                                                    <div key={option.value} className="flex items-center space-x-2">
-                                                        <RadioGroupItem value={option.value} id={option.value} />
-                                                        <Label
-                                                            htmlFor={option.value}
-                                                            className={`flex items-center gap-1.5 cursor-pointer ${field.value === option.value ? option.color : "text-muted-foreground"
-                                                                }`}
-                                                        >
-                                                            <Icon className="w-4 h-4" />
-                                                            {option.label}
-                                                        </Label>
-                                                    </div>
-                                                );
-                                            })}
-                                        </RadioGroup>
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
+                        <div className="grid grid-cols-2 gap-3">
+                            <FormField
+                                control={form.control}
+                                name="outcome"
+                                render={({ field }) => (
+                                    <FormItem className="min-w-0">
+                                        <FormLabel>ผลลัพธ์ (Outcome)</FormLabel>
+                                        <FormControl>
+                                            <Input placeholder="เช่น พ่ายแพ้, ได้ข้อมูลลับ" {...field} />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="role"
+                                render={({ field }) => (
+                                    <FormItem className="min-w-0">
+                                        <FormLabel>บทบาท</FormLabel>
+                                        <Select onValueChange={field.onChange} value={field.value}>
+                                            <FormControl>
+                                                <SelectTrigger className="w-full [&>span]:truncate">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                            </FormControl>
+                                            <SelectContent>
+                                                {ROLES.map((r) => (
+                                                    <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                        </div>
 
                         <FormField
                             control={form.control}
