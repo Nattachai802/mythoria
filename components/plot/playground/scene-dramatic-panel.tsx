@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
     Target, Swords, Drama, Loader2, TrendingUp, TrendingDown, Minus, HelpCircle,
-    CheckCircle2, XCircle, Clock, Eye, GitCommitHorizontal,
+    CheckCircle2, XCircle, Clock, Eye, GitCommitHorizontal, CalendarClock,
 } from "lucide-react"
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -71,6 +71,7 @@ export function SceneDramaticPanel({ event, characters = [], events = [] }: Prop
     const [causeKind, setCauseKind] = useState(event.causeKind ?? "none")
     const [causeEventId, setCauseEventId] = useState(event.causeEventId ?? "none")
     const [causeNote, setCauseNote] = useState(event.causeNote ?? "")
+    const [eventDate, setEventDate] = useState(event.eventDate ?? "")
 
     useEffect(() => {
         if (open) {
@@ -83,6 +84,7 @@ export function SceneDramaticPanel({ event, characters = [], events = [] }: Prop
             setCauseKind(event.causeKind ?? "none")
             setCauseEventId(event.causeEventId ?? "none")
             setCauseNote(event.causeNote ?? "")
+            setEventDate(event.eventDate ?? "")
         }
     }, [open, event])
 
@@ -100,6 +102,7 @@ export function SceneDramaticPanel({ event, characters = [], events = [] }: Prop
                 causeKind: causeKind === "none" ? null : causeKind,
                 causeEventId: causeKind === "none" || causeEventId === "none" ? null : causeEventId,
                 causeNote: causeKind === "none" ? null : (causeNote.trim() || null),
+                eventDate: eventDate.trim() || null,
             })
             if (res.success) {
                 toast.success("บันทึกโครงฉากแล้ว")
@@ -158,6 +161,19 @@ export function SceneDramaticPanel({ event, characters = [], events = [] }: Prop
                                 ))}
                             </SelectContent>
                         </Select>
+                    </div>
+
+                    {/* เวลาในเรื่อง (P3) — ป้ายแสดงบนเส้นเวลาจริง */}
+                    <div className="space-y-1">
+                        <label className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                            <CalendarClock className="h-3 w-3" />เวลาในเรื่อง
+                        </label>
+                        <Input
+                            value={eventDate}
+                            onChange={e => setEventDate(e.target.value)}
+                            placeholder={'เช่น "ฤดูหนาวปีที่ 3", "คืนเดียวกับฉากงานเลี้ยง"'}
+                            className="h-8 text-xs chamfered-sm"
+                        />
                     </div>
 
                     {/* Causal chain (P2) — Therefore/But */}

@@ -27,7 +27,7 @@ import { SceneElementDetails } from "@/db/schema";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Save, ZoomIn, ZoomOut, Maximize2, Link2, X, Check, Move, Download, List, Navigation, SkipBack, SkipForward, StickyNote, GitBranchPlus, Lightbulb, Group, Loader2, Sprout } from "lucide-react";
+import { Plus, Save, ZoomIn, ZoomOut, Maximize2, Link2, X, Check, Move, Download, List, Navigation, SkipBack, SkipForward, StickyNote, GitBranchPlus, Lightbulb, Group, Loader2, Sprout, LayoutGrid } from "lucide-react";
 import { CreateIdeaDialog } from "@/components/project/idea/create-idea-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
@@ -42,8 +42,27 @@ interface PlaygroundBoardProps {
     factions?: any[];
 }
 
-// Red String Connection (ด้ายแดงแบบนักสืบ)
-function ConnectionLine({ start, end }: { start: { x: number; y: number }; end: { x: number; y: number } }) {
+// ---- Canvas link (P-canvas): เส้นเชื่อมมีชนิด/label ----
+// link เก็บใน item.links — รองรับทั้ง string เก่า และ object ใหม่
+export type CanvasLink = { targetId: string; kind: string; label?: string | null }
+export const normalizeLink = (l: any): CanvasLink =>
+    typeof l === "string" ? { targetId: l, kind: "related", label: null } : { kind: "related", ...l }
+
+export const LINK_KINDS: Record<string, { label: string; color: string; pinFill: string; pinStroke: string; dash?: string }> = {
+    related: { label: "เกี่ยวข้อง", color: "#dc2626", pinFill: "#991b1b", pinStroke: "#fca5a5" },          // ด้ายแดงเดิม
+    leads_to: { label: "นำไปสู่", color: "#10b981", pinFill: "#047857", pinStroke: "#6ee7b7" },            // + ลูกศร
+    conflicts: { label: "ขัดแย้งกับ", color: "#ef4444", pinFill: "#991b1b", pinStroke: "#fca5a5", dash: "7,5" },
+    simultaneous: { label: "เกิดพร้อมกัน", color: "#3b82f6", pinFill: "#1d4ed8", pinStroke: "#93c5fd" },
+}
+
+// Red String Connection (ด้ายแดงแบบนักสืบ) — generalized ตามชนิดเส้น
+function ConnectionLine({ start, end, kind = "related", label, onClick }: {
+    start: { x: number; y: number };
+    end: { x: number; y: number };
+    kind?: string;
+    label?: string | null;
+    onClick?: () => void;
+}) {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
     const angle = Math.atan2(dy, dx);
@@ -65,6 +84,21 @@ function ConnectionLine({ start, end }: { start: { x: number; y: number }; end: 
     // Quadratic bezier curve path
     const pathD = `M ${sX} ${sY} Q ${midX} ${midY}, ${eX} ${eY}`;
 
+    const cfg = LINK_KINDS[kind] || LINK_KINDS.related;
+
+    // Arrowhead ปลายทาง (เฉพาะ "นำไปสู่")
+    const arrowSize = 11;
+    const arrowAngle = Math.PI / 7;
+    const aX1 = eX - arrowSize * Math.cos(angle - arrowAngle);
+    const aY1 = eY - arrowSize * Math.sin(angle - arrowAngle);
+    const aX2 = eX - arrowSize * Math.cos(angle + arrowAngle);
+    const aY2 = eY - arrowSize * Math.sin(angle + arrowAngle);
+
+    // จุดวาง label — บนเส้นโค้งจริง (t=0.5 ของ quadratic)
+    const labelX = 0.25 * sX + 0.5 * midX + 0.25 * eX;
+    const labelY = 0.25 * sY + 0.5 * midY + 0.25 * eY - 12;
+    const displayLabel = label || (kind !== "related" ? cfg.label : null);
+
     return (
         <g>
             {/* Shadow for depth */}
@@ -76,28 +110,58 @@ function ConnectionLine({ start, end }: { start: { x: number; y: number }; end: 
                 strokeLinecap="round"
                 style={{ filter: 'blur(2px)', transform: 'translate(2px, 2px)' }}
             />
-            {/* Main red string */}
+            {/* Main string */}
             <path
                 d={pathD}
-                stroke="#dc2626"
+                stroke={cfg.color}
                 strokeWidth="2.5"
                 fill="none"
                 strokeLinecap="round"
+                strokeDasharray={cfg.dash}
                 style={{ filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.3))' }}
             />
             {/* Highlight for texture */}
             <path
                 d={pathD}
-                stroke="rgba(255,120,120,0.4)"
+                stroke="rgba(255,255,255,0.25)"
                 strokeWidth="1"
                 fill="none"
                 strokeLinecap="round"
+                strokeDasharray={cfg.dash}
                 style={{ transform: 'translate(-0.5px, -0.5px)' }}
             />
+            {/* Arrowhead — leads_to เท่านั้น */}
+            {kind === "leads_to" && (
+                <polygon points={`${eX},${eY} ${aX1},${aY1} ${aX2},${aY2}`} fill={cfg.color} />
+            )}
             {/* Pin indicator at start */}
-            <circle cx={sX} cy={sY} r="4" fill="#991b1b" stroke="#fca5a5" strokeWidth="1" />
+            <circle cx={sX} cy={sY} r="4" fill={cfg.pinFill} stroke={cfg.pinStroke} strokeWidth="1" />
             {/* Pin indicator at end */}
-            <circle cx={eX} cy={eY} r="4" fill="#991b1b" stroke="#fca5a5" strokeWidth="1" />
+            <circle cx={eX} cy={eY} r="4" fill={cfg.pinFill} stroke={cfg.pinStroke} strokeWidth="1" />
+            {/* Label chip กลางเส้น */}
+            {displayLabel && (
+                <g style={{ pointerEvents: 'none' }}>
+                    <rect
+                        x={labelX - displayLabel.length * 4.5} y={labelY - 9}
+                        width={displayLabel.length * 9} height={17} rx="4"
+                        fill="white" stroke={cfg.color} strokeWidth="1" opacity="0.92"
+                    />
+                    <text x={labelX} y={labelY + 3.5} textAnchor="middle" fontSize="10" fill={cfg.color} fontWeight="600">
+                        {displayLabel}
+                    </text>
+                </g>
+            )}
+            {/* Invisible wide hit area — คลิกเส้นเพื่อแก้/ลบ */}
+            {onClick && (
+                <path
+                    d={pathD}
+                    stroke="transparent"
+                    strokeWidth="16"
+                    fill="none"
+                    style={{ pointerEvents: 'auto', cursor: 'pointer' }}
+                    onClick={(e) => { e.stopPropagation(); onClick(); }}
+                />
+            )}
         </g>
     );
 }
@@ -179,6 +243,84 @@ function AncestorConnectionLine({ start, end, label }: { start: { x: number; y: 
     );
 }
 
+// Dialog แก้เส้นเชื่อม: เลือกชนิด + label + ลบ
+function LinkEditDialog({ sourceTitle, targetTitle, link, onSave, onDelete, onClose }: {
+    sourceTitle: string;
+    targetTitle: string;
+    link: CanvasLink;
+    onSave: (patch: { kind: string; label: string | null }) => void;
+    onDelete: () => void;
+    onClose: () => void;
+}) {
+    const [kind, setKind] = useState(link.kind);
+    const [label, setLabel] = useState(link.label || "");
+
+    return (
+        <Dialog open onOpenChange={(open) => !open && onClose()}>
+            <DialogContent className="max-w-sm">
+                <DialogHeader>
+                    <DialogTitle className="text-sm flex items-center gap-2">
+                        <Link2 className="w-4 h-4 text-muted-foreground" />
+                        เส้นเชื่อม
+                    </DialogTitle>
+                    <DialogDescription className="text-xs">
+                        <span className="font-medium text-foreground">{sourceTitle}</span>
+                        {" → "}
+                        <span className="font-medium text-foreground">{targetTitle}</span>
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-3">
+                    <div className="space-y-1.5">
+                        <label className="text-[11px] font-medium text-muted-foreground">ชนิดความสัมพันธ์</label>
+                        <div className="grid grid-cols-2 gap-1.5">
+                            {Object.entries(LINK_KINDS).map(([k, cfg]) => (
+                                <button
+                                    key={k}
+                                    onClick={() => setKind(k)}
+                                    className={`h-8 rounded border text-xs transition-colors ${kind === k
+                                        ? "border-current bg-muted font-semibold"
+                                        : "border-border/60 text-muted-foreground hover:border-border"}`}
+                                    style={kind === k ? { color: cfg.color } : undefined}
+                                >
+                                    {cfg.label}
+                                </button>
+                            ))}
+                        </div>
+                        {kind === "leads_to" && link.kind !== "leads_to" && (
+                            <p className="text-[10px] text-muted-foreground">
+                                * ตั้งเป็น "นำไปสู่" จะส่งตัวละครในการ์ดต้นทางต่อไปการ์ดปลายทาง
+                            </p>
+                        )}
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="text-[11px] font-medium text-muted-foreground">Label บนเส้น (ไม่บังคับ)</label>
+                        <Input
+                            value={label}
+                            onChange={e => setLabel(e.target.value)}
+                            placeholder="เช่น เพราะโดนหักหลัง"
+                            className="h-8 text-xs"
+                        />
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                        <Button variant="ghost" size="sm" className="h-8 text-xs text-red-500 hover:text-red-600 hover:bg-red-500/10" onClick={onDelete}>
+                            <X className="w-3.5 h-3.5 mr-1" /> ลบเส้น
+                        </Button>
+                        <div className="flex gap-2">
+                            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={onClose}>ยกเลิก</Button>
+                            <Button size="sm" className="h-8 text-xs" onClick={() => onSave({ kind, label: label.trim() || null })}>
+                                <Check className="w-3.5 h-3.5 mr-1" /> บันทึก
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 function DroppableCanvas({
     children,
     onCanvasRefChange,
@@ -190,6 +332,7 @@ function DroppableCanvas({
     onMouseDown,
     onMouseMove,
     onMouseUp,
+    onLinkClick,
 }: {
     children: React.ReactNode;
     onCanvasRefChange: (element: HTMLDivElement | null) => void;
@@ -201,6 +344,7 @@ function DroppableCanvas({
     onMouseDown: (e: React.MouseEvent) => void;
     onMouseMove: (e: React.MouseEvent) => void;
     onMouseUp: (e: React.MouseEvent) => void;
+    onLinkClick?: (sourceId: string, targetId: string) => void;
 }) {
     const { setNodeRef } = useDroppable({
         id: "canvas-droppable",
@@ -212,17 +356,25 @@ function DroppableCanvas({
         onCanvasRefChange(element);
     }, [setNodeRef, onCanvasRefChange]);
 
-    // Render Red String connections
+    // Render link connections (มีชนิด/label, คลิกเพื่อแก้)
     const connections = items.flatMap(source =>
-        (source.links || []).map((targetId: string) => {
-            const target = items.find(i => i.id === targetId);
+        (source.links || []).map((raw: any) => {
+            const link = normalizeLink(raw);
+            const target = items.find(i => i.id === link.targetId);
             if (!target) return null;
 
             // Calculate centers
             const start = { x: source.x + (source.type === 'idea' ? 160 : 128), y: source.y + (source.type === 'idea' ? 100 : 50) };
             const end = { x: target.x + (target.type === 'idea' ? 160 : 128), y: target.y + (target.type === 'idea' ? 100 : 50) };
 
-            return <ConnectionLine key={`${source.id}-${target.id}`} start={start} end={end} />;
+            return (
+                <ConnectionLine
+                    key={`${source.id}-${target.id}`}
+                    start={start} end={end}
+                    kind={link.kind} label={link.label}
+                    onClick={onLinkClick ? () => onLinkClick(source.id, link.targetId) : undefined}
+                />
+            );
         })
     );
 
@@ -463,7 +615,8 @@ export function PlaygroundBoard({
         isLinking: boolean;
     } | null>(null);
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
-    const [linkingSourceId, setLinkingSourceId] = useState<string | null>(null);
+    const [linkingSourceId, setLinkingSourceId] = useState<string | null>(null)
+    const [editingLink, setEditingLink] = useState<{ sourceId: string; targetId: string } | null>(null);
     const [zoom, setZoom] = useState(1);
 
     // Scene element details state
@@ -844,43 +997,18 @@ export function PlaygroundBoard({
 
         setItems(prev => {
             const sourceItem = prev.find(i => i.id === linkingSourceId);
-            const targetItem = prev.find(i => i.id === targetId);
 
-            // Check if already connected
-            if (sourceItem?.links?.includes(targetId)) {
+            // Check if already connected (รองรับทั้ง link เก่า string และ object ใหม่)
+            if ((sourceItem?.links || []).some((l: any) => normalizeLink(l).targetId === targetId)) {
                 toast.info("Already connected");
                 return prev;
             }
 
-            // Get children to copy (characters + others, NOT locations or sticky-notes)
-            const childrenToCopy = (sourceItem?.children || [])
-                .filter((c: any) => c.type !== 'location' && c.type !== 'sticky-note')
-                .map((c: any) => ({
-                    ...c,
-                    id: crypto.randomUUID(), // Generate new ID to avoid conflicts
-                }));
-
-            // Filter out duplicates (same referenceId already exists in target)
-            const existingRefIds = new Set(
-                (targetItem?.children || []).map((c: any) => c.referenceId)
-            );
-            const newChildren = childrenToCopy.filter(
-                (c: any) => !existingRefIds.has(c.referenceId)
-            );
-
-            const copiedCount = newChildren.length;
-
+            // สร้าง link ชนิด default "เกี่ยวข้อง" — เปลี่ยนชนิด/label ได้โดยคลิกที่เส้น
+            // (การ copy children ย้ายไปเกิดตอนตั้งชนิดเป็น "นำไปสู่" เท่านั้น)
             return prev.map(item => {
-                // Update source with new link
                 if (item.id === linkingSourceId) {
-                    return { ...item, links: [...(item.links || []), targetId] };
-                }
-                // Update target with copied children
-                if (item.id === targetId && newChildren.length > 0) {
-                    return {
-                        ...item,
-                        children: [...(item.children || []), ...newChildren]
-                    };
+                    return { ...item, links: [...(item.links || []), { targetId, kind: "related", label: null }] };
                 }
                 return item;
             });
@@ -904,10 +1032,46 @@ export function PlaygroundBoard({
     const handleUnlink = (sourceId: string, targetId: string) => {
         setItems(prev => prev.map(item => {
             if (item.id === sourceId) {
-                return { ...item, links: (item.links || []).filter((id: string) => id !== targetId) };
+                return { ...item, links: (item.links || []).filter((l: any) => normalizeLink(l).targetId !== targetId) };
             }
             return item;
         }));
+    };
+
+    // อัปเดตชนิด/label ของเส้น — ถ้าเปลี่ยนเป็น "นำไปสู่" จะ copy children (ตัวละคร/ไอเดีย) ไปปลายทาง
+    const handleUpdateLink = (sourceId: string, targetId: string, patch: { kind?: string; label?: string | null }) => {
+        setItems(prev => {
+            const sourceItem = prev.find(i => i.id === sourceId);
+            const targetItem = prev.find(i => i.id === targetId);
+            const oldLink = (sourceItem?.links || []).map(normalizeLink).find((l: CanvasLink) => l.targetId === targetId);
+            const becomesLeadsTo = patch.kind === "leads_to" && oldLink?.kind !== "leads_to";
+
+            let newChildren: any[] = [];
+            if (becomesLeadsTo) {
+                const childrenToCopy = (sourceItem?.children || [])
+                    .filter((c: any) => c.type !== 'location' && c.type !== 'sticky-note')
+                    .map((c: any) => ({ ...c, id: crypto.randomUUID() }));
+                const existingRefIds = new Set((targetItem?.children || []).map((c: any) => c.referenceId));
+                newChildren = childrenToCopy.filter((c: any) => c.referenceId && !existingRefIds.has(c.referenceId));
+            }
+
+            return prev.map(item => {
+                if (item.id === sourceId) {
+                    return {
+                        ...item,
+                        links: (item.links || []).map((l: any) => {
+                            const n = normalizeLink(l);
+                            return n.targetId === targetId ? { ...n, ...patch } : n;
+                        }),
+                    };
+                }
+                if (item.id === targetId && newChildren.length > 0) {
+                    return { ...item, children: [...(item.children || []), ...newChildren] };
+                }
+                return item;
+            });
+        });
+        if (patch.kind === "leads_to") toast.success('ตั้งเป็น "นำไปสู่" — ตัวละครถูกส่งต่อไปการ์ดปลายทาง');
     };
 
     // Zoom handlers
@@ -1026,6 +1190,71 @@ export function PlaygroundBoard({
             return item;
         }));
     }, []);
+
+    // จัดระเบียบ (P-canvas): เรียง idea ตาม chain "นำไปสู่" ซ้าย→ขวา, ที่เหลือ grid ด้านล่าง
+    const prevLayoutRef = useRef<Map<string, { x: number; y: number }> | null>(null);
+    const handleAutoArrange = () => {
+        if (items.length === 0) return;
+        prevLayoutRef.current = new Map(items.map(i => [i.id, { x: i.x, y: i.y }]));
+
+        const ideas = items.filter(i => i.type === 'idea');
+        const others = items.filter(i => i.type !== 'idea');
+
+        // depth ตาม chain leads_to (longest path จาก root)
+        const leadsTo = new Map<string, string[]>();
+        ideas.forEach(i => {
+            const targets = (i.links || []).map(normalizeLink)
+                .filter((l: CanvasLink) => l.kind === 'leads_to')
+                .map((l: CanvasLink) => l.targetId)
+                .filter((tid: string) => ideas.some(x => x.id === tid));
+            leadsTo.set(i.id, targets);
+        });
+        const depths = new Map<string, number>();
+        const visiting = new Set<string>();
+        const depthOf = (id: string): number => {
+            if (depths.has(id)) return depths.get(id)!;
+            if (visiting.has(id)) return 0; // กันวงจร
+            visiting.add(id);
+            const incoming = ideas.filter(i => (leadsTo.get(i.id) || []).includes(id));
+            const d = incoming.length === 0 ? 0 : Math.max(...incoming.map(i => depthOf(i.id))) + 1;
+            visiting.delete(id);
+            depths.set(id, d);
+            return d;
+        };
+        ideas.forEach(i => depthOf(i.id));
+
+        const COL_W = 520, ROW_H = 460, PAD = 80;
+        const colCounts = new Map<number, number>();
+        const pos = new Map<string, { x: number; y: number }>();
+        // เรียงในคอลัมน์ตาม y เดิม เพื่อคงลำดับที่ user คุ้น
+        [...ideas].sort((a, b) => a.y - b.y).forEach(i => {
+            const col = depths.get(i.id) || 0;
+            const row = colCounts.get(col) || 0;
+            colCounts.set(col, row + 1);
+            pos.set(i.id, { x: PAD + col * COL_W, y: PAD + row * ROW_H });
+        });
+
+        // ของอื่นๆ (ตัวละคร/สถานที่/โน้ตลอย) จัด grid ใต้โซน idea
+        const maxIdeaRows = Math.max(0, ...Array.from(colCounts.values()));
+        const othersTop = PAD + maxIdeaRows * ROW_H + 100;
+        [...others].sort((a, b) => a.x - b.x).forEach((o, idx) => {
+            pos.set(o.id, { x: PAD + (idx % 6) * 300, y: othersTop + Math.floor(idx / 6) * 220 });
+        });
+
+        setItems(prev => prev.map(i => pos.has(i.id) ? { ...i, ...pos.get(i.id)! } : i));
+        setPanOffset({ x: 0, y: 0 });
+        toast.success("จัดระเบียบแล้ว", {
+            action: {
+                label: "ย้อนกลับ",
+                onClick: () => {
+                    const prevLayout = prevLayoutRef.current;
+                    if (prevLayout) {
+                        setItems(cur => cur.map(i => prevLayout.has(i.id) ? { ...i, ...prevLayout.get(i.id)! } : i));
+                    }
+                },
+            },
+        });
+    };
 
     // Callback to receive canvas ref from child component
     const handleCanvasRefChange = useCallback((element: HTMLDivElement | null) => {
@@ -1467,6 +1696,17 @@ export function PlaygroundBoard({
                                 <Group className="h-4 w-4" />
                             </Button>
 
+                            {/* Auto Arrange Button */}
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-amber-600 hover:bg-amber-100"
+                                onClick={handleAutoArrange}
+                                title='จัดระเบียบ — เรียงตาม chain "นำไปสู่"'
+                            >
+                                <LayoutGrid className="h-4 w-4" />
+                            </Button>
+
                             <div className="w-px h-4 bg-border mx-1" />
 
                             <Button
@@ -1615,6 +1855,7 @@ export function PlaygroundBoard({
                         onMouseDown={handleMouseDown}
                         onMouseMove={handleMouseMove}
                         onMouseUp={handleMouseUp}
+                        onLinkClick={(sourceId, targetId) => setEditingLink({ sourceId, targetId })}
                     >
                         {/* Render Groups (behind items) */}
                         {groups.map((group) => (
@@ -1702,6 +1943,31 @@ export function PlaygroundBoard({
                     />
                 )
             }
+
+            {/* Link Edit Dialog (P-canvas) */}
+            {editingLink && (() => {
+                const src = items.find(i => i.id === editingLink.sourceId);
+                const tgt = items.find(i => i.id === editingLink.targetId);
+                const link = (src?.links || []).map(normalizeLink).find((l: CanvasLink) => l.targetId === editingLink.targetId);
+                if (!src || !tgt || !link) return null;
+                return (
+                    <LinkEditDialog
+                        sourceTitle={src.title}
+                        targetTitle={tgt.title}
+                        link={link}
+                        onSave={(patch) => {
+                            handleUpdateLink(editingLink.sourceId, editingLink.targetId, patch);
+                            setEditingLink(null);
+                        }}
+                        onDelete={() => {
+                            handleUnlink(editingLink.sourceId, editingLink.targetId);
+                            setEditingLink(null);
+                            toast.success("ลบเส้นเชื่อมแล้ว");
+                        }}
+                        onClose={() => setEditingLink(null)}
+                    />
+                );
+            })()}
 
             {/* Idea Note Dialog */}
             {

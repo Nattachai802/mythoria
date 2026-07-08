@@ -302,6 +302,7 @@ export const timelineEvents = pgTable("timeline_events", {
   sceneOutcome: text("scene_outcome"),       // ผลลัพธ์: success | failure | ongoing | unknown
   valueShift: integer("value_shift"),        // ทิศ/ความเข้มของการเปลี่ยนค่า −5…+5 (ป้อน tension curve A2)
   povCharacterId: text("pov_character_id").references(() => characters.id, { onDelete: "set null" }), // ฉากนี้เล่าผ่านสายตาใคร (P1)
+  storyTimeIndex: integer("story_time_index"), // ลำดับเวลาจริงในโลกเรื่อง (P3) — null = ยังไม่จัด; eventDate เป็นแค่ป้ายแสดง
   // Causal chain (P2) — Therefore/But: ฉากนี้เกิดขึ้นเพราะ/ทั้งที่ฉากไหน
   causeEventId: text("cause_event_id").references((): AnyPgColumn => timelineEvents.id, { onDelete: "set null" }),
   causeKind: text("cause_kind"),   // "therefore" (ดังนั้น) | "but" (แต่ว่า) — null = "แล้วก็" (and then, จุดอ่อนพล็อต)

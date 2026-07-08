@@ -43,6 +43,7 @@ import type { ThreadWithBeats } from "@/server/plot-threads"
 import { ArcStrip } from "./arc-strip"
 import { TensionCurve } from "./tension-curve"
 import { ThreadRibbon } from "./thread-ribbon"
+import { ChronoTimelineSheet } from "./chrono-timeline-sheet"
 import { TimelineConflictsPanel } from "./timeline-conflicts-panel"
 import type { StoryArc } from "@/db/schema"
 import { detectTimelineConflicts, type TimelineConflict } from "@/server/timeline-conflicts"
@@ -489,6 +490,14 @@ export function TimelineBoard({
                                 )}
                             </PopoverContent>
                         </Popover>
+
+                        {/* เส้นเวลาจริง (P3) */}
+                        <ChronoTimelineSheet
+                            novelId={novelId}
+                            events={events}
+                            chapters={sortedChapters}
+                            onEventPatched={(id, patch) => setEvents(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e))}
+                        />
 
                         {/* มุมมอง — เลเยอร์ที่ทาบบนกระดาน */}
                         <Popover>
