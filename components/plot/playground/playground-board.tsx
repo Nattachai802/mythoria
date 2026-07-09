@@ -1480,7 +1480,8 @@ export function PlaygroundBoard({
 
     const handleSave = async () => {
         setIsSaving(true);
-        const result = await updateTimelineCanvas(eventId, items);
+        // ต้องรวม groups เหมือน auto-save ไม่งั้น group frames หายจาก DB
+        const result = await updateTimelineCanvas(eventId, [...items, ...groups]);
         if (result.success) {
             setLastSaved(new Date());
             toast.success("Saved canvas layout");

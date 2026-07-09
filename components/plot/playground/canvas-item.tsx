@@ -3,7 +3,7 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { User, MapPin, Lightbulb, X, Link as LinkIcon, Pencil, CheckCircle2, XCircle, Clock, StickyNote, Maximize2, Minimize2, ExternalLink, Copy, GitBranchPlus, Shield, Plus, Palette, Check, MoreVertical } from "lucide-react";
+import { User, MapPin, Lightbulb, X, Link as LinkIcon, Pencil, StickyNote, Maximize2, Minimize2, ExternalLink, Copy, GitBranchPlus, Shield, Plus, Palette, Check, MoreVertical } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -137,15 +137,6 @@ export function DraggableCanvasItem({
       />
     </div>
   );
-}
-
-// Helper to get outcome icon
-function OutcomeIcon({ outcome }: { outcome?: string | null }) {
-  if (!outcome || outcome === "unknown") return null;
-  if (outcome === "success") return <CheckCircle2 className="w-3 h-3 text-green-500" />;
-  if (outcome === "failure") return <XCircle className="w-3 h-3 text-red-500" />;
-  if (outcome === "ongoing") return <Clock className="w-3 h-3 text-yellow-500" />;
-  return null;
 }
 
 // ----------------------------------------------------------------------
@@ -830,7 +821,6 @@ Sticky Notes: ${stickyNotes}`;
                             <span className={cn("px-1.5 py-0.5 rounded text-[8px] font-medium border shrink-0", rm.chip)}>
                               {rm.label}
                             </span>
-                            <OutcomeIcon outcome={detail?.outcome} />
                             {onEditChild && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); onEditChild({ ...child, canvasItemId: item.id }); }}
@@ -887,7 +877,6 @@ Sticky Notes: ${stickyNotes}`;
                             <span className={cn("truncate flex-1 font-medium text-foreground", isDummy && "italic text-muted-foreground")}>
                               {child.title}{isDummy && <span className="text-[8px] text-muted-foreground font-normal ml-1">(Dummy)</span>}
                             </span>
-                            <OutcomeIcon outcome={detail?.outcome} />
                             {onEditChild && (
                               <button
                                 onClick={(e) => {
@@ -944,7 +933,6 @@ Sticky Notes: ${stickyNotes}`;
                           <div className="flex items-center gap-2">
                             <MapPin className="w-3 h-3 text-green-500 shrink-0" />
                             <span className="truncate flex-1 font-medium">{child.title}</span>
-                            <OutcomeIcon outcome={detail?.outcome} />
                             {onEditChild && (
                               <button
                                 onClick={(e) => {

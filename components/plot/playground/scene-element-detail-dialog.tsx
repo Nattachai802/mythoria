@@ -33,6 +33,7 @@ import { upsertSceneElementDetail } from "@/server/scene-element-details";
 import { toast } from "sonner";
 import { SceneElementDetails } from "@/db/schema";
 import { ROLES } from "./scene-participants-panel";
+import { cn } from "@/lib/utils";
 
 const detailSchema = z.object({
     action: z.string().optional(),
@@ -98,6 +99,9 @@ export function SceneElementDetailDialog({
         }
     }, [open, existingDetail, form]);
 
+    // role มีความหมายเฉพาะตัวละคร/faction (สถานที่ไม่มี "บทบาท")
+    const hasRole = elementType !== "location";
+
     const onSubmit = async (data: DetailFormData) => {
         setIsSubmitting(true);
 
@@ -111,7 +115,7 @@ export function SceneElementDetailDialog({
             how: data.how || undefined,
             goal: data.goal || undefined,
             outcome: data.outcome || undefined,
-            role: data.role || undefined,
+            role: hasRole ? (data.role || undefined) : undefined,
             notes: data.notes || undefined,
             novelId,
         });
@@ -205,7 +209,7 @@ export function SceneElementDetailDialog({
                             )}
                         />
 
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className={cn("grid gap-3", hasRole ? "grid-cols-2" : "grid-cols-1")}>
                             <FormField
                                 control={form.control}
                                 name="outcome"
@@ -219,28 +223,30 @@ export function SceneElementDetailDialog({
                                     </FormItem>
                                 )}
                             />
-                            <FormField
-                                control={form.control}
-                                name="role"
-                                render={({ field }) => (
-                                    <FormItem className="min-w-0">
-                                        <FormLabel>บทบาท</FormLabel>
-                                        <Select onValueChange={field.onChange} value={field.value}>
-                                            <FormControl>
-                                                <SelectTrigger className="w-full [&>span]:truncate">
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                            </FormControl>
-                                            <SelectContent>
-                                                {ROLES.map((r) => (
-                                                    <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
+                            {hasRole && (
+                                <FormField
+                                    control={form.control}
+                                    name="role"
+                                    render={({ field }) => (
+                                        <FormItem className="min-w-0">
+                                            <FormLabel>บทบาท</FormLabel>
+                                            <Select onValueChange={field.onChange} value={field.value}>
+                                                <FormControl>
+                                                    <SelectTrigger className="w-full [&>span]:truncate">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                </FormControl>
+                                                <SelectContent>
+                                                    {ROLES.map((r) => (
+                                                        <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            )}
                         </div>
 
                         <FormField
