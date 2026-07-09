@@ -44,10 +44,12 @@ export function DraggableCanvasItem({
   onAddChild,
   onDetailSaved,
   onSetColor,
+  onMeasureRef,
 }: {
   item: any;
   onRemove: () => void;
   onSetColor?: (color: string | null) => void;
+  onMeasureRef?: (id: string, el: HTMLDivElement | null) => void;
   onRemoveChild?: (id: string) => void;
   onLinkStart?: (id: string) => void;
   onLinkComplete?: (id: string) => void;
@@ -78,11 +80,12 @@ export function DraggableCanvasItem({
     data: { ...item, acceptDrops: true }
   });
 
-  // Combine refs
+  // Combine refs (+ วัดตำแหน่งจริงสำหรับเส้น link/ancestor ในระบบ grid)
   const setNodeRef = useCallback((node: HTMLDivElement | null) => {
     setDragRef(node);
     setDropRef(node);
-  }, [setDragRef, setDropRef]);
+    onMeasureRef?.(item.id, node);
+  }, [setDragRef, setDropRef, onMeasureRef, item.id]);
 
 
   const style = transform
@@ -98,9 +101,7 @@ export function DraggableCanvasItem({
       {...attributes}
       data-canvas-item="true"
       style={{
-        position: 'absolute',
-        left: item.x,
-        top: item.y,
+        position: 'relative',
         zIndex: isDragging ? 999 : (isOver ? 10 : 2),
         cursor: isDragging ? 'grabbing' : 'grab',
         ...style,
@@ -318,21 +319,12 @@ export function CanvasItem({
   };
   const roleMeta = (role?: string) => ROLE_META[(role || 'protagonist').toLowerCase()] ?? ROLE_META.protagonist;
 
-  const colorClass =
-    item.type === 'character' ? 'border-l-4 border-l-blue-500' :
-      item.type === 'location' ? 'border-l-4 border-l-green-500' :
-        'border-l-4 border-l-yellow-500';
-
   // If idea, maybe make it wider/bigger to imply container
   const isContainer = item.type === 'idea';
 
-  // Width class based on card type and expanded state
-  const getWidthClass = () => {
-    if (isExpanded) return 'w-[450px]';
-    if (isContainer) return 'w-80';
-    return 'w-64';
-  };
-  const widthClass = getWidthClass();
+  // ในระบบ grid การ์ดกว้างเต็มช่องเสมอ (expand = ขยายแนวตั้งด้วยเนื้อหา ไม่ใช่แนวนอน)
+  // DragOverlay ไม่มีช่องรองรับ ให้ความกว้างคงที่
+  const widthClass = isOverlay ? 'w-72' : 'w-full';
 
   // Get detail page URL for navigation
   const getDetailPageUrl = () => {
@@ -427,43 +419,26 @@ Sticky Notes: ${stickyNotes}`;
   };
 
 
-  // Random slight rotation for pinned look
-  const rotation = item.id ? (parseInt(item.id.slice(-2), 16) % 7) - 3 : 0;
+  // สีแถบหัวการ์ด: ป้ายจัดกลุ่มที่ user ตั้ง > สีประจำชนิดการ์ด
+  const stripColor = item.color
+    || (item.type === 'character' ? '#3b82f6'
+      : item.type === 'location' ? '#22c55e'
+        : 'var(--forge-amber)');
 
   return (
-    <div
-      className="relative group"
-      style={{ transform: `rotate(${rotation}deg)` }}
-    >
-      {/* Tape effect on top — ทาสีตามป้ายจัดกลุ่มถ้ามี */}
-      <div
-        className={cn(
-          "absolute -top-2 left-1/2 -translate-x-1/2 h-4 rounded-sm shadow-sm z-10",
-          item.color ? "w-16" : "w-12 bg-gradient-to-b from-amber-100/80 to-amber-200/60"
-        )}
-        style={{
-          transform: `rotate(${-rotation + (rotation > 0 ? 2 : -2)}deg)`,
-          backdropFilter: 'blur(1px)',
-          ...(item.color ? { background: item.color } : {}),
-        }}
-      />
-
-      {/* Polaroid Card */}
+    <div className="relative group">
       <Card className={`
-          ${widthClass} bg-white shadow-xl ${colorClass} 
-          ${isOverlay || isDragging ? 'cursor-grabbing scale-105' : ''} 
-          ${isOver ? 'ring-2 ring-red-500 ring-offset-2' : ''} 
-          ${isLinkingSource ? 'ring-2 ring-red-600 ring-offset-2' : ''}
-          transition-all
+          ${widthClass} bg-card rounded-md overflow-hidden
+          ${isOverlay || isDragging ? 'cursor-grabbing' : ''} 
+          ${isOver ? 'ring-2 ring-[var(--forge-amber)] ring-offset-1' : ''} 
+          ${isLinkingSource ? 'ring-2 ring-blue-500 ring-offset-1' : ''}
+          border border-border/70 shadow-sm hover:shadow-md transition-shadow duration-200
           ${isDragging && !isOverlay ? 'opacity-0' : 'opacity-100'}
-          border-4 border-white
       `}
-        style={{
-          boxShadow: '0 4px 6px -1px rgba(0,0,0,0.2), 0 10px 15px -3px rgba(0,0,0,0.15), 0 2px 4px -1px rgba(0,0,0,0.1)',
-          ...(item.color ? { borderColor: item.color } : {}),
-        }}
       >
-        <div className="p-3">
+        {/* แถบสีหัวการ์ด — ป้ายจัดกลุ่ม/ชนิด */}
+        <div className="h-1" style={{ background: stripColor }} />
+        <div className="p-2">
           <div className={`flex items-start gap-2 ${!isExpanded && item.type === 'idea' && item.content ? 'mb-2' : ''}`}>
             <div className="flex-1 min-w-0">
               <div className={`flex items-center gap-2 ${!isExpanded && item.type === 'idea' && item.content ? 'mb-1' : ''}`}>
@@ -1027,26 +1002,20 @@ Sticky Notes: ${stickyNotes}`;
         </div>
       </Card>
 
-      {/* Sticky Note Cards - แสดงข้างๆ card */}
+      {/* Sticky Note Cards - วางใต้การ์ด (ใน flow เพื่อไม่ทับคอลัมน์ข้างๆ) */}
       {isContainer && item.children?.filter((c: any) => c.type === 'sticky-note').length > 0 && (
-        <div className="absolute -right-4 top-0 translate-x-full flex flex-col gap-3 pl-4 z-30">
+        <div className="mt-2 flex flex-col gap-2">
           {item.children
             .filter((c: any) => c.type === 'sticky-note')
-            .map((note: any, index: number) => (
+            .map((note: any) => (
               <div
                 key={note.id}
                 className="group relative"
-                style={{
-                  transform: `rotate(${(index % 3) * 2 - 2}deg)`
-                }}
               >
                 {/* Note Card */}
                 <div
-                  className="w-44 bg-purple-100 rounded shadow-lg border-2 border-purple-200 p-3"
-                  style={{
-                    boxShadow: '3px 4px 8px rgba(0,0,0,0.15)',
-                    minHeight: '60px'
-                  }}
+                  className="w-full bg-purple-100 rounded border-2 border-purple-200 p-2.5"
+                  style={{ minHeight: '48px' }}
                 >
                   {/* Header */}
                   <div className="flex items-center justify-between mb-2 pb-1 border-b border-purple-200">

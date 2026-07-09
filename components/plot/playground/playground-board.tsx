@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo, Fragment } from "react";
 import {
     DndContext,
     DragEndEvent,
@@ -15,7 +15,6 @@ import {
 } from "@dnd-kit/core";
 import { ResourceSidebar } from "./resource-sidebar";
 import { CanvasItem, DraggableCanvasItem } from "./canvas-item";
-import { GroupFrame, CanvasGroup } from "./group-frame";
 import { updateTimelineCanvas } from "@/server/timeline";
 import { updateIdea } from "@/server/idea"; // For auto-reset isUsed flag
 import { getSceneElementDetails, getIdeaNotesForIdeas } from "@/server/scene-element-details";
@@ -27,9 +26,10 @@ import { SceneElementDetails } from "@/db/schema";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Save, ZoomIn, ZoomOut, Maximize2, Link2, X, Check, Move, Download, List, Navigation, SkipBack, SkipForward, StickyNote, GitBranchPlus, Lightbulb, Group, Loader2, Sprout, LayoutGrid } from "lucide-react";
+import { Plus, Save, Link2, X, Check, Download, List, Navigation, SkipBack, SkipForward, StickyNote, GitBranchPlus, Lightbulb, Loader2, Sprout, LayoutGrid, Rows3 } from "lucide-react";
 import { CreateIdeaDialog } from "@/components/project/idea/create-idea-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 
 interface PlaygroundBoardProps {
     eventId: string;
@@ -42,6 +42,15 @@ interface PlaygroundBoardProps {
     factions?: any[];
 }
 
+interface Lane {
+    id: string;
+    name: string;
+    orderIndex: number;
+}
+
+const COLUMN_WIDTH = 280;
+const LABEL_WIDTH = 150;
+
 // ---- Canvas link (P-canvas): เส้นเชื่อมมีชนิด/label ----
 // link เก็บใน item.links — รองรับทั้ง string เก่า และ object ใหม่
 export type CanvasLink = { targetId: string; kind: string; label?: string | null }
@@ -53,6 +62,36 @@ export const LINK_KINDS: Record<string, { label: string; color: string; pinFill:
     leads_to: { label: "นำไปสู่", color: "#10b981", pinFill: "#047857", pinStroke: "#6ee7b7" },            // + ลูกศร
     conflicts: { label: "ขัดแย้งกับ", color: "#ef4444", pinFill: "#991b1b", pinStroke: "#fca5a5", dash: "7,5" },
     simultaneous: { label: "เกิดพร้อมกัน", color: "#3b82f6", pinFill: "#1d4ed8", pinStroke: "#93c5fd" },
+}
+
+// ---- Migration: ฉากเก่า (x,y อิสระ) -> lane + beatIndex ----
+function buildBoardState(initialItems: any[]): { lanes: Lane[]; items: any[] } {
+    const laneItems = initialItems.filter((i: any) => i.type === 'lane');
+    let lanes: Lane[] = laneItems
+        .map((l: any) => ({ id: l.id, name: l.name || 'เลน', orderIndex: l.orderIndex ?? 0 }))
+        .sort((a, b) => a.orderIndex - b.orderIndex);
+
+    // group frames เดิมเลิกใช้แล้ว (เลนทำหน้าที่จัดกลุ่มแทน) — กรองทิ้งเงียบๆ
+    let cardItems = initialItems.filter((i: any) => i.type !== 'group' && i.type !== 'lane');
+
+    const needsMigration = cardItems.some((i: any) => i.laneId == null || i.beatIndex == null);
+    if (needsMigration) {
+        if (lanes.length === 0) {
+            lanes = [{ id: crypto.randomUUID(), name: 'ทั่วไป', orderIndex: 0 }];
+        }
+        const defaultLaneId = lanes[0].id;
+        const sorted = [...cardItems].sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
+        const rankMap = new Map(sorted.map((it, idx) => [it.id, idx]));
+        cardItems = cardItems.map((it: any) => ({
+            ...it,
+            laneId: it.laneId ?? defaultLaneId,
+            beatIndex: it.beatIndex ?? rankMap.get(it.id) ?? 0,
+        }));
+    }
+    if (lanes.length === 0) {
+        lanes = [{ id: crypto.randomUUID(), name: 'ทั่วไป', orderIndex: 0 }];
+    }
+    return { lanes, items: cardItems };
 }
 
 // Red String Connection (ด้ายแดงแบบนักสืบ) — generalized ตามชนิดเส้น
@@ -68,99 +107,53 @@ function ConnectionLine({ start, end, kind = "related", label, onClick }: {
     const angle = Math.atan2(dy, dx);
     const length = Math.sqrt(dx * dx + dy * dy);
 
-    const shorten = 60;
-
-    if (length < shorten * 2) return null;
+    // เส้นสั้นแค่ไหนก็ต้องวาด (การ์ดช่องติดกันเหลือร่องแค่ ~12px) — scale ส่วนประกอบตามความยาว
+    const shorten = Math.min(4, length * 0.12);
 
     const sX = start.x + Math.cos(angle) * shorten;
     const sY = start.y + Math.sin(angle) * shorten;
     const eX = end.x - Math.cos(angle) * shorten;
     const eY = end.y - Math.sin(angle) * shorten;
 
-    // Create a slight droop in the middle (like real string)
-    const midX = (sX + eX) / 2;
-    const midY = (sY + eY) / 2 + Math.min(length * 0.1, 30); // Subtle droop
-
-    // Quadratic bezier curve path
-    const pathD = `M ${sX} ${sY} Q ${midX} ${midY}, ${eX} ${eY}`;
+    const pathD = `M ${sX} ${sY} L ${eX} ${eY}`;
 
     const cfg = LINK_KINDS[kind] || LINK_KINDS.related;
 
-    // Arrowhead ปลายทาง (เฉพาะ "นำไปสู่")
-    const arrowSize = 11;
+    const arrowSize = Math.min(11, Math.max(5, length * 0.35));
     const arrowAngle = Math.PI / 7;
     const aX1 = eX - arrowSize * Math.cos(angle - arrowAngle);
     const aY1 = eY - arrowSize * Math.sin(angle - arrowAngle);
     const aX2 = eX - arrowSize * Math.cos(angle + arrowAngle);
     const aY2 = eY - arrowSize * Math.sin(angle + arrowAngle);
 
-    // จุดวาง label — บนเส้นโค้งจริง (t=0.5 ของ quadratic)
-    const labelX = 0.25 * sX + 0.5 * midX + 0.25 * eX;
-    const labelY = 0.25 * sY + 0.5 * midY + 0.25 * eY - 12;
+    // วาง label ใกล้ต้นเส้น (อยู่ในร่องข้างการ์ดต้นทาง ไม่โดนการ์ดกลางทางบัง)
+    // เส้นสั้นมาก → ลอยเหนือกึ่งกลางเส้นแทน
+    const labelDist = Math.min(36, length / 2);
+    const labelX = sX + Math.cos(angle) * labelDist;
+    const labelY = length < 40
+        ? (sY + eY) / 2 - 14
+        : sY + Math.sin(angle) * labelDist - 10;
     const displayLabel = label || (kind !== "related" ? cfg.label : null);
 
     return (
         <g>
-            {/* Shadow for depth */}
-            <path
-                d={pathD}
-                stroke="rgba(0,0,0,0.15)"
-                strokeWidth="4"
-                fill="none"
-                strokeLinecap="round"
-                style={{ filter: 'blur(2px)', transform: 'translate(2px, 2px)' }}
-            />
-            {/* Main string */}
-            <path
-                d={pathD}
-                stroke={cfg.color}
-                strokeWidth="2.5"
-                fill="none"
-                strokeLinecap="round"
-                strokeDasharray={cfg.dash}
-                style={{ filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.3))' }}
-            />
-            {/* Highlight for texture */}
-            <path
-                d={pathD}
-                stroke="rgba(255,255,255,0.25)"
-                strokeWidth="1"
-                fill="none"
-                strokeLinecap="round"
-                strokeDasharray={cfg.dash}
-                style={{ transform: 'translate(-0.5px, -0.5px)' }}
-            />
-            {/* Arrowhead — leads_to เท่านั้น */}
-            {kind === "leads_to" && (
-                <polygon points={`${eX},${eY} ${aX1},${aY1} ${aX2},${aY2}`} fill={cfg.color} />
-            )}
-            {/* Pin indicator at start */}
-            <circle cx={sX} cy={sY} r="4" fill={cfg.pinFill} stroke={cfg.pinStroke} strokeWidth="1" />
-            {/* Pin indicator at end */}
-            <circle cx={eX} cy={eY} r="4" fill={cfg.pinFill} stroke={cfg.pinStroke} strokeWidth="1" />
-            {/* Label chip กลางเส้น */}
+            {/* เส้นขอบขาวบางให้ตัดกับเนื้อหาการ์ดที่อยู่ข้างใต้ */}
+            <path d={pathD} stroke="var(--background)" strokeWidth="4" strokeOpacity="0.6" fill="none" strokeLinecap="round" />
+            <path d={pathD} stroke={cfg.color} strokeWidth="2" strokeOpacity="0.6" fill="none" strokeLinecap="round" strokeDasharray={cfg.dash} />
+            {kind === "leads_to" && <polygon points={`${eX},${eY} ${aX1},${aY1} ${aX2},${aY2}`} fill={cfg.color} fillOpacity="0.85" />}
+            <circle cx={sX} cy={sY} r={length < 40 ? 2.5 : 4} fill={cfg.pinFill} stroke={cfg.pinStroke} strokeWidth="1" />
+            <circle cx={eX} cy={eY} r={length < 40 ? 2.5 : 4} fill={cfg.pinFill} stroke={cfg.pinStroke} strokeWidth="1" />
             {displayLabel && (
                 <g style={{ pointerEvents: 'none' }}>
-                    <rect
-                        x={labelX - displayLabel.length * 4.5} y={labelY - 9}
-                        width={displayLabel.length * 9} height={17} rx="4"
-                        fill="white" stroke={cfg.color} strokeWidth="1" opacity="0.92"
-                    />
-                    <text x={labelX} y={labelY + 3.5} textAnchor="middle" fontSize="10" fill={cfg.color} fontWeight="600">
-                        {displayLabel}
-                    </text>
+                    <rect x={labelX - displayLabel.length * 4.5} y={labelY - 9} width={displayLabel.length * 9} height={17} rx="4"
+                        fill="white" stroke={cfg.color} strokeWidth="1" opacity="0.92" />
+                    <text x={labelX} y={labelY + 3.5} textAnchor="middle" fontSize="10" fill={cfg.color} fontWeight="600">{displayLabel}</text>
                 </g>
             )}
-            {/* Invisible wide hit area — คลิกเส้นเพื่อแก้/ลบ */}
             {onClick && (
-                <path
-                    d={pathD}
-                    stroke="transparent"
-                    strokeWidth="16"
-                    fill="none"
+                <path d={pathD} stroke="transparent" strokeWidth="16" fill="none"
                     style={{ pointerEvents: 'auto', cursor: 'pointer' }}
-                    onClick={(e) => { e.stopPropagation(); onClick(); }}
-                />
+                    onClick={(e) => { e.stopPropagation(); onClick(); }} />
             )}
         </g>
     );
@@ -173,70 +166,33 @@ function AncestorConnectionLine({ start, end, label }: { start: { x: number; y: 
     const angle = Math.atan2(dy, dx);
     const length = Math.sqrt(dx * dx + dy * dy);
 
-    const shorten = 60;
-
-    if (length < shorten * 2) return null;
+    const shorten = Math.min(4, length * 0.12);
 
     const sX = start.x + Math.cos(angle) * shorten;
     const sY = start.y + Math.sin(angle) * shorten;
     const eX = end.x - Math.cos(angle) * shorten;
     const eY = end.y - Math.sin(angle) * shorten;
 
-    // Arrowhead at source (pointing from ancestor TO this idea)
-    const arrowSize = 10;
+    const arrowSize = Math.min(10, Math.max(5, length * 0.35));
     const arrowAngle = Math.PI / 7;
     const arrowX1 = sX - arrowSize * Math.cos(angle - arrowAngle);
     const arrowY1 = sY - arrowSize * Math.sin(angle - arrowAngle);
     const arrowX2 = sX - arrowSize * Math.cos(angle + arrowAngle);
     const arrowY2 = sY - arrowSize * Math.sin(angle + arrowAngle);
 
-    // Label position
     const labelX = (sX + eX) / 2;
     const labelY = (sY + eY) / 2 - 10;
 
     return (
         <g>
-            {/* Dashed blue line */}
-            <line
-                x1={sX} y1={sY}
-                x2={eX} y2={eY}
-                stroke="#3b82f6"
-                strokeWidth="2"
-                strokeDasharray="8,4"
-                strokeLinecap="round"
-                style={{ filter: 'drop-shadow(0 1px 2px rgba(59,130,246,0.3))' }}
-            />
-            {/* Arrow at source end */}
-            <polygon
-                points={`${sX},${sY} ${arrowX1},${arrowY1} ${arrowX2},${arrowY2}`}
-                fill="#3b82f6"
-            />
-            {/* Pin at ancestor end (target) */}
+            <line x1={sX} y1={sY} x2={eX} y2={eY} stroke="#3b82f6" strokeWidth="1.5" strokeOpacity="0.55" strokeDasharray="8,4" strokeLinecap="round" />
+            <polygon points={`${sX},${sY} ${arrowX1},${arrowY1} ${arrowX2},${arrowY2}`} fill="#3b82f6" />
             <circle cx={eX} cy={eY} r="4" fill="#1d4ed8" stroke="#93c5fd" strokeWidth="1" />
-            {/* Label */}
             {label && (
                 <g>
-                    <rect
-                        x={labelX - (label.length * 3.5)}
-                        y={labelY - 8}
-                        width={label.length * 7}
-                        height={16}
-                        rx="4"
-                        fill="white"
-                        stroke="#93c5fd"
-                        strokeWidth="1"
-                        opacity="0.9"
-                    />
-                    <text
-                        x={labelX}
-                        y={labelY + 3}
-                        textAnchor="middle"
-                        fontSize="10"
-                        fill="#2563eb"
-                        fontWeight="500"
-                    >
-                        {label}
-                    </text>
+                    <rect x={labelX - (label.length * 3.5)} y={labelY - 8} width={label.length * 7} height={16} rx="4"
+                        fill="white" stroke="#93c5fd" strokeWidth="1" opacity="0.9" />
+                    <text x={labelX} y={labelY + 3} textAnchor="middle" fontSize="10" fill="#2563eb" fontWeight="500">{label}</text>
                 </g>
             )}
         </g>
@@ -321,143 +277,6 @@ function LinkEditDialog({ sourceTitle, targetTitle, link, onSave, onDelete, onCl
     );
 }
 
-function DroppableCanvas({
-    children,
-    onCanvasRefChange,
-    items,
-    ancestorConnections,
-    zoom,
-    panOffset,
-    isPanning,
-    onMouseDown,
-    onMouseMove,
-    onMouseUp,
-    onLinkClick,
-}: {
-    children: React.ReactNode;
-    onCanvasRefChange: (element: HTMLDivElement | null) => void;
-    items: any[];
-    ancestorConnections: Array<{ id: string; sourceIdeaId: string; targetIdeaId: string; label?: string | null }>;
-    zoom: number;
-    panOffset: { x: number; y: number };
-    isPanning: boolean;
-    onMouseDown: (e: React.MouseEvent) => void;
-    onMouseMove: (e: React.MouseEvent) => void;
-    onMouseUp: (e: React.MouseEvent) => void;
-    onLinkClick?: (sourceId: string, targetId: string) => void;
-}) {
-    const { setNodeRef } = useDroppable({
-        id: "canvas-droppable",
-    });
-
-    // Combine refs
-    const combinedRef = useCallback((element: HTMLDivElement | null) => {
-        setNodeRef(element);
-        onCanvasRefChange(element);
-    }, [setNodeRef, onCanvasRefChange]);
-
-    // Render link connections (มีชนิด/label, คลิกเพื่อแก้)
-    const connections = items.flatMap(source =>
-        (source.links || []).map((raw: any) => {
-            const link = normalizeLink(raw);
-            const target = items.find(i => i.id === link.targetId);
-            if (!target) return null;
-
-            // Calculate centers
-            const start = { x: source.x + (source.type === 'idea' ? 160 : 128), y: source.y + (source.type === 'idea' ? 100 : 50) };
-            const end = { x: target.x + (target.type === 'idea' ? 160 : 128), y: target.y + (target.type === 'idea' ? 100 : 50) };
-
-            return (
-                <ConnectionLine
-                    key={`${source.id}-${target.id}`}
-                    start={start} end={end}
-                    kind={link.kind} label={link.label}
-                    onClick={onLinkClick ? () => onLinkClick(source.id, link.targetId) : undefined}
-                />
-            );
-        })
-    );
-
-    // Render Ancestor connections (blue dashed lines)
-    const ancestorLines = ancestorConnections.map(conn => {
-        const source = items.find(i => i.referenceId === conn.sourceIdeaId || i.id === conn.sourceIdeaId);
-        const target = items.find(i => i.referenceId === conn.targetIdeaId || i.id === conn.targetIdeaId);
-        if (!source || !target) return null;
-
-        const start = { x: source.x + (source.type === 'idea' ? 160 : 128), y: source.y + (source.type === 'idea' ? 100 : 50) };
-        const end = { x: target.x + (target.type === 'idea' ? 160 : 128), y: target.y + (target.type === 'idea' ? 100 : 50) };
-
-        return <AncestorConnectionLine key={`ancestor-${conn.id}`} start={start} end={end} label={conn.label} />;
-    });
-
-    return (
-        <div
-            id="canvas-area"
-            ref={combinedRef}
-            className={`absolute inset-0 w-full h-full transition-colors border-4 border-transparent ${isPanning ? 'cursor-grabbing' : ''}`}
-            style={{
-                // Corkboard texture background
-                backgroundColor: '#b8956c',
-                backgroundImage: `
-                    radial-gradient(ellipse at 20% 30%, rgba(139,90,43,0.3) 0%, transparent 50%),
-                    radial-gradient(ellipse at 80% 70%, rgba(160,120,60,0.2) 0%, transparent 40%),
-                    radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0.05) 0%, transparent 70%),
-                    repeating-linear-gradient(
-                        45deg,
-                        transparent,
-                        transparent 2px,
-                        rgba(101,67,33,0.1) 2px,
-                        rgba(101,67,33,0.1) 4px
-                    ),
-                    repeating-linear-gradient(
-                        -45deg,
-                        transparent,
-                        transparent 2px,
-                        rgba(139,90,43,0.08) 2px,
-                        rgba(139,90,43,0.08) 4px
-                    )
-                `,
-                backgroundSize: '100% 100%, 100% 100%, 100% 100%, 8px 8px, 8px 8px',
-                touchAction: 'none',
-                overflow: 'hidden',
-                // Subtle inner shadow for depth
-                boxShadow: 'inset 0 0 100px rgba(0,0,0,0.15)'
-            }}
-            onMouseDown={onMouseDown}
-            onMouseMove={onMouseMove}
-            onMouseUp={onMouseUp}
-            onMouseLeave={onMouseUp}
-        >
-            <div
-                style={{
-                    transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
-                    transformOrigin: 'top left',
-                    position: 'relative',
-                    minWidth: '5000px',
-                    minHeight: '5000px',
-                }}
-            >
-                <svg
-                    style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: '5000px',
-                        height: '5000px',
-                        pointerEvents: 'none',
-                        zIndex: 0,
-                        overflow: 'visible'
-                    }}
-                >
-                    {connections}
-                    {ancestorLines}
-                </svg>
-                {children}
-            </div>
-        </div>
-    );
-}
-
 function ThreadSuggestToast({
     ideaTitle,
     threads,
@@ -499,7 +318,6 @@ function ThreadSuggestToast({
 
     return (
         <div className="chamfered-sm border border-zinc-700 bg-zinc-900 text-zinc-100 shadow-xl w-[320px] overflow-hidden">
-            {/* Header */}
             <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-700/60 bg-zinc-950/60">
                 <Sprout className="h-3.5 w-3.5 text-amber-400 shrink-0" />
                 <span className="font-technical text-[9px] uppercase tracking-widest text-zinc-400">วางแล้ว — ผูกปมดีไหม?</span>
@@ -513,7 +331,6 @@ function ThreadSuggestToast({
                     <span className="text-amber-400 font-medium">"{ideaTitle}"</span>
                 </p>
 
-                {/* Mode toggle */}
                 <div className="flex gap-1">
                     <button
                         onClick={() => setMode("pick")}
@@ -580,6 +397,67 @@ function ThreadSuggestToast({
     );
 }
 
+// ---- Storyboard grid: เลน (แถว) x จังหวะ/beat (คอลัมน์) ----
+function LaneLabel({ lane, laneIndex, onRename, onRemove, canRemove }: {
+    lane: Lane;
+    laneIndex: number;
+    onRename: (id: string, name: string) => void;
+    onRemove: (id: string) => void;
+    canRemove: boolean;
+}) {
+    return (
+        <div
+            style={{ gridColumn: 1, gridRow: laneIndex + 2, width: LABEL_WIDTH }}
+            className="sticky left-0 z-20 bg-muted/60 backdrop-blur-sm border-r border-b border-border/60 flex items-start gap-1 px-2.5 py-2.5 min-h-[140px]"
+        >
+            <span className="mt-[7px] h-2 w-2 rounded-full bg-[var(--forge-amber)] shrink-0" />
+            <input
+                value={lane.name}
+                onChange={e => onRename(lane.id, e.target.value)}
+                className="flex-1 min-w-0 bg-transparent text-sm font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-[var(--forge-amber)]/40 rounded px-1 py-0.5 transition-shadow"
+                placeholder="ชื่อเลน…"
+            />
+            {canRemove && (
+                <button onClick={() => onRemove(lane.id)} className="text-muted-foreground hover:text-destructive shrink-0 mt-0.5" title="ลบเลน">
+                    <X className="w-3 h-3" />
+                </button>
+            )}
+        </div>
+    );
+}
+
+function BeatCell({ laneId, beatIndex, laneIndex, isTrailing, children }: {
+    laneId: string;
+    beatIndex: number;
+    laneIndex: number;
+    isTrailing: boolean;
+    children: React.ReactNode;
+}) {
+    const { setNodeRef, isOver } = useDroppable({
+        id: `cell:${laneId}:${beatIndex}`,
+        data: { acceptsCell: true, laneId, beatIndex },
+    });
+
+    return (
+        <div
+            ref={setNodeRef}
+            style={{ gridColumn: beatIndex + 2, gridRow: laneIndex + 2, width: COLUMN_WIDTH }}
+            className={cn(
+                "min-h-[140px] p-1.5 border-r border-b flex flex-col gap-1.5 transition-colors",
+                isTrailing ? "border-dashed border-border/40" : "border-border/40",
+                isOver && "bg-[var(--forge-amber)]/8 ring-1 ring-inset ring-[var(--forge-amber)]/40"
+            )}
+        >
+            {isTrailing && (
+                <div className="flex-1 flex items-center justify-center text-muted-foreground/30">
+                    <Plus className="w-5 h-5" />
+                </div>
+            )}
+            {children}
+        </div>
+    );
+}
+
 export function PlaygroundBoard({
     eventId,
     novelId,
@@ -590,23 +468,12 @@ export function PlaygroundBoard({
     threads = [],
     factions = [],
 }: PlaygroundBoardProps) {
-    const [items, setItems] = useState<any[]>(initialItems.filter((i: any) => i.type !== 'group'));
-    const [groups, setGroups] = useState<CanvasGroup[]>(
-        initialItems.filter((i: any) => i.type === 'group').map((g: any) => ({
-            id: g.id,
-            type: 'group' as const,
-            label: g.label || g.title || 'Group',
-            color: g.color || '#3B82F6',
-            x: g.x || 0,
-            y: g.y || 0,
-            width: g.width || 500,
-            height: g.height || 350,
-        }))
-    );
+    const [{ lanes, items: initialCardItems }] = useState(() => buildBoardState(initialItems));
+    const [lanes_, setLanes] = useState<Lane[]>(lanes);
+    const [items, setItems] = useState<any[]>(initialCardItems);
     const [activeDragItem, setActiveDragItem] = useState<any>(null);
     const [isSaving, setIsSaving] = useState(false);
 
-    // Thread suggester state — แสดงหลัง drop idea
     const [threadSuggest, setThreadSuggest] = useState<{
         ideaTitle: string;
         selectedThreadId: string;
@@ -617,177 +484,77 @@ export function PlaygroundBoard({
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
     const [linkingSourceId, setLinkingSourceId] = useState<string | null>(null)
     const [editingLink, setEditingLink] = useState<{ sourceId: string; targetId: string } | null>(null);
-    const [zoom, setZoom] = useState(1);
 
-    // Scene element details state
     const [elementDetailsMap, setElementDetailsMap] = useState<Map<string, SceneElementDetails>>(new Map());
-    const [editingChild, setEditingChild] = useState<{
-        child: any;
-        canvasItemId: string;
-    } | null>(null);
+    const [editingChild, setEditingChild] = useState<{ child: any; canvasItemId: string } | null>(null);
 
-    // Idea notes state
     const [ideaNotes, setIdeaNotes] = useState<SceneElementDetails[]>([]);
-    const [editingNote, setEditingNote] = useState<{
-        item: any;
-        existingNote?: SceneElementDetails;
-    } | null>(null);
+    const [editingNote, setEditingNote] = useState<{ item: any; existingNote?: SceneElementDetails } | null>(null);
 
-    // Ancestor connections state
     const [ancestorConnections, setAncestorConnections] = useState<Array<{
-        id: string;
-        sourceIdeaId: string;
-        targetIdeaId: string;
-        label?: string | null;
+        id: string; sourceIdeaId: string; targetIdeaId: string; label?: string | null;
     }>>([]);
-    const [ancestorDialogItem, setAncestorDialogItem] = useState<any | null>(null); // Which idea is setting ancestor
+    const [ancestorDialogItem, setAncestorDialogItem] = useState<any | null>(null);
     const [ancestorSearch, setAncestorSearch] = useState('');
     const [ancestorLabel, setAncestorLabel] = useState('');
     const [ancestorIdeaNotesMap, setAncestorIdeaNotesMap] = useState<Map<string, string[]>>(new Map());
 
-    const canvasRef = useRef<HTMLDivElement>(null);
     const isFirstMount = useRef(true);
+    const [showNavigator, setShowNavigator] = useState(false);
 
-    // Pan state for mouse drag
-    const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
-    const [isPanning, setIsPanning] = useState(false);
-    const panStartRef = useRef({ x: 0, y: 0 });
-    const panOffsetStartRef = useRef({ x: 0, y: 0 });
+    // Grid measurement: ตำแหน่งจริงของแต่ละการ์ด สำหรับวาดเส้น link/ancestor
+    const itemRefs = useRef(new Map<string, HTMLDivElement>());
+    const gridRef = useRef<HTMLDivElement>(null);
+    const viewportRef = useRef<HTMLDivElement>(null);
+    const [linkPositions, setLinkPositions] = useState<Map<string, { x: number; y: number; w: number; h: number }>>(new Map());
 
-    // Handle mouse pan - middle mouse OR left click on empty canvas
-    const handleMouseDown = useCallback((e: React.MouseEvent) => {
-        const target = e.target as HTMLElement;
+    const registerItemRef = useCallback((id: string, el: HTMLDivElement | null) => {
+        if (el) itemRefs.current.set(id, el); else itemRefs.current.delete(id);
+    }, []);
 
-        // Middle mouse button (button === 1) - always pan
-        if (e.button === 1) {
-            e.preventDefault();
-            setIsPanning(true);
-            panStartRef.current = { x: e.clientX, y: e.clientY };
-            panOffsetStartRef.current = { ...panOffset };
-            return;
-        }
-
-        // Left click (button === 0) - only on canvas background
-        if (e.button === 0) {
-            // Check if clicking on a card/item (should not pan)
-            const isClickOnItem = target.closest('[data-canvas-item]') !== null;
-            // Check if within canvas area
-            const isInCanvas = target.closest('#canvas-area') !== null;
-
-            console.log('[Pan Debug]', { isInCanvas, isClickOnItem, tagName: target.tagName });
-
-            if (isInCanvas && !isClickOnItem) {
-                e.preventDefault();
-                console.log('[Pan Debug] Starting left click pan');
-                setIsPanning(true);
-                panStartRef.current = { x: e.clientX, y: e.clientY };
-                panOffsetStartRef.current = { ...panOffset };
-            }
-        }
-    }, [panOffset]);
-
-    const handleMouseMove = useCallback((e: React.MouseEvent) => {
-        if (!isPanning) return;
-
-        const dx = e.clientX - panStartRef.current.x;
-        const dy = e.clientY - panStartRef.current.y;
-
-        setPanOffset({
-            x: panOffsetStartRef.current.x + dx,
-            y: panOffsetStartRef.current.y + dy,
+    const recomputePositions = useCallback(() => {
+        const container = gridRef.current;
+        if (!container) return;
+        const containerRect = container.getBoundingClientRect();
+        const next = new Map<string, { x: number; y: number; w: number; h: number }>();
+        itemRefs.current.forEach((el, id) => {
+            const r = el.getBoundingClientRect();
+            next.set(id, {
+                x: r.left - containerRect.left + r.width / 2,
+                y: r.top - containerRect.top + r.height / 2,
+                w: r.width,
+                h: r.height,
+            });
         });
-    }, [isPanning]);
-
-    const handleMouseUp = useCallback((e: React.MouseEvent) => {
-        // Stop panning for both left (0) and middle (1) mouse buttons
-        if (e.button === 0 || e.button === 1) {
-            setIsPanning(false);
-        }
+        setLinkPositions(next);
     }, []);
 
-    const handleResetPan = useCallback(() => {
-        setPanOffset({ x: 0, y: 0 });
-    }, []);
+    useLayoutEffect(() => {
+        recomputePositions();
+    }, [items, lanes_, recomputePositions]);
 
-    const handleAddStickyNote = useCallback(() => {
-        // คำนวณตำแหน่งกลางจอของ user ใน world space
-        // สูตร: worldX = (viewportCenter - panOffset) / zoom
-        const container = canvasRef.current?.parentElement;
-        const viewportWidth = container?.clientWidth ?? 800;
-        const viewportHeight = container?.clientHeight ?? 600;
-
-        const centerX = (viewportWidth / 2 - panOffset.x) / zoom;
-        const centerY = (viewportHeight / 2 - panOffset.y) / zoom;
-
-        // offset เล็กน้อยเพื่อกัน note ซ้อนกันเวลากดหลายครั้ง
-        const jitter = () => (Math.random() - 0.5) * 60;
-
-        const newNote = {
-            id: crypto.randomUUID(),
-            type: 'sticky-note',
-            title: 'Note',
-            content: '',
-            x: Math.round(centerX + jitter()),
-            y: Math.round(centerY + jitter()),
-            links: []
-        };
-
-        setItems(prev => [...prev, newNote]);
-        toast.success("Sticky Note added!");
-    }, [panOffset, zoom]);
-
-    // Add Group handler
-    const handleAddGroup = useCallback(() => {
-        const container = canvasRef.current?.parentElement;
-        const viewportWidth = container?.clientWidth ?? 800;
-        const viewportHeight = container?.clientHeight ?? 600;
-
-        const centerX = (viewportWidth / 2 - panOffset.x) / zoom;
-        const centerY = (viewportHeight / 2 - panOffset.y) / zoom;
-
-        const newGroup: CanvasGroup = {
-            id: crypto.randomUUID(),
-            type: 'group',
-            label: 'New Group',
-            color: '#3B82F6',
-            x: Math.round(centerX - 250),
-            y: Math.round(centerY - 175),
-            width: 500,
-            height: 350,
-        };
-
-        setGroups(prev => [...prev, newGroup]);
-        toast.success('Group created!');
-    }, [panOffset, zoom]);
-
-    // Update Group handler
-    const handleUpdateGroup = useCallback((id: string, updates: Partial<CanvasGroup>) => {
-        setGroups(prev => prev.map(g => g.id === id ? { ...g, ...updates } : g));
-    }, []);
-
-    // Remove Group handler
-    const handleRemoveGroup = useCallback((id: string) => {
-        setGroups(prev => prev.filter(g => g.id !== id));
-        toast.success('Group removed');
-    }, []);
-
-    // Sync initialItems when eventId changes (but not on every render)
     useEffect(() => {
-        setItems(initialItems.filter((i: any) => i.type !== 'group'));
-        setGroups(
-            initialItems.filter((i: any) => i.type === 'group').map((g: any) => ({
-                id: g.id,
-                type: 'group' as const,
-                label: g.label || g.title || 'Group',
-                color: g.color || '#3B82F6',
-                x: g.x || 0,
-                y: g.y || 0,
-                width: g.width || 500,
-                height: g.height || 350,
-            }))
-        );
-        isFirstMount.current = true; // Reset first mount flag
-    }, [eventId]); // Only when eventId changes, not initialItems
+        const container = gridRef.current;
+        if (!container) return;
+        const ro = new ResizeObserver(() => recomputePositions());
+        ro.observe(container);
+        return () => ro.disconnect();
+    }, [recomputePositions]);
+
+    // จำนวน beat จริง + คอลัมน์ท้ายเปล่าไว้ลาก/วางเพื่อขยาย
+    const beatCount = useMemo(
+        () => Math.max(0, ...items.map(i => (typeof i.beatIndex === 'number' ? i.beatIndex : 0) + 1)),
+        [items]
+    );
+    const totalColumns = beatCount + 1;
+
+    // Sync เมื่อเปลี่ยนฉาก
+    useEffect(() => {
+        const { lanes: newLanes, items: newItems } = buildBoardState(initialItems);
+        setLanes(newLanes);
+        setItems(newItems);
+        isFirstMount.current = true;
+    }, [eventId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Fetch element details on mount
     useEffect(() => {
@@ -796,17 +563,14 @@ export function PlaygroundBoard({
             if (result.success && result.data) {
                 const map = new Map<string, SceneElementDetails>();
                 const notes: SceneElementDetails[] = [];
-
                 result.data.forEach(detail => {
                     if (detail.elementType === 'idea_note') {
                         notes.push(detail);
                     } else {
-                        // Key: canvasItemId-elementType-elementId
                         const key = `${detail.canvasItemId}-${detail.elementType}-${detail.elementId}`;
                         map.set(key, detail);
                     }
                 });
-
                 setElementDetailsMap(map);
                 setIdeaNotes(notes);
             }
@@ -814,10 +578,8 @@ export function PlaygroundBoard({
         fetchDetails();
     }, [eventId]);
 
-    // Handler for when a detail is saved
     const handleDetailSaved = useCallback((detail: SceneElementDetails) => {
         if (detail.elementType === 'idea_note') {
-            // Update idea notes
             setIdeaNotes(prev => {
                 const existing = prev.findIndex(n => n.id === detail.id);
                 if (existing >= 0) {
@@ -837,22 +599,15 @@ export function PlaygroundBoard({
         }
     }, []);
 
-    // Handler for when a note is deleted
     const handleNoteDeleted = useCallback((id: string) => {
         setIdeaNotes(prev => prev.filter(n => n.id !== id));
     }, []);
 
-    // Handler to open edit dialog for a child
     const handleEditChild = useCallback((child: any) => {
-        setEditingChild({
-            child,
-            canvasItemId: child.canvasItemId,
-        });
+        setEditingChild({ child, canvasItemId: child.canvasItemId });
     }, []);
 
-    // Handler to add/edit note on idea
     const handleAddNote = useCallback((item: any) => {
-        // Check if editing existing note
         if (item.existingNoteId) {
             const existingNote = ideaNotes.find(n => n.id === item.existingNoteId);
             setEditingNote({ item, existingNote });
@@ -861,24 +616,19 @@ export function PlaygroundBoard({
         }
     }, [ideaNotes]);
 
-    // Fetch ancestor connections on mount
     useEffect(() => {
         const fetchAncestorConnections = async () => {
             const { getAncestorConnectionsByNovelId } = await import('@/server/idea');
             const result = await getAncestorConnectionsByNovelId(novelId);
             if (result.success && result.data) {
                 setAncestorConnections(result.data.map(c => ({
-                    id: c.id,
-                    sourceIdeaId: c.sourceIdeaId,
-                    targetIdeaId: c.targetIdeaId,
-                    label: c.label,
+                    id: c.id, sourceIdeaId: c.sourceIdeaId, targetIdeaId: c.targetIdeaId, label: c.label,
                 })));
             }
         };
         fetchAncestorConnections();
     }, [novelId]);
 
-    // Fetch ancestor idea notes (cross-scene) when connections change
     useEffect(() => {
         const targetIds = [...new Set(ancestorConnections.map(c => c.targetIdeaId))];
         if (targetIds.length === 0) {
@@ -887,40 +637,27 @@ export function PlaygroundBoard({
         }
         const fetchNotes = async () => {
             const result = await getIdeaNotesForIdeas(novelId, targetIds);
-            if (result.success && result.data) {
-                setAncestorIdeaNotesMap(result.data);
-            }
+            if (result.success && result.data) setAncestorIdeaNotesMap(result.data);
         };
         fetchNotes();
     }, [ancestorConnections, novelId]);
 
-    // Handler to open ancestor dialog for an idea
     const handleOpenAncestorDialog = useCallback((item: any) => {
         setAncestorDialogItem(item);
         setAncestorSearch('');
         setAncestorLabel('');
     }, []);
 
-    // Handler to create ancestor connection
     const handleCreateAncestor = useCallback(async (ancestorIdeaId: string) => {
         if (!ancestorDialogItem) return;
         const sourceIdeaId = ancestorDialogItem.referenceId || ancestorDialogItem.id;
-
         const { createIdeaConnection } = await import('@/server/idea');
         const result = await createIdeaConnection({
-            sourceIdeaId: sourceIdeaId,
-            targetIdeaId: ancestorIdeaId,
-            novelId: novelId,
-            connectionType: 'ancestor',
-            label: ancestorLabel || undefined,
+            sourceIdeaId, targetIdeaId: ancestorIdeaId, novelId, connectionType: 'ancestor', label: ancestorLabel || undefined,
         });
-
         if (result.success && result.data) {
             setAncestorConnections(prev => [...prev, {
-                id: result.data.id,
-                sourceIdeaId: result.data.sourceIdeaId,
-                targetIdeaId: result.data.targetIdeaId,
-                label: result.data.label,
+                id: result.data.id, sourceIdeaId: result.data.sourceIdeaId, targetIdeaId: result.data.targetIdeaId, label: result.data.label,
             }]);
             toast.success('เชื่อมเหตุผลสำเร็จ!');
             setAncestorDialogItem(null);
@@ -929,7 +666,6 @@ export function PlaygroundBoard({
         }
     }, [ancestorDialogItem, novelId, ancestorLabel]);
 
-    // Handler to remove ancestor connection
     const handleRemoveAncestor = useCallback(async (connectionId: string) => {
         const { deleteIdeaConnection } = await import('@/server/idea');
         const result = await deleteIdeaConnection(connectionId);
@@ -938,56 +674,31 @@ export function PlaygroundBoard({
             toast.success('ลบเหตุผลสำเร็จ');
         }
     }, []);
-    // Auto-save logic (items + groups together)
+
+    // Auto-save (items + lanes)
     useEffect(() => {
         if (isFirstMount.current) {
             isFirstMount.current = false;
             return;
         }
-
         const timeoutId = setTimeout(async () => {
             setIsSaving(true);
-            // Merge items and groups into a single array for saving
-            const allCanvasData = [...items, ...groups];
-            const result = await updateTimelineCanvas(eventId, allCanvasData);
-            if (result.success) {
-                setLastSaved(new Date());
-            }
+            const laneNodes = lanes_.map(l => ({ id: l.id, type: 'lane', name: l.name, orderIndex: l.orderIndex }));
+            const result = await updateTimelineCanvas(eventId, [...items, ...laneNodes]);
+            if (result.success) setLastSaved(new Date());
             setIsSaving(false);
-        }, 2000); // Wait 2 seconds after last change
-
+        }, 2000);
         return () => clearTimeout(timeoutId);
-    }, [items, groups, eventId]);
-
-    // Keyboard shortcuts for zoom
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.ctrlKey || e.metaKey) {
-                if (e.key === '=' || e.key === '+') {
-                    e.preventDefault();
-                    handleZoomIn();
-                } else if (e.key === '-') {
-                    e.preventDefault();
-                    handleZoomOut();
-                } else if (e.key === '0') {
-                    e.preventDefault();
-                    handleZoomReset();
-                }
-            }
-        };
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [zoom]);
+    }, [items, lanes_, eventId]);
 
     // Linking Handlers
     const handleStartLink = (id: string) => {
         if (linkingSourceId === id) {
-            setLinkingSourceId(null); // Toggle off
-            toast.info("Linking mode cancelled");
+            setLinkingSourceId(null);
+            toast.info("โหมดเชื่อมเส้น: ยกเลิกแล้ว");
         } else {
             setLinkingSourceId(id);
-            toast.info("Linking mode: Click items to connect");
+            toast.info("โหมดเชื่อมเส้น: คลิกการ์ดที่จะเชื่อมด้วย");
         }
     };
 
@@ -997,48 +708,36 @@ export function PlaygroundBoard({
 
         setItems(prev => {
             const sourceItem = prev.find(i => i.id === linkingSourceId);
-
-            // Check if already connected (รองรับทั้ง link เก่า string และ object ใหม่)
             if ((sourceItem?.links || []).some((l: any) => normalizeLink(l).targetId === targetId)) {
-                toast.info("Already connected");
+                toast.info("เชื่อมกันอยู่แล้ว");
                 return prev;
             }
-
-            // สร้าง link ชนิด default "เกี่ยวข้อง" — เปลี่ยนชนิด/label ได้โดยคลิกที่เส้น
-            // (การ copy children ย้ายไปเกิดตอนตั้งชนิดเป็น "นำไปสู่" เท่านั้น)
-            return prev.map(item => {
-                if (item.id === linkingSourceId) {
-                    return { ...item, links: [...(item.links || []), { targetId, kind: "related", label: null }] };
-                }
-                return item;
-            });
+            return prev.map(item => item.id === linkingSourceId
+                ? { ...item, links: [...(item.links || []), { targetId, kind: "related", label: null }] }
+                : item
+            );
         });
-
-        // DON'T reset linkingSourceId - stay in linking mode for one-to-many
     };
 
     const handleFinishLinking = () => {
         const sourceItem = items.find(i => i.id === linkingSourceId);
         const linkCount = sourceItem?.links?.length || 0;
         setLinkingSourceId(null);
-        toast.success(`Linking complete! ${linkCount} connection${linkCount !== 1 ? 's' : ''} made.`);
+        toast.success(`เชื่อมเสร็จแล้ว! ${linkCount} เส้น`);
     };
 
     const handleCancelLink = () => {
         setLinkingSourceId(null);
-        toast.info("Linking cancelled");
+        toast.info("ยกเลิกการเชื่อม");
     };
 
     const handleUnlink = (sourceId: string, targetId: string) => {
-        setItems(prev => prev.map(item => {
-            if (item.id === sourceId) {
-                return { ...item, links: (item.links || []).filter((l: any) => normalizeLink(l).targetId !== targetId) };
-            }
-            return item;
-        }));
+        setItems(prev => prev.map(item => item.id === sourceId
+            ? { ...item, links: (item.links || []).filter((l: any) => normalizeLink(l).targetId !== targetId) }
+            : item
+        ));
     };
 
-    // อัปเดตชนิด/label ของเส้น — ถ้าเปลี่ยนเป็น "นำไปสู่" จะ copy children (ตัวละคร/ไอเดีย) ไปปลายทาง
     const handleUpdateLink = (sourceId: string, targetId: string, patch: { kind?: string; label?: string | null }) => {
         setItems(prev => {
             const sourceItem = prev.find(i => i.id === sourceId);
@@ -1053,15 +752,21 @@ export function PlaygroundBoard({
                     .map((c: any) => ({ ...c, id: crypto.randomUUID() }));
                 const existingRefIds = new Set((targetItem?.children || []).map((c: any) => c.referenceId));
                 newChildren = childrenToCopy.filter((c: any) => {
-                        if (!c.referenceId) {
-                            // dummy_character / dummy_faction ไม่มี referenceId → เช็คซ้ำด้วย title+type แทน
-                            return !(targetItem?.children || []).some(
-                                (ec: any) => !ec.referenceId && ec.title === c.title && ec.type === c.type
-                            );
-                        }
-                        return !existingRefIds.has(c.referenceId);
-                    });
+                    if (!c.referenceId) {
+                        return !(targetItem?.children || []).some(
+                            (ec: any) => !ec.referenceId && ec.title === c.title && ec.type === c.type
+                        );
+                    }
+                    return !existingRefIds.has(c.referenceId);
+                });
             }
+
+            const srcItem = prev.find(i => i.id === sourceId);
+            const tgtItem = prev.find(i => i.id === targetId);
+            const shouldMoveBeat =
+                patch.kind === "simultaneous" &&
+                srcItem && tgtItem &&
+                srcItem.beatIndex !== tgtItem.beatIndex;
 
             return prev.map(item => {
                 if (item.id === sourceId) {
@@ -1073,390 +778,214 @@ export function PlaygroundBoard({
                         }),
                     };
                 }
-                if (item.id === targetId && newChildren.length > 0) {
-                    return { ...item, children: [...(item.children || []), ...newChildren] };
+                if (item.id === targetId) {
+                    return {
+                        ...item,
+                        ...(newChildren.length > 0 ? { children: [...(item.children || []), ...newChildren] } : {}),
+                        ...(shouldMoveBeat ? { beatIndex: srcItem!.beatIndex } : {}),
+                    };
                 }
                 return item;
             });
         });
         if (patch.kind === "leads_to") toast.success('ตั้งเป็น "นำไปสู่" — ตัวละครถูกส่งต่อไปการ์ดปลายทาง');
+
+        // "เกิดพร้อมกัน" = อยู่จังหวะเดียวกัน — toast แจ้งผู้ใช้ (beat ถูกย้ายใน setItems ด้านบนแล้ว)
+        if (patch.kind === "simultaneous") {
+            const src = items.find(i => i.id === sourceId);
+            const tgt = items.find(i => i.id === targetId);
+            if (src && tgt && src.beatIndex !== tgt.beatIndex) {
+                toast.success('ตั้งเป็น "เกิดพร้อมกัน" — ย้ายมาอยู่จังหวะเดียวกันแล้ว');
+            }
+        }
     };
 
-    // Zoom handlers
-    const handleZoomIn = () => {
-        setZoom(prev => Math.min(prev + 0.1, 2)); // Max 200%
-    };
-
-    const handleZoomOut = () => {
-        setZoom(prev => Math.max(prev - 0.1, 0.3)); // Min 30%
-    };
-
-    const handleZoomReset = () => {
-        setZoom(1);
-        setPanOffset({ x: 0, y: 0 }); // Reset pan as well
-    };
-
-    const [showNavigator, setShowNavigator] = useState(false);
-
-    // Quick Navigator - Center view on item
+    // Navigator: scroll การ์ดเข้าจอ (ไม่มี pan/zoom แล้ว)
     const handleCenterOnItem = (itemId: string) => {
-        const item = items.find(i => i.id === itemId);
-        if (!item) return;
-
-        // Calculate functionality to center the item
-        // Item center coordinates
-        const itemWidth = item.type === 'idea' ? 320 : 256; // estimated widths
-        const itemHeight = 200; // estimated height
-
-        const itemCenterX = item.x + itemWidth / 2;
-        const itemCenterY = item.y + itemHeight / 2;
-
-        // Container (viewport) dimensions
-        const container = document.getElementById('canvas-viewport'); // We need to add this ID to the outer div
-        if (!container) return;
-
-        const containerWidth = container.clientWidth;
-        const containerHeight = container.clientHeight;
-
-        // New pan offset to center the item
-        // panOffset + itemCenter * zoom = containerCenter
-        // panOffset = containerCenter - itemCenter * zoom
-        // Note: Coordinates are typically negative for panOffset to move content left/up
-
-        const newPanX = (containerWidth / 2) - (itemCenterX * zoom);
-        const newPanY = (containerHeight / 2) - (itemCenterY * zoom);
-
-        setPanOffset({ x: newPanX, y: newPanY });
-        setShowNavigator(false); // Close navigator after selection
+        const el = itemRefs.current.get(itemId);
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        setShowNavigator(false);
     };
 
-    // Jump to First Item (Left-most)
-    const handleJumpToFirst = () => {
-        if (items.length === 0) return;
-        // Sort by X position
-        const sorted = [...items].sort((a, b) => a.x - b.x);
-        handleCenterOnItem(sorted[0].id);
-    };
+    const handleJumpToFirst = () => viewportRef.current?.scrollTo({ left: 0, behavior: 'smooth' });
+    const handleJumpToLast = () => viewportRef.current?.scrollTo({ left: viewportRef.current.scrollWidth, behavior: 'smooth' });
 
-    // Jump to Last Item (Right-most)
-    const handleJumpToLast = () => {
-        if (items.length === 0) return;
-        // Sort by X position
-        const sorted = [...items].sort((a, b) => b.x - a.x); // Descending
-        handleCenterOnItem(sorted[0].id);
-    };
-
-    // Mouse Wheel Zoom Handler
-    const handleWheel = useCallback((e: React.WheelEvent) => {
-        // Prevent default browser scrolling behavior is handled by overflow: hidden
-        // Simple zoom logic: scroll up (negative delta) = zoom in, scroll down = zoom out
-        const delta = e.deltaY;
-
-        // Determine zoom direction and factor
-        const zoomFactor = 0.05; // Smaller step for smoother feel
-        const direction = delta < 0 ? 1 : -1;
-
-        setZoom(prev => {
-            const newZoom = prev + (direction * zoomFactor);
-            // Clamp between 0.3 and 2.0
-            return Math.min(Math.max(newZoom, 0.3), 2.0);
-        });
-    }, []);
-
-
-    // Configure sensors for better drag experience
-    // Disable drag when linking
     const sensors = useSensors(
         useSensor(PointerSensor, {
             activationConstraint: {
                 distance: 8,
-                shouldActivate: (event: any) => !linkingSourceId && event.button === 0, // Only activate drag if not linking and left click
+                shouldActivate: (event: any) => !linkingSourceId && event.button === 0,
             },
         })
     );
 
     const handleRemoveChild = (parentId: string, childId: string) => {
-        setItems(prev => prev.map(item => {
-            if (item.id === parentId) {
-                return {
-                    ...item,
-                    children: (item.children || []).filter((c: any) => c.id !== childId)
-                };
-            }
-            return item;
-        }));
+        setItems(prev => prev.map(item => item.id === parentId
+            ? { ...item, children: (item.children || []).filter((c: any) => c.id !== childId) }
+            : item
+        ));
     };
 
     const handleAddChild = useCallback((ideaId: string, child: any) => {
-        setItems(prev => prev.map(item => {
-            if (item.id === ideaId) {
-                return {
-                    ...item,
-                    children: [...(item.children || []), child]
-                };
-            }
-            return item;
-        }));
+        setItems(prev => prev.map(item => item.id === ideaId
+            ? { ...item, children: [...(item.children || []), child] }
+            : item
+        ));
     }, []);
 
-    // จัดระเบียบ (P-canvas): เรียง idea ตาม chain "นำไปสู่" ซ้าย→ขวา, ที่เหลือ grid ด้านล่าง
-    const prevLayoutRef = useRef<Map<string, { x: number; y: number }> | null>(null);
+    // เรียงลำดับ beat ตาม chain "นำไปสู่" (คงเลนเดิม แค่ปรับคอลัมน์)
     const handleAutoArrange = () => {
         if (items.length === 0) return;
-        prevLayoutRef.current = new Map(items.map(i => [i.id, { x: i.x, y: i.y }]));
+        const prevState = new Map(items.map(i => [i.id, i.beatIndex]));
 
-        const ideas = items.filter(i => i.type === 'idea');
-        const others = items.filter(i => i.type !== 'idea');
-
-        // depth ตาม chain leads_to (longest path จาก root)
+        const ideaItems = items.filter(i => i.type === 'idea');
         const leadsTo = new Map<string, string[]>();
-        ideas.forEach(i => {
+        ideaItems.forEach(i => {
             const targets = (i.links || []).map(normalizeLink)
                 .filter((l: CanvasLink) => l.kind === 'leads_to')
                 .map((l: CanvasLink) => l.targetId)
-                .filter((tid: string) => ideas.some(x => x.id === tid));
+                .filter((tid: string) => ideaItems.some(x => x.id === tid));
             leadsTo.set(i.id, targets);
         });
         const depths = new Map<string, number>();
         const visiting = new Set<string>();
         const depthOf = (id: string): number => {
             if (depths.has(id)) return depths.get(id)!;
-            if (visiting.has(id)) return 0; // กันวงจร
+            if (visiting.has(id)) return 0;
             visiting.add(id);
-            const incoming = ideas.filter(i => (leadsTo.get(i.id) || []).includes(id));
+            const incoming = ideaItems.filter(i => (leadsTo.get(i.id) || []).includes(id));
             const d = incoming.length === 0 ? 0 : Math.max(...incoming.map(i => depthOf(i.id))) + 1;
             visiting.delete(id);
             depths.set(id, d);
             return d;
         };
-        ideas.forEach(i => depthOf(i.id));
+        ideaItems.forEach(i => depthOf(i.id));
 
-        const COL_W = 520, ROW_H = 460, PAD = 80;
-        const colCounts = new Map<number, number>();
-        const pos = new Map<string, { x: number; y: number }>();
-        // เรียงในคอลัมน์ตาม y เดิม เพื่อคงลำดับที่ user คุ้น
-        [...ideas].sort((a, b) => a.y - b.y).forEach(i => {
-            const col = depths.get(i.id) || 0;
-            const row = colCounts.get(col) || 0;
-            colCounts.set(col, row + 1);
-            pos.set(i.id, { x: PAD + col * COL_W, y: PAD + row * ROW_H });
-        });
-
-        // ของอื่นๆ (ตัวละคร/สถานที่/โน้ตลอย) จัด grid ใต้โซน idea
-        const maxIdeaRows = Math.max(0, ...Array.from(colCounts.values()));
-        const othersTop = PAD + maxIdeaRows * ROW_H + 100;
-        [...others].sort((a, b) => a.x - b.x).forEach((o, idx) => {
-            pos.set(o.id, { x: PAD + (idx % 6) * 300, y: othersTop + Math.floor(idx / 6) * 220 });
-        });
-
-        setItems(prev => prev.map(i => pos.has(i.id) ? { ...i, ...pos.get(i.id)! } : i));
-        setPanOffset({ x: 0, y: 0 });
-        toast.success("จัดระเบียบแล้ว", {
+        setItems(prev => prev.map(i => i.type === 'idea' && depths.has(i.id) ? { ...i, beatIndex: depths.get(i.id) } : i));
+        toast.success('เรียง beat ตามลำดับ "นำไปสู่" แล้ว', {
             action: {
-                label: "ย้อนกลับ",
-                onClick: () => {
-                    const prevLayout = prevLayoutRef.current;
-                    if (prevLayout) {
-                        setItems(cur => cur.map(i => prevLayout.has(i.id) ? { ...i, ...prevLayout.get(i.id)! } : i));
-                    }
-                },
+                label: 'ย้อนกลับ',
+                onClick: () => setItems(cur => cur.map(i => prevState.has(i.id) ? { ...i, beatIndex: prevState.get(i.id) } : i)),
             },
         });
     };
 
-    // Callback to receive canvas ref from child component
-    const handleCanvasRefChange = useCallback((element: HTMLDivElement | null) => {
-        canvasRef.current = element;
-    }, []);
+    const handleAddLane = () => {
+        setLanes(prev => [...prev, { id: crypto.randomUUID(), name: `เลน ${prev.length + 1}`, orderIndex: prev.length }]);
+    };
+    const handleRenameLane = (laneId: string, name: string) => {
+        setLanes(prev => prev.map(l => l.id === laneId ? { ...l, name } : l));
+    };
+    const handleRemoveLane = (laneId: string) => {
+        if (lanes_.length <= 1) { toast.error('ต้องมีอย่างน้อย 1 เลน'); return; }
+        if (items.some(i => i.laneId === laneId)) { toast.error('ย้ายการ์ดออกจากเลนนี้ก่อนถึงจะลบได้'); return; }
+        setLanes(prev => prev.filter(l => l.id !== laneId));
+    };
 
     const handleDragStart = (event: DragStartEvent) => {
-        if (linkingSourceId) return; // Prevent drag if linking
-        console.log("Drag started:", event.active.data.current);
+        if (linkingSourceId) return;
         setActiveDragItem(event.active.data.current);
     };
 
-    const handleDragOver = (event: DragOverEvent) => {
-        // Optional: visual feedback during drag
-    };
+    const handleDragOver = (_event: DragOverEvent) => { };
 
     const handleDragEnd = (event: DragEndEvent) => {
         if (linkingSourceId) return;
-
-        const { active, over, delta, activatorEvent } = event;
-        console.log("Drag ended:", { activeId: active.id, overId: over?.id });
+        const { active, over } = event;
         setActiveDragItem(null);
+        if (!over) return;
 
         const activeData = active.data.current as any;
+        const overData = over.data.current as any;
+        const overId = String(over.id);
+        const cellMatch = overId.startsWith('cell:');
 
-        // Helper to check duplicates
-        // Sticky notes have no referenceId and are allowed to appear multiple times → skip them
         const isDuplicate = (parentItem: any, newItemRefId: string | undefined) => {
-            if (!newItemRefId) return false; // no referenceId = not a database entity, always allow
-            return parentItem.children?.some(
-                (c: any) => c.referenceId && c.referenceId === newItemRefId
-            );
+            if (!newItemRefId) return false;
+            return parentItem.children?.some((c: any) => c.referenceId && c.referenceId === newItemRefId);
         };
 
-        // --- CASE 1: Moving existing item on canvas (repositioning) ---
+        // --- ย้ายการ์ดที่มีอยู่แล้ว ---
         if (activeData?.from === "canvas") {
-            // Check if dropping INTO an Idea (that is not itself)
-            if (over?.data?.current?.acceptDrops && over.id !== active.id) {
-                // Prevent Idea nesting
+            // วางลงในไอเดีย (nest เป็น child)
+            if (overData?.acceptDrops && over.id !== active.id) {
                 if (activeData.type === 'idea') {
-                    toast.error("Ideas cannot be placed inside other Ideas");
+                    toast.error("ไอเดียซ้อนกันไม่ได้");
                     return;
                 }
-
-                // Remove from root items and add to the target idea's children
-                // Note: deeply nested logic would be recursive, here we assume 1 level depth for now or root->idea
                 setItems(prev => {
                     const targetIdea = prev.find(i => i.id === over.id);
-                    // Check duplicate for existing canvas item moving into idea
                     if (targetIdea && isDuplicate(targetIdea, activeData.referenceId)) {
-                        toast.error("This item is already in this group");
-                        return prev; // Do nothing
+                        toast.error("มีอยู่ในไอเดียนี้แล้ว");
+                        return prev;
                     }
-
                     const activeItem = prev.find(i => i.id === active.id);
-                    if (!activeItem) return prev; // Should be there if at root
-
-                    // Clean up any links TO or FROM this item before moving it to child
-                    // (optional policy: deleting links when nesting, or keeping them? deleting is safer for visuals)
-                    // implemented implicitly by removing from root items list used for rendering connections
-
-                    return prev.map(item => {
-                        if (item.id === over.id) {
-                            return {
-                                ...item,
-                                children: [...(item.children || []), activeItem]
-                            }
-                        }
-                        return item;
-                    }).filter(i => i.id !== active.id); // Remove from root
+                    if (!activeItem) return prev;
+                    return prev.map(item => item.id === over.id
+                        ? { ...item, children: [...(item.children || []), activeItem] }
+                        : item
+                    ).filter(i => i.id !== active.id);
                 });
                 return;
             }
 
-            // Otherwise, standard movement
-            setItems((prev) => {
-                const updated = prev.map((item) => {
-                    if (item.id === activeData.id) {
-                        const newX = Math.max(0, item.x + delta.x / zoom);
-                        const newY = Math.max(0, item.y + delta.y / zoom);
-                        console.log(`[Drag] Moving item ${item.id} from (${item.x}, ${item.y}) to (${newX}, ${newY})`);
-                        return {
-                            ...item,
-                            x: newX,
-                            y: newY,
-                        };
-                    }
-                    return item;
-                });
-                console.log('[Drag] Updated items:', updated);
-                return updated;
-            });
+            // ย้ายไปช่องอื่น
+            if (cellMatch) {
+                const [, laneId, beatIndexStr] = overId.split(':');
+                const beatIndex = Number(beatIndexStr);
+                setItems(prev => prev.map(item => item.id === active.id ? { ...item, laneId, beatIndex } : item));
+            }
             return;
         }
 
-
-        // --- CASE 2: New item from Sidebar ---
-        if (!over) {
-            return;
-        }
-
-        // 2.1 Dropping new item INTO an Idea
-        if (over.data.current?.acceptDrops) {
-            // Prevent Idea nesting
+        // --- ของใหม่จาก sidebar ---
+        if (overData?.acceptDrops) {
             if (activeData.type === 'idea') {
-                toast.error("Ideas cannot be placed inside other Ideas");
+                toast.error("ไอเดียซ้อนกันไม่ได้");
                 return;
             }
-
-            const incomingRefId = activeData.id; // from sidebar, id is the resource id
-
+            const incomingRefId = activeData.id;
             setItems(prev => {
                 const targetIdea = prev.find(i => i.id === over.id);
-                // Check duplicate
                 if (targetIdea && isDuplicate(targetIdea, incomingRefId)) {
-                    toast.error("This item is already in this group");
+                    toast.error("มีอยู่ในไอเดียนี้แล้ว");
                     return prev;
                 }
-
                 const newItem = {
                     id: crypto.randomUUID(),
                     type: activeData.type,
                     referenceId: incomingRefId,
                     title: activeData.title,
                     content: activeData.content,
-                    role: activeData.role, // Include role for character color coding
-                    // x,y irrelevant for children
+                    role: activeData.role,
                 };
-
-                return prev.map(item => {
-                    if (item.id === over.id) {
-                        return {
-                            ...item,
-                            children: [...(item.children || []), newItem]
-                        }
-                    }
-                    return item;
-                });
+                return prev.map(item => item.id === over.id
+                    ? { ...item, children: [...(item.children || []), newItem] }
+                    : item
+                );
             });
             return;
         }
 
-        // 2.2 Dropping new item ONTO Canvas
-        if (over.id === "canvas-droppable") {
-            let x = 100;
-            let y = 100;
-
-            if (canvasRef.current && activatorEvent instanceof PointerEvent) {
-                const rect = canvasRef.current.getBoundingClientRect();
-                const dropX = activatorEvent.clientX + delta.x;
-                const dropY = activatorEvent.clientY + delta.y;
-
-                // Adjust for zoom level AND pan offset
-                // Formula: (mouse_pos - canvas_offset - pan_offset - card_center_adjustment) / zoom
-                x = Math.max(0, (dropX - rect.left - panOffset.x - 100) / zoom);
-                y = Math.max(0, (dropY - rect.top - panOffset.y - 40) / zoom);
-
-                console.log('[Drop] Position calc:', {
-                    mouseX: dropX,
-                    mouseY: dropY,
-                    canvasLeft: rect.left,
-                    canvasTop: rect.top,
-                    panOffsetX: panOffset.x,
-                    panOffsetY: panOffset.y,
-                    zoom,
-                    finalX: x,
-                    finalY: y
-                });
-            }
-
+        if (cellMatch) {
+            const [, laneId, beatIndexStr] = overId.split(':');
+            const beatIndex = Number(beatIndexStr);
             const newItem = {
                 id: crypto.randomUUID(),
                 type: activeData.type,
                 referenceId: activeData.id,
                 title: activeData.title,
-                x,
-                y,
                 content: activeData.content,
-                role: activeData.role, // Include role for character color coding
-                children: [], // Initialize children array
-                links: [] // Initialize links
+                role: activeData.role,
+                laneId,
+                beatIndex,
+                children: [],
+                links: [],
             };
+            setItems(prev => [...prev, newItem]);
 
-            setItems((prev) => [...prev, newItem]);
-
-            // Auto-mark idea as used when placed on canvas
             if (activeData.type === 'idea' && activeData.id) {
-                updateIdea(activeData.id, {
-                    canvasX: Math.round(x),
-                    canvasY: Math.round(y),
-                    isUsed: true
-                });
-
-                // Suggest linking to a plot thread
+                updateIdea(activeData.id, { isUsed: true });
                 setThreadSuggest({
                     ideaTitle: activeData.title || "ไอเดียนี้",
                     selectedThreadId: threads[0]?.id ?? "",
@@ -1480,37 +1009,42 @@ export function PlaygroundBoard({
 
     const handleSave = async () => {
         setIsSaving(true);
-        // ต้องรวม groups เหมือน auto-save ไม่งั้น group frames หายจาก DB
-        const result = await updateTimelineCanvas(eventId, [...items, ...groups]);
+        const laneNodes = lanes_.map(l => ({ id: l.id, type: 'lane', name: l.name, orderIndex: l.orderIndex }));
+        const result = await updateTimelineCanvas(eventId, [...items, ...laneNodes]);
         if (result.success) {
             setLastSaved(new Date());
-            toast.success("Saved canvas layout");
+            toast.success("บันทึก layout แล้ว");
         } else {
-            toast.error("Failed to save layout");
+            toast.error("บันทึกไม่สำเร็จ");
         }
         setIsSaving(false);
     };
 
-    // ทาสีการ์ด (ป้ายจัดกลุ่มบนกระดาน) — เก็บใน item.color, persist ผ่าน handleSave เดิม
     const handleSetColor = (id: string, color: string | null) => {
         setItems(prev => prev.map(item => item.id === id ? { ...item, color } : item));
     };
 
     const handleRemoveItem = async (id: string) => {
         const removedItem = items.find(item => item.id === id);
-
-        // Remove from canvas
         setItems((prev) => prev.filter((item) => item.id !== id));
-
-        // If it's an idea, reset isUsed to false (undo feature)
         if (removedItem?.type === 'idea' && removedItem?.referenceId) {
-            await updateIdea(removedItem.referenceId, {
-                canvasX: null,
-                canvasY: null,
-                isUsed: false
-            });
+            await updateIdea(removedItem.referenceId, { isUsed: false });
         }
     };
+
+    const handleAddStickyNote = useCallback(() => {
+        const newNote = {
+            id: crypto.randomUUID(),
+            type: 'sticky-note',
+            title: 'Note',
+            content: '',
+            laneId: lanes_[0]?.id,
+            beatIndex: beatCount,
+            links: [],
+        };
+        setItems(prev => [...prev, newNote]);
+        toast.success("เพิ่ม Sticky Note แล้ว");
+    }, [lanes_, beatCount]);
 
     const handleExport = () => {
         const exportData = {
@@ -1518,34 +1052,20 @@ export function PlaygroundBoard({
             novelId,
             eventId,
             totalItems: items.length,
-            totalGroups: groups.length,
+            lanes: lanes_,
             items: items.map(item => ({
                 id: item.id,
                 type: item.type,
                 title: item.title,
                 content: item.content,
-                x: item.x,
-                y: item.y,
+                laneId: item.laneId,
+                beatIndex: item.beatIndex,
                 links: item.links,
                 children: item.children?.map((child: any) => ({
-                    id: child.id,
-                    type: child.type,
-                    title: child.title,
-                    content: child.content,
-                    referenceId: child.referenceId
+                    id: child.id, type: child.type, title: child.title, content: child.content, referenceId: child.referenceId
                 }))
             })),
-            groups: groups.map(g => ({
-                id: g.id,
-                label: g.label,
-                color: g.color,
-                x: g.x,
-                y: g.y,
-                width: g.width,
-                height: g.height,
-            }))
         };
-
         const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -1557,6 +1077,115 @@ export function PlaygroundBoard({
         URL.revokeObjectURL(url);
         toast.success('Export Playground สำเร็จ!');
     };
+
+    // anchor เส้นที่ขอบการ์ด (ฝั่งที่หันเข้าหากัน) — เส้นวิ่งใน gutter ระหว่างช่อง ไม่พาดหน้าการ์ด
+    const edgeAnchors = (
+        a: { x: number; y: number; w: number; h: number },
+        b: { x: number; y: number; w: number; h: number },
+    ) => {
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        if (Math.abs(dx) >= Math.abs(dy)) {
+            const dir = dx >= 0 ? 1 : -1;
+            return {
+                start: { x: a.x + dir * (a.w / 2), y: a.y },
+                end: { x: b.x - dir * (b.w / 2), y: b.y },
+            };
+        }
+        const dir = dy >= 0 ? 1 : -1;
+        return {
+            start: { x: a.x, y: a.y + dir * (a.h / 2) },
+            end: { x: b.x, y: b.y - dir * (b.h / 2) },
+        };
+    };
+
+    // เส้นเชื่อม — node ที่มีหลายเส้นบนขอบเดียวกัน กระจายจุดยึด (fan-out) ไม่ให้เสียบจุดเดียวจนพันกัน
+    const connections = (() => {
+        // 1. รวม edge ทั้งหมดที่วาดได้
+        const edges: Array<{
+            sourceId: string; targetId: string; link: CanvasLink;
+            sPos: { x: number; y: number; w: number; h: number };
+            tPos: { x: number; y: number; w: number; h: number };
+        }> = [];
+        items.forEach(source => {
+            const sPos = linkPositions.get(source.id);
+            if (!sPos) return;
+            (source.links || []).forEach((raw: any) => {
+                const link = normalizeLink(raw);
+                const tPos = linkPositions.get(link.targetId);
+                if (!tPos) return;
+                edges.push({ sourceId: source.id, targetId: link.targetId, link, sPos, tPos });
+            });
+        });
+
+        // 2. จัด slot ต่อ (node, ด้านของขอบ) — เรียงตามตำแหน่งปลายอีกฝั่ง ให้เส้นไม่ไขว้กันเองโดยไม่จำเป็น
+        const sideOf = (from: { x: number; y: number }, to: { x: number; y: number }) => {
+            const dx = to.x - from.x, dy = to.y - from.y;
+            return Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 'right' : 'left') : (dy >= 0 ? 'bottom' : 'top');
+        };
+        const sideGroups = new Map<string, Array<{ edgeIdx: number; endpoint: 'source' | 'target'; counterpart: { x: number; y: number } }>>();
+        edges.forEach((e, i) => {
+            const sSide = sideOf(e.sPos, e.tPos);
+            const tSide = sideOf(e.tPos, e.sPos);
+            const push = (key: string, entry: any) => {
+                if (!sideGroups.has(key)) sideGroups.set(key, []);
+                sideGroups.get(key)!.push(entry);
+            };
+            push(`${e.sourceId}:${sSide}`, { edgeIdx: i, endpoint: 'source', counterpart: e.tPos });
+            push(`${e.targetId}:${tSide}`, { edgeIdx: i, endpoint: 'target', counterpart: e.sPos });
+        });
+        // slot index ต่อ edge-endpoint
+        const slotMap = new Map<string, { slot: number; count: number }>();
+        sideGroups.forEach((entries, key) => {
+            const side = key.split(':').pop()!;
+            const horizontal = side === 'left' || side === 'right';
+            // เรียงตามแกนตั้ง (ขอบซ้าย/ขวา) หรือแกนนอน (ขอบบน/ล่าง) ของปลายอีกฝั่ง
+            const sorted = [...entries].sort((a, b) =>
+                horizontal ? a.counterpart.y - b.counterpart.y : a.counterpart.x - b.counterpart.x
+            );
+            sorted.forEach((entry, slot) => {
+                slotMap.set(`${entry.edgeIdx}:${entry.endpoint}`, { slot, count: sorted.length });
+            });
+        });
+
+        // 3. anchor จริง: ขอบการ์ด + offset ตาม slot
+        const anchorAt = (
+            pos: { x: number; y: number; w: number; h: number },
+            other: { x: number; y: number },
+            edgeIdx: number,
+            endpoint: 'source' | 'target',
+        ) => {
+            const side = sideOf(pos, other);
+            const { slot, count } = slotMap.get(`${edgeIdx}:${endpoint}`) ?? { slot: 0, count: 1 };
+            const spread = 18;
+            const offset = (slot - (count - 1) / 2) * spread;
+            if (side === 'right') return { x: pos.x + pos.w / 2, y: pos.y + Math.max(-pos.h / 2 + 10, Math.min(pos.h / 2 - 10, offset)) };
+            if (side === 'left') return { x: pos.x - pos.w / 2, y: pos.y + Math.max(-pos.h / 2 + 10, Math.min(pos.h / 2 - 10, offset)) };
+            if (side === 'bottom') return { x: pos.x + Math.max(-pos.w / 2 + 10, Math.min(pos.w / 2 - 10, offset)), y: pos.y + pos.h / 2 };
+            return { x: pos.x + Math.max(-pos.w / 2 + 10, Math.min(pos.w / 2 - 10, offset)), y: pos.y - pos.h / 2 };
+        };
+
+        return edges.map((e, i) => (
+            <ConnectionLine
+                key={`${e.sourceId}-${e.targetId}`}
+                start={anchorAt(e.sPos, e.tPos, i, 'source')}
+                end={anchorAt(e.tPos, e.sPos, i, 'target')}
+                kind={e.link.kind} label={e.link.label}
+                onClick={() => setEditingLink({ sourceId: e.sourceId, targetId: e.targetId })}
+            />
+        ));
+    })();
+
+    const ancestorLines = ancestorConnections.map(conn => {
+        const source = items.find(i => i.referenceId === conn.sourceIdeaId || i.id === conn.sourceIdeaId);
+        const target = items.find(i => i.referenceId === conn.targetIdeaId || i.id === conn.targetIdeaId);
+        if (!source || !target) return null;
+        const sPos = linkPositions.get(source.id);
+        const tPos = linkPositions.get(target.id);
+        if (!sPos || !tPos) return null;
+        const { start, end } = edgeAnchors(sPos, tPos);
+        return <AncestorConnectionLine key={`ancestor-${conn.id}`} start={start} end={end} label={conn.label} />;
+    });
 
     return (
         <DndContext
@@ -1577,389 +1206,273 @@ export function PlaygroundBoard({
                     />
                 </div>
 
-                {/* Main Canvas Area */}
-                <div
-                    id="canvas-viewport"
-                    className="flex-1 relative bg-slate-50 min-h-[400px]"
-                    onWheel={handleWheel}
-                >
+                {/* Storyboard grid area */}
+                <div className="flex-1 min-w-0 relative bg-muted/30 min-h-[400px] flex flex-col">
                     {/* Linking Mode Banner */}
                     {linkingSourceId && (
                         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
                             <div className="pointer-events-auto flex items-center gap-3 bg-blue-500 text-white px-4 py-2 rounded-lg shadow-lg border-2 border-blue-600">
                                 <Link2 className="w-4 h-4 animate-pulse" />
                                 <div className="flex flex-col">
-                                    <span className="text-sm font-medium">Linking Mode Active</span>
+                                    <span className="text-sm font-medium">โหมดเชื่อมเส้น</span>
                                     <span className="text-xs opacity-90">
-                                        Click other items to connect ({items.find(i => i.id === linkingSourceId)?.links?.length || 0} linked)
+                                        คลิกการ์ดที่จะเชื่อม ({items.find(i => i.id === linkingSourceId)?.links?.length || 0} เส้นแล้ว)
                                     </span>
                                 </div>
                                 <div className="flex gap-1 ml-2">
-                                    <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        className="h-7 bg-white/20 hover:bg-white/30 text-white border-0"
-                                        onClick={handleFinishLinking}
-                                    >
-                                        <Check className="w-3.5 h-3.5 mr-1" />
-                                        Done
+                                    <Button size="sm" variant="ghost" className="h-7 bg-white/20 hover:bg-white/30 text-white border-0" onClick={handleFinishLinking}>
+                                        <Check className="w-3.5 h-3.5 mr-1" />เสร็จ
                                     </Button>
-                                    <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        className="h-7 bg-white/20 hover:bg-white/30 text-white border-0"
-                                        onClick={handleCancelLink}
-                                    >
-                                        <X className="w-3.5 h-3.5 mr-1" />
-                                        Cancel
+                                    <Button size="sm" variant="ghost" className="h-7 bg-white/20 hover:bg-white/30 text-white border-0" onClick={handleCancelLink}>
+                                        <X className="w-3.5 h-3.5 mr-1" />ยกเลิก
                                     </Button>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    {/* Top Right Controls */}
-                    <div className="absolute top-4 right-4 z-50 pointer-events-none flex gap-2">
-                        {/* Zoom Controls */}
-                        <div className="pointer-events-auto flex items-center gap-1 bg-white/80 backdrop-blur border shadow-sm rounded-md p-1">
-                            {/* Navigator Toggle */}
-                            <div className="relative">
-                                <Button
-                                    variant={showNavigator ? "secondary" : "ghost"}
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    onClick={() => setShowNavigator(!showNavigator)}
-                                    title="Quick Navigator"
-                                >
-                                    <List className="h-4 w-4" />
-                                </Button>
-
-                                {/* Navigator Popover */}
-                                {showNavigator && (
-                                    <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border overflow-hidden flex flex-col max-h-[60vh] z-50 animate-in slide-in-from-top-2 fade-in duration-200">
-                                        <div className="p-2 border-b bg-muted/30 font-semibold text-xs text-muted-foreground flex items-center gap-2">
-                                            <Navigation className="w-3 h-3" />
-                                            <span>Jump to Component</span>
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-4 w-4 ml-auto"
-                                                onClick={() => setShowNavigator(false)}
-                                            >
-                                                <X className="w-3 h-3" />
-                                            </Button>
-                                        </div>
-                                        <div className="overflow-y-auto p-1 space-y-1">
-                                            {items.length === 0 && (
-                                                <div className="p-4 text-center text-xs text-muted-foreground">
-                                                    No items on canvas
-                                                </div>
-                                            )}
-                                            {/* Group by Type */}
-                                            {['character', 'location', 'idea', 'sticky-note'].map(type => {
-                                                const typeItems = items.filter(i => i.type === type);
-                                                if (typeItems.length === 0) return null;
-
-                                                return (
-                                                    <div key={type} className="mb-2 last:mb-0">
-                                                        <div className="px-2 py-1 text-[10px] font-bold uppercase text-muted-foreground bg-muted/20 rounded-sm mb-0.5">
-                                                            {type === 'sticky-note' ? 'Notes' : type + 's'}
-                                                        </div>
-                                                        {typeItems.map(item => (
-                                                            <button
-                                                                key={item.id}
-                                                                onClick={() => handleCenterOnItem(item.id)}
-                                                                className="w-full text-left px-2 py-1.5 hover:bg-slate-100 rounded text-xs flex items-center gap-2 transition-colors group"
-                                                            >
-                                                                <div className={`w-2 h-2 rounded-full shrink-0 ${type === 'character' ? 'bg-blue-400' :
-                                                                    type === 'location' ? 'bg-green-400' :
-                                                                        type === 'idea' ? 'bg-yellow-400' : 'bg-purple-400'
-                                                                    }`} />
-                                                                <span className="truncate group-hover:text-primary transition-colors">
-                                                                    {item.title || (type === 'sticky-note' ? (item.content?.slice(0, 15) || 'Empty Note') : 'Untitled')}
-                                                                </span>
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                )
-                                            })}
-                                        </div>
+                    {/* Toolbar */}
+                    <div className="flex items-center gap-2 px-3 py-2 border-b bg-background/85 backdrop-blur z-30">
+                        <div className="relative">
+                            <Button variant={showNavigator ? "secondary" : "ghost"} size="icon" className="h-8 w-8"
+                                onClick={() => setShowNavigator(!showNavigator)} title="สารบัญ">
+                                <List className="h-4 w-4" />
+                            </Button>
+                            {showNavigator && (
+                                <div className="absolute top-full left-0 mt-2 w-64 bg-popover text-popover-foreground rounded-lg shadow-xl border overflow-hidden flex flex-col max-h-[60vh] z-50">
+                                    <div className="p-2 border-b bg-muted/30 font-semibold text-xs text-muted-foreground flex items-center gap-2">
+                                        <Navigation className="w-3 h-3" />
+                                        <span>ไปยังการ์ด</span>
+                                        <Button variant="ghost" size="icon" className="h-4 w-4 ml-auto" onClick={() => setShowNavigator(false)}>
+                                            <X className="w-3 h-3" />
+                                        </Button>
                                     </div>
-                                )}
-                            </div>
-
-                            {/* Add Sticky Note Button */}
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-purple-600 hover:bg-purple-100"
-                                onClick={handleAddStickyNote}
-                                title="Add Sticky Note"
-                            >
-                                <StickyNote className="h-4 w-4" />
-                            </Button>
-
-                            {/* Add Group Button */}
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-blue-600 hover:bg-blue-100"
-                                onClick={handleAddGroup}
-                                title="Add Group Frame"
-                            >
-                                <Group className="h-4 w-4" />
-                            </Button>
-
-                            {/* Auto Arrange Button */}
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-amber-600 hover:bg-amber-100"
-                                onClick={handleAutoArrange}
-                                title='จัดระเบียบ — เรียงตาม chain "นำไปสู่"'
-                            >
-                                <LayoutGrid className="h-4 w-4" />
-                            </Button>
-
-                            <div className="w-px h-4 bg-border mx-1" />
-
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={handleJumpToFirst}
-                                title="Jump to First (Top-Left)"
-                            >
-                                <SkipBack className="h-4 w-4" />
-                            </Button>
-
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={handleJumpToLast}
-                                title="Jump to Last (Bottom-Right)"
-                            >
-                                <SkipForward className="h-4 w-4" />
-                            </Button>
-
-                            <div className="w-px h-4 bg-border mx-1" />
-
-                            <Button
-                                onClick={handleZoomOut}
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7"
-                                disabled={zoom <= 0.3}
-                                title="Zoom Out (Ctrl + -)">
-                                <ZoomOut className="w-3.5 h-3.5" />
-                            </Button>
-                            <span className="text-xs font-medium px-2 min-w-[3rem] text-center">
-                                {Math.round(zoom * 100)}%
-                            </span>
-                            <Button
-                                onClick={handleZoomIn}
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7"
-                                disabled={zoom >= 2}
-                                title="Zoom In (Ctrl + +)">
-                                <ZoomIn className="w-3.5 h-3.5" />
-                            </Button>
-                            <div className="h-4 w-px bg-border mx-1" />
-                            <Button
-                                onClick={handleZoomReset}
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7"
-                                title="Reset Zoom (Ctrl + 0)">
-                                <Maximize2 className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button
-                                onClick={handleResetPan}
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7"
-                                title="Reset Pan (Middle mouse to pan)">
-                                <Move className="w-3.5 h-3.5" />
-                            </Button>
+                                    <div className="overflow-y-auto p-1 space-y-1">
+                                        {items.length === 0 && (
+                                            <div className="p-4 text-center text-xs text-muted-foreground">ยังไม่มีการ์ดบนกระดาน</div>
+                                        )}
+                                        {['idea', 'character', 'faction', 'location', 'sticky-note'].map(type => {
+                                            const typeItems = items.filter(i => i.type === type);
+                                            if (typeItems.length === 0) return null;
+                                            return (
+                                                <div key={type} className="mb-2 last:mb-0">
+                                                    <div className="px-2 py-1 text-[10px] font-bold uppercase text-muted-foreground bg-muted/20 rounded-sm mb-0.5">
+                                                        {type === 'sticky-note' ? 'Notes' : type + 's'}
+                                                    </div>
+                                                    {typeItems.map(item => (
+                                                        <button key={item.id} onClick={() => handleCenterOnItem(item.id)}
+                                                            className="w-full text-left px-2 py-1.5 hover:bg-muted rounded text-xs flex items-center gap-2 transition-colors group">
+                                                            <div className={`w-2 h-2 rounded-full shrink-0 ${type === 'character' ? 'bg-blue-400' : type === 'location' ? 'bg-green-400' : type === 'idea' ? 'bg-yellow-400' : 'bg-purple-400'}`} />
+                                                            <span className="truncate group-hover:text-primary transition-colors">
+                                                                {item.title || (type === 'sticky-note' ? (item.content?.slice(0, 15) || 'Empty Note') : 'Untitled')}
+                                                            </span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
-                        <Button
-                            onClick={handleSave}
-                            disabled={isSaving}
-                            size="icon"
-                            variant="outline"
-                            className={`pointer-events-auto bg-white/80 backdrop-blur hover:bg-white border shadow-sm transition-all h-9 w-9 ${lastSaved && !isSaving ? 'text-green-600 border-green-300 hover:border-green-400' : 'text-foreground'}`}
-                            title={isSaving ? "กำลังบันทึก..." : lastSaved ? "บันทึกแล้ว" : "บันทึก Layout"}
-                        >
-                            {isSaving
-                                ? <Loader2 className="w-4 h-4 animate-spin" />
-                                : lastSaved
-                                    ? <Check className="w-4 h-4" />
-                                    : <Save className="w-4 h-4" />
-                            }
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-purple-600 hover:bg-purple-100" onClick={handleAddStickyNote} title="เพิ่ม Sticky Note">
+                            <StickyNote className="h-4 w-4" />
                         </Button>
 
-                        <Button
-                            onClick={handleExport}
-                            size="icon"
-                            variant="outline"
-                            className="pointer-events-auto bg-white/80 backdrop-blur hover:bg-white text-foreground border shadow-sm transition-all h-9 w-9"
-                            title="Export to JSON"
-                        >
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-600 hover:bg-amber-100" onClick={handleAutoArrange} title='เรียง beat ตาม "นำไปสู่"'>
+                            <LayoutGrid className="h-4 w-4" />
+                        </Button>
+
+                        <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs text-emerald-600 hover:bg-emerald-100" onClick={handleAddLane} title="เพิ่มเลนใหม่">
+                            <Rows3 className="h-4 w-4" />เพิ่มเลน
+                        </Button>
+
+                        <div className="w-px h-4 bg-border mx-1" />
+
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleJumpToFirst} title="ไปจุดเริ่มต้น">
+                            <SkipBack className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleJumpToLast} title="ไปจุดสุดท้าย">
+                            <SkipForward className="h-4 w-4" />
+                        </Button>
+
+                        <div className="flex-1" />
+
+                        <CreateIdeaDialog
+                            novelId={novelId}
+                            onIdeaCreated={(idea) => {
+                                const newItem = {
+                                    id: crypto.randomUUID(),
+                                    type: 'idea',
+                                    referenceId: idea.id,
+                                    title: idea.title,
+                                    content: idea.content,
+                                    laneId: lanes_[0]?.id,
+                                    beatIndex: beatCount,
+                                    children: [],
+                                    links: [],
+                                };
+                                setItems(prev => [...prev, newItem]);
+                                updateIdea(idea.id, { isUsed: true });
+                            }}
+                            trigger={
+                                <Button size="sm" className="h-8 gap-1.5">
+                                    <Plus className="w-4 h-4" />ไอเดียใหม่
+                                </Button>
+                            }
+                        />
+
+                        <Button onClick={handleSave} disabled={isSaving} size="icon" variant="outline"
+                            className={`h-8 w-8 ${lastSaved && !isSaving ? 'text-green-600 border-green-300' : ''}`}
+                            title={isSaving ? "กำลังบันทึก..." : lastSaved ? "บันทึกแล้ว" : "บันทึก Layout"}>
+                            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : lastSaved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+                        </Button>
+                        <Button onClick={handleExport} size="icon" variant="outline" className="h-8 w-8" title="Export JSON">
                             <Download className="w-4 h-4" />
                         </Button>
                     </div>
 
-                    {/* Bottom Right FAB - Create Idea */}
-                    <div className="absolute bottom-6 right-6 z-50 pointer-events-none">
-                        <div className="pointer-events-auto">
-                            <CreateIdeaDialog
-                                novelId={novelId}
-                                onIdeaCreated={(idea) => {
-                                    // คำนวณตำแหน่งกลางจอ user ใน world space (เหมือน handleAddStickyNote)
-                                    const container = canvasRef.current?.parentElement;
-                                    const viewportWidth = container?.clientWidth ?? 800;
-                                    const viewportHeight = container?.clientHeight ?? 600;
+                    {/* Grid viewport (scroll) */}
+                    <div ref={viewportRef} id="canvas-viewport" className="flex-1 min-h-0 overflow-auto">
+                        <div
+                            ref={gridRef}
+                            className="relative"
+                            style={{
+                                display: 'grid',
+                                gridTemplateColumns: `${LABEL_WIDTH}px repeat(${totalColumns}, ${COLUMN_WIDTH}px)`,
+                                gridTemplateRows: `36px repeat(${lanes_.length}, auto)`,
+                                width: 'max-content',
+                            }}
+                        >
+                            {/* Header row: จังหวะ/beat */}
+                            <div
+                                style={{ gridColumn: 1, gridRow: 1, width: LABEL_WIDTH }}
+                                className="sticky left-0 top-0 z-30 bg-background border-r border-b border-border/60 flex items-center px-3"
+                            >
+                                <span className="font-technical text-[9px] uppercase tracking-[0.14em] text-muted-foreground">เลน \ จังหวะ</span>
+                            </div>
+                            {Array.from({ length: totalColumns }).map((_, beatIndex) => (
+                                <div
+                                    key={`beat-head-${beatIndex}`}
+                                    style={{ gridColumn: beatIndex + 2, gridRow: 1, width: COLUMN_WIDTH }}
+                                    className={cn(
+                                        "sticky top-0 z-20 bg-background border-r border-b border-border/60 flex items-center justify-center gap-1.5",
+                                        beatIndex === beatCount && "border-dashed"
+                                    )}
+                                >
+                                    {beatIndex !== beatCount && (
+                                        <span className="h-1 w-1 rounded-full bg-[var(--forge-amber)]/70" />
+                                    )}
+                                    <span className={cn(
+                                        "font-technical text-[10px] uppercase tracking-[0.12em] tabular-nums",
+                                        beatIndex === beatCount ? "text-muted-foreground/40" : "text-muted-foreground"
+                                    )}>
+                                        {beatIndex === beatCount ? "+" : `จังหวะ ${String(beatIndex + 1).padStart(2, "0")}`}
+                                    </span>
+                                </div>
+                            ))}
 
-                                    const centerX = (viewportWidth / 2 - panOffset.x) / zoom;
-                                    const centerY = (viewportHeight / 2 - panOffset.y) / zoom;
+                            {lanes_.map((lane, laneIndex) => (
+                                <Fragment key={lane.id}>
+                                    <LaneLabel
+                                        lane={lane}
+                                        laneIndex={laneIndex}
+                                        onRename={handleRenameLane}
+                                        onRemove={handleRemoveLane}
+                                        canRemove={lanes_.length > 1}
+                                    />
+                                    {Array.from({ length: totalColumns }).map((_, beatIndex) => {
+                                        const cellItems = items.filter(i => i.laneId === lane.id && i.beatIndex === beatIndex);
+                                        return (
+                                            <BeatCell
+                                                key={beatIndex}
+                                                laneId={lane.id}
+                                                beatIndex={beatIndex}
+                                                laneIndex={laneIndex}
+                                                isTrailing={beatIndex === beatCount}
+                                            >
+                                                {cellItems.map(item => (
+                                                    <DraggableCanvasItem
+                                                        key={item.id}
+                                                        item={item}
+                                                        onRemove={() => handleRemoveItem(item.id)}
+                                                        onRemoveChild={(childId) => handleRemoveChild(item.id, childId)}
+                                                        onLinkStart={handleStartLink}
+                                                        onLinkComplete={linkingSourceId && linkingSourceId !== item.id ? handleCompleteLink : undefined}
+                                                        isLinkingSource={linkingSourceId === item.id}
+                                                        elementDetails={elementDetailsMap}
+                                                        onEditChild={handleEditChild}
+                                                        ideaNotes={ideaNotes}
+                                                        onAddNote={handleAddNote}
+                                                        novelId={novelId}
+                                                        onSetAncestor={item.type === 'idea' ? () => handleOpenAncestorDialog(item) : undefined}
+                                                        ancestorConnections={item.type === 'idea' ? ancestorConnections
+                                                            .filter(c => c.sourceIdeaId === (item.referenceId || item.id))
+                                                            .map(c => {
+                                                                const targetIdea = ideas.find((idea: any) => idea.id === c.targetIdeaId);
+                                                                const targetNotes = ancestorIdeaNotesMap.get(c.targetIdeaId) || [];
+                                                                return {
+                                                                    ...c,
+                                                                    targetIdeaTitle: targetIdea?.title || null,
+                                                                    targetIdeaContent: targetIdea?.content || null,
+                                                                    targetIdeaCategory: targetIdea?.category || null,
+                                                                    targetIdeaNotes: targetNotes.length > 0 ? targetNotes : undefined,
+                                                                };
+                                                            }) : undefined}
+                                                        onRemoveAncestor={item.type === 'idea' ? handleRemoveAncestor : undefined}
+                                                        sceneId={eventId}
+                                                        characters={characters}
+                                                        factions={factions}
+                                                        onAddChild={handleAddChild}
+                                                        onDetailSaved={handleDetailSaved}
+                                                        onSetColor={(c) => handleSetColor(item.id, c)}
+                                                        onMeasureRef={registerItemRef}
+                                                    />
+                                                ))}
+                                            </BeatCell>
+                                        );
+                                    })}
+                                </Fragment>
+                            ))}
 
-                                    const jitter = () => (Math.random() - 0.5) * 60;
-
-                                    const newItem = {
-                                        id: crypto.randomUUID(),
-                                        type: 'idea',
-                                        referenceId: idea.id,
-                                        title: idea.title,
-                                        content: idea.content,
-                                        x: Math.round(centerX + jitter()),
-                                        y: Math.round(centerY + jitter()),
-                                        children: [],
-                                        links: [],
-                                    };
-
-                                    setItems(prev => [...prev, newItem]);
-
-                                    // Mark as used in DB
-                                    updateIdea(idea.id, {
-                                        canvasX: Math.round(centerX),
-                                        canvasY: Math.round(centerY),
-                                        isUsed: true,
-                                    });
-                                }}
-                                trigger={
-                                    <Button size="icon" className="h-14 w-14 rounded-full shadow-lg hover:shadow-xl transition-all hover:scale-105 bg-primary text-primary-foreground">
-                                        <Plus className="w-6 h-6" />
-                                    </Button>
-                                }
-                            />
+                            {/* เส้นเชื่อม overlay */}
+                            <svg
+                                className="absolute inset-0 pointer-events-none"
+                                style={{ width: '100%', height: '100%', overflow: 'visible', zIndex: 10 }}
+                            >
+                                {connections}
+                                {ancestorLines}
+                            </svg>
                         </div>
                     </div>
-
-                    {/* Droppable Canvas - useDroppable is now INSIDE DndContext */}
-                    <DroppableCanvas
-                        onCanvasRefChange={handleCanvasRefChange}
-                        items={items}
-                        ancestorConnections={ancestorConnections}
-                        zoom={zoom}
-                        panOffset={panOffset}
-                        isPanning={isPanning}
-                        onMouseDown={handleMouseDown}
-                        onMouseMove={handleMouseMove}
-                        onMouseUp={handleMouseUp}
-                        onLinkClick={(sourceId, targetId) => setEditingLink({ sourceId, targetId })}
-                    >
-                        {/* Render Groups (behind items) */}
-                        {groups.map((group) => (
-                            <GroupFrame
-                                key={group.id}
-                                group={group}
-                                onUpdate={handleUpdateGroup}
-                                onRemove={handleRemoveGroup}
-                            />
-                        ))}
-
-                        {/* Render Items */}
-                        {items.map((item) => (
-                            <DraggableCanvasItem
-                                key={item.id}
-                                item={item}
-                                onRemove={() => handleRemoveItem(item.id)}
-                                onRemoveChild={(childId) => handleRemoveChild(item.id, childId)}
-                                onLinkStart={handleStartLink}
-                                onLinkComplete={linkingSourceId && linkingSourceId !== item.id ? handleCompleteLink : undefined}
-                                isLinkingSource={linkingSourceId === item.id}
-                                elementDetails={elementDetailsMap}
-                                onEditChild={handleEditChild}
-                                ideaNotes={ideaNotes}
-                                onAddNote={handleAddNote}
-                                novelId={novelId}
-                                onSetAncestor={item.type === 'idea' ? () => handleOpenAncestorDialog(item) : undefined}
-                                ancestorConnections={item.type === 'idea' ? ancestorConnections
-                                    .filter(c => c.sourceIdeaId === (item.referenceId || item.id))
-                                    .map(c => {
-                                        const targetIdea = ideas.find((idea: any) => idea.id === c.targetIdeaId);
-                                        // Get idea_notes from cross-scene data
-                                        const targetNotes = ancestorIdeaNotesMap.get(c.targetIdeaId) || [];
-                                        return {
-                                            ...c,
-                                            targetIdeaTitle: targetIdea?.title || null,
-                                            targetIdeaContent: targetIdea?.content || null,
-                                            targetIdeaCategory: targetIdea?.category || null,
-                                            targetIdeaNotes: targetNotes.length > 0 ? targetNotes : undefined,
-                                        };
-                                    }) : undefined}
-                                onRemoveAncestor={item.type === 'idea' ? handleRemoveAncestor : undefined}
-                                sceneId={eventId}
-                                characters={characters}
-                                factions={factions}
-                                onAddChild={handleAddChild}
-                                onDetailSaved={handleDetailSaved}
-                                onSetColor={(c) => handleSetColor(item.id, c)}
-                            />
-                        ))}
-                    </DroppableCanvas>
                 </div>
             </div>
 
             {/* Drag Overlay */}
             <DragOverlay dropAnimation={null}>
-                {activeDragItem ? (
-                    <div
-                        className="pointer-events-none"
-                        style={{
-                            transform: `scale(${zoom})`,
-                            transformOrigin: 'top left'
-                        }}
-                    >
-                        <CanvasItem item={activeDragItem} isOverlay />
-                    </div>
-                ) : null}
+                {activeDragItem ? <CanvasItem item={activeDragItem} isOverlay /> : null}
             </DragOverlay>
 
             {/* Scene Element Detail Edit Dialog */}
-            {
-                editingChild && (
-                    <SceneElementDetailDialog
-                        open={!!editingChild}
-                        onOpenChange={(open) => !open && setEditingChild(null)}
-                        elementType={editingChild.child.type}
-                        elementId={editingChild.child.referenceId || editingChild.child.refId || editingChild.child.id}
-                        elementName={editingChild.child.title}
-                        sceneId={eventId}
-                        novelId={novelId}
-                        canvasItemId={editingChild.canvasItemId}
-                        existingDetail={elementDetailsMap.get(
-                            `${editingChild.canvasItemId}-${editingChild.child.type}-${editingChild.child.referenceId || editingChild.child.refId || editingChild.child.id}`
-                        )}
-                        onSaved={handleDetailSaved}
-                    />
-                )
-            }
+            {editingChild && (
+                <SceneElementDetailDialog
+                    open={!!editingChild}
+                    onOpenChange={(open) => !open && setEditingChild(null)}
+                    elementType={editingChild.child.type}
+                    elementId={editingChild.child.referenceId || editingChild.child.refId || editingChild.child.id}
+                    elementName={editingChild.child.title}
+                    sceneId={eventId}
+                    novelId={novelId}
+                    canvasItemId={editingChild.canvasItemId}
+                    existingDetail={elementDetailsMap.get(
+                        `${editingChild.canvasItemId}-${editingChild.child.type}-${editingChild.child.referenceId || editingChild.child.refId || editingChild.child.id}`
+                    )}
+                    onSaved={handleDetailSaved}
+                />
+            )}
 
-            {/* Link Edit Dialog (P-canvas) */}
+            {/* Link Edit Dialog */}
             {editingLink && (() => {
                 const src = items.find(i => i.id === editingLink.sourceId);
                 const tgt = items.find(i => i.id === editingLink.targetId);
@@ -1970,37 +1483,28 @@ export function PlaygroundBoard({
                         sourceTitle={src.title}
                         targetTitle={tgt.title}
                         link={link}
-                        onSave={(patch) => {
-                            handleUpdateLink(editingLink.sourceId, editingLink.targetId, patch);
-                            setEditingLink(null);
-                        }}
-                        onDelete={() => {
-                            handleUnlink(editingLink.sourceId, editingLink.targetId);
-                            setEditingLink(null);
-                            toast.success("ลบเส้นเชื่อมแล้ว");
-                        }}
+                        onSave={(patch) => { handleUpdateLink(editingLink.sourceId, editingLink.targetId, patch); setEditingLink(null); }}
+                        onDelete={() => { handleUnlink(editingLink.sourceId, editingLink.targetId); setEditingLink(null); toast.success("ลบเส้นเชื่อมแล้ว"); }}
                         onClose={() => setEditingLink(null)}
                     />
                 );
             })()}
 
             {/* Idea Note Dialog */}
-            {
-                editingNote && (
-                    <IdeaNoteDialog
-                        open={!!editingNote}
-                        onOpenChange={(open) => !open && setEditingNote(null)}
-                        ideaId={editingNote.item.referenceId || editingNote.item.id}
-                        ideaTitle={editingNote.item.title}
-                        canvasItemId={editingNote.item.id}
-                        sceneId={eventId}
-                        novelId={novelId}
-                        existingNote={editingNote.existingNote}
-                        onSaved={handleDetailSaved}
-                        onDeleted={handleNoteDeleted}
-                    />
-                )
-            }
+            {editingNote && (
+                <IdeaNoteDialog
+                    open={!!editingNote}
+                    onOpenChange={(open) => !open && setEditingNote(null)}
+                    ideaId={editingNote.item.referenceId || editingNote.item.id}
+                    ideaTitle={editingNote.item.title}
+                    canvasItemId={editingNote.item.id}
+                    sceneId={eventId}
+                    novelId={novelId}
+                    existingNote={editingNote.existingNote}
+                    onSaved={handleDetailSaved}
+                    onDeleted={handleNoteDeleted}
+                />
+            )}
 
             {/* Ancestor Idea Dialog */}
             <Dialog open={!!ancestorDialogItem} onOpenChange={(open) => !open && setAncestorDialogItem(null)}>
@@ -2015,28 +1519,23 @@ export function PlaygroundBoard({
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-3">
-                        {/* Search */}
                         <Input
                             placeholder="ค้นหาไอเดีย..."
                             value={ancestorSearch}
                             onChange={(e) => setAncestorSearch(e.target.value)}
                             className="w-full"
                         />
-                        {/* Optional Label */}
                         <Input
                             placeholder="เหตุผล (ไม่บังคับ) เช่น: ทำเพราะ..."
                             value={ancestorLabel}
                             onChange={(e) => setAncestorLabel(e.target.value)}
                             className="w-full text-sm"
                         />
-                        {/* Idea List */}
                         <div className="max-h-60 overflow-y-auto space-y-1 border rounded-md p-2">
                             {ideas
                                 .filter((idea: any) => {
-                                    // Don't show the current idea
                                     const currentId = ancestorDialogItem?.referenceId || ancestorDialogItem?.id;
                                     if (idea.id === currentId) return false;
-                                    // Search filter
                                     if (ancestorSearch) {
                                         return idea.title?.toLowerCase().includes(ancestorSearch.toLowerCase()) ||
                                             idea.content?.toLowerCase().includes(ancestorSearch.toLowerCase());
@@ -2044,11 +1543,8 @@ export function PlaygroundBoard({
                                     return true;
                                 })
                                 .map((idea: any) => (
-                                    <button
-                                        key={idea.id}
-                                        onClick={() => handleCreateAncestor(idea.id)}
-                                        className="w-full text-left p-2 rounded hover:bg-blue-50 border border-transparent hover:border-blue-200 transition-colors flex items-start gap-2"
-                                    >
+                                    <button key={idea.id} onClick={() => handleCreateAncestor(idea.id)}
+                                        className="w-full text-left p-2 rounded hover:bg-blue-50 border border-transparent hover:border-blue-200 transition-colors flex items-start gap-2">
                                         <Lightbulb className="w-4 h-4 text-yellow-500 shrink-0 mt-0.5" />
                                         <div className="min-w-0 flex-1">
                                             <p className="text-sm font-medium truncate">{idea.title}</p>
@@ -2063,9 +1559,7 @@ export function PlaygroundBoard({
                             {ideas.filter((idea: any) => {
                                 const currentId = ancestorDialogItem?.referenceId || ancestorDialogItem?.id;
                                 if (idea.id === currentId) return false;
-                                if (ancestorSearch) {
-                                    return idea.title?.toLowerCase().includes(ancestorSearch.toLowerCase());
-                                }
+                                if (ancestorSearch) return idea.title?.toLowerCase().includes(ancestorSearch.toLowerCase());
                                 return true;
                             }).length === 0 && (
                                     <p className="text-sm text-muted-foreground text-center py-4">ไม่พบไอเดีย</p>
@@ -2074,6 +1568,6 @@ export function PlaygroundBoard({
                     </div>
                 </DialogContent>
             </Dialog>
-        </DndContext >
+        </DndContext>
     );
 }
