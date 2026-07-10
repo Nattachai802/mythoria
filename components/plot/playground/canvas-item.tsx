@@ -3,7 +3,7 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { User, MapPin, Lightbulb, X, Link as LinkIcon, Pencil, StickyNote, Maximize2, Minimize2, ExternalLink, Copy, GitBranchPlus, Shield, Plus, Palette, Check, MoreVertical } from "lucide-react";
+import { User, MapPin, Lightbulb, X, Link as LinkIcon, Pencil, StickyNote, Minimize2, ExternalLink, Copy, GitBranchPlus, Shield, Plus, Palette, Check, MoreVertical, Loader2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,6 +15,7 @@ import {
 // ป้ายสีจัดกลุ่มการ์ด (reuse palette เดียวกับ Story Arc)
 const CARD_COLORS = ["#f59e0b", "#fb923c", "#f43f5e", "#a78bfa", "#6366f1", "#22d3ee", "#34d399", "#facc15", "#e879f9", "#94a3b8"];
 import { useCallback, useState } from "react";
+import { Textarea } from "@/components/ui/textarea";
 import { SceneElementDetails } from "@/db/schema";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -34,6 +35,7 @@ export function DraggableCanvasItem({
   onEditChild,
   ideaNotes,
   onAddNote,
+  onQuickAddNote,
   novelId,
   onSetAncestor,
   ancestorConnections,
@@ -45,6 +47,8 @@ export function DraggableCanvasItem({
   onDetailSaved,
   onSetColor,
   onMeasureRef,
+  isConnectSource,
+  isConnectTarget,
 }: {
   item: any;
   onRemove: () => void;
@@ -58,6 +62,7 @@ export function DraggableCanvasItem({
   onEditChild?: (child: any) => void;
   ideaNotes?: SceneElementDetails[];
   onAddNote?: (item: any) => void;
+  onQuickAddNote?: (item: any, text: string) => void | Promise<void>;
   novelId?: string;
   onSetAncestor?: () => void;
   ancestorConnections?: Array<{ id: string; sourceIdeaId: string; targetIdeaId: string; label?: string | null; targetIdeaTitle?: string | null; targetIdeaContent?: string | null; targetIdeaCategory?: string | null; targetIdeaNotes?: string[] }>;
@@ -67,11 +72,19 @@ export function DraggableCanvasItem({
   factions?: any[];
   onAddChild?: (ideaId: string, child: any) => void;
   onDetailSaved?: (detail: SceneElementDetails) => void;
+  isConnectSource?: boolean;
+  isConnectTarget?: boolean;
 }) {
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
     id: item.id,
     data: { ...item, from: 'canvas' },
     disabled: !!isLinkingSource // Disable dragging if this is the source of a link
+  });
+
+  // Connect handle — ลากเพื่อเชื่อมการ์ด (แยกจาก drag ย้ายการ์ด)
+  const { setNodeRef: setConnectRef, listeners: connectListeners, attributes: connectAttributes } = useDraggable({
+    id: `connect:${item.id}`,
+    data: { from: 'connect', sourceId: item.id },
   });
 
   const { setNodeRef: setDropRef, isOver } = useDroppable({
@@ -100,6 +113,7 @@ export function DraggableCanvasItem({
       {...listeners}
       {...attributes}
       data-canvas-item="true"
+      className="group/connect"
       style={{
         position: 'relative',
         zIndex: isDragging ? 999 : (isOver ? 10 : 2),
@@ -113,6 +127,27 @@ export function DraggableCanvasItem({
         }
       }}
     >
+      {/* Connect handle — ลากออกไปปล่อยที่การ์ดอื่นเพื่อเชื่อม */}
+      <button
+        ref={setConnectRef}
+        {...connectAttributes}
+        {...connectListeners}
+        onPointerDown={(e) => { e.stopPropagation(); (connectListeners as any)?.onPointerDown?.(e); }}
+        onClick={(e) => { e.stopPropagation(); e.preventDefault(); }}
+        title="ลากเพื่อเชื่อมการ์ด"
+        aria-label="ลากเพื่อเชื่อมการ์ด"
+        className="absolute -right-2.5 top-1/2 -translate-y-1/2 z-40 h-6 w-6 rounded-full bg-[var(--forge-amber)] text-black shadow-md ring-2 ring-background flex items-center justify-center cursor-crosshair opacity-0 group-hover/connect:opacity-100 transition-opacity hover:scale-110"
+      >
+        <LinkIcon className="w-3 h-3" />
+      </button>
+
+      {/* Ring บอกสถานะเชื่อม */}
+      {isConnectSource && (
+        <div className="absolute inset-0 z-30 rounded-md ring-2 ring-[var(--forge-amber)] pointer-events-none" />
+      )}
+      {isConnectTarget && (
+        <div className="absolute inset-0 z-30 rounded-md ring-2 ring-emerald-500 bg-emerald-500/5 pointer-events-none" />
+      )}
       <CanvasItem
         item={item}
         onRemove={onRemove}
@@ -125,6 +160,7 @@ export function DraggableCanvasItem({
         onEditChild={onEditChild}
         ideaNotes={ideaNotes}
         onAddNote={onAddNote}
+        onQuickAddNote={onQuickAddNote}
         novelId={novelId}
         onSetAncestor={onSetAncestor}
         ancestorConnections={ancestorConnections}
@@ -261,6 +297,7 @@ export function CanvasItem({
   onEditChild,
   ideaNotes,
   onAddNote,
+  onQuickAddNote,
   novelId,
   onSetAncestor,
   ancestorConnections,
@@ -285,6 +322,7 @@ export function CanvasItem({
   onEditChild?: (child: any) => void;
   ideaNotes?: SceneElementDetails[];
   onAddNote?: (item: any) => void;
+  onQuickAddNote?: (item: any, text: string) => void | Promise<void>;
   novelId?: string;
   onSetAncestor?: () => void;
   ancestorConnections?: Array<{ id: string; sourceIdeaId: string; targetIdeaId: string; label?: string | null; targetIdeaTitle?: string | null; targetIdeaContent?: string | null; targetIdeaCategory?: string | null; targetIdeaNotes?: string[] }>;
@@ -301,7 +339,20 @@ export function CanvasItem({
     return <StickyNoteItem item={item} onRemove={onRemove} isDragging={isDragging} isOverlay={isOverlay} />;
   }
 
-  const [isExpanded, setIsExpanded] = useState(false);
+  const isExpanded = true; // การ์ดขยายเต็มตลอด — ไม่มีปุ่มย่อ/ขยายแล้ว
+  const [quickNote, setQuickNote] = useState("");
+  const [quickNoteOpen, setQuickNoteOpen] = useState(false);
+  const [savingQuickNote, setSavingQuickNote] = useState(false);
+
+  const submitQuickNote = async () => {
+    const text = quickNote.trim();
+    if (!text || !onQuickAddNote) return;
+    setSavingQuickNote(true);
+    await onQuickAddNote(item, text);
+    setSavingQuickNote(false);
+    setQuickNote("");
+    setQuickNoteOpen(false);
+  };
 
   const Icon = () => {
     if (item.type === 'character') return <User className="w-4 h-4" />;
@@ -449,30 +500,14 @@ Sticky Notes: ${stickyNotes}`;
               </div>
 
               {item.type === 'idea' && item.content && (
-                <div className={`text-xs text-muted-foreground bg-muted/30 p-2 rounded ${isExpanded ? 'whitespace-pre-wrap' : 'line-clamp-3'}`}>
+                <p className="text-[13px] text-muted-foreground leading-relaxed whitespace-pre-wrap mt-1.5">
                   {typeof item.content === 'string' ? item.content : 'Rich text content...'}
-                </div>
+                </p>
               )}
             </div>
 
             {/* Actions */}
             <div className="flex flex-col gap-1 -mr-1 -mt-1">
-              {/* Expand/Collapse — always visible */}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-muted-foreground hover:text-primary shrink-0"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  setIsExpanded(!isExpanded);
-                }}
-                onPointerDown={(e) => e.stopPropagation()}
-                title={isExpanded ? "ย่อ" : "ขยาย"}
-              >
-                {isExpanded ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
-              </Button>
-
               {/* Three-dot menu */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -501,14 +536,6 @@ Sticky Notes: ${stickyNotes}`;
                     >
                       <LinkIcon className="w-3.5 h-3.5 mr-2" />
                       {isLinkingSource ? 'กำลังเชื่อม...' : 'เชื่อมการ์ด'}
-                    </DropdownMenuItem>
-                  )}
-
-                  {/* Note (idea only) */}
-                  {isContainer && onAddNote && (
-                    <DropdownMenuItem onSelect={() => onAddNote(item)}>
-                      <StickyNote className="w-3.5 h-3.5 mr-2" />
-                      เพิ่ม Note
                     </DropdownMenuItem>
                   )}
 
@@ -648,29 +675,6 @@ Sticky Notes: ${stickyNotes}`;
             </div>
           )}
 
-          {/* Sticky Notes for Ideas */}
-          {isContainer && thisIdeaNotes.length > 0 && (
-            <div className="space-y-1 mb-1.5">
-              {thisIdeaNotes.map((note) => (
-                <div
-                  key={note.id}
-                  className="bg-muted/40 border border-border rounded p-1.5 text-xs cursor-pointer hover:bg-muted/70 transition-colors group/note"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    // Click to edit existing note
-                    if (onAddNote) {
-                      onAddNote({ ...item, existingNoteId: note.id });
-                    }
-                  }}
-                >
-                  <div className="flex items-start gap-1.5">
-                    <StickyNote className="w-3 h-3 text-muted-foreground shrink-0 mt-0.5" />
-                    <p className="text-foreground/90 whitespace-pre-wrap line-clamp-3">{note.notes}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
 
           {/* Ancestor Connections Badge */}
           {isContainer && ancestorConnections && ancestorConnections.length > 0 && (
@@ -768,7 +772,7 @@ Sticky Notes: ${stickyNotes}`;
 
           {/* Children Area for Ideas */}
           {isContainer && (
-            <div className="space-y-3 pt-2 border-t mt-2 bg-muted/20 rounded p-2">
+            <div className="space-y-3 pt-2 border-t mt-2">
 
               {/* Characters Section (Real & Dummy) */}
               {item.children && item.children.some((c: any) => c.type === 'character' || c.type === 'dummy_character') && (
@@ -785,34 +789,36 @@ Sticky Notes: ${stickyNotes}`;
                         const isDummy = child.type === 'dummy_character';
                         const rm = roleMeta(detail?.role || child.role);
                         return (
-                          <div key={child.id} className="flex items-center gap-1.5 py-1 text-xs group/item">
-                            <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", rm.dot)} />
-                            <span className={cn("truncate font-medium text-foreground", isDummy && "italic text-muted-foreground")}>
-                              {child.title}{isDummy && <span className="text-[10px] text-muted-foreground font-normal ml-1">(Dummy)</span>}
-                            </span>
-                            <span className={cn("text-[10px] shrink-0", rm.text)}>{rm.label}</span>
-                            {hasDetail && (
-                              <span className="truncate text-[10px] text-muted-foreground/80 min-w-0">
-                                {detail.action && `· ${detail.action}`}
+                          <div key={child.id} className="py-1 text-xs group/item">
+                            <div className="flex items-center gap-1.5">
+                              <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", rm.dot)} />
+                              <span className={cn("truncate font-medium text-foreground", isDummy && "italic text-muted-foreground")}>
+                                {child.title}{isDummy && <span className="text-[10px] text-muted-foreground font-normal ml-1">(Dummy)</span>}
                               </span>
-                            )}
-                            <span className="flex-1" />
-                            {onEditChild && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); onEditChild({ ...child, canvasItemId: item.id }); }}
-                                className="opacity-0 group-hover/item:opacity-100 text-muted-foreground hover:text-foreground transition-opacity shrink-0"
-                                title="แก้ไขรายละเอียด"
-                              >
-                                <Pencil className="w-3 h-3" />
-                              </button>
-                            )}
-                            {onRemoveChild && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); onRemoveChild(child.id); }}
-                                className="opacity-0 group-hover/item:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
+                              <span className={cn("text-[10px] shrink-0", rm.text)}>{rm.label}</span>
+                              <span className="flex-1" />
+                              {onEditChild && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); onEditChild({ ...child, canvasItemId: item.id }); }}
+                                  className="opacity-0 group-hover/item:opacity-100 text-muted-foreground hover:text-foreground transition-opacity shrink-0"
+                                  title="แก้ไขรายละเอียด"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                              )}
+                              {onRemoveChild && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); onRemoveChild(child.id); }}
+                                  className="opacity-0 group-hover/item:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                            {detail?.action && (
+                              <p className="mt-0.5 ml-3 text-[11px] leading-snug text-muted-foreground whitespace-pre-wrap">
+                                {detail.action}
+                              </p>
                             )}
                           </div>
                         );
@@ -835,39 +841,41 @@ Sticky Notes: ${stickyNotes}`;
                         const hasDetail = detail && (detail.action || detail.how || detail.goal);
                         const isDummy = child.type === 'dummy_faction';
                         return (
-                          <div key={child.id} className="flex items-center gap-1.5 py-1 text-xs group/item">
-                            <Shield className={cn("w-3 h-3 shrink-0", isDummy ? "text-muted-foreground" : "text-emerald-500")} />
-                            <span className={cn("truncate font-medium text-foreground", isDummy && "italic text-muted-foreground")}>
-                              {child.title}{isDummy && <span className="text-[10px] text-muted-foreground font-normal ml-1">(Dummy)</span>}
-                            </span>
-                            {hasDetail && (
-                              <span className="truncate text-[10px] text-muted-foreground/80 min-w-0">
-                                {detail.action && `· ${detail.action}`}
+                          <div key={child.id} className="py-1 text-xs group/item">
+                            <div className="flex items-center gap-1.5">
+                              <Shield className={cn("w-3 h-3 shrink-0", isDummy ? "text-muted-foreground" : "text-emerald-500")} />
+                              <span className={cn("truncate font-medium text-foreground", isDummy && "italic text-muted-foreground")}>
+                                {child.title}{isDummy && <span className="text-[10px] text-muted-foreground font-normal ml-1">(Dummy)</span>}
                               </span>
-                            )}
-                            <span className="flex-1" />
-                            {onEditChild && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onEditChild({ ...child, canvasItemId: item.id });
-                                }}
-                                className="opacity-0 group-hover/item:opacity-100 hover:text-emerald-500 transition-opacity shrink-0"
-                                title="แก้ไขรายละเอียด"
-                              >
-                                <Pencil className="w-3 h-3" />
-                              </button>
-                            )}
-                            {onRemoveChild && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onRemoveChild(child.id);
-                                }}
-                                className="opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-opacity shrink-0"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
+                              <span className="flex-1" />
+                              {onEditChild && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onEditChild({ ...child, canvasItemId: item.id });
+                                  }}
+                                  className="opacity-0 group-hover/item:opacity-100 hover:text-emerald-500 transition-opacity shrink-0"
+                                  title="แก้ไขรายละเอียด"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                              )}
+                              {onRemoveChild && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onRemoveChild(child.id);
+                                  }}
+                                  className="opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-opacity shrink-0"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                            {detail?.action && (
+                              <p className="mt-0.5 ml-[18px] text-[11px] leading-snug text-muted-foreground whitespace-pre-wrap">
+                                {detail.action}
+                              </p>
                             )}
                           </div>
                         );
@@ -970,6 +978,64 @@ Sticky Notes: ${stickyNotes}`;
                     onRemoveChild={(childId) => onRemoveChild?.(childId)}
                     onDetailSaved={onDetailSaved}
                   />
+                </div>
+              )}
+
+              {/* Notes footer (idea only) — annotation รอง อยู่ท้ายการ์ด */}
+              {isContainer && onQuickAddNote && (
+                <div className="space-y-1.5">
+                  {thisIdeaNotes.map((note) => (
+                    <div
+                      key={note.id}
+                      className="group/note relative rounded-md border border-yellow-500/25 bg-yellow-500/10 px-2 py-1.5 text-xs cursor-pointer hover:bg-yellow-500/15 transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onAddNote) onAddNote({ ...item, existingNoteId: note.id });
+                      }}
+                    >
+                      <p className="text-foreground/90 whitespace-pre-wrap line-clamp-3 pr-4">{note.notes}</p>
+                      <Pencil className="w-3 h-3 absolute top-1.5 right-1.5 text-muted-foreground opacity-0 group-hover/note:opacity-100 transition-opacity" />
+                    </div>
+                  ))}
+
+                  <div onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+                    {quickNoteOpen ? (
+                      <div className="space-y-1">
+                        <Textarea
+                          autoFocus
+                          value={quickNote}
+                          onChange={(e) => setQuickNote(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                              e.preventDefault();
+                              submitQuickNote();
+                            } else if (e.key === "Escape") {
+                              setQuickNote("");
+                              setQuickNoteOpen(false);
+                            }
+                          }}
+                          placeholder="เขียนโน้ต… (⌘/Ctrl+Enter เพื่อบันทึก)"
+                          className="min-h-[52px] resize-none text-xs bg-yellow-500/10 border-yellow-500/30 focus-visible:ring-yellow-500/40"
+                        />
+                        <div className="flex justify-end gap-1">
+                          <Button type="button" size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={() => { setQuickNote(""); setQuickNoteOpen(false); }}>
+                            ยกเลิก
+                          </Button>
+                          <Button type="button" size="sm" className="h-6 text-xs px-2" disabled={!quickNote.trim() || savingQuickNote} onClick={submitQuickNote}>
+                            {savingQuickNote ? <Loader2 className="w-3 h-3 animate-spin" /> : "บันทึก"}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setQuickNoteOpen(true)}
+                        className="flex items-center justify-center gap-1 w-full text-xs text-yellow-700/70 dark:text-yellow-500/70 hover:text-yellow-800 dark:hover:text-yellow-400 border border-dashed border-yellow-500/30 hover:border-yellow-500/50 hover:bg-yellow-500/5 rounded-md px-2 py-1.5 transition-colors"
+                      >
+                        <Plus className="w-3 h-3" />
+                        เพิ่มโน้ต
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

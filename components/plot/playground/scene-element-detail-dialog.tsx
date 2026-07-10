@@ -28,7 +28,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { User, MapPin, Loader2, Shield } from "lucide-react";
+import { User, MapPin, Loader2, Shield, ChevronDown } from "lucide-react";
 import { upsertSceneElementDetail } from "@/server/scene-element-details";
 import { toast } from "sonner";
 import { SceneElementDetails } from "@/db/schema";
@@ -72,6 +72,7 @@ export function SceneElementDetailDialog({
     onSaved,
 }: SceneElementDetailDialogProps) {
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [showAdvanced, setShowAdvanced] = useState(false);
 
     const form = useForm<DetailFormData>({
         resolver: zodResolver(detailSchema),
@@ -96,6 +97,8 @@ export function SceneElementDetailDialog({
                 role: existingDetail?.role || "protagonist",
                 notes: existingDetail?.notes || "",
             });
+            // เปิดโหมดละเอียดอัตโนมัติถ้ามีข้อมูลเดิมในช่องละเอียดอยู่แล้ว
+            setShowAdvanced(!!(existingDetail?.how || existingDetail?.goal || existingDetail?.outcome || existingDetail?.notes));
         }
     }, [open, existingDetail, form]);
 
@@ -154,13 +157,14 @@ export function SceneElementDetailDialog({
                             name="action"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>ทำอะไร (Action)</FormLabel>
+                                    <FormLabel>ทำอะไรในซีนนี้</FormLabel>
                                     <FormControl>
-                                        <Input
-                                            placeholder={(elementType === "character" || elementType === "dummy_character" || elementType === "faction" || elementType === "dummy_faction")
-                                                ? "เช่น สู้กับมอนสเตอร์, ค้นหาสมบัติ, เจรจา"
-                                                : "เช่น สถานที่เกิดเหตุ, จุดพบปะ"
+                                        <Textarea
+                                            placeholder={(elementType === "location")
+                                                ? "เช่น เป็นสถานที่เกิดเหตุที่ตัวเอกค้นพบศพ"
+                                                : "เช่น ลอบเข้าบ้านร้างเพื่อหาหลักฐาน แต่กลับเจอศพ"
                                             }
+                                            className="min-h-[70px] resize-none"
                                             {...field}
                                         />
                                     </FormControl>
@@ -169,103 +173,101 @@ export function SceneElementDetailDialog({
                             )}
                         />
 
-                        <FormField
-                            control={form.control}
-                            name="how"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>อย่างไร (How)</FormLabel>
-                                    <FormControl>
-                                        <Input
-                                            placeholder={(elementType === "character" || elementType === "dummy_character" || elementType === "faction" || elementType === "dummy_faction")
-                                                ? "เช่น ใช้ดาบวิเศษ, เจรจาลับ, ทรยศ"
-                                                : "เช่น มีหมอกหนา, ตอนกลางคืน"
-                                            }
-                                            {...field}
-                                        />
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-
-                        <FormField
-                            control={form.control}
-                            name="goal"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>เป้าหมาย/แรงจูงใจ (Goal)</FormLabel>
-                                    <FormControl>
-                                        <Input
-                                            placeholder={(elementType === "character" || elementType === "dummy_character" || elementType === "faction" || elementType === "dummy_faction")
-                                                ? "เช่น เพื่อปกป้องหมู่บ้าน, แย่งชิงพื้นที่, สอดแนม"
-                                                : "เช่น จุดหมายปลายทาง, สถานที่ซ่อนตัว"
-                                            }
-                                            {...field}
-                                        />
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-
-                        <div className={cn("grid gap-3", hasRole ? "grid-cols-2" : "grid-cols-1")}>
+                        {hasRole && (
                             <FormField
                                 control={form.control}
-                                name="outcome"
+                                name="role"
                                 render={({ field }) => (
                                     <FormItem className="min-w-0">
-                                        <FormLabel>ผลลัพธ์ (Outcome)</FormLabel>
-                                        <FormControl>
-                                            <Input placeholder="เช่น พ่ายแพ้, ได้ข้อมูลลับ" {...field} />
-                                        </FormControl>
+                                        <FormLabel>บทบาท</FormLabel>
+                                        <Select onValueChange={field.onChange} value={field.value}>
+                                            <FormControl>
+                                                <SelectTrigger className="w-full [&>span]:truncate">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                            </FormControl>
+                                            <SelectContent>
+                                                {ROLES.map((r) => (
+                                                    <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
                                         <FormMessage />
                                     </FormItem>
                                 )}
                             />
-                            {hasRole && (
+                        )}
+
+                        {/* โหมดละเอียด (ไม่บังคับ) — how/goal/outcome/notes */}
+                        <button
+                            type="button"
+                            onClick={() => setShowAdvanced(v => !v)}
+                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                            <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", showAdvanced && "rotate-180")} />
+                            โหมดละเอียด (ไม่บังคับ)
+                        </button>
+
+                        {showAdvanced && (
+                            <div className="space-y-4 border-l-2 border-border/60 pl-3">
                                 <FormField
                                     control={form.control}
-                                    name="role"
+                                    name="how"
                                     render={({ field }) => (
-                                        <FormItem className="min-w-0">
-                                            <FormLabel>บทบาท</FormLabel>
-                                            <Select onValueChange={field.onChange} value={field.value}>
-                                                <FormControl>
-                                                    <SelectTrigger className="w-full [&>span]:truncate">
-                                                        <SelectValue />
-                                                    </SelectTrigger>
-                                                </FormControl>
-                                                <SelectContent>
-                                                    {ROLES.map((r) => (
-                                                        <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
+                                        <FormItem>
+                                            <FormLabel>อย่างไร (How)</FormLabel>
+                                            <FormControl>
+                                                <Input placeholder="เช่น ใช้ดาบวิเศษ, เจรจาลับ, ทรยศ" {...field} />
+                                            </FormControl>
                                             <FormMessage />
                                         </FormItem>
                                     )}
                                 />
-                            )}
-                        </div>
-
-                        <FormField
-                            control={form.control}
-                            name="notes"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>หมายเหตุ</FormLabel>
-                                    <FormControl>
-                                        <Textarea
-                                            placeholder="รายละเอียดเพิ่มเติม..."
-                                            className="min-h-[80px] resize-none"
-                                            {...field}
-                                        />
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
+                                <FormField
+                                    control={form.control}
+                                    name="goal"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>เป้าหมาย/แรงจูงใจ (Goal)</FormLabel>
+                                            <FormControl>
+                                                <Input placeholder="เช่น เพื่อปกป้องหมู่บ้าน, แย่งชิงพื้นที่" {...field} />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={form.control}
+                                    name="outcome"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>ผลลัพธ์ (Outcome)</FormLabel>
+                                            <FormControl>
+                                                <Input placeholder="เช่น พ่ายแพ้, ได้ข้อมูลลับ" {...field} />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                                <FormField
+                                    control={form.control}
+                                    name="notes"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>หมายเหตุ</FormLabel>
+                                            <FormControl>
+                                                <Textarea
+                                                    placeholder="รายละเอียดเพิ่มเติม..."
+                                                    className="min-h-[70px] resize-none"
+                                                    {...field}
+                                                />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            </div>
+                        )}
 
                         <div className="flex justify-end gap-2 pt-2">
                             <Button

@@ -26,9 +26,10 @@ import { SceneElementDetails } from "@/db/schema";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Save, Link2, X, Check, Download, List, Navigation, SkipBack, SkipForward, StickyNote, GitBranchPlus, Lightbulb, Loader2, Sprout, LayoutGrid, Rows3 } from "lucide-react";
+import { Plus, Save, Link2, X, Check, Download, List, Navigation, SkipBack, SkipForward, StickyNote, GitBranchPlus, Lightbulb, Loader2, Sprout, LayoutGrid, Rows3, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { CreateIdeaDialog } from "@/components/project/idea/create-idea-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
 interface PlaygroundBoardProps {
@@ -46,6 +47,14 @@ interface Lane {
     id: string;
     name: string;
     orderIndex: number;
+}
+
+// "ตอน" — กรอบครอบช่วงจังหวะภายในบอร์ดนี้ (กำหนด เริ่ม–จบ ชัดเจน)
+interface Chapter {
+    id: string;
+    name: string;
+    startBeat: number;
+    endBeat: number;
 }
 
 const COLUMN_WIDTH = 280;
@@ -70,14 +79,25 @@ export const LINK_KINDS: Record<string, { label: string; color: string; pinFill:
 }
 
 // ---- Migration: ฉากเก่า (x,y อิสระ) -> lane + beatIndex ----
-function buildBoardState(initialItems: any[]): { lanes: Lane[]; items: any[] } {
+function buildBoardState(initialItems: any[]): { lanes: Lane[]; items: any[]; chapters: Chapter[] } {
     const laneItems = initialItems.filter((i: any) => i.type === 'lane');
     let lanes: Lane[] = laneItems
         .map((l: any) => ({ id: l.id, name: l.name || 'เลน', orderIndex: l.orderIndex ?? 0 }))
         .sort((a, b) => a.orderIndex - b.orderIndex);
 
+    // "ตอน" — กรอบครอบช่วงจังหวะ (เฉพาะบอร์ดนี้) เก็บเป็น node type 'chapter'
+    const chapters: Chapter[] = initialItems
+        .filter((i: any) => i.type === 'chapter')
+        .map((c: any) => ({
+            id: c.id,
+            name: c.name || 'ตอน',
+            startBeat: c.startBeat ?? 0,
+            endBeat: c.endBeat ?? c.startBeat ?? 0,
+        }))
+        .sort((a, b) => a.startBeat - b.startBeat);
+
     // group frames เดิมเลิกใช้แล้ว (เลนทำหน้าที่จัดกลุ่มแทน) — กรองทิ้งเงียบๆ
-    let cardItems = initialItems.filter((i: any) => i.type !== 'group' && i.type !== 'lane');
+    let cardItems = initialItems.filter((i: any) => i.type !== 'group' && i.type !== 'lane' && i.type !== 'chapter');
 
     const needsMigration = cardItems.some((i: any) => i.laneId == null || i.beatIndex == null);
     if (needsMigration) {
@@ -96,7 +116,7 @@ function buildBoardState(initialItems: any[]): { lanes: Lane[]; items: any[] } {
     if (lanes.length === 0) {
         lanes = [{ id: crypto.randomUUID(), name: 'ทั่วไป', orderIndex: 0 }];
     }
-    return { lanes, items: cardItems };
+    return { lanes, items: cardItems, chapters };
 }
 
 // Red String Connection (ด้ายแดงแบบนักสืบ) — generalized ตามชนิดเส้น
@@ -372,7 +392,7 @@ function LaneLabel({ lane, laneIndex, onRename, onRemove, canRemove }: {
 }) {
     return (
         <div
-            style={{ gridColumn: 1, gridRow: laneIndex + 2, width: LABEL_WIDTH }}
+            style={{ gridColumn: 1, gridRow: laneIndex + 3, width: LABEL_WIDTH }}
             className="sticky left-0 z-20 bg-muted/60 backdrop-blur-sm border-r border-b border-border/60 flex items-start gap-1 px-2.5 py-2.5 min-h-[140px]"
         >
             <span className="mt-[7px] h-2 w-2 rounded-full bg-[var(--forge-amber)] shrink-0" />
@@ -406,7 +426,7 @@ function BeatCell({ laneId, beatIndex, laneIndex, isTrailing, children }: {
     return (
         <div
             ref={setNodeRef}
-            style={{ gridColumn: beatGridCol(beatIndex), gridRow: laneIndex + 2, width: COLUMN_WIDTH }}
+            style={{ gridColumn: beatGridCol(beatIndex), gridRow: laneIndex + 3, width: COLUMN_WIDTH }}
             className={cn(
                 "min-h-[140px] p-1.5 border-r border-b flex flex-col gap-1.5 transition-colors",
                 isTrailing ? "border-dashed border-border/40" : "border-border/40",
@@ -423,6 +443,62 @@ function BeatCell({ laneId, beatIndex, laneIndex, isTrailing, children }: {
     );
 }
 
+// Popup เล็กๆ กำหนดตอน (ชื่อ + จังหวะเริ่ม/จบ) — ใช้ทั้งเพิ่มใหม่และแก้ของเดิม
+function ChapterPopover({ trigger, initial, beatCount, onSave, onDelete }: {
+    trigger: React.ReactNode;
+    initial: { name: string; startBeat: number; endBeat: number };
+    beatCount: number;
+    onSave: (v: { name: string; startBeat: number; endBeat: number }) => void;
+    onDelete?: () => void;
+}) {
+    const [open, setOpen] = useState(false);
+    const [name, setName] = useState(initial.name);
+    const [start, setStart] = useState(initial.startBeat);
+    const [end, setEnd] = useState(initial.endBeat);
+
+    useEffect(() => {
+        if (open) { setName(initial.name); setStart(initial.startBeat); setEnd(initial.endBeat); }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open]);
+
+    const save = () => {
+        onSave({ name: name.trim() || 'ตอน', startBeat: Math.min(start, end), endBeat: Math.max(start, end) });
+        setOpen(false);
+    };
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+            <PopoverContent align="start" className="w-64 p-3 space-y-2.5" onClick={(e) => e.stopPropagation()}>
+                <Input
+                    autoFocus
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') save(); }}
+                    placeholder="ชื่อตอน เช่น ตอนที่ 1"
+                    className="h-8 text-sm"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                    <label className="text-[10px] text-muted-foreground col-span-1 self-center">เริ่มจังหวะ</label>
+                    <select value={start} onChange={(e) => setStart(Number(e.target.value))} className="h-8 rounded-md border border-input bg-background px-2 text-sm">
+                        {Array.from({ length: beatCount }).map((_, i) => <option key={i} value={i}>{String(i + 1).padStart(2, '0')}</option>)}
+                    </select>
+                    <label className="text-[10px] text-muted-foreground col-span-1 self-center">จบจังหวะ</label>
+                    <select value={end} onChange={(e) => setEnd(Number(e.target.value))} className="h-8 rounded-md border border-input bg-background px-2 text-sm">
+                        {Array.from({ length: beatCount }).map((_, i) => <option key={i} value={i}>{String(i + 1).padStart(2, '0')}</option>)}
+                    </select>
+                </div>
+                <div className="flex items-center justify-between pt-1">
+                    {onDelete ? (
+                        <button onClick={() => { onDelete(); setOpen(false); }} className="text-xs text-destructive hover:underline">ลบตอน</button>
+                    ) : <span />}
+                    <Button size="sm" className="h-7 text-xs" onClick={save}>บันทึก</Button>
+                </div>
+            </PopoverContent>
+        </Popover>
+    );
+}
+
 export function PlaygroundBoard({
     eventId,
     novelId,
@@ -433,11 +509,13 @@ export function PlaygroundBoard({
     threads = [],
     factions = [],
 }: PlaygroundBoardProps) {
-    const [{ lanes, items: initialCardItems }] = useState(() => buildBoardState(initialItems));
+    const [{ lanes, items: initialCardItems, chapters: initialChapters }] = useState(() => buildBoardState(initialItems));
     const [lanes_, setLanes] = useState<Lane[]>(lanes);
+    const [chapters, setChapters] = useState<Chapter[]>(initialChapters);
     const [items, setItems] = useState<any[]>(initialCardItems);
     const [activeDragItem, setActiveDragItem] = useState<any>(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
     const [threadSuggest, setThreadSuggest] = useState<{
         ideaTitle: string;
@@ -449,6 +527,9 @@ export function PlaygroundBoard({
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
     const [linkingSourceId, setLinkingSourceId] = useState<string | null>(null)
     const [editingLink, setEditingLink] = useState<{ sourceId: string; targetId: string } | null>(null);
+    // drag-to-connect (A)
+    const [connectingSourceId, setConnectingSourceId] = useState<string | null>(null);
+    const [connectOverId, setConnectOverId] = useState<string | null>(null);
 
     const [elementDetailsMap, setElementDetailsMap] = useState<Map<string, SceneElementDetails>>(new Map());
     const [editingChild, setEditingChild] = useState<{ child: any; canvasItemId: string } | null>(null);
@@ -514,6 +595,26 @@ export function PlaygroundBoard({
         [items]
     );
     const totalColumns = beatCount + 1;
+
+    // ---- "ตอน" — กรอบครอบช่วงจังหวะ (กำหนดผ่าน dialog เริ่ม–จบ) ----
+    const chapterRanges = useMemo(() => {
+        return [...chapters]
+            .map(c => ({ ...c, startBeat: Math.max(0, c.startBeat), endBeat: Math.min(beatCount - 1, c.endBeat) }))
+            .filter(c => c.startBeat <= c.endBeat && c.startBeat < beatCount)
+            .sort((a, b) => a.startBeat - b.startBeat);
+    }, [chapters, beatCount]);
+
+    const addChapter = useCallback((v: { name: string; startBeat: number; endBeat: number }) => {
+        setChapters(prev => [...prev, { id: crypto.randomUUID(), ...v }]);
+    }, []);
+
+    const updateChapter = useCallback((id: string, v: { name: string; startBeat: number; endBeat: number }) => {
+        setChapters(prev => prev.map(c => (c.id === id ? { ...c, ...v } : c)));
+    }, []);
+
+    const removeChapter = useCallback((id: string) => {
+        setChapters(prev => prev.filter(c => c.id !== id));
+    }, []);
 
     // Sync เมื่อเปลี่ยนฉาก
     useEffect(() => {
@@ -583,6 +684,27 @@ export function PlaygroundBoard({
         }
     }, [ideaNotes]);
 
+    // Quick inline note — save directly without opening the dialog
+    const handleQuickAddNote = useCallback(async (item: any, text: string) => {
+        const notes = text.trim();
+        if (!notes) return;
+        const { upsertSceneElementDetail } = await import('@/server/scene-element-details');
+        const result = await upsertSceneElementDetail({
+            sceneId: eventId,
+            elementType: 'idea_note',
+            elementId: item.referenceId || item.id,
+            canvasItemId: item.id,
+            notes,
+            novelId,
+            forceCreate: true,
+        });
+        if (result.success && result.data) {
+            handleDetailSaved(result.data);
+        } else {
+            toast.error(result.error || "ไม่สามารถบันทึกได้");
+        }
+    }, [eventId, novelId, handleDetailSaved]);
+
     useEffect(() => {
         const fetchAncestorConnections = async () => {
             const { getAncestorConnectionsByNovelId } = await import('@/server/idea');
@@ -651,12 +773,13 @@ export function PlaygroundBoard({
         const timeoutId = setTimeout(async () => {
             setIsSaving(true);
             const laneNodes = lanes_.map(l => ({ id: l.id, type: 'lane', name: l.name, orderIndex: l.orderIndex }));
-            const result = await updateTimelineCanvas(eventId, [...items, ...laneNodes]);
+            const chapterNodes = chapters.map(c => ({ id: c.id, type: 'chapter', name: c.name, startBeat: c.startBeat, endBeat: c.endBeat }));
+            const result = await updateTimelineCanvas(eventId, [...items, ...laneNodes, ...chapterNodes]);
             if (result.success) setLastSaved(new Date());
             setIsSaving(false);
         }, 2000);
         return () => clearTimeout(timeoutId);
-    }, [items, lanes_, eventId]);
+    }, [items, lanes_, chapters, eventId]);
 
     // Linking Handlers
     const handleStartLink = (id: string) => {
@@ -716,7 +839,11 @@ export function PlaygroundBoard({
             if (becomesLeadsTo) {
                 const childrenToCopy = (sourceItem?.children || [])
                     .filter((c: any) => c.type !== 'location' && c.type !== 'sticky-note')
-                    .map((c: any) => ({ ...c, id: crypto.randomUUID() }));
+                    .map((c: any) => {
+                        // role/บทบาทถูกแก้ที่ detail ต่อการ์ด — ดึงค่าล่าสุดมาใส่ child ที่ก็อป ไม่งั้นได้ role ตอนสร้าง
+                        const d = elementDetailsMap.get(`${sourceId}-${c.type}-${c.referenceId || c.refId || c.id}`);
+                        return { ...c, id: crypto.randomUUID(), role: d?.role || c.role };
+                    });
                 const existingRefIds = new Set((targetItem?.children || []).map((c: any) => c.referenceId));
                 newChildren = childrenToCopy.filter((c: any) => {
                     if (!c.referenceId) {
@@ -849,20 +976,64 @@ export function PlaygroundBoard({
         setLanes(prev => prev.filter(l => l.id !== laneId));
     };
 
-    const handleDragStart = (event: DragStartEvent) => {
-        if (linkingSourceId) return;
-        setActiveDragItem(event.active.data.current);
+    // แปลง over.id (การ์ด idea = id ตรงๆ / cell = หาการ์ดในช่อง) → id การ์ดปลายทาง
+    const resolveConnectTarget = (overId: string | null, sourceId: string | null): string | null => {
+        if (!overId || !sourceId) return null;
+        let targetId: string | null = null;
+        if (items.some(i => i.id === overId)) targetId = overId;
+        else if (overId.startsWith('cell:')) {
+            const [, laneId, beatIndexStr] = overId.split(':');
+            const t = items.find(i => i.laneId === laneId && i.beatIndex === Number(beatIndexStr));
+            targetId = t?.id ?? null;
+        }
+        return targetId && targetId !== sourceId ? targetId : null;
     };
 
-    const handleDragOver = (_event: DragOverEvent) => { };
+    const handleDragStart = (event: DragStartEvent) => {
+        if (linkingSourceId) return;
+        const data = event.active.data.current as any;
+        if (data?.from === 'connect') {
+            setConnectingSourceId(data.sourceId);
+            return; // ไม่โชว์ overlay การ์ดขณะลากเชื่อม
+        }
+        setActiveDragItem(data);
+    };
+
+    const handleDragOver = (event: DragOverEvent) => {
+        if (!connectingSourceId) return;
+        setConnectOverId(resolveConnectTarget(event.over ? String(event.over.id) : null, connectingSourceId));
+    };
 
     const handleDragEnd = (event: DragEndEvent) => {
-        if (linkingSourceId) return;
         const { active, over } = event;
+        const activeData = active.data.current as any;
+
+        // --- drag-to-connect: ลากปุ่มเชื่อมไปปล่อยที่การ์ดปลายทาง ---
+        if (activeData?.from === 'connect') {
+            const sourceId = activeData.sourceId as string;
+            const targetId = resolveConnectTarget(over ? String(over.id) : null, sourceId);
+            setConnectingSourceId(null);
+            setConnectOverId(null);
+            if (targetId) {
+                setItems(prev => {
+                    const src = prev.find(i => i.id === sourceId);
+                    if ((src?.links || []).some((l: any) => normalizeLink(l).targetId === targetId)) {
+                        toast.info("เชื่อมกันอยู่แล้ว");
+                        return prev;
+                    }
+                    return prev.map(i => i.id === sourceId
+                        ? { ...i, links: [...(i.links || []), { targetId, kind: "related", label: null }] }
+                        : i);
+                });
+                setEditingLink({ sourceId, targetId }); // เปิดเลือกชนิดเส้นทันที
+            }
+            return;
+        }
+
+        if (linkingSourceId) return;
         setActiveDragItem(null);
         if (!over) return;
 
-        const activeData = active.data.current as any;
         const overData = over.data.current as any;
         const overId = String(over.id);
         const cellMatch = overId.startsWith('cell:');
@@ -977,7 +1148,8 @@ export function PlaygroundBoard({
     const handleSave = async () => {
         setIsSaving(true);
         const laneNodes = lanes_.map(l => ({ id: l.id, type: 'lane', name: l.name, orderIndex: l.orderIndex }));
-        const result = await updateTimelineCanvas(eventId, [...items, ...laneNodes]);
+        const chapterNodes = chapters.map(c => ({ id: c.id, type: 'chapter', name: c.name, startBeat: c.startBeat }));
+        const result = await updateTimelineCanvas(eventId, [...items, ...laneNodes, ...chapterNodes]);
         if (result.success) {
             setLastSaved(new Date());
             toast.success("บันทึก layout แล้ว");
@@ -1157,6 +1329,7 @@ export function PlaygroundBoard({
 
     return (
         <DndContext
+            id="plot-playground-board"
             sensors={sensors}
             collisionDetection={pointerWithin}
             onDragStart={handleDragStart}
@@ -1165,13 +1338,32 @@ export function PlaygroundBoard({
         >
             <div className="flex h-full">
                 {/* Sidebar */}
-                <div className="w-60 border-r bg-muted/10 overflow-hidden flex flex-col">
-                    <ResourceSidebar
-                        characters={characters}
-                        locations={locations}
-                        ideas={ideas}
-                        factions={factions}
-                    />
+                <div
+                    className={`border-r bg-muted/10 overflow-hidden flex flex-col shrink-0 transition-[width] duration-300 ease-in-out ${sidebarCollapsed ? "w-9" : "w-60"}`}
+                >
+                    {sidebarCollapsed ? (
+                        <div className="flex flex-col items-center pt-2">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                title="แสดงแถบทรัพยากร"
+                                onClick={() => setSidebarCollapsed(false)}
+                            >
+                                <PanelLeftOpen className="w-4 h-4" />
+                            </Button>
+                        </div>
+                    ) : (
+                        <div className="w-60 h-full animate-in fade-in duration-300">
+                            <ResourceSidebar
+                                characters={characters}
+                                locations={locations}
+                                ideas={ideas}
+                                factions={factions}
+                                onCollapse={() => setSidebarCollapsed(true)}
+                            />
+                        </div>
+                    )}
                 </div>
 
                 {/* Storyboard grid area */}
@@ -1309,14 +1501,56 @@ export function PlaygroundBoard({
                             style={{
                                 display: 'grid',
                                 gridTemplateColumns: `${LABEL_WIDTH}px ${Array.from({ length: totalColumns }).map((_, i) => i < totalColumns - 1 ? `${COLUMN_WIDTH}px ${GUTTER_WIDTH}px` : `${COLUMN_WIDTH}px`).join(' ')}`,
-                                gridTemplateRows: `36px repeat(${lanes_.length}, auto)`,
+                                gridTemplateRows: `30px 36px repeat(${lanes_.length}, auto)`,
                                 width: 'max-content',
                                 zoom: BOARD_ZOOM,
                             }}
                         >
-                            {/* Header row: จังหวะ/beat */}
+                            {/* Chapter band row (ตอน) — gridRow 1 */}
                             <div
                                 style={{ gridColumn: 1, gridRow: 1, width: LABEL_WIDTH }}
+                                className="sticky left-0 z-30 bg-background border-r border-b border-border/60 flex items-center px-2"
+                            >
+                                <ChapterPopover
+                                    beatCount={beatCount}
+                                    initial={{ name: `ตอนที่ ${chapters.length + 1}`, startBeat: 0, endBeat: Math.max(0, beatCount - 1) }}
+                                    onSave={addChapter}
+                                    trigger={
+                                        <button
+                                            className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-[var(--forge-amber)] transition-colors"
+                                            title="แบ่งตอน"
+                                        >
+                                            <Plus className="w-3 h-3" /> แบ่งตอน
+                                        </button>
+                                    }
+                                />
+                            </div>
+                            {chapterRanges.map((c) => (
+                                <div
+                                    key={`chapter-${c.id}`}
+                                    style={{ gridColumn: `${beatGridCol(c.startBeat)} / ${beatGridCol(c.endBeat) + 2}`, gridRow: 1 }}
+                                    className="border-b border-border/60 px-1 flex items-center"
+                                >
+                                    <ChapterPopover
+                                        beatCount={beatCount}
+                                        initial={{ name: c.name, startBeat: c.startBeat, endBeat: c.endBeat }}
+                                        onSave={(v) => updateChapter(c.id, v)}
+                                        onDelete={() => removeChapter(c.id)}
+                                        trigger={
+                                            <button
+                                                title="แก้ไขตอน"
+                                                className="w-full h-[22px] rounded-[4px] bg-[var(--forge-amber)]/12 border border-[var(--forge-amber)]/30 hover:bg-[var(--forge-amber)]/20 transition-colors flex items-center justify-center px-2"
+                                            >
+                                                <span className="text-[10px] font-medium text-foreground/90 truncate">{c.name}</span>
+                                            </button>
+                                        }
+                                    />
+                                </div>
+                            ))}
+
+                            {/* Header row: จังหวะ/beat */}
+                            <div
+                                style={{ gridColumn: 1, gridRow: 2, width: LABEL_WIDTH }}
                                 className="sticky left-0 top-0 z-30 bg-background border-r border-b border-border/60 flex items-center px-3"
                             >
                                 <span className="font-technical text-[9px] uppercase tracking-[0.14em] text-muted-foreground">เลน \ จังหวะ</span>
@@ -1324,7 +1558,7 @@ export function PlaygroundBoard({
                             {Array.from({ length: totalColumns }).map((_, beatIndex) => (
                                 <Fragment key={`beat-head-${beatIndex}`}>
                                     <div
-                                        style={{ gridColumn: beatGridCol(beatIndex), gridRow: 1, width: COLUMN_WIDTH }}
+                                        style={{ gridColumn: beatGridCol(beatIndex), gridRow: 2, width: COLUMN_WIDTH }}
                                         className={cn(
                                             "sticky top-0 z-20 bg-background border-r border-b border-border/60 flex items-center justify-center gap-1.5",
                                             beatIndex === beatCount && "border-dashed"
@@ -1342,7 +1576,7 @@ export function PlaygroundBoard({
                                     </div>
                                     {beatIndex < totalColumns - 1 && (
                                         <div
-                                            style={{ gridColumn: beatGridCol(beatIndex) + 1, gridRow: 1, width: GUTTER_WIDTH }}
+                                            style={{ gridColumn: beatGridCol(beatIndex) + 1, gridRow: 2, width: GUTTER_WIDTH }}
                                             className="sticky top-0 z-20 bg-muted/20 border-b border-border/30"
                                         />
                                     )}
@@ -1377,10 +1611,13 @@ export function PlaygroundBoard({
                                                         onLinkStart={handleStartLink}
                                                         onLinkComplete={linkingSourceId && linkingSourceId !== item.id ? handleCompleteLink : undefined}
                                                         isLinkingSource={linkingSourceId === item.id}
+                                                        isConnectSource={connectingSourceId === item.id}
+                                                        isConnectTarget={!!connectingSourceId && connectOverId === item.id}
                                                         elementDetails={elementDetailsMap}
                                                         onEditChild={handleEditChild}
                                                         ideaNotes={ideaNotes}
                                                         onAddNote={handleAddNote}
+                                                        onQuickAddNote={handleQuickAddNote}
                                                         novelId={novelId}
                                                         onSetAncestor={item.type === 'idea' ? () => handleOpenAncestorDialog(item) : undefined}
                                                         ancestorConnections={item.type === 'idea' ? ancestorConnections
@@ -1410,7 +1647,7 @@ export function PlaygroundBoard({
                                             {beatIndex < totalColumns - 1 && (
                                                 <div
                                                     key={`gutter-${beatIndex}`}
-                                                    style={{ gridColumn: beatGridCol(beatIndex) + 1, gridRow: laneIndex + 2, width: GUTTER_WIDTH }}
+                                                    style={{ gridColumn: beatGridCol(beatIndex) + 1, gridRow: laneIndex + 3, width: GUTTER_WIDTH }}
                                                     className="min-h-[140px] bg-muted/10 border-b border-border/30"
                                                 />
                                             )}

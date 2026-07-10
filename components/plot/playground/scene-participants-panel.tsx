@@ -12,12 +12,13 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import {
-    Users, User, Trash2, Plus, Check, Shield, Loader2,
+    Users, User, Trash2, Plus, Check, Shield, Loader2, Route,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { upsertSceneElementDetail, deleteSceneElementDetail } from "@/server/scene-element-details"
 import { SceneElementDetails } from "@/db/schema"
+import { CharacterThroughLine } from "./character-through-line"
 
 export const ROLES = [
     { value: "protagonist", label: "ตัวหลัก/ผู้ร่วมมือ", cls: "text-amber-500 bg-amber-500/10 border-amber-500/20" },
@@ -56,12 +57,14 @@ export function SceneParticipantsPanel({
     const [selectedEntityId, setSelectedEntityId] = useState("")
     const [dummyName, setDummyName] = useState("")
     const [action, setAction] = useState("")
-    const [outcome, setOutcome] = useState("")
     const [role, setRole] = useState("protagonist")
 
     // Inline edit
     const [editingChildId, setEditingChildId] = useState<string | null>(null)
-    const [editForm, setEditForm] = useState({ action: "", outcome: "", role: "protagonist" })
+    const [editForm, setEditForm] = useState({ action: "", role: "protagonist" })
+
+    // Through-line viewer (B)
+    const [throughLine, setThroughLine] = useState<{ type: "character" | "faction"; id: string; name: string } | null>(null)
 
     const participants = (ideaItem.children || []).filter((c: any) => PARTICIPANT_TYPES.includes(c.type))
     const isDummyType = partType === "dummy_character" || partType === "dummy_faction"
@@ -108,7 +111,6 @@ export function SceneParticipantsPanel({
                 elementId: referenceId || child.id,
                 canvasItemId: ideaItem.id,
                 action: action.trim() || undefined,
-                outcome: outcome.trim() || undefined,
                 role,
                 novelId,
             })
@@ -122,7 +124,6 @@ export function SceneParticipantsPanel({
             setDummyName("")
             setSelectedEntityId("")
             setAction("")
-            setOutcome("")
         })
     }
 
@@ -142,7 +143,6 @@ export function SceneParticipantsPanel({
         setEditingChildId(child.id)
         setEditForm({
             action: detail?.action || "",
-            outcome: detail?.outcome || "",
             role: detail?.role || child.role || "protagonist",
         })
     }
@@ -157,11 +157,11 @@ export function SceneParticipantsPanel({
                 elementId: child.referenceId || child.refId || child.id,
                 canvasItemId: ideaItem.id,
                 action: editForm.action.trim() || undefined,
-                outcome: editForm.outcome.trim() || undefined,
                 role: editForm.role,
                 // คงค่า field ที่ panel นี้ไม่ได้แก้ (แก้ผ่าน dialog ดินสอ)
                 how: detail?.how || undefined,
                 goal: detail?.goal || undefined,
+                outcome: detail?.outcome || undefined,
                 notes: detail?.notes || undefined,
                 novelId,
             })
@@ -269,25 +269,14 @@ export function SceneParticipantsPanel({
                             )}
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2">
-                            <div className="space-y-1">
-                                <label className="text-[9px] font-technical text-muted-foreground uppercase">การกระทำ (Action)</label>
-                                <Input
-                                    value={action}
-                                    onChange={e => setAction(e.target.value)}
-                                    placeholder="เช่น ลอบโจมตี, เจรจา"
-                                    className="h-8 text-xs chamfered-sm"
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[9px] font-technical text-muted-foreground uppercase">ผลที่เกิดขึ้น (Outcome)</label>
-                                <Input
-                                    value={outcome}
-                                    onChange={e => setOutcome(e.target.value)}
-                                    placeholder="เช่น พ่ายแพ้, ได้ข้อมูลลับ"
-                                    className="h-8 text-xs chamfered-sm"
-                                />
-                            </div>
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-technical text-muted-foreground uppercase">ทำอะไรในซีนนี้</label>
+                            <Input
+                                value={action}
+                                onChange={e => setAction(e.target.value)}
+                                placeholder="เช่น ลอบโจมตีเพื่อชิงหลักฐาน แต่ถูกจับได้"
+                                className="h-8 text-xs chamfered-sm"
+                            />
                         </div>
 
                         <Button size="sm" className="w-full h-8 gap-1 chamfered-sm text-xs" onClick={handleAdd} disabled={isPending}>
@@ -337,6 +326,19 @@ export function SceneParticipantsPanel({
                                                     <span className={cn("px-1.5 py-0.5 rounded-[3px] text-[8px] font-technical uppercase border tracking-wider", currentRole.cls)}>
                                                         {currentRole.label}
                                                     </span>
+                                                    {!isDummy && child.referenceId && (
+                                                        <button
+                                                            onClick={() => setThroughLine({
+                                                                type: isFaction ? "faction" : "character",
+                                                                id: child.referenceId,
+                                                                name: child.title,
+                                                            })}
+                                                            className="text-muted-foreground hover:text-[var(--forge-amber)] p-0.5 transition-colors opacity-0 group-hover:opacity-100"
+                                                            title="ดูเส้นเรื่องข้ามฉาก"
+                                                        >
+                                                            <Route className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    )}
                                                     <button
                                                         onClick={() => handleDelete(child)}
                                                         className="text-muted-foreground hover:text-red-500 p-0.5 transition-colors opacity-0 group-hover:opacity-100"
@@ -349,23 +351,14 @@ export function SceneParticipantsPanel({
 
                                             {isEditing ? (
                                                 <div className="space-y-2 mt-2 pt-2 border-t border-border/40">
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                        <div className="space-y-1">
-                                                            <label className="text-[8px] font-technical text-muted-foreground uppercase">Action</label>
-                                                            <Input
-                                                                value={editForm.action}
-                                                                onChange={e => setEditForm({ ...editForm, action: e.target.value })}
-                                                                className="h-6 text-xs py-0 px-1 border-steel-800"
-                                                            />
-                                                        </div>
-                                                        <div className="space-y-1">
-                                                            <label className="text-[8px] font-technical text-muted-foreground uppercase">Outcome</label>
-                                                            <Input
-                                                                value={editForm.outcome}
-                                                                onChange={e => setEditForm({ ...editForm, outcome: e.target.value })}
-                                                                className="h-6 text-xs py-0 px-1 border-steel-800"
-                                                            />
-                                                        </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[8px] font-technical text-muted-foreground uppercase">ทำอะไรในซีนนี้</label>
+                                                        <Input
+                                                            value={editForm.action}
+                                                            onChange={e => setEditForm({ ...editForm, action: e.target.value })}
+                                                            placeholder="เช่น ลอบโจมตีเพื่อชิงหลักฐาน แต่ถูกจับได้"
+                                                            className="h-6 text-xs py-0 px-1 border-steel-800"
+                                                        />
                                                     </div>
                                                     <div className="space-y-1">
                                                         <label className="text-[8px] font-technical text-muted-foreground uppercase">บทบาท</label>
@@ -395,22 +388,11 @@ export function SceneParticipantsPanel({
                                                     onClick={() => startEdit(child)}
                                                     title="คลิกเพื่อแก้ไข"
                                                 >
-                                                    {(detail?.action || detail?.outcome) ? (
-                                                        <>
-                                                            {detail?.action && (
-                                                                <div>
-                                                                    <span className="font-semibold text-muted-foreground">ทำ:</span> {detail.action}
-                                                                </div>
-                                                            )}
-                                                            {detail?.outcome && (
-                                                                <div>
-                                                                    <span className="font-semibold text-muted-foreground">เกิด:</span> {detail.outcome}
-                                                                </div>
-                                                            )}
-                                                        </>
+                                                    {detail?.action ? (
+                                                        <div>{detail.action}</div>
                                                     ) : (
                                                         <span className="text-[10px] italic text-muted-foreground/60">
-                                                            คลิกเพื่อเพิ่มการกระทำ/ผลลัพธ์...
+                                                            คลิกเพื่อเพิ่มว่าทำอะไรในซีนนี้...
                                                         </span>
                                                     )}
                                                 </div>
@@ -423,6 +405,18 @@ export function SceneParticipantsPanel({
                     </div>
                 </div>
             </PopoverContent>
+
+            {throughLine && (
+                <CharacterThroughLine
+                    open={!!throughLine}
+                    onOpenChange={(o) => !o && setThroughLine(null)}
+                    novelId={novelId}
+                    elementType={throughLine.type}
+                    elementId={throughLine.id}
+                    elementName={throughLine.name}
+                    currentSceneId={sceneId}
+                />
+            )}
         </Popover>
     )
 }

@@ -195,7 +195,7 @@ export async function deleteSceneElementDetail(id: string, novelId: string, scen
  */
 export async function getElementSceneHistory(
     novelId: string,
-    elementType: "character" | "location",
+    elementType: "character" | "location" | "faction",
     elementId: string
 ) {
     try {

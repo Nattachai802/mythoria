@@ -3,7 +3,7 @@
 import { useDraggable } from "@dnd-kit/core";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
-import { User, MapPin, Lightbulb, Search, Filter, X, Shield } from "lucide-react";
+import { User, MapPin, Lightbulb, Search, Filter, X, Shield, PanelLeftClose } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
@@ -15,6 +15,7 @@ interface ResourceSidebarProps {
   locations: any[];
   ideas: any[];
   factions?: any[];
+  onCollapse?: () => void;
 }
 
 export function ResourceSidebar({
@@ -22,6 +23,7 @@ export function ResourceSidebar({
   locations,
   ideas,
   factions = [],
+  onCollapse,
 }: ResourceSidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
@@ -66,12 +68,19 @@ export function ResourceSidebar({
       <Tabs defaultValue="characters" className="flex-1 flex flex-col overflow-hidden">
         <div className="px-2 pt-2 pb-0 space-y-2">
           {/* Tabs */}
-          <TabsList className="w-full grid grid-cols-4 h-9">
+          <div className="flex items-center gap-1">
+          <TabsList className="flex-1 grid grid-cols-4 h-9">
             <TabsTrigger value="characters" title="Characters"><User className="w-4 h-4" /></TabsTrigger>
             <TabsTrigger value="factions" title="Factions"><Shield className="w-4 h-4" /></TabsTrigger>
             <TabsTrigger value="locations" title="Locations"><MapPin className="w-4 h-4" /></TabsTrigger>
             <TabsTrigger value="ideas" title="Ideas"><Lightbulb className="w-4 h-4" /></TabsTrigger>
           </TabsList>
+          {onCollapse && (
+            <Button variant="ghost" size="icon" className="h-9 w-8 shrink-0" title="ย่อแถบ" onClick={onCollapse}>
+              <PanelLeftClose className="w-4 h-4" />
+            </Button>
+          )}
+          </div>
 
           {/* Search Box */}
           <div className="relative">
