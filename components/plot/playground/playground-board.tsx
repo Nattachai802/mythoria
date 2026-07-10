@@ -50,6 +50,9 @@ interface Lane {
 
 const COLUMN_WIDTH = 280;
 const LABEL_WIDTH = 150;
+const GUTTER_WIDTH = Math.round(COLUMN_WIDTH / 3); // ช่องแคบระหว่างจังหวะ ให้เส้นเชื่อมวิ่งผ่าน
+const BOARD_ZOOM = 0.8; // ponytail: native zoom out ~20% เพื่อเห็นภาพรวม, ปรับเป็น 1 ถ้าจะคืนขนาดจริง
+const beatGridCol = (beatIndex: number) => beatIndex * 2 + 2; // คอลัมน์การ์ด (เว้นช่องกัตเตอร์แทรกทุกจังหวะ)
 
 // ---- Canvas link (P-canvas): เส้นเชื่อมมีชนิด/label ----
 // link เก็บใน item.links — รองรับทั้ง string เก่า และ object ใหม่
@@ -57,11 +60,13 @@ export type CanvasLink = { targetId: string; kind: string; label?: string | null
 export const normalizeLink = (l: any): CanvasLink =>
     typeof l === "string" ? { targetId: l, kind: "related", label: null } : { kind: "related", ...l }
 
-export const LINK_KINDS: Record<string, { label: string; color: string; pinFill: string; pinStroke: string; dash?: string }> = {
+// เส้นทุกชนิดใช้ความหนา/ทึบ/ลูกศรแบบเดียวกันหมด ต่างกันแค่สี — เพื่อความสม่ำเสมอ ไม่มี dash แยกต่อชนิดอีกต่อไป
+export const LINK_KINDS: Record<string, { label: string; color: string; pinFill: string; pinStroke: string }> = {
     related: { label: "เกี่ยวข้อง", color: "#dc2626", pinFill: "#991b1b", pinStroke: "#fca5a5" },          // ด้ายแดงเดิม
-    leads_to: { label: "นำไปสู่", color: "#10b981", pinFill: "#047857", pinStroke: "#6ee7b7" },            // + ลูกศร
-    conflicts: { label: "ขัดแย้งกับ", color: "#ef4444", pinFill: "#991b1b", pinStroke: "#fca5a5", dash: "7,5" },
+    leads_to: { label: "นำไปสู่", color: "#10b981", pinFill: "#047857", pinStroke: "#6ee7b7" },
+    conflicts: { label: "ขัดแย้งกับ", color: "#ef4444", pinFill: "#991b1b", pinStroke: "#fca5a5" },
     simultaneous: { label: "เกิดพร้อมกัน", color: "#3b82f6", pinFill: "#1d4ed8", pinStroke: "#93c5fd" },
+    ancestor: { label: "ทำไมถึงทำแบบนี้", color: "#3b82f6", pinFill: "#1d4ed8", pinStroke: "#93c5fd" },
 }
 
 // ---- Migration: ฉากเก่า (x,y อิสระ) -> lane + beatIndex ----
@@ -139,8 +144,8 @@ function ConnectionLine({ start, end, kind = "related", label, onClick }: {
         <g>
             {/* เส้นขอบขาวบางให้ตัดกับเนื้อหาการ์ดที่อยู่ข้างใต้ */}
             <path d={pathD} stroke="var(--background)" strokeWidth="4" strokeOpacity="0.6" fill="none" strokeLinecap="round" />
-            <path d={pathD} stroke={cfg.color} strokeWidth="2" strokeOpacity="0.6" fill="none" strokeLinecap="round" strokeDasharray={cfg.dash} />
-            {kind === "leads_to" && <polygon points={`${eX},${eY} ${aX1},${aY1} ${aX2},${aY2}`} fill={cfg.color} fillOpacity="0.85" />}
+            <path d={pathD} stroke={cfg.color} strokeWidth="2" strokeOpacity="0.6" fill="none" strokeLinecap="round" />
+            <polygon points={`${eX},${eY} ${aX1},${aY1} ${aX2},${aY2}`} fill={cfg.color} fillOpacity="0.85" />
             <circle cx={sX} cy={sY} r={length < 40 ? 2.5 : 4} fill={cfg.pinFill} stroke={cfg.pinStroke} strokeWidth="1" />
             <circle cx={eX} cy={eY} r={length < 40 ? 2.5 : 4} fill={cfg.pinFill} stroke={cfg.pinStroke} strokeWidth="1" />
             {displayLabel && (
@@ -154,46 +159,6 @@ function ConnectionLine({ start, end, kind = "related", label, onClick }: {
                 <path d={pathD} stroke="transparent" strokeWidth="16" fill="none"
                     style={{ pointerEvents: 'auto', cursor: 'pointer' }}
                     onClick={(e) => { e.stopPropagation(); onClick(); }} />
-            )}
-        </g>
-    );
-}
-
-// Ancestor Connection Line (เส้นประสีน้ำเงิน + ลูกศร = "ทำไมถึงทำแบบนี้")
-function AncestorConnectionLine({ start, end, label }: { start: { x: number; y: number }; end: { x: number; y: number }; label?: string | null }) {
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
-    const angle = Math.atan2(dy, dx);
-    const length = Math.sqrt(dx * dx + dy * dy);
-
-    const shorten = Math.min(4, length * 0.12);
-
-    const sX = start.x + Math.cos(angle) * shorten;
-    const sY = start.y + Math.sin(angle) * shorten;
-    const eX = end.x - Math.cos(angle) * shorten;
-    const eY = end.y - Math.sin(angle) * shorten;
-
-    const arrowSize = Math.min(10, Math.max(5, length * 0.35));
-    const arrowAngle = Math.PI / 7;
-    const arrowX1 = sX - arrowSize * Math.cos(angle - arrowAngle);
-    const arrowY1 = sY - arrowSize * Math.sin(angle - arrowAngle);
-    const arrowX2 = sX - arrowSize * Math.cos(angle + arrowAngle);
-    const arrowY2 = sY - arrowSize * Math.sin(angle + arrowAngle);
-
-    const labelX = (sX + eX) / 2;
-    const labelY = (sY + eY) / 2 - 10;
-
-    return (
-        <g>
-            <line x1={sX} y1={sY} x2={eX} y2={eY} stroke="#3b82f6" strokeWidth="1.5" strokeOpacity="0.55" strokeDasharray="8,4" strokeLinecap="round" />
-            <polygon points={`${sX},${sY} ${arrowX1},${arrowY1} ${arrowX2},${arrowY2}`} fill="#3b82f6" />
-            <circle cx={eX} cy={eY} r="4" fill="#1d4ed8" stroke="#93c5fd" strokeWidth="1" />
-            {label && (
-                <g>
-                    <rect x={labelX - (label.length * 3.5)} y={labelY - 8} width={label.length * 7} height={16} rx="4"
-                        fill="white" stroke="#93c5fd" strokeWidth="1" opacity="0.9" />
-                    <text x={labelX} y={labelY + 3} textAnchor="middle" fontSize="10" fill="#2563eb" fontWeight="500">{label}</text>
-                </g>
             )}
         </g>
     );
@@ -441,7 +406,7 @@ function BeatCell({ laneId, beatIndex, laneIndex, isTrailing, children }: {
     return (
         <div
             ref={setNodeRef}
-            style={{ gridColumn: beatIndex + 2, gridRow: laneIndex + 2, width: COLUMN_WIDTH }}
+            style={{ gridColumn: beatGridCol(beatIndex), gridRow: laneIndex + 2, width: COLUMN_WIDTH }}
             className={cn(
                 "min-h-[140px] p-1.5 border-r border-b flex flex-col gap-1.5 transition-colors",
                 isTrailing ? "border-dashed border-border/40" : "border-border/40",
@@ -519,11 +484,13 @@ export function PlaygroundBoard({
         const next = new Map<string, { x: number; y: number; w: number; h: number }>();
         itemRefs.current.forEach((el, id) => {
             const r = el.getBoundingClientRect();
+            // SVG overlay อยู่ใน subtree ที่โดน zoom เดียวกัน หน่วยของมันเลยถูกย่อไปแล้ว
+            // ต้องหารด้วย BOARD_ZOOM กลับเป็นหน่วย local ก่อนเอาไปวาด path ไม่งั้นเส้นจะเพี้ยนซ้อน
             next.set(id, {
-                x: r.left - containerRect.left + r.width / 2,
-                y: r.top - containerRect.top + r.height / 2,
-                w: r.width,
-                h: r.height,
+                x: (r.left - containerRect.left + r.width / 2) / BOARD_ZOOM,
+                y: (r.top - containerRect.top + r.height / 2) / BOARD_ZOOM,
+                w: r.width / BOARD_ZOOM,
+                h: r.height / BOARD_ZOOM,
             });
         });
         setLinkPositions(next);
@@ -1184,7 +1151,8 @@ export function PlaygroundBoard({
         const tPos = linkPositions.get(target.id);
         if (!sPos || !tPos) return null;
         const { start, end } = edgeAnchors(sPos, tPos);
-        return <AncestorConnectionLine key={`ancestor-${conn.id}`} start={start} end={end} label={conn.label} />;
+        // ลูกศรชี้กลับไปจุด start (ไอเดียต้นทาง) เหมือนพฤติกรรมเดิม — ConnectionLine วาดหัวลูกศรที่ end เสมอ จึงสลับด้าน
+        return <ConnectionLine key={`ancestor-${conn.id}`} start={end} end={start} kind="ancestor" label={conn.label} />;
     });
 
     return (
@@ -1340,9 +1308,10 @@ export function PlaygroundBoard({
                             className="relative"
                             style={{
                                 display: 'grid',
-                                gridTemplateColumns: `${LABEL_WIDTH}px repeat(${totalColumns}, ${COLUMN_WIDTH}px)`,
+                                gridTemplateColumns: `${LABEL_WIDTH}px ${Array.from({ length: totalColumns }).map((_, i) => i < totalColumns - 1 ? `${COLUMN_WIDTH}px ${GUTTER_WIDTH}px` : `${COLUMN_WIDTH}px`).join(' ')}`,
                                 gridTemplateRows: `36px repeat(${lanes_.length}, auto)`,
                                 width: 'max-content',
+                                zoom: BOARD_ZOOM,
                             }}
                         >
                             {/* Header row: จังหวะ/beat */}
@@ -1353,24 +1322,31 @@ export function PlaygroundBoard({
                                 <span className="font-technical text-[9px] uppercase tracking-[0.14em] text-muted-foreground">เลน \ จังหวะ</span>
                             </div>
                             {Array.from({ length: totalColumns }).map((_, beatIndex) => (
-                                <div
-                                    key={`beat-head-${beatIndex}`}
-                                    style={{ gridColumn: beatIndex + 2, gridRow: 1, width: COLUMN_WIDTH }}
-                                    className={cn(
-                                        "sticky top-0 z-20 bg-background border-r border-b border-border/60 flex items-center justify-center gap-1.5",
-                                        beatIndex === beatCount && "border-dashed"
+                                <Fragment key={`beat-head-${beatIndex}`}>
+                                    <div
+                                        style={{ gridColumn: beatGridCol(beatIndex), gridRow: 1, width: COLUMN_WIDTH }}
+                                        className={cn(
+                                            "sticky top-0 z-20 bg-background border-r border-b border-border/60 flex items-center justify-center gap-1.5",
+                                            beatIndex === beatCount && "border-dashed"
+                                        )}
+                                    >
+                                        {beatIndex !== beatCount && (
+                                            <span className="h-1 w-1 rounded-full bg-[var(--forge-amber)]/70" />
+                                        )}
+                                        <span className={cn(
+                                            "font-technical text-[10px] uppercase tracking-[0.12em] tabular-nums",
+                                            beatIndex === beatCount ? "text-muted-foreground/40" : "text-muted-foreground"
+                                        )}>
+                                            {beatIndex === beatCount ? "+" : `จังหวะ ${String(beatIndex + 1).padStart(2, "0")}`}
+                                        </span>
+                                    </div>
+                                    {beatIndex < totalColumns - 1 && (
+                                        <div
+                                            style={{ gridColumn: beatGridCol(beatIndex) + 1, gridRow: 1, width: GUTTER_WIDTH }}
+                                            className="sticky top-0 z-20 bg-muted/20 border-b border-border/30"
+                                        />
                                     )}
-                                >
-                                    {beatIndex !== beatCount && (
-                                        <span className="h-1 w-1 rounded-full bg-[var(--forge-amber)]/70" />
-                                    )}
-                                    <span className={cn(
-                                        "font-technical text-[10px] uppercase tracking-[0.12em] tabular-nums",
-                                        beatIndex === beatCount ? "text-muted-foreground/40" : "text-muted-foreground"
-                                    )}>
-                                        {beatIndex === beatCount ? "+" : `จังหวะ ${String(beatIndex + 1).padStart(2, "0")}`}
-                                    </span>
-                                </div>
+                                </Fragment>
                             ))}
 
                             {lanes_.map((lane, laneIndex) => (
@@ -1385,8 +1361,8 @@ export function PlaygroundBoard({
                                     {Array.from({ length: totalColumns }).map((_, beatIndex) => {
                                         const cellItems = items.filter(i => i.laneId === lane.id && i.beatIndex === beatIndex);
                                         return (
+                                            <Fragment key={beatIndex}>
                                             <BeatCell
-                                                key={beatIndex}
                                                 laneId={lane.id}
                                                 beatIndex={beatIndex}
                                                 laneIndex={laneIndex}
@@ -1431,6 +1407,14 @@ export function PlaygroundBoard({
                                                     />
                                                 ))}
                                             </BeatCell>
+                                            {beatIndex < totalColumns - 1 && (
+                                                <div
+                                                    key={`gutter-${beatIndex}`}
+                                                    style={{ gridColumn: beatGridCol(beatIndex) + 1, gridRow: laneIndex + 2, width: GUTTER_WIDTH }}
+                                                    className="min-h-[140px] bg-muted/10 border-b border-border/30"
+                                                />
+                                            )}
+                                        </Fragment>
                                         );
                                     })}
                                 </Fragment>

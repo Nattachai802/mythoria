@@ -776,30 +776,31 @@ Sticky Notes: ${stickyNotes}`;
                   <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider mb-1 flex items-center gap-1">
                     <User className="w-3 h-3" /> Characters
                   </p>
-                  {item.children
-                    .filter((c: any) => c.type === 'character' || c.type === 'dummy_character')
-                    .map((child: any) => {
-                      const detail = getChildDetail(child);
-                      const hasDetail = detail && (detail.action || detail.how || detail.goal);
-                      const isDummy = child.type === 'dummy_character';
-                      const rm = roleMeta(detail?.role || child.role);
-                      return (
-                        <div key={child.id} className={cn(
-                          "px-2 py-1.5 rounded-md border bg-card text-xs group/item transition-colors hover:border-border/80",
-                          isDummy ? "border-dashed" : "border-border"
-                        )}>
-                          <div className="flex items-center gap-2">
+                  <div className="divide-y divide-border/40">
+                    {item.children
+                      .filter((c: any) => c.type === 'character' || c.type === 'dummy_character')
+                      .map((child: any) => {
+                        const detail = getChildDetail(child);
+                        const hasDetail = detail && (detail.action || detail.how || detail.goal);
+                        const isDummy = child.type === 'dummy_character';
+                        const rm = roleMeta(detail?.role || child.role);
+                        return (
+                          <div key={child.id} className="flex items-center gap-1.5 py-1 text-xs group/item">
                             <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", rm.dot)} />
-                            <span className={cn("truncate flex-1 font-medium text-foreground", isDummy && "italic text-muted-foreground")}>
-                              {child.title}{isDummy && <span className="text-[8px] text-muted-foreground font-normal ml-1">(Dummy)</span>}
+                            <span className={cn("truncate font-medium text-foreground", isDummy && "italic text-muted-foreground")}>
+                              {child.title}{isDummy && <span className="text-[10px] text-muted-foreground font-normal ml-1">(Dummy)</span>}
                             </span>
-                            <span className={cn("px-1.5 py-0.5 rounded text-[8px] font-medium border shrink-0", rm.chip)}>
-                              {rm.label}
-                            </span>
+                            <span className={cn("text-[10px] shrink-0", rm.text)}>{rm.label}</span>
+                            {hasDetail && (
+                              <span className="truncate text-[10px] text-muted-foreground/80 min-w-0">
+                                {detail.action && `· ${detail.action}`}
+                              </span>
+                            )}
+                            <span className="flex-1" />
                             {onEditChild && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); onEditChild({ ...child, canvasItemId: item.id }); }}
-                                className="opacity-0 group-hover/item:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
+                                className="opacity-0 group-hover/item:opacity-100 text-muted-foreground hover:text-foreground transition-opacity shrink-0"
                                 title="แก้ไขรายละเอียด"
                               >
                                 <Pencil className="w-3 h-3" />
@@ -808,25 +809,15 @@ Sticky Notes: ${stickyNotes}`;
                             {onRemoveChild && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); onRemoveChild(child.id); }}
-                                className="opacity-0 group-hover/item:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
+                                className="opacity-0 group-hover/item:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0"
                               >
                                 <X className="w-3 h-3" />
                               </button>
                             )}
                           </div>
-                          {hasDetail && (
-                            <div className="mt-1 pl-3.5 text-[10px] text-muted-foreground space-y-0.5 border-t border-border/50 pt-1">
-                              {detail.action && (
-                                <p className="truncate"><span className={rm.text}>ทำ</span> · {detail.action}{detail.how ? ` • ${detail.how}` : ''}</p>
-                              )}
-                              {detail.goal && (
-                                <p className="truncate text-muted-foreground/70">เป้า · {detail.goal}</p>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                  </div>
                 </div>
               )}
 
@@ -836,29 +827,32 @@ Sticky Notes: ${stickyNotes}`;
                   <p className="text-[10px] uppercase font-bold text-emerald-500/80 tracking-wider mb-1 flex items-center gap-1">
                     <Shield className="w-3 h-3" /> Factions
                   </p>
-                  {item.children
-                    .filter((c: any) => c.type === 'faction' || c.type === 'dummy_faction')
-                    .map((child: any) => {
-                      const detail = getChildDetail(child);
-                      const hasDetail = detail && (detail.action || detail.how || detail.goal);
-                      const isDummy = child.type === 'dummy_faction';
-                      return (
-                        <div key={child.id} className={cn(
-                          "px-2 py-1.5 rounded-md border bg-card text-xs group/item transition-colors hover:border-border/80",
-                          isDummy ? "border-dashed" : "border-border"
-                        )}>
-                          <div className="flex items-center gap-2">
+                  <div className="divide-y divide-border/40">
+                    {item.children
+                      .filter((c: any) => c.type === 'faction' || c.type === 'dummy_faction')
+                      .map((child: any) => {
+                        const detail = getChildDetail(child);
+                        const hasDetail = detail && (detail.action || detail.how || detail.goal);
+                        const isDummy = child.type === 'dummy_faction';
+                        return (
+                          <div key={child.id} className="flex items-center gap-1.5 py-1 text-xs group/item">
                             <Shield className={cn("w-3 h-3 shrink-0", isDummy ? "text-muted-foreground" : "text-emerald-500")} />
-                            <span className={cn("truncate flex-1 font-medium text-foreground", isDummy && "italic text-muted-foreground")}>
-                              {child.title}{isDummy && <span className="text-[8px] text-muted-foreground font-normal ml-1">(Dummy)</span>}
+                            <span className={cn("truncate font-medium text-foreground", isDummy && "italic text-muted-foreground")}>
+                              {child.title}{isDummy && <span className="text-[10px] text-muted-foreground font-normal ml-1">(Dummy)</span>}
                             </span>
+                            {hasDetail && (
+                              <span className="truncate text-[10px] text-muted-foreground/80 min-w-0">
+                                {detail.action && `· ${detail.action}`}
+                              </span>
+                            )}
+                            <span className="flex-1" />
                             {onEditChild && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   onEditChild({ ...child, canvasItemId: item.id });
                                 }}
-                                className="opacity-0 group-hover/item:opacity-100 hover:text-emerald-500 transition-opacity"
+                                className="opacity-0 group-hover/item:opacity-100 hover:text-emerald-500 transition-opacity shrink-0"
                                 title="แก้ไขรายละเอียด"
                               >
                                 <Pencil className="w-3 h-3" />
@@ -870,25 +864,15 @@ Sticky Notes: ${stickyNotes}`;
                                   e.stopPropagation();
                                   onRemoveChild(child.id);
                                 }}
-                                className="opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-opacity"
+                                className="opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-opacity shrink-0"
                               >
                                 <X className="w-3 h-3" />
                               </button>
                             )}
                           </div>
-                          {hasDetail && (
-                            <div className="mt-1 pl-5 text-[10px] text-muted-foreground space-y-0.5 border-t border-emerald-100/10 pt-1">
-                              {detail.action && (
-                                <p className="truncate">📌 {detail.action}{detail.how ? ` • ${detail.how}` : ''}</p>
-                              )}
-                              {detail.goal && (
-                                <p className="truncate text-muted-foreground/70">🎯 {detail.goal}</p>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                  </div>
                 </div>
               )}
 
@@ -898,23 +882,29 @@ Sticky Notes: ${stickyNotes}`;
                   <p className="text-[10px] uppercase font-bold text-green-500/80 tracking-wider mb-1 flex items-center gap-1">
                     <MapPin className="w-3 h-3" /> Locations
                   </p>
-                  {item.children
-                    .filter((c: any) => c.type === 'location')
-                    .map((child: any) => {
-                      const detail = getChildDetail(child);
-                      const hasDetail = detail && (detail.action || detail.how || detail.goal);
-                      return (
-                        <div key={child.id} className="bg-background p-1.5 rounded border shadow-sm text-xs group/item">
-                          <div className="flex items-center gap-2">
+                  <div className="divide-y divide-border/40">
+                    {item.children
+                      .filter((c: any) => c.type === 'location')
+                      .map((child: any) => {
+                        const detail = getChildDetail(child);
+                        const hasDetail = detail && (detail.action || detail.how || detail.goal);
+                        return (
+                          <div key={child.id} className="flex items-center gap-1.5 py-1 text-xs group/item">
                             <MapPin className="w-3 h-3 text-green-500 shrink-0" />
-                            <span className="truncate flex-1 font-medium">{child.title}</span>
+                            <span className="truncate font-medium">{child.title}</span>
+                            {hasDetail && (
+                              <span className="truncate text-[10px] text-muted-foreground/80 min-w-0">
+                                {detail.action && `· ${detail.action}`}
+                              </span>
+                            )}
+                            <span className="flex-1" />
                             {onEditChild && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   onEditChild({ ...child, canvasItemId: item.id });
                                 }}
-                                className="opacity-0 group-hover/item:opacity-100 hover:text-green-500 transition-opacity"
+                                className="opacity-0 group-hover/item:opacity-100 hover:text-green-500 transition-opacity shrink-0"
                                 title="แก้ไขรายละเอียด"
                               >
                                 <Pencil className="w-3 h-3" />
@@ -926,25 +916,15 @@ Sticky Notes: ${stickyNotes}`;
                                   e.stopPropagation();
                                   onRemoveChild(child.id);
                                 }}
-                                className="opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-opacity"
+                                className="opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-opacity shrink-0"
                               >
                                 <X className="w-3 h-3" />
                               </button>
                             )}
                           </div>
-                          {hasDetail && (
-                            <div className="mt-1 pl-5 text-[10px] text-muted-foreground space-y-0.5 border-t border-zinc-100/10 pt-1">
-                              {detail.action && (
-                                <p className="truncate">📌 {detail.action}{detail.how ? ` • ${detail.how}` : ''}</p>
-                              )}
-                              {detail.goal && (
-                                <p className="truncate text-muted-foreground/70">🎯 {detail.goal}</p>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                  </div>
                 </div>
               )}
 
@@ -952,25 +932,27 @@ Sticky Notes: ${stickyNotes}`;
               {item.children && item.children.some((c: any) => c.type !== 'character' && c.type !== 'dummy_character' && c.type !== 'faction' && c.type !== 'dummy_faction' && c.type !== 'location' && c.type !== 'sticky-note') && (
                 <div className="space-y-1">
                   <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider mb-1">Others</p>
-                  {item.children
-                    .filter((c: any) => c.type !== 'character' && c.type !== 'dummy_character' && c.type !== 'faction' && c.type !== 'dummy_faction' && c.type !== 'location' && c.type !== 'sticky-note')
-                    .map((child: any) => (
-                      <div key={child.id} className="flex items-center gap-2 bg-background p-1.5 rounded border shadow-sm text-xs group/item">
-                        <Lightbulb className="w-3 h-3 text-yellow-500" />
-                        <span className="truncate flex-1">{child.title}</span>
-                        {onRemoveChild && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onRemoveChild(child.id);
-                            }}
-                            className="opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-opacity"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                  <div className="divide-y divide-border/40">
+                    {item.children
+                      .filter((c: any) => c.type !== 'character' && c.type !== 'dummy_character' && c.type !== 'faction' && c.type !== 'dummy_faction' && c.type !== 'location' && c.type !== 'sticky-note')
+                      .map((child: any) => (
+                        <div key={child.id} className="flex items-center gap-1.5 py-1 text-xs group/item">
+                          <Lightbulb className="w-3 h-3 text-yellow-500 shrink-0" />
+                          <span className="truncate flex-1">{child.title}</span>
+                          {onRemoveChild && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onRemoveChild(child.id);
+                              }}
+                              className="opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-opacity shrink-0"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                  </div>
                 </div>
               )}
 
