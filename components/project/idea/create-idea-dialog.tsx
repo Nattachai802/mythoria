@@ -50,6 +50,8 @@ interface CreateIdeaDialogProps {
   defaultLinkedCharacterIds?: string[];
   defaultCategory?: string;
   onIdeaCreated?: (idea: any) => void;
+  // slot เสริม render ในฟอร์ม (เช่น ตัวเลือกจังหวะบน plot board) — ที่อื่นไม่ส่งก็ไม่มีอะไรเพิ่ม
+  extraContent?: React.ReactNode;
 }
 
 export function CreateIdeaDialog({
@@ -59,7 +61,8 @@ export function CreateIdeaDialog({
   onOpenChange,
   defaultLinkedCharacterIds,
   defaultCategory,
-  onIdeaCreated
+  onIdeaCreated,
+  extraContent,
 }: CreateIdeaDialogProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -130,33 +133,36 @@ export function CreateIdeaDialog({
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="category"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Category</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a category" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="general">💭 General</SelectItem>
-                      <SelectItem value="plot">📖 Plot</SelectItem>
-                      <SelectItem value="character">👤 Character</SelectItem>
-                      <SelectItem value="worldbuilding">🌍 Worldbuilding</SelectItem>
-                      <SelectItem value="subplot">🔀 Subplot</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormDescription>
-                    ประเภทของไอเดียนี้
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className={extraContent ? "grid grid-cols-2 gap-4 items-start" : ""}>
+              <FormField
+                control={form.control}
+                name="category"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Category</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a category" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="general">💭 General</SelectItem>
+                        <SelectItem value="plot">📖 Plot</SelectItem>
+                        <SelectItem value="character">👤 Character</SelectItem>
+                        <SelectItem value="worldbuilding">🌍 Worldbuilding</SelectItem>
+                        <SelectItem value="subplot">🔀 Subplot</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>
+                      ประเภทของไอเดียนี้
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              {extraContent}
+            </div>
 
             <FormField
               control={form.control}

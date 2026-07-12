@@ -3,7 +3,7 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { User, MapPin, Lightbulb, X, Link as LinkIcon, Pencil, StickyNote, Minimize2, ExternalLink, Copy, GitBranchPlus, Shield, Plus, Palette, Check, MoreVertical, Loader2 } from "lucide-react";
+import { User, MapPin, Lightbulb, X, Link as LinkIcon, Pencil, StickyNote, Minimize2, ExternalLink, Copy, GitBranchPlus, Shield, Plus, Palette, Check, MoreVertical, Loader2, Star } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,7 +14,7 @@ import {
 
 // ป้ายสีจัดกลุ่มการ์ด (reuse palette เดียวกับ Story Arc)
 const CARD_COLORS = ["#f59e0b", "#fb923c", "#f43f5e", "#a78bfa", "#6366f1", "#22d3ee", "#34d399", "#facc15", "#e879f9", "#94a3b8"];
-import { useCallback, useState } from "react";
+import { useCallback, useState, useRef } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { SceneElementDetails } from "@/db/schema";
 import Link from "next/link";
@@ -36,6 +36,7 @@ export function DraggableCanvasItem({
   ideaNotes,
   onAddNote,
   onQuickAddNote,
+  onDeleteNote,
   novelId,
   onSetAncestor,
   ancestorConnections,
@@ -46,6 +47,7 @@ export function DraggableCanvasItem({
   onAddChild,
   onDetailSaved,
   onSetColor,
+  onSetKeyMoment,
   onMeasureRef,
   isConnectSource,
   isConnectTarget,
@@ -53,6 +55,7 @@ export function DraggableCanvasItem({
   item: any;
   onRemove: () => void;
   onSetColor?: (color: string | null) => void;
+  onSetKeyMoment?: (label: string | null) => void;
   onMeasureRef?: (id: string, el: HTMLDivElement | null) => void;
   onRemoveChild?: (id: string) => void;
   onLinkStart?: (id: string) => void;
@@ -62,7 +65,8 @@ export function DraggableCanvasItem({
   onEditChild?: (child: any) => void;
   ideaNotes?: SceneElementDetails[];
   onAddNote?: (item: any) => void;
-  onQuickAddNote?: (item: any, text: string) => void | Promise<void>;
+  onQuickAddNote?: (item: any, text: string, existingNoteId?: string) => void | Promise<void>;
+  onDeleteNote?: (noteId: string) => void | Promise<void>;
   novelId?: string;
   onSetAncestor?: () => void;
   ancestorConnections?: Array<{ id: string; sourceIdeaId: string; targetIdeaId: string; label?: string | null; targetIdeaTitle?: string | null; targetIdeaContent?: string | null; targetIdeaCategory?: string | null; targetIdeaNotes?: string[] }>;
@@ -161,6 +165,7 @@ export function DraggableCanvasItem({
         ideaNotes={ideaNotes}
         onAddNote={onAddNote}
         onQuickAddNote={onQuickAddNote}
+        onDeleteNote={onDeleteNote}
         novelId={novelId}
         onSetAncestor={onSetAncestor}
         ancestorConnections={ancestorConnections}
@@ -171,6 +176,7 @@ export function DraggableCanvasItem({
         onAddChild={onAddChild}
         onDetailSaved={onDetailSaved}
         onSetColor={onSetColor}
+        onSetKeyMoment={onSetKeyMoment}
       />
     </div>
   );
@@ -298,6 +304,7 @@ export function CanvasItem({
   ideaNotes,
   onAddNote,
   onQuickAddNote,
+  onDeleteNote,
   novelId,
   onSetAncestor,
   ancestorConnections,
@@ -308,9 +315,11 @@ export function CanvasItem({
   onAddChild,
   onDetailSaved,
   onSetColor,
+  onSetKeyMoment,
 }: {
   item: any;
   onSetColor?: (color: string | null) => void;
+  onSetKeyMoment?: (label: string | null) => void;
   onRemove?: () => void;
   onRemoveChild?: (id: string) => void;
   isDragging?: boolean;
@@ -322,7 +331,8 @@ export function CanvasItem({
   onEditChild?: (child: any) => void;
   ideaNotes?: SceneElementDetails[];
   onAddNote?: (item: any) => void;
-  onQuickAddNote?: (item: any, text: string) => void | Promise<void>;
+  onQuickAddNote?: (item: any, text: string, existingNoteId?: string) => void | Promise<void>;
+  onDeleteNote?: (noteId: string) => void | Promise<void>;
   novelId?: string;
   onSetAncestor?: () => void;
   ancestorConnections?: Array<{ id: string; sourceIdeaId: string; targetIdeaId: string; label?: string | null; targetIdeaTitle?: string | null; targetIdeaContent?: string | null; targetIdeaCategory?: string | null; targetIdeaNotes?: string[] }>;
@@ -343,16 +353,141 @@ export function CanvasItem({
   const [quickNote, setQuickNote] = useState("");
   const [quickNoteOpen, setQuickNoteOpen] = useState(false);
   const [savingQuickNote, setSavingQuickNote] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null); // null = สร้างใหม่, id = แก้ไขโน้ตเดิม
+  const [deletingNote, setDeletingNote] = useState(false);
+  // เหตุการณ์สำคัญ (mock) — เก็บ label อิสระใน canvas node ไปก่อน, ค่อยเลื่อนขึ้นตาราง ideas ทีหลัง
+  const [editingKeyMoment, setEditingKeyMoment] = useState(false);
+  const [keyMomentDraft, setKeyMomentDraft] = useState(item.keyMomentLabel || "");
+
+  // @mention ในโน้ต — เฉพาะ character ที่เป็น children ของการ์ดนี้
+  const quickNoteRef = useRef<HTMLTextAreaElement | null>(null);
+  const [qmOpen, setQmOpen] = useState(false);
+  const [qmQuery, setQmQuery] = useState("");
+  const [qmIndex, setQmIndex] = useState(0);
+  const mentionChars: { id: string; name: string }[] = Array.from(
+    new Map(
+      (item.children || [])
+        .filter((c: any) => c.type === 'character' || c.type === 'dummy_character')
+        .map((c: any) => { const id = c.referenceId || c.id; return [id, { id, name: c.title }]; })
+    ).values()
+  ) as { id: string; name: string }[];
+  const qmMatches = qmOpen
+    ? mentionChars.filter(c => c.name.toLowerCase().includes(qmQuery.toLowerCase())).slice(0, 6)
+    : [];
+  const detectQm = (value: string, caret: number) => {
+    const m = value.slice(0, caret).match(/@([^\s@]{0,30})$/);
+    if (m && mentionChars.length > 0) { setQmQuery(m[1]); setQmOpen(true); setQmIndex(0); }
+    else setQmOpen(false);
+  };
+  const insertQm = (name: string) => {
+    const ta = quickNoteRef.current;
+    const caret = ta?.selectionStart ?? quickNote.length;
+    const before = quickNote.slice(0, caret).replace(/@([^\s@]*)$/, `@${name} `);
+    const after = quickNote.slice(caret);
+    setQuickNote(before + after);
+    setQmOpen(false);
+    requestAnimationFrame(() => { ta?.focus(); ta?.setSelectionRange(before.length, before.length); });
+  };
+
+  // แสดง @ชื่อ (ที่ตรงกับตัวละครในการ์ด) เป็น tag/ชิป ตอนดูโน้ต — เรียงชื่อยาวก่อนกันชื่อซ้อน
+  const renderNoteMentions = (text: string): React.ReactNode => {
+    const names = mentionChars.map(c => c.name).filter(Boolean);
+    if (!names.length || !text) return text;
+    const esc = names.slice().sort((a, b) => b.length - a.length).map(n => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const re = new RegExp(`@(${esc.join("|")})`, "g");
+    const out: React.ReactNode[] = [];
+    let last = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > last) out.push(text.slice(last, m.index));
+      out.push(
+        <span key={m.index} className="inline-flex items-center rounded bg-amber-500/20 px-1 font-medium text-amber-700 dark:text-amber-300">
+          @{m[1]}
+        </span>
+      );
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) out.push(text.slice(last));
+    return out;
+  };
 
   const submitQuickNote = async () => {
     const text = quickNote.trim();
     if (!text || !onQuickAddNote) return;
     setSavingQuickNote(true);
-    await onQuickAddNote(item, text);
+    await onQuickAddNote(item, text, editingNoteId ?? undefined);
     setSavingQuickNote(false);
     setQuickNote("");
     setQuickNoteOpen(false);
+    setEditingNoteId(null);
   };
+
+  const closeQuickNote = () => {
+    setQuickNote("");
+    setQuickNoteOpen(false);
+    setEditingNoteId(null);
+  };
+
+  const deleteEditingNote = async () => {
+    if (!editingNoteId || !onDeleteNote) return;
+    setDeletingNote(true);
+    await onDeleteNote(editingNoteId);
+    setDeletingNote(false);
+    closeQuickNote();
+  };
+
+  // ตัวแก้โน้ต — ใช้ซ้ำทั้งตอนสร้างใหม่ (ท้ายลิสต์) และตอนแก้ (แทนที่ preview ของโน้ตนั้น)
+  const noteEditor = (
+    <div className="space-y-1" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+      <div className="relative">
+        <Textarea
+          autoFocus
+          ref={quickNoteRef}
+          value={quickNote}
+          onChange={(e) => { setQuickNote(e.target.value); detectQm(e.target.value, e.target.selectionStart ?? e.target.value.length); }}
+          onKeyDown={(e) => {
+            if (qmOpen && qmMatches.length > 0) {
+              if (e.key === "ArrowDown") { e.preventDefault(); setQmIndex(i => (i + 1) % qmMatches.length); return; }
+              if (e.key === "ArrowUp") { e.preventDefault(); setQmIndex(i => (i - 1 + qmMatches.length) % qmMatches.length); return; }
+              if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); insertQm(qmMatches[qmIndex].name); return; }
+              if (e.key === "Escape") { e.preventDefault(); setQmOpen(false); return; }
+            }
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitQuickNote(); }
+            else if (e.key === "Escape") { closeQuickNote(); }
+          }}
+          placeholder={mentionChars.length > 0
+            ? "เขียนโน้ต… (@ เพื่อ mention ตัวละคร, ⌘/Ctrl+Enter บันทึก)"
+            : "เขียนโน้ต… (⌘/Ctrl+Enter เพื่อบันทึก)"}
+          className="min-h-[52px] resize-none text-xs bg-yellow-500/10 border-yellow-500/30 focus-visible:ring-yellow-500/40"
+        />
+        {qmOpen && qmMatches.length > 0 && (
+          <div className="absolute left-1 right-1 bottom-1 z-50 rounded-md border border-yellow-400 bg-popover shadow-lg overflow-hidden">
+            {qmMatches.map((c, i) => (
+              <button
+                type="button"
+                key={c.id}
+                onMouseDown={(e) => { e.preventDefault(); insertQm(c.name); }}
+                className={`w-full flex items-center gap-2 px-2 py-1 text-left text-xs ${i === qmIndex ? "bg-yellow-500/20" : "hover:bg-yellow-500/10"}`}
+              >
+                <span className="text-yellow-600 font-semibold">@</span>
+                <span className="truncate">{c.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="flex items-center gap-1">
+        <div className="flex justify-end gap-1 ml-auto">
+          <Button type="button" size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={closeQuickNote}>
+            ยกเลิก
+          </Button>
+          <Button type="button" size="sm" className="h-6 text-xs px-2" disabled={!quickNote.trim() || savingQuickNote} onClick={submitQuickNote}>
+            {savingQuickNote ? <Loader2 className="w-3 h-3 animate-spin" /> : (editingNoteId ? "อัปเดต" : "บันทึก")}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 
   const Icon = () => {
     if (item.type === 'character') return <User className="w-4 h-4" />;
@@ -476,19 +611,27 @@ Sticky Notes: ${stickyNotes}`;
       : item.type === 'location' ? '#22c55e'
         : 'var(--forge-amber)');
 
+  const isKeyMoment = item.type === 'idea' && !!item.keyMomentLabel;
+
   return (
     <div className="relative group">
       <Card className={`
           ${widthClass} bg-card rounded-md overflow-hidden
-          ${isOverlay || isDragging ? 'cursor-grabbing' : ''} 
-          ${isOver ? 'ring-2 ring-[var(--forge-amber)] ring-offset-1' : ''} 
+          ${isOverlay || isDragging ? 'cursor-grabbing' : ''}
+          ${isOver ? 'ring-2 ring-[var(--forge-amber)] ring-offset-1' : ''}
           ${isLinkingSource ? 'ring-2 ring-blue-500 ring-offset-1' : ''}
+          ${isKeyMoment ? 'ring-1 ring-amber-400/60 shadow-[0_0_14px_-2px] shadow-amber-500/40' : ''}
           border border-border/70 shadow-sm hover:shadow-md transition-shadow duration-200
           ${isDragging && !isOverlay ? 'opacity-0' : 'opacity-100'}
       `}
       >
-        {/* แถบสีหัวการ์ด — ป้ายจัดกลุ่ม/ชนิด */}
-        <div className="h-1" style={{ background: stripColor }} />
+        {/* แถบสีหัวการ์ด — ป้ายจัดกลุ่ม/ชนิด (เหตุการณ์สำคัญ = แถบอำพันหนา) */}
+        <div
+          className={isKeyMoment ? 'h-1.5' : 'h-1'}
+          style={isKeyMoment
+            ? { background: 'linear-gradient(90deg, var(--forge-amber), #f59e0b)' }
+            : { background: stripColor }}
+        />
         <div className="p-2">
           <div className={`flex items-start gap-2 ${!isExpanded && item.type === 'idea' && item.content ? 'mb-2' : ''}`}>
             <div className="flex-1 min-w-0">
@@ -504,6 +647,41 @@ Sticky Notes: ${stickyNotes}`;
                   {typeof item.content === 'string' ? item.content : 'Rich text content...'}
                 </p>
               )}
+
+              {/* เหตุการณ์สำคัญ (mock) — banner เด่น + inline editor */}
+              {isContainer && editingKeyMoment ? (
+                <div
+                  className="mt-2 flex items-center gap-1.5 chamfered-sm bg-amber-500/15 border border-amber-500/50 px-2 py-1"
+                  onClick={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  <Star className="w-3.5 h-3.5 text-amber-500 shrink-0" fill="currentColor" />
+                  <input
+                    autoFocus
+                    value={keyMomentDraft}
+                    onChange={(e) => setKeyMomentDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { onSetKeyMoment?.(keyMomentDraft.trim() || null); setEditingKeyMoment(false); }
+                      if (e.key === 'Escape') { setKeyMomentDraft(item.keyMomentLabel || ""); setEditingKeyMoment(false); }
+                    }}
+                    onBlur={() => { onSetKeyMoment?.(keyMomentDraft.trim() || null); setEditingKeyMoment(false); }}
+                    placeholder="เช่น พระเอกชนะ, ตัวร้ายตาย…"
+                    className="flex-1 min-w-0 h-6 bg-transparent text-xs font-semibold text-amber-900 dark:text-amber-100 placeholder:text-amber-500/60 placeholder:font-normal focus:outline-none"
+                  />
+                </div>
+              ) : isContainer && item.keyMomentLabel ? (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setKeyMomentDraft(item.keyMomentLabel); setEditingKeyMoment(true); }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  className="group/km mt-2 w-full flex items-center gap-1.5 chamfered-sm bg-gradient-to-r from-amber-400 to-amber-500 border border-amber-300/60 pl-2 pr-2.5 py-1 text-left shadow-sm shadow-amber-500/30 hover:from-amber-300 hover:to-amber-400 transition-colors"
+                  title="แก้ไขเหตุการณ์สำคัญ"
+                >
+                  <Star className="w-3.5 h-3.5 text-amber-950 shrink-0 motion-safe:animate-pulse" fill="currentColor" />
+                  <span className="font-technical text-[8px] uppercase tracking-[0.14em] text-amber-900/70 shrink-0">จุดสำคัญ</span>
+                  <span className="flex-1 min-w-0 truncate text-xs font-bold text-amber-950">{item.keyMomentLabel}</span>
+                  <Pencil className="w-3 h-3 text-amber-900/50 shrink-0 opacity-0 group-hover/km:opacity-100 transition-opacity" />
+                </button>
+              ) : null}
             </div>
 
             {/* Actions */}
@@ -544,6 +722,14 @@ Sticky Notes: ${stickyNotes}`;
                     <DropdownMenuItem onSelect={() => onSetAncestor()}>
                       <GitBranchPlus className="w-3.5 h-3.5 mr-2" />
                       เชื่อมเหตุผล
+                    </DropdownMenuItem>
+                  )}
+
+                  {/* เหตุการณ์สำคัญ (idea only) */}
+                  {isContainer && onSetKeyMoment && (
+                    <DropdownMenuItem onSelect={() => { setKeyMomentDraft(item.keyMomentLabel || ""); setEditingKeyMoment(true); }}>
+                      <Star className="w-3.5 h-3.5 mr-2" />
+                      {item.keyMomentLabel ? 'แก้ไขเหตุการณ์สำคัญ' : 'ทำเครื่องหมายเหตุการณ์สำคัญ'}
                     </DropdownMenuItem>
                   )}
 
@@ -985,57 +1171,38 @@ Sticky Notes: ${stickyNotes}`;
               {isContainer && onQuickAddNote && (
                 <div className="space-y-1.5">
                   {thisIdeaNotes.map((note) => (
-                    <div
-                      key={note.id}
-                      className="group/note relative rounded-md border border-yellow-500/25 bg-yellow-500/10 px-2 py-1.5 text-xs cursor-pointer hover:bg-yellow-500/15 transition-colors"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (onAddNote) onAddNote({ ...item, existingNoteId: note.id });
-                      }}
-                    >
-                      <p className="text-foreground/90 whitespace-pre-wrap line-clamp-3 pr-4">{note.notes}</p>
-                      <Pencil className="w-3 h-3 absolute top-1.5 right-1.5 text-muted-foreground opacity-0 group-hover/note:opacity-100 transition-opacity" />
-                    </div>
+                    editingNoteId === note.id ? (
+                      <div key={note.id}>{noteEditor}</div>
+                    ) : (
+                      <div
+                        key={note.id}
+                        className="group/note relative rounded-md border border-yellow-500/25 bg-yellow-500/10 px-2 py-1.5 text-xs cursor-pointer hover:bg-yellow-500/15 transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // แก้ไข inline ตรงที่โน้ตนั้นเลย (ตัวแก้แทนที่ preview)
+                          setEditingNoteId(note.id);
+                          setQuickNote(note.notes || "");
+                          setQuickNoteOpen(true);
+                        }}
+                      >
+                        <p className="text-foreground/90 whitespace-pre-wrap line-clamp-3 pr-4">{renderNoteMentions(note.notes || "")}</p>
+                        <Pencil className="w-3 h-3 absolute top-1.5 right-1.5 text-muted-foreground opacity-0 group-hover/note:opacity-100 transition-opacity" />
+                      </div>
+                    )
                   ))}
 
-                  <div onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
-                    {quickNoteOpen ? (
-                      <div className="space-y-1">
-                        <Textarea
-                          autoFocus
-                          value={quickNote}
-                          onChange={(e) => setQuickNote(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                              e.preventDefault();
-                              submitQuickNote();
-                            } else if (e.key === "Escape") {
-                              setQuickNote("");
-                              setQuickNoteOpen(false);
-                            }
-                          }}
-                          placeholder="เขียนโน้ต… (⌘/Ctrl+Enter เพื่อบันทึก)"
-                          className="min-h-[52px] resize-none text-xs bg-yellow-500/10 border-yellow-500/30 focus-visible:ring-yellow-500/40"
-                        />
-                        <div className="flex justify-end gap-1">
-                          <Button type="button" size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={() => { setQuickNote(""); setQuickNoteOpen(false); }}>
-                            ยกเลิก
-                          </Button>
-                          <Button type="button" size="sm" className="h-6 text-xs px-2" disabled={!quickNote.trim() || savingQuickNote} onClick={submitQuickNote}>
-                            {savingQuickNote ? <Loader2 className="w-3 h-3 animate-spin" /> : "บันทึก"}
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setQuickNoteOpen(true)}
-                        className="flex items-center justify-center gap-1 w-full text-xs text-yellow-700/70 dark:text-yellow-500/70 hover:text-yellow-800 dark:hover:text-yellow-400 border border-dashed border-yellow-500/30 hover:border-yellow-500/50 hover:bg-yellow-500/5 rounded-md px-2 py-1.5 transition-colors"
-                      >
-                        <Plus className="w-3 h-3" />
-                        เพิ่มโน้ต
-                      </button>
-                    )}
-                  </div>
+                  {/* สร้างใหม่: ตัวแก้ท้ายลิสต์ (เฉพาะตอนไม่ได้แก้โน้ตเดิม) */}
+                  {editingNoteId === null && quickNoteOpen ? (
+                    noteEditor
+                  ) : !quickNoteOpen ? (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setEditingNoteId(null); setQuickNote(""); setQuickNoteOpen(true); }}
+                      className="flex items-center justify-center gap-1 w-full text-xs text-yellow-700/70 dark:text-yellow-500/70 hover:text-yellow-800 dark:hover:text-yellow-400 border border-dashed border-yellow-500/30 hover:border-yellow-500/50 hover:bg-yellow-500/5 rounded-md px-2 py-1.5 transition-colors"
+                    >
+                      <Plus className="w-3 h-3" />
+                      เพิ่มโน้ต
+                    </button>
+                  ) : null}
                 </div>
               )}
             </div>

@@ -21,7 +21,6 @@ import { getSceneElementDetails, getIdeaNotesForIdeas } from "@/server/scene-ele
 import { addBeat, createThread } from "@/server/plot-threads";
 import type { ThreadWithBeats } from "@/server/plot-threads";
 import { SceneElementDetailDialog } from "./scene-element-detail-dialog";
-import { IdeaNoteDialog } from "./idea-note-dialog";
 import { SceneElementDetails } from "@/db/schema";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -47,7 +46,19 @@ interface Lane {
     id: string;
     name: string;
     orderIndex: number;
+    color?: string;
 }
+
+// สีเลน — เลือกได้เพื่อแยกเลนด้วยตา
+const LANE_COLORS = ["#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#f43f5e", "#f97316", "#14b8a6", "#64748b"];
+
+// hex → rgba (สำหรับ tint พื้นเลนแบบจางๆ)
+const hexA = (hex: string, a: number) => {
+    const h = hex.replace("#", "");
+    const full = h.length === 3 ? h.split("").map(c => c + c).join("") : h;
+    const n = parseInt(full, 16);
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+};
 
 // "ตอน" — กรอบครอบช่วงจังหวะภายในบอร์ดนี้ (กำหนด เริ่ม–จบ ชัดเจน)
 interface Chapter {
@@ -82,7 +93,7 @@ export const LINK_KINDS: Record<string, { label: string; color: string; pinFill:
 function buildBoardState(initialItems: any[]): { lanes: Lane[]; items: any[]; chapters: Chapter[] } {
     const laneItems = initialItems.filter((i: any) => i.type === 'lane');
     let lanes: Lane[] = laneItems
-        .map((l: any) => ({ id: l.id, name: l.name || 'เลน', orderIndex: l.orderIndex ?? 0 }))
+        .map((l: any) => ({ id: l.id, name: l.name || 'เลน', orderIndex: l.orderIndex ?? 0, color: l.color }))
         .sort((a, b) => a.orderIndex - b.orderIndex);
 
     // "ตอน" — กรอบครอบช่วงจังหวะ (เฉพาะบอร์ดนี้) เก็บเป็น node type 'chapter'
@@ -178,6 +189,53 @@ function ConnectionLine({ start, end, kind = "related", label, onClick }: {
             {onClick && (
                 <path d={pathD} stroke="transparent" strokeWidth="16" fill="none"
                     style={{ pointerEvents: 'auto', cursor: 'pointer' }}
+                    onClick={(e) => { e.stopPropagation(); onClick(); }} />
+            )}
+        </g>
+    );
+}
+
+// เส้นเชื่อมแบบตั้งฉาก (orthogonal) — วาด polyline หัก 90° ไม่มีเส้นเฉียง หัวลูกศรที่ปลายสุด
+function OrthoLine({ points, kind = "related", label, onClick }: {
+    points: Array<{ x: number; y: number }>;
+    kind?: string;
+    label?: string | null;
+    onClick?: () => void;
+}) {
+    if (points.length < 2) return null;
+    const cfg = LINK_KINDS[kind] || LINK_KINDS.related;
+    const d = points.map((p, i) => `${i ? "L" : "M"} ${p.x} ${p.y}`).join(" ");
+
+    // หัวลูกศรวางที่ปลายสุด หันตามทิศของ segment สุดท้าย
+    const p2 = points[points.length - 1];
+    const p1 = points[points.length - 2];
+    const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+    const arrowSize = 9;
+    const aAng = Math.PI / 7;
+    const a1x = p2.x - arrowSize * Math.cos(angle - aAng);
+    const a1y = p2.y - arrowSize * Math.sin(angle - aAng);
+    const a2x = p2.x - arrowSize * Math.cos(angle + aAng);
+    const a2y = p2.y - arrowSize * Math.sin(angle + aAng);
+
+    const start = points[0];
+    const displayLabel = label || (kind !== "related" ? cfg.label : null);
+
+    return (
+        <g>
+            <path d={d} stroke="var(--background)" strokeWidth="4" strokeOpacity="0.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            <path d={d} stroke={cfg.color} strokeWidth="2" strokeOpacity="0.7" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            <polygon points={`${p2.x},${p2.y} ${a1x},${a1y} ${a2x},${a2y}`} fill={cfg.color} fillOpacity="0.85" />
+            <circle cx={start.x} cy={start.y} r={4} fill={cfg.pinFill} stroke={cfg.pinStroke} strokeWidth="1" />
+            {displayLabel && (
+                <g style={{ pointerEvents: "none" }}>
+                    <rect x={start.x + 6} y={start.y - 8} width={displayLabel.length * 9} height={16} rx="4"
+                        fill="white" stroke={cfg.color} strokeWidth="1" opacity="0.92" />
+                    <text x={start.x + 6 + displayLabel.length * 4.5} y={start.y + 3.5} textAnchor="middle" fontSize="10" fill={cfg.color} fontWeight="600">{displayLabel}</text>
+                </g>
+            )}
+            {onClick && (
+                <path d={d} stroke="transparent" strokeWidth="16" fill="none"
+                    style={{ pointerEvents: "auto", cursor: "pointer" }}
                     onClick={(e) => { e.stopPropagation(); onClick(); }} />
             )}
         </g>
@@ -383,19 +441,43 @@ function ThreadSuggestToast({
 }
 
 // ---- Storyboard grid: เลน (แถว) x จังหวะ/beat (คอลัมน์) ----
-function LaneLabel({ lane, laneIndex, onRename, onRemove, canRemove }: {
+function LaneLabel({ lane, laneIndex, color, onRename, onRemove, onSetColor, canRemove }: {
     lane: Lane;
     laneIndex: number;
+    color: string;
     onRename: (id: string, name: string) => void;
     onRemove: (id: string) => void;
+    onSetColor: (id: string, color: string) => void;
     canRemove: boolean;
 }) {
     return (
         <div
-            style={{ gridColumn: 1, gridRow: laneIndex + 3, width: LABEL_WIDTH }}
+            style={{ gridColumn: 1, gridRow: laneIndex + 3, width: LABEL_WIDTH, borderLeft: `3px solid ${color}` }}
             className="sticky left-0 z-20 bg-muted/60 backdrop-blur-sm border-r border-b border-border/60 flex items-start gap-1 px-2.5 py-2.5 min-h-[140px]"
         >
-            <span className="mt-[7px] h-2 w-2 rounded-full bg-[var(--forge-amber)] shrink-0" />
+            <Popover>
+                <PopoverTrigger asChild>
+                    <button
+                        className="mt-[7px] h-2.5 w-2.5 rounded-full shrink-0 ring-offset-1 hover:ring-2 hover:ring-offset-background transition-shadow"
+                        style={{ background: color }}
+                        title="เปลี่ยนสีเลน"
+                    />
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-auto p-2">
+                    <div className="flex flex-wrap gap-1.5 max-w-[132px]">
+                        {LANE_COLORS.map(c => (
+                            <button
+                                key={c}
+                                onClick={() => onSetColor(lane.id, c)}
+                                className="h-5 w-5 rounded-full flex items-center justify-center transition-transform hover:scale-110"
+                                style={{ background: c, outline: lane.color === c ? `2px solid ${c}` : "none", outlineOffset: 2 }}
+                            >
+                                {lane.color === c && <Check className="h-3 w-3 text-white" />}
+                            </button>
+                        ))}
+                    </div>
+                </PopoverContent>
+            </Popover>
             <input
                 value={lane.name}
                 onChange={e => onRename(lane.id, e.target.value)}
@@ -411,11 +493,12 @@ function LaneLabel({ lane, laneIndex, onRename, onRemove, canRemove }: {
     );
 }
 
-function BeatCell({ laneId, beatIndex, laneIndex, isTrailing, children }: {
+function BeatCell({ laneId, beatIndex, laneIndex, isTrailing, laneColor, children }: {
     laneId: string;
     beatIndex: number;
     laneIndex: number;
     isTrailing: boolean;
+    laneColor: string;
     children: React.ReactNode;
 }) {
     const { setNodeRef, isOver } = useDroppable({
@@ -426,7 +509,12 @@ function BeatCell({ laneId, beatIndex, laneIndex, isTrailing, children }: {
     return (
         <div
             ref={setNodeRef}
-            style={{ gridColumn: beatGridCol(beatIndex), gridRow: laneIndex + 3, width: COLUMN_WIDTH }}
+            style={{
+                gridColumn: beatGridCol(beatIndex),
+                gridRow: laneIndex + 3,
+                width: COLUMN_WIDTH,
+                background: isOver ? undefined : hexA(laneColor, 0.05),
+            }}
             className={cn(
                 "min-h-[140px] p-1.5 border-r border-b flex flex-col gap-1.5 transition-colors",
                 isTrailing ? "border-dashed border-border/40" : "border-border/40",
@@ -516,6 +604,9 @@ export function PlaygroundBoard({
     const [activeDragItem, setActiveDragItem] = useState<any>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    // ไอเดียใหม่จะวางที่จังหวะไหน: 'latest' = จังหวะล่าสุด (คอลัมน์ที่มีอยู่) | 'new' = จังหวะใหม่ (คอลัมน์ท้าย)
+    const [newIdeaBeat, setNewIdeaBeat] = useState<'latest' | 'new'>('new');
+    const [newIdeaLaneId, setNewIdeaLaneId] = useState<string>(''); // '' = เลนแรก
 
     const [threadSuggest, setThreadSuggest] = useState<{
         ideaTitle: string;
@@ -535,7 +626,6 @@ export function PlaygroundBoard({
     const [editingChild, setEditingChild] = useState<{ child: any; canvasItemId: string } | null>(null);
 
     const [ideaNotes, setIdeaNotes] = useState<SceneElementDetails[]>([]);
-    const [editingNote, setEditingNote] = useState<{ item: any; existingNote?: SceneElementDetails } | null>(null);
 
     const [ancestorConnections, setAncestorConnections] = useState<Array<{
         id: string; sourceIdeaId: string; targetIdeaId: string; label?: string | null;
@@ -675,28 +765,20 @@ export function PlaygroundBoard({
         setEditingChild({ child, canvasItemId: child.canvasItemId });
     }, []);
 
-    const handleAddNote = useCallback((item: any) => {
-        if (item.existingNoteId) {
-            const existingNote = ideaNotes.find(n => n.id === item.existingNoteId);
-            setEditingNote({ item, existingNote });
-        } else {
-            setEditingNote({ item });
-        }
-    }, [ideaNotes]);
-
-    // Quick inline note — save directly without opening the dialog
-    const handleQuickAddNote = useCallback(async (item: any, text: string) => {
+    // Quick inline note — สร้างใหม่ (existingNoteId ว่าง) หรือแก้ไขโน้ตเดิม ทำ inline บนการ์ด ไม่เปิด dialog
+    const handleQuickAddNote = useCallback(async (item: any, text: string, existingNoteId?: string) => {
         const notes = text.trim();
         if (!notes) return;
         const { upsertSceneElementDetail } = await import('@/server/scene-element-details');
         const result = await upsertSceneElementDetail({
+            id: existingNoteId,
             sceneId: eventId,
             elementType: 'idea_note',
             elementId: item.referenceId || item.id,
             canvasItemId: item.id,
             notes,
             novelId,
-            forceCreate: true,
+            forceCreate: !existingNoteId,
         });
         if (result.success && result.data) {
             handleDetailSaved(result.data);
@@ -704,6 +786,17 @@ export function PlaygroundBoard({
             toast.error(result.error || "ไม่สามารถบันทึกได้");
         }
     }, [eventId, novelId, handleDetailSaved]);
+
+    const handleDeleteNote = useCallback(async (noteId: string) => {
+        const { deleteSceneElementDetail } = await import('@/server/scene-element-details');
+        const result = await deleteSceneElementDetail(noteId, novelId, eventId);
+        if (result.success) {
+            handleNoteDeleted(noteId);
+            toast.success("ลบโน้ตแล้ว");
+        } else {
+            toast.error("ลบไม่สำเร็จ");
+        }
+    }, [novelId, eventId, handleNoteDeleted]);
 
     useEffect(() => {
         const fetchAncestorConnections = async () => {
@@ -772,7 +865,7 @@ export function PlaygroundBoard({
         }
         const timeoutId = setTimeout(async () => {
             setIsSaving(true);
-            const laneNodes = lanes_.map(l => ({ id: l.id, type: 'lane', name: l.name, orderIndex: l.orderIndex }));
+            const laneNodes = lanes_.map(l => ({ id: l.id, type: 'lane', name: l.name, orderIndex: l.orderIndex, color: l.color }));
             const chapterNodes = chapters.map(c => ({ id: c.id, type: 'chapter', name: c.name, startBeat: c.startBeat, endBeat: c.endBeat }));
             const result = await updateTimelineCanvas(eventId, [...items, ...laneNodes, ...chapterNodes]);
             if (result.success) setLastSaved(new Date());
@@ -965,10 +1058,13 @@ export function PlaygroundBoard({
     };
 
     const handleAddLane = () => {
-        setLanes(prev => [...prev, { id: crypto.randomUUID(), name: `เลน ${prev.length + 1}`, orderIndex: prev.length }]);
+        setLanes(prev => [...prev, { id: crypto.randomUUID(), name: `เลน ${prev.length + 1}`, orderIndex: prev.length, color: LANE_COLORS[prev.length % LANE_COLORS.length] }]);
     };
     const handleRenameLane = (laneId: string, name: string) => {
         setLanes(prev => prev.map(l => l.id === laneId ? { ...l, name } : l));
+    };
+    const handleSetLaneColor = (laneId: string, color: string) => {
+        setLanes(prev => prev.map(l => l.id === laneId ? { ...l, color } : l));
     };
     const handleRemoveLane = (laneId: string) => {
         if (lanes_.length <= 1) { toast.error('ต้องมีอย่างน้อย 1 เลน'); return; }
@@ -1147,7 +1243,7 @@ export function PlaygroundBoard({
 
     const handleSave = async () => {
         setIsSaving(true);
-        const laneNodes = lanes_.map(l => ({ id: l.id, type: 'lane', name: l.name, orderIndex: l.orderIndex }));
+        const laneNodes = lanes_.map(l => ({ id: l.id, type: 'lane', name: l.name, orderIndex: l.orderIndex, color: l.color }));
         const chapterNodes = chapters.map(c => ({ id: c.id, type: 'chapter', name: c.name, startBeat: c.startBeat }));
         const result = await updateTimelineCanvas(eventId, [...items, ...laneNodes, ...chapterNodes]);
         if (result.success) {
@@ -1161,6 +1257,11 @@ export function PlaygroundBoard({
 
     const handleSetColor = (id: string, color: string | null) => {
         setItems(prev => prev.map(item => item.id === id ? { ...item, color } : item));
+    };
+
+    // เหตุการณ์สำคัญ (mock) — เก็บ label ใน canvas node, auto-save เดิมจัดการต่อ
+    const handleSetKeyMoment = (id: string, label: string | null) => {
+        setItems(prev => prev.map(item => item.id === id ? { ...item, keyMomentLabel: label } : item));
     };
 
     const handleRemoveItem = async (id: string) => {
@@ -1257,62 +1358,134 @@ export function PlaygroundBoard({
             });
         });
 
-        // 2. จัด slot ต่อ (node, ด้านของขอบ) — เรียงตามตำแหน่งปลายอีกฝั่ง ให้เส้นไม่ไขว้กันเองโดยไม่จำเป็น
-        const sideOf = (from: { x: number; y: number }, to: { x: number; y: number }) => {
-            const dx = to.x - from.x, dy = to.y - from.y;
-            return Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 'right' : 'left') : (dy >= 0 ? 'bottom' : 'top');
-        };
-        const sideGroups = new Map<string, Array<{ edgeIdx: number; endpoint: 'source' | 'target'; counterpart: { x: number; y: number } }>>();
-        edges.forEach((e, i) => {
-            const sSide = sideOf(e.sPos, e.tPos);
-            const tSide = sideOf(e.tPos, e.sPos);
-            const push = (key: string, entry: any) => {
-                if (!sideGroups.has(key)) sideGroups.set(key, []);
-                sideGroups.get(key)!.push(entry);
-            };
-            push(`${e.sourceId}:${sSide}`, { edgeIdx: i, endpoint: 'source', counterpart: e.tPos });
-            push(`${e.targetId}:${tSide}`, { edgeIdx: i, endpoint: 'target', counterpart: e.sPos });
+        // 2. นับดีกรี: target มีหลาย source = รวม (many→1), source มีหลาย target = แตก (1→many, mirror)
+        const inCount = new Map<string, number>();
+        const outCount = new Map<string, number>();
+        edges.forEach(e => {
+            inCount.set(e.targetId, (inCount.get(e.targetId) ?? 0) + 1);
+            outCount.set(e.sourceId, (outCount.get(e.sourceId) ?? 0) + 1);
         });
-        // slot index ต่อ edge-endpoint
-        const slotMap = new Map<string, { slot: number; count: number }>();
-        sideGroups.forEach((entries, key) => {
-            const side = key.split(':').pop()!;
-            const horizontal = side === 'left' || side === 'right';
-            // เรียงตามแกนตั้ง (ขอบซ้าย/ขวา) หรือแกนนอน (ขอบบน/ล่าง) ของปลายอีกฝั่ง
-            const sorted = [...entries].sort((a, b) =>
-                horizontal ? a.counterpart.y - b.counterpart.y : a.counterpart.x - b.counterpart.x
+        const beatOf = new Map<string, number>(items.map((i: any) => [i.id, i.beatIndex]));
+
+        const GAP = GUTTER_WIDTH / 2; // ระยะบัส (แนวตั้งที่เส้นมารวม) ห่างจากขอบการ์ด
+
+        // clamp Y ให้จุดเข้าอยู่ในตัวการ์ด (เข้าใกล้กลาง ไม่หลุดขอบ)
+        const clampY = (y: number, pos: { y: number; h: number }) =>
+            Math.max(pos.y - pos.h / 2 + 10, Math.min(pos.y + pos.h / 2 - 10, y));
+
+        // ถ้าการ์ดสองใบซ้อนกันในแนวตั้ง → คืน Y ที่ทำเส้นตรงแนวนอนได้ (เอียงไปทางการ์ดที่สูงกว่าบนจอ = Y น้อย)
+        // ถ้าไม่ซ้อนเลย → คืน null (ต้องหักมุม)
+        const straightY = (p: { y: number; h: number }, q: { y: number; h: number }): number | null => {
+            const top = Math.max(p.y - p.h / 2, q.y - q.h / 2) + 10;
+            const bot = Math.min(p.y + p.h / 2, q.y + q.h / 2) - 10;
+            if (top > bot) return null;
+            return Math.max(top, Math.min(bot, Math.min(p.y, q.y)));
+        };
+
+        // อะนาล็อกของ clampY/straightY แต่บนแกน X (ใช้กับความสัมพันธ์แนวตั้ง)
+        const clampX = (x: number, pos: { x: number; w: number }) =>
+            Math.max(pos.x - pos.w / 2 + 10, Math.min(pos.x + pos.w / 2 - 10, x));
+        const straightX = (p: { x: number; w: number }, q: { x: number; w: number }): number | null => {
+            const left = Math.max(p.x - p.w / 2, q.x - q.w / 2) + 10;
+            const right = Math.min(p.x + p.w / 2, q.x + q.w / 2) - 10;
+            if (left > right) return null;
+            return Math.max(left, Math.min(right, (p.x + q.x) / 2));
+        };
+
+        const avg = (nums: number[]) => nums.reduce((a, b) => a + b, 0) / nums.length;
+
+        // Y ที่เส้นมารวม: many→1 = เฉลี่ย Y ของ source ทั้งหมด (clamp เข้า target), 1→many = เฉลี่ย Y ของ target (clamp เข้า source)
+        const targetMergeY = new Map<string, number>();
+        const sourceMergeY = new Map<string, number>();
+        edges.forEach(e => {
+            if ((inCount.get(e.targetId) ?? 0) > 1 && !targetMergeY.has(e.targetId)) {
+                const ys = edges.filter(x => x.targetId === e.targetId).map(x => x.sPos.y);
+                targetMergeY.set(e.targetId, clampY(avg(ys), e.tPos));
+            }
+            if ((outCount.get(e.sourceId) ?? 0) > 1 && !sourceMergeY.has(e.sourceId)) {
+                const ys = edges.filter(x => x.sourceId === e.sourceId).map(x => x.tPos.y);
+                sourceMergeY.set(e.sourceId, clampY(avg(ys), e.sPos));
+            }
+        });
+
+        return edges.map((e) => {
+            const converge = (inCount.get(e.targetId) ?? 0) > 1; // รวมเข้า target
+            const split = !converge && (outCount.get(e.sourceId) ?? 0) > 1; // แตกจาก source (mirror)
+            const dxc = e.tPos.x - e.sPos.x;
+            const dyc = e.tPos.y - e.sPos.y;
+            const sBeat = beatOf.get(e.sourceId);
+            const tBeat = beatOf.get(e.targetId);
+            const sameBeat = sBeat != null && sBeat === tBeat;
+            // chain (converge/split) เดินแนวนอนเสมอ; 1:1 เลือกทิศตาม dx/dy ที่มากกว่า
+            const horizontal = converge || split || Math.abs(dxc) >= Math.abs(dyc);
+
+            let points: Array<{ x: number; y: number }>;
+            if (!converge && !split && sameBeat) {
+                // จังหวะเดียวกัน (คอลัมน์เดียวกัน) → วนบัสออกทางขวาของทั้งคู่ ไม่งอกลับซ้าย
+                const aX = e.sPos.x + e.sPos.w / 2;
+                const bX = e.tPos.x + e.tPos.w / 2;
+                const busX = Math.max(aX, bX) + GAP;
+                const aY = e.sPos.y;
+                const bY = e.tPos.y;
+                points = [
+                    { x: aX, y: aY },
+                    { x: busX, y: aY },
+                    { x: busX, y: bY },
+                    { x: bX, y: bY },
+                ];
+            } else if (horizontal) {
+                // ---- แนวนอน: ออกซ้าย/ขวา บัสแนวตั้ง ----
+                const dir = dxc >= 0 ? 1 : -1;
+                const aX = e.sPos.x + dir * e.sPos.w / 2;
+                const bX = e.tPos.x - dir * e.tPos.w / 2;
+                let busX: number, aY: number, bY: number;
+                if (converge) {
+                    busX = bX - dir * GAP;
+                    aY = e.sPos.y;
+                    bY = targetMergeY.get(e.targetId)!;
+                } else if (split) {
+                    busX = aX + dir * GAP;
+                    aY = sourceMergeY.get(e.sourceId)!;
+                    bY = e.tPos.y;
+                } else {
+                    busX = (aX + bX) / 2;
+                    const sy = straightY(e.sPos, e.tPos);
+                    if (sy != null) { aY = sy; bY = sy; }
+                    else { aY = e.sPos.y; bY = clampY(e.tPos.y, e.tPos); }
+                }
+                points = [
+                    { x: aX, y: aY },
+                    { x: busX, y: aY },
+                    { x: busX, y: bY },
+                    { x: bX, y: bY },
+                ];
+            } else {
+                // ---- แนวตั้ง: ออกบน/ล่าง บัสแนวนอน (เช่น "เกิดพร้อมกัน" คนละเลนจังหวะเดียว) ----
+                const dir = dyc >= 0 ? 1 : -1;
+                const aY = e.sPos.y + dir * e.sPos.h / 2;
+                const bY = e.tPos.y - dir * e.tPos.h / 2;
+                const busY = (aY + bY) / 2;
+                const sx = straightX(e.sPos, e.tPos);
+                let aX: number, bX: number;
+                if (sx != null) { aX = sx; bX = sx; }
+                else { aX = e.sPos.x; bX = clampX(e.tPos.x, e.tPos); }
+                points = [
+                    { x: aX, y: aY },
+                    { x: aX, y: busY },
+                    { x: bX, y: busY },
+                    { x: bX, y: bY },
+                ];
+            }
+
+            return (
+                <OrthoLine
+                    key={`${e.sourceId}-${e.targetId}`}
+                    points={points}
+                    kind={e.link.kind} label={e.link.label}
+                    onClick={() => setEditingLink({ sourceId: e.sourceId, targetId: e.targetId })}
+                />
             );
-            sorted.forEach((entry, slot) => {
-                slotMap.set(`${entry.edgeIdx}:${entry.endpoint}`, { slot, count: sorted.length });
-            });
         });
-
-        // 3. anchor จริง: ขอบการ์ด + offset ตาม slot
-        const anchorAt = (
-            pos: { x: number; y: number; w: number; h: number },
-            other: { x: number; y: number },
-            edgeIdx: number,
-            endpoint: 'source' | 'target',
-        ) => {
-            const side = sideOf(pos, other);
-            const { slot, count } = slotMap.get(`${edgeIdx}:${endpoint}`) ?? { slot: 0, count: 1 };
-            const spread = 18;
-            const offset = (slot - (count - 1) / 2) * spread;
-            if (side === 'right') return { x: pos.x + pos.w / 2, y: pos.y + Math.max(-pos.h / 2 + 10, Math.min(pos.h / 2 - 10, offset)) };
-            if (side === 'left') return { x: pos.x - pos.w / 2, y: pos.y + Math.max(-pos.h / 2 + 10, Math.min(pos.h / 2 - 10, offset)) };
-            if (side === 'bottom') return { x: pos.x + Math.max(-pos.w / 2 + 10, Math.min(pos.w / 2 - 10, offset)), y: pos.y + pos.h / 2 };
-            return { x: pos.x + Math.max(-pos.w / 2 + 10, Math.min(pos.w / 2 - 10, offset)), y: pos.y - pos.h / 2 };
-        };
-
-        return edges.map((e, i) => (
-            <ConnectionLine
-                key={`${e.sourceId}-${e.targetId}`}
-                start={anchorAt(e.sPos, e.tPos, i, 'source')}
-                end={anchorAt(e.tPos, e.sPos, i, 'target')}
-                kind={e.link.kind} label={e.link.label}
-                onClick={() => setEditingLink({ sourceId: e.sourceId, targetId: e.targetId })}
-            />
-        ));
     })();
 
     const ancestorLines = ancestorConnections.map(conn => {
@@ -1461,6 +1634,41 @@ export function PlaygroundBoard({
 
                         <CreateIdeaDialog
                             novelId={novelId}
+                            extraContent={
+                                <div className="space-y-3">
+                                    <div className="space-y-1.5">
+                                        <label className="text-sm font-medium">เลน</label>
+                                        <select
+                                            value={newIdeaLaneId || lanes_[0]?.id || ''}
+                                            onChange={(e) => setNewIdeaLaneId(e.target.value)}
+                                            className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
+                                        >
+                                            {lanes_.map((l) => (
+                                                <option key={l.id} value={l.id}>{l.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-sm font-medium">วางในจังหวะ</label>
+                                        <div className="flex items-center chamfered-sm border border-border/60 overflow-hidden text-xs w-fit">
+                                            <button
+                                                type="button"
+                                                onClick={() => setNewIdeaBeat('latest')}
+                                                className={cn("h-8 px-3 transition-colors", newIdeaBeat === 'latest' ? "bg-[var(--forge-amber)]/15 text-[var(--forge-amber)] font-medium" : "text-muted-foreground hover:bg-muted")}
+                                            >
+                                                จังหวะล่าสุด
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setNewIdeaBeat('new')}
+                                                className={cn("h-8 px-3 border-l border-border/60 transition-colors", newIdeaBeat === 'new' ? "bg-[var(--forge-amber)]/15 text-[var(--forge-amber)] font-medium" : "text-muted-foreground hover:bg-muted")}
+                                            >
+                                                จังหวะใหม่
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
                             onIdeaCreated={(idea) => {
                                 const newItem = {
                                     id: crypto.randomUUID(),
@@ -1468,8 +1676,8 @@ export function PlaygroundBoard({
                                     referenceId: idea.id,
                                     title: idea.title,
                                     content: idea.content,
-                                    laneId: lanes_[0]?.id,
-                                    beatIndex: beatCount,
+                                    laneId: newIdeaLaneId || lanes_[0]?.id,
+                                    beatIndex: newIdeaBeat === 'latest' ? Math.max(0, beatCount - 1) : beatCount,
                                     children: [],
                                     links: [],
                                 };
@@ -1583,13 +1791,17 @@ export function PlaygroundBoard({
                                 </Fragment>
                             ))}
 
-                            {lanes_.map((lane, laneIndex) => (
+                            {lanes_.map((lane, laneIndex) => {
+                                const laneColor = lane.color || LANE_COLORS[laneIndex % LANE_COLORS.length];
+                                return (
                                 <Fragment key={lane.id}>
                                     <LaneLabel
                                         lane={lane}
                                         laneIndex={laneIndex}
+                                        color={laneColor}
                                         onRename={handleRenameLane}
                                         onRemove={handleRemoveLane}
+                                        onSetColor={handleSetLaneColor}
                                         canRemove={lanes_.length > 1}
                                     />
                                     {Array.from({ length: totalColumns }).map((_, beatIndex) => {
@@ -1601,6 +1813,7 @@ export function PlaygroundBoard({
                                                 beatIndex={beatIndex}
                                                 laneIndex={laneIndex}
                                                 isTrailing={beatIndex === beatCount}
+                                                laneColor={laneColor}
                                             >
                                                 {cellItems.map(item => (
                                                     <DraggableCanvasItem
@@ -1616,8 +1829,8 @@ export function PlaygroundBoard({
                                                         elementDetails={elementDetailsMap}
                                                         onEditChild={handleEditChild}
                                                         ideaNotes={ideaNotes}
-                                                        onAddNote={handleAddNote}
                                                         onQuickAddNote={handleQuickAddNote}
+                                                        onDeleteNote={handleDeleteNote}
                                                         novelId={novelId}
                                                         onSetAncestor={item.type === 'idea' ? () => handleOpenAncestorDialog(item) : undefined}
                                                         ancestorConnections={item.type === 'idea' ? ancestorConnections
@@ -1640,6 +1853,7 @@ export function PlaygroundBoard({
                                                         onAddChild={handleAddChild}
                                                         onDetailSaved={handleDetailSaved}
                                                         onSetColor={(c) => handleSetColor(item.id, c)}
+                                                        onSetKeyMoment={item.type === 'idea' ? (label) => handleSetKeyMoment(item.id, label) : undefined}
                                                         onMeasureRef={registerItemRef}
                                                     />
                                                 ))}
@@ -1647,15 +1861,16 @@ export function PlaygroundBoard({
                                             {beatIndex < totalColumns - 1 && (
                                                 <div
                                                     key={`gutter-${beatIndex}`}
-                                                    style={{ gridColumn: beatGridCol(beatIndex) + 1, gridRow: laneIndex + 3, width: GUTTER_WIDTH }}
-                                                    className="min-h-[140px] bg-muted/10 border-b border-border/30"
+                                                    style={{ gridColumn: beatGridCol(beatIndex) + 1, gridRow: laneIndex + 3, width: GUTTER_WIDTH, background: hexA(laneColor, 0.05) }}
+                                                    className="min-h-[140px] border-b border-border/30"
                                                 />
                                             )}
                                         </Fragment>
                                         );
                                     })}
                                 </Fragment>
-                            ))}
+                                );
+                            })}
 
                             {/* เส้นเชื่อม overlay */}
                             <svg
@@ -1712,20 +1927,6 @@ export function PlaygroundBoard({
             })()}
 
             {/* Idea Note Dialog */}
-            {editingNote && (
-                <IdeaNoteDialog
-                    open={!!editingNote}
-                    onOpenChange={(open) => !open && setEditingNote(null)}
-                    ideaId={editingNote.item.referenceId || editingNote.item.id}
-                    ideaTitle={editingNote.item.title}
-                    canvasItemId={editingNote.item.id}
-                    sceneId={eventId}
-                    novelId={novelId}
-                    existingNote={editingNote.existingNote}
-                    onSaved={handleDetailSaved}
-                    onDeleted={handleNoteDeleted}
-                />
-            )}
 
             {/* Ancestor Idea Dialog */}
             <Dialog open={!!ancestorDialogItem} onOpenChange={(open) => !open && setAncestorDialogItem(null)}>
