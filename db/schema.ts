@@ -670,6 +670,8 @@ export const plotThreadBeats = pgTable("plot_thread_beats", {
   eventId: text("event_id")
     .notNull()
     .references(() => timelineEvents.id, { onDelete: "cascade" }),
+  // การ์ด/ไอเดียบน playground ที่ผูกปมนี้ (null = ผูกระดับฉากเฉยๆ แบบเดิม)
+  canvasItemId: text("canvas_item_id"),
   role: text("role").notNull().default("seed"), // seed | reinforce | payoff
   note: text("note"),
   orderIndex: integer("order_index").default(0),

@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache"
 export interface ThreadBeat {
     id: string
     eventId: string
+    canvasItemId: string | null
     role: string
     note: string | null
     orderIndex: number | null
@@ -52,7 +53,7 @@ export async function getThreadsByNovelId(novelId: string): Promise<{ success: b
             note: t.note,
             beats: beats
                 .filter((b: typeof beats[number]) => b.threadId === t.id)
-                .map((b: typeof beats[number]) => ({ id: b.id, eventId: b.eventId, role: b.role, note: b.note, orderIndex: b.orderIndex })),
+                .map((b: typeof beats[number]) => ({ id: b.id, eventId: b.eventId, canvasItemId: b.canvasItemId, role: b.role, note: b.note, orderIndex: b.orderIndex })),
         }))
 
         return { success: true, data }
@@ -126,6 +127,7 @@ export async function addBeat(data: {
     role: string
     novelId: string
     note?: string
+    canvasItemId?: string | null
 }) {
     try {
         const [beat] = await db
@@ -133,6 +135,7 @@ export async function addBeat(data: {
             .values({
                 threadId: data.threadId,
                 eventId: data.eventId,
+                canvasItemId: data.canvasItemId ?? null,
                 role: data.role,
                 note: data.note,
             })

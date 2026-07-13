@@ -18,14 +18,14 @@ import { CanvasItem, DraggableCanvasItem } from "./canvas-item";
 import { updateTimelineCanvas } from "@/server/timeline";
 import { updateIdea } from "@/server/idea"; // For auto-reset isUsed flag
 import { getSceneElementDetails, getIdeaNotesForIdeas } from "@/server/scene-element-details";
-import { addBeat, createThread } from "@/server/plot-threads";
+import { addBeat, createThread, deleteBeat } from "@/server/plot-threads";
 import type { ThreadWithBeats } from "@/server/plot-threads";
 import { SceneElementDetailDialog } from "./scene-element-detail-dialog";
 import { SceneElementDetails } from "@/db/schema";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Save, Link2, X, Check, Download, List, Navigation, SkipBack, SkipForward, StickyNote, GitBranchPlus, Lightbulb, Loader2, Sprout, LayoutGrid, Rows3, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Plus, Save, Link2, X, Check, Download, List, Navigation, SkipBack, SkipForward, StickyNote, GitBranchPlus, Lightbulb, Loader2, Sprout, LayoutGrid, Rows3, PanelLeftClose, PanelLeftOpen, Repeat, Target } from "lucide-react";
 import { CreateIdeaDialog } from "@/components/project/idea/create-idea-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -587,6 +587,96 @@ function ChapterPopover({ trigger, initial, beatCount, onSave, onDelete }: {
     );
 }
 
+const THREAD_ROLES: Array<{ value: string; label: string; icon: typeof Sprout; cls: string }> = [
+    { value: "seed", label: "หว่าน", icon: Sprout, cls: "text-amber-500" },
+    { value: "reinforce", label: "ย้ำ", icon: Repeat, cls: "text-blue-500" },
+    { value: "payoff", label: "เฉลย", icon: Target, cls: "text-emerald-500" },
+];
+
+// Dialog ผูกปมกับการ์ด — เลือกบทบาท (หว่าน/ย้ำ/เฉลย) แล้วคลิกปม หรือสร้างปมใหม่
+function ThreadBindDialog({ cardTitle, threads, bound, onBind, onCreateAndBind, onUnbind, onClose }: {
+    cardTitle: string;
+    threads: ThreadWithBeats[];
+    bound: Array<{ beatId: string; threadId: string; title: string; color: string | null; role: string }>;
+    onBind: (threadId: string, role: string) => void;
+    onCreateAndBind: (title: string, role: string) => void;
+    onUnbind: (beatId: string, threadId: string) => void;
+    onClose: () => void;
+}) {
+    const [role, setRole] = useState("seed");
+    const [newTitle, setNewTitle] = useState("");
+    const boundThreadIds = new Set(bound.map(b => b.threadId));
+
+    return (
+        <Dialog open onOpenChange={(o) => !o && onClose()}>
+            <DialogContent className="max-w-sm">
+                <DialogHeader>
+                    <DialogTitle className="text-sm flex items-center gap-2">
+                        <Link2 className="w-4 h-4 text-[var(--forge-gold)]" /> ผูกปมกับการ์ด
+                    </DialogTitle>
+                    <DialogDescription className="text-xs truncate">{cardTitle}</DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-3">
+                    {/* ปมที่ผูกอยู่ */}
+                    {bound.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                            {bound.map(b => {
+                                const r = THREAD_ROLES.find(x => x.value === b.role);
+                                const RIcon = r?.icon ?? Sprout;
+                                return (
+                                    <span key={b.beatId} className="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded-full border text-[11px]" style={{ borderColor: (b.color ?? "#f59e0b") + "80" }}>
+                                        <span className="h-2 w-2 rounded-full" style={{ background: b.color ?? "#f59e0b" }} />
+                                        <RIcon className={cn("w-3 h-3", r?.cls)} />
+                                        <span className="truncate max-w-[110px]">{b.title}</span>
+                                        <button onClick={() => onUnbind(b.beatId, b.threadId)} className="text-muted-foreground hover:text-destructive"><X className="w-3 h-3" /></button>
+                                    </span>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {/* เลือกบทบาท */}
+                    <div className="flex gap-1.5">
+                        {THREAD_ROLES.map(r => {
+                            const Icon = r.icon;
+                            return (
+                                <button key={r.value} onClick={() => setRole(r.value)}
+                                    className={cn("flex-1 h-8 rounded border text-xs flex items-center justify-center gap-1 transition-colors",
+                                        role === r.value ? "border-current bg-muted " + r.cls : "border-border/60 text-muted-foreground hover:border-border")}>
+                                    <Icon className="w-3.5 h-3.5" />{r.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* เลือกปมที่มี */}
+                    <div className="flex flex-col gap-1 max-h-[160px] overflow-y-auto">
+                        {threads.length === 0 && <p className="text-[11px] text-muted-foreground text-center py-1">ยังไม่มีปม — สร้างใหม่ด้านล่าง</p>}
+                        {threads.map(t => (
+                            <button key={t.id} onClick={() => onBind(t.id, role)} disabled={boundThreadIds.has(t.id)}
+                                className="flex items-center gap-2 px-2 py-1.5 rounded border text-left text-xs border-border/60 hover:border-border disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                                <span className="h-2 w-2 rounded-full shrink-0" style={{ background: t.color ?? "#f59e0b" }} />
+                                <span className="truncate flex-1">{t.title}</span>
+                                {boundThreadIds.has(t.id) ? <Check className="w-3 h-3 text-emerald-500" /> : <Plus className="w-3 h-3 text-muted-foreground" />}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* สร้างปมใหม่ */}
+                    <div className="flex gap-1.5 pt-1 border-t">
+                        <Input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="สร้างปมใหม่…" className="h-8 text-xs"
+                            onKeyDown={e => { if (e.key === "Enter" && newTitle.trim()) { onCreateAndBind(newTitle.trim(), role); setNewTitle(""); } }} />
+                        <Button size="sm" className="h-8 text-xs" disabled={!newTitle.trim()} onClick={() => { onCreateAndBind(newTitle.trim(), role); setNewTitle(""); }}>
+                            <Plus className="w-3.5 h-3.5 mr-1" />สร้าง+ผูก
+                        </Button>
+                    </div>
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 export function PlaygroundBoard({
     eventId,
     novelId,
@@ -607,6 +697,51 @@ export function PlaygroundBoard({
     // ไอเดียใหม่จะวางที่จังหวะไหน: 'latest' = จังหวะล่าสุด (คอลัมน์ที่มีอยู่) | 'new' = จังหวะใหม่ (คอลัมน์ท้าย)
     const [newIdeaBeat, setNewIdeaBeat] = useState<'latest' | 'new'>('new');
     const [newIdeaLaneId, setNewIdeaLaneId] = useState<string>(''); // '' = เลนแรก
+
+    // ปมเรื่องระดับ card: เก็บ threads เป็น state เพื่ออัปเดต badge ทันทีหลังผูก/ปลด
+    const [threadState, setThreadState] = useState<ThreadWithBeats[]>(threads);
+    const [threadBindItem, setThreadBindItem] = useState<any | null>(null); // card ที่กำลังเปิด dialog ผูกปม
+    // canvasItemId → beats ที่ผูกกับ card นั้นในฉากนี้ (พร้อมข้อมูลปม)
+    const cardBeats = useMemo(() => {
+        const m = new Map<string, Array<{ beatId: string; threadId: string; title: string; color: string | null; role: string }>>();
+        threadState.forEach(t => t.beats.forEach(b => {
+            if (b.eventId !== eventId || !b.canvasItemId) return;
+            const arr = m.get(b.canvasItemId) ?? [];
+            arr.push({ beatId: b.id, threadId: t.id, title: t.title, color: t.color, role: b.role });
+            m.set(b.canvasItemId, arr);
+        }));
+        return m;
+    }, [threadState, eventId]);
+
+    const handleBindThread = useCallback(async (cardId: string, threadId: string, role: string) => {
+        const res = await addBeat({ threadId, eventId, role, canvasItemId: cardId, novelId });
+        if (res.success && res.data) {
+            setThreadState(prev => prev.map(t => t.id === threadId
+                ? { ...t, beats: [...t.beats, { id: res.data.id, eventId, canvasItemId: cardId, role, note: null, orderIndex: null }] }
+                : t));
+            toast.success("ผูกปมกับการ์ดแล้ว");
+        } else toast.error("ผูกปมไม่สำเร็จ");
+    }, [eventId, novelId]);
+
+    const handleUnbindThread = useCallback(async (beatId: string, threadId: string) => {
+        const res = await deleteBeat(beatId, novelId);
+        if (res.success) {
+            setThreadState(prev => prev.map(t => t.id === threadId
+                ? { ...t, beats: t.beats.filter(b => b.id !== beatId) }
+                : t));
+        } else toast.error("ปลดปมไม่สำเร็จ");
+    }, [novelId]);
+
+    const handleCreateAndBind = useCallback(async (cardId: string, title: string, role: string) => {
+        const res = await createThread({ novelId, title });
+        if (!res.success || !res.data) { toast.error("สร้างปมไม่สำเร็จ"); return; }
+        const thread = res.data;
+        setThreadState(prev => [...prev, {
+            id: thread.id, novelId, title: thread.title, type: thread.type, status: thread.status,
+            importance: thread.importance, color: thread.color, note: thread.note, beats: [],
+        }]);
+        await handleBindThread(cardId, thread.id, role);
+    }, [novelId, handleBindThread]);
 
     const [threadSuggest, setThreadSuggest] = useState<{
         ideaTitle: string;
@@ -667,17 +802,18 @@ export function PlaygroundBoard({
         setLinkPositions(next);
     }, []);
 
+    // การ์ดสูงขึ้นหลัง note/children/ancestor โหลด async → ต้องวัดใหม่ ไม่งั้น anchor ค้างที่กึ่งกลางเก่า (เลื่อนไปด้านบน)
     useLayoutEffect(() => {
         recomputePositions();
-    }, [items, lanes_, recomputePositions]);
+    }, [items, lanes_, chapters, ideaNotes, elementDetailsMap, ancestorConnections, recomputePositions]);
 
     useEffect(() => {
-        const container = gridRef.current;
-        if (!container) return;
         const ro = new ResizeObserver(() => recomputePositions());
-        ro.observe(container);
+        if (gridRef.current) ro.observe(gridRef.current);
+        // observe การ์ดแต่ละใบด้วย — ถ้าการ์ดใบเดียวสูงขึ้นแต่ container ไม่โต (มีการ์ดอื่นสูงกว่าในแถว) container RO จะไม่ยิง
+        itemRefs.current.forEach(el => ro.observe(el));
         return () => ro.disconnect();
-    }, [recomputePositions]);
+    }, [recomputePositions, items]);
 
     // จำนวน beat จริง + คอลัมน์ท้ายเปล่าไว้ลาก/วางเพื่อขยาย
     const beatCount = useMemo(
@@ -1365,34 +1501,32 @@ export function PlaygroundBoard({
             inCount.set(e.targetId, (inCount.get(e.targetId) ?? 0) + 1);
             outCount.set(e.sourceId, (outCount.get(e.sourceId) ?? 0) + 1);
         });
-        const beatOf = new Map<string, number>(items.map((i: any) => [i.id, i.beatIndex]));
-
         const GAP = GUTTER_WIDTH / 2; // ระยะบัส (แนวตั้งที่เส้นมารวม) ห่างจากขอบการ์ด
 
-        // clamp Y ให้จุดเข้าอยู่ในตัวการ์ด (เข้าใกล้กลาง ไม่หลุดขอบ)
+        // clamp Y ให้จุดเข้าอยู่ในตัวการ์ด (เข้าใกล้กลาง ไม่หลุดขอบ) — ใช้กับ mergeY ของ chain
         const clampY = (y: number, pos: { y: number; h: number }) =>
             Math.max(pos.y - pos.h / 2 + 10, Math.min(pos.y + pos.h / 2 - 10, y));
 
-        // ถ้าการ์ดสองใบซ้อนกันในแนวตั้ง → คืน Y ที่ทำเส้นตรงแนวนอนได้ (เอียงไปทางการ์ดที่สูงกว่าบนจอ = Y น้อย)
-        // ถ้าไม่ซ้อนเลย → คืน null (ต้องหักมุม)
-        const straightY = (p: { y: number; h: number }, q: { y: number; h: number }): number | null => {
-            const top = Math.max(p.y - p.h / 2, q.y - q.h / 2) + 10;
-            const bot = Math.min(p.y + p.h / 2, q.y + q.h / 2) - 10;
-            if (top > bot) return null;
-            return Math.max(top, Math.min(bot, Math.min(p.y, q.y)));
-        };
-
-        // อะนาล็อกของ clampY/straightY แต่บนแกน X (ใช้กับความสัมพันธ์แนวตั้ง)
-        const clampX = (x: number, pos: { x: number; w: number }) =>
-            Math.max(pos.x - pos.w / 2 + 10, Math.min(pos.x + pos.w / 2 - 10, x));
-        const straightX = (p: { x: number; w: number }, q: { x: number; w: number }): number | null => {
-            const left = Math.max(p.x - p.w / 2, q.x - q.w / 2) + 10;
-            const right = Math.min(p.x + p.w / 2, q.x + q.w / 2) - 10;
-            if (left > right) return null;
-            return Math.max(left, Math.min(right, (p.x + q.x) / 2));
-        };
-
         const avg = (nums: number[]) => nums.reduce((a, b) => a + b, 0) / nums.length;
+
+        // --- occupancy: ดูการ์ดข้างเคียง 4 ทิศ (ซ้าย/ขวา = จังหวะ ±1 เลนเดียว, บน/ล่าง = จังหวะเดียวเลนติดกัน) ---
+        // ฝั่งที่มีการ์ดบัง → ไม่ออก anchor ฝั่งนั้น ย้ายไปฝั่งว่างแทน
+        type Side = 'right' | 'left' | 'up' | 'down';
+        const laneOrder = new Map<string, number>(lanes_.map((l, i) => [l.id, i]));
+        // ทิศที่ควรออก ตัดสินจาก beat/lane จริง (ไม่ใช่พิกเซลกึ่งกลาง ที่เพี้ยนเมื่อการ์ดสูงไม่เท่ากัน)
+        // คนละจังหวะ → แนวนอน; จังหวะเดียวกัน → แนวตั้งตามลำดับเลน
+        const sideToCard = (from: any, to: any): Side => {
+            if (!from || !to) return 'right';
+            if (to.beatIndex !== from.beatIndex) return to.beatIndex > from.beatIndex ? 'right' : 'left';
+            const dl = (laneOrder.get(to.laneId) ?? 0) - (laneOrder.get(from.laneId) ?? 0);
+            return dl >= 0 ? 'down' : 'up';
+        };
+        const SIDE_VEC: Record<Side, [number, number]> = { right: [1, 0], left: [-1, 0], up: [0, -1], down: [0, 1] };
+        const anchorOn = (pos: { x: number; y: number; w: number; h: number }, side: Side) =>
+            side === 'right' ? { x: pos.x + pos.w / 2, y: pos.y }
+                : side === 'left' ? { x: pos.x - pos.w / 2, y: pos.y }
+                    : side === 'up' ? { x: pos.x, y: pos.y - pos.h / 2 }
+                        : { x: pos.x, y: pos.y + pos.h / 2 };
 
         // Y ที่เส้นมารวม: many→1 = เฉลี่ย Y ของ source ทั้งหมด (clamp เข้า target), 1→many = เฉลี่ย Y ของ target (clamp เข้า source)
         const targetMergeY = new Map<string, number>();
@@ -1408,84 +1542,136 @@ export function PlaygroundBoard({
             }
         });
 
-        return edges.map((e) => {
+        const built = edges.map((e) => {
             const converge = (inCount.get(e.targetId) ?? 0) > 1; // รวมเข้า target
             const split = !converge && (outCount.get(e.sourceId) ?? 0) > 1; // แตกจาก source (mirror)
-            const dxc = e.tPos.x - e.sPos.x;
-            const dyc = e.tPos.y - e.sPos.y;
-            const sBeat = beatOf.get(e.sourceId);
-            const tBeat = beatOf.get(e.targetId);
-            const sameBeat = sBeat != null && sBeat === tBeat;
-            // chain (converge/split) เดินแนวนอนเสมอ; 1:1 เลือกทิศตาม dx/dy ที่มากกว่า
-            const horizontal = converge || split || Math.abs(dxc) >= Math.abs(dyc);
+
+            const sItemDbg = items.find((x: any) => x.id === e.sourceId);
+            const tItemDbg = items.find((x: any) => x.id === e.targetId);
+            const dbgName = (it: any) => it ? `"${it.title}"(lane:${laneOrder.get(it.laneId)},beat:${it.beatIndex})` : '?';
+            const dbgHead = `[edge] ${dbgName(sItemDbg)} → ${dbgName(tItemDbg)} kind:${e.link.kind}`;
+            // log เฉพาะเส้นที่แตะ node ซึ่งมีทั้งลูกศรเข้า (เป็น target) และออก (เป็น source)
+            const isJunction = (id: string) => (inCount.get(id) ?? 0) > 0 && (outCount.get(id) ?? 0) > 0;
+            const clog = (s: string) => { if (isJunction(e.sourceId) || isJunction(e.targetId)) console.log(s); };
 
             let points: Array<{ x: number; y: number }>;
-            if (!converge && !split && sameBeat) {
-                // จังหวะเดียวกัน (คอลัมน์เดียวกัน) → วนบัสออกทางขวาของทั้งคู่ ไม่งอกลับซ้าย
-                const aX = e.sPos.x + e.sPos.w / 2;
-                const bX = e.tPos.x + e.tPos.w / 2;
-                const busX = Math.max(aX, bX) + GAP;
-                const aY = e.sPos.y;
-                const bY = e.tPos.y;
-                points = [
-                    { x: aX, y: aY },
-                    { x: busX, y: aY },
-                    { x: busX, y: bY },
-                    { x: bX, y: bY },
-                ];
-            } else if (horizontal) {
-                // ---- แนวนอน: ออกซ้าย/ขวา บัสแนวตั้ง ----
-                const dir = dxc >= 0 ? 1 : -1;
+            if (converge || split) {
+                // chain รวม/แตก: บัสแนวตั้งที่ระดับ mergeY (คงพฤติกรรมเดิม)
+                const dir = e.tPos.x >= e.sPos.x ? 1 : -1;
                 const aX = e.sPos.x + dir * e.sPos.w / 2;
                 const bX = e.tPos.x - dir * e.tPos.w / 2;
                 let busX: number, aY: number, bY: number;
-                if (converge) {
-                    busX = bX - dir * GAP;
-                    aY = e.sPos.y;
-                    bY = targetMergeY.get(e.targetId)!;
-                } else if (split) {
-                    busX = aX + dir * GAP;
-                    aY = sourceMergeY.get(e.sourceId)!;
-                    bY = e.tPos.y;
-                } else {
-                    busX = (aX + bX) / 2;
-                    const sy = straightY(e.sPos, e.tPos);
-                    if (sy != null) { aY = sy; bY = sy; }
-                    else { aY = e.sPos.y; bY = clampY(e.tPos.y, e.tPos); }
-                }
-                points = [
-                    { x: aX, y: aY },
-                    { x: busX, y: aY },
-                    { x: busX, y: bY },
-                    { x: bX, y: bY },
-                ];
+                if (converge) { busX = bX - dir * GAP; aY = e.sPos.y; bY = targetMergeY.get(e.targetId)!; }
+                else { busX = aX + dir * GAP; aY = sourceMergeY.get(e.sourceId)!; bY = e.tPos.y; }
+                points = [{ x: aX, y: aY }, { x: busX, y: aY }, { x: busX, y: bY }, { x: bX, y: bY }];
+                clog(`🔗 ${dbgHead}\n  branch: ${converge ? 'CONVERGE (many→1)' : 'SPLIT (1→many)'} in:${inCount.get(e.targetId)} out:${outCount.get(e.sourceId)}`
+                    + `\n  ${converge ? `mergeY(target)=avg(source Ys)=${targetMergeY.get(e.targetId)?.toFixed(1)} | source center y=${e.sPos.y.toFixed(1)}`
+                        : `mergeY(source)=avg(target Ys)=${sourceMergeY.get(e.sourceId)?.toFixed(1)} | source center y=${e.sPos.y.toFixed(1)}`}`
+                    + `\n  start:(${points[0].x.toFixed(0)},${points[0].y.toFixed(0)}) busX:${busX.toFixed(0)} end:(${points[3].x.toFixed(0)},${points[3].y.toFixed(0)})`);
+            } else if (sItemDbg && tItemDbg && sItemDbg.beatIndex === tItemDbg.beatIndex) {
+                // จังหวะเดียวกัน (คอลัมน์เดียว) → ออกขวาทั้งคู่ แล้ววิ่งบัสในร่อง gutter ด้านขวา
+                // ไม่ลากดิ่งผ่ากลางคอลัมน์ (จะทับการ์ดที่คั่นอยู่ระหว่าง source กับ target)
+                const aX = e.sPos.x + e.sPos.w / 2;
+                const bX = e.tPos.x + e.tPos.w / 2;
+                const busX = Math.max(aX, bX) + GAP;
+                // เยื้อง anchor เข้าหาการ์ดที่เชื่อม: จุดออกไปทาง target, จุดเข้ามาจากทาง source
+                // กันไม่ให้ต้นศร (ออก) กับหัวศร (เข้า) ของการ์ดกลางตกจุดเดียวกัน
+                const OFF = 14;
+                const psY = clampY(e.sPos.y + Math.sign(e.tPos.y - e.sPos.y || 1) * OFF, e.sPos);
+                const ptY = clampY(e.tPos.y + Math.sign(e.sPos.y - e.tPos.y || -1) * OFF, e.tPos);
+                const ps = { x: aX, y: psY };
+                const pt = { x: bX, y: ptY };
+                points = [ps, { x: busX, y: psY }, { x: busX, y: ptY }, pt];
+                clog(`🔗 ${dbgHead}\n  branch: SAME-BEAT (คอลัมน์เดียว) → วนบัสขวา busX:${busX.toFixed(0)}`
+                    + `\n  anchor:(${ps.x.toFixed(0)},${ps.y.toFixed(0)})→(${pt.x.toFixed(0)},${pt.y.toFixed(0)}) points: ${points.map(p => `(${p.x.toFixed(0)},${p.y.toFixed(0)})`).join(' → ')}`);
             } else {
-                // ---- แนวตั้ง: ออกบน/ล่าง บัสแนวนอน (เช่น "เกิดพร้อมกัน" คนละเลนจังหวะเดียว) ----
-                const dir = dyc >= 0 ? 1 : -1;
-                const aY = e.sPos.y + dir * e.sPos.h / 2;
-                const bY = e.tPos.y - dir * e.tPos.h / 2;
-                const busY = (aY + bY) / 2;
-                const sx = straightX(e.sPos, e.tPos);
-                let aX: number, bX: number;
-                if (sx != null) { aX = sx; bX = sx; }
-                else { aX = e.sPos.x; bX = clampX(e.tPos.x, e.tPos); }
-                points = [
-                    { x: aX, y: aY },
-                    { x: aX, y: busY },
-                    { x: bX, y: busY },
-                    { x: bX, y: bY },
-                ];
+                // cross-beat = แนวนอน → ถ้ากึ่งกลาง y ต่างกัน เฉลี่ยแล้วลากเส้นตรง (ต้องซ้อน y กัน); ไม่ซ้อนค่อยหักมุม
+                const sSide = sideToCard(sItemDbg, tItemDbg);
+                const tSide = sideToCard(tItemDbg, sItemDbg);
+                const ax = anchorOn(e.sPos, sSide).x;
+                const bx = anchorOn(e.tPos, tSide).x;
+                const overlapTop = Math.max(e.sPos.y - e.sPos.h / 2, e.tPos.y - e.tPos.h / 2) + 10;
+                const overlapBot = Math.min(e.sPos.y + e.sPos.h / 2, e.tPos.y + e.tPos.h / 2) - 10;
+                let straight = false;
+                if (overlapTop <= overlapBot) {
+                    // การ์ดซ้อน y กัน → ลากตรงที่ y เฉลี่ย (clamp เข้าโซนซ้อน กัน anchor หลุดขอบ)
+                    const y = Math.max(overlapTop, Math.min(overlapBot, (e.sPos.y + e.tPos.y) / 2));
+                    points = [{ x: ax, y }, { x: bx, y }];
+                    straight = true;
+                } else {
+                    // ไม่ซ้อน y เลย → หักมุมฉาก
+                    const ps = anchorOn(e.sPos, sSide);
+                    const pt = anchorOn(e.tPos, tSide);
+                    const s1 = { x: ps.x + SIDE_VEC[sSide][0] * GAP, y: ps.y };
+                    const t1 = { x: pt.x + SIDE_VEC[tSide][0] * GAP, y: pt.y };
+                    points = [ps, s1, { x: t1.x, y: s1.y }, t1, pt];
+                }
+                clog(`🔗 ${dbgHead}\n  branch: 1:1 ${straight ? 'STRAIGHT (เฉลี่ย y)' : 'ELBOW (การ์ดไม่ซ้อน y)'} sides:${sSide}/${tSide}`
+                    + `\n  source center y:${e.sPos.y.toFixed(0)} target center y:${e.tPos.y.toFixed(0)} → ${straight ? `เส้นตรง y:${points[0].y.toFixed(0)}` : 'หักมุม'}`
+                    + `\n  points: ${points.map(p => `(${p.x.toFixed(0)},${p.y.toFixed(0)})`).join(' → ')}`);
             }
 
-            return (
-                <OrthoLine
-                    key={`${e.sourceId}-${e.targetId}`}
-                    points={points}
-                    kind={e.link.kind} label={e.link.label}
-                    onClick={() => setEditingLink({ sourceId: e.sourceId, targetId: e.targetId })}
-                />
-            );
+            // ถ้าหัวลูกศร (จุดสุดท้าย) ตกทับกรอบการ์ดอื่น (ไม่ใช่ต้น/ปลายทาง) → ขยับ y ออก
+            // ทิศขยับอ้างอิง source: source อยู่บน (y น้อยกว่า) → ขยับขึ้น, อยู่ล่าง → ขยับลง
+            const tip = points[points.length - 1];
+            const hit = [...linkPositions.entries()].find(([id, p]) =>
+                id !== e.sourceId && id !== e.targetId &&
+                tip.x > p.x - p.w / 2 && tip.x < p.x + p.w / 2 &&
+                tip.y > p.y - p.h / 2 && tip.y < p.y + p.h / 2);
+            if (hit) {
+                const p = hit[1];
+                const sourceAbove = e.sPos.y < e.tPos.y;
+                const newY = sourceAbove ? p.y - p.h / 2 - 8 : p.y + p.h / 2 + 8;
+                points[points.length - 1] = { x: tip.x, y: newY };
+                points[points.length - 2] = { x: points[points.length - 2].x, y: newY };
+                const sName = items.find((x: any) => x.id === hit[0])?.title;
+                clog(`🔗 ↳ หัวลูกศรทับการ์ด "${sName}" → ขยับ${sourceAbove ? 'ขึ้น' : 'ลง'} เป็น y:${newY.toFixed(0)}`);
+            }
+
+            return { e, points };
         });
+
+        // จัด track: เส้นแนวตั้งที่วิ่งในร่องเดียวกัน (x ใกล้กัน + y ซ้อน) → ดันให้ห่างกันขั้นต่ำ ไม่ทับ
+        const MIN_GUTTER_GAP = 16;
+        const vsegs: Array<{ pathIdx: number; i: number; x: number; y0: number; y1: number }> = [];
+        built.forEach((b, pathIdx) => {
+            for (let i = 0; i < b.points.length - 1; i++) {
+                const a = b.points[i], c = b.points[i + 1];
+                if (Math.abs(a.x - c.x) < 0.5 && Math.abs(a.y - c.y) > 1)
+                    vsegs.push({ pathIdx, i, x: a.x, y0: Math.min(a.y, c.y), y1: Math.max(a.y, c.y) });
+            }
+        });
+        vsegs.sort((a, b) => a.x - b.x || a.y0 - b.y0);
+        const placed: Array<{ x: number; y0: number; y1: number }> = [];
+        vsegs.forEach(v => {
+            let x = v.x;
+            let bump = true;
+            while (bump) {
+                bump = false;
+                for (const p of placed) {
+                    if (v.y0 < p.y1 && v.y1 > p.y0 && Math.abs(x - p.x) < MIN_GUTTER_GAP) {
+                        x = p.x + MIN_GUTTER_GAP;
+                        bump = true;
+                    }
+                }
+            }
+            const dx = x - v.x;
+            if (dx !== 0) {
+                const pts = built[v.pathIdx].points;
+                pts[v.i] = { ...pts[v.i], x: pts[v.i].x + dx };
+                pts[v.i + 1] = { ...pts[v.i + 1], x: pts[v.i + 1].x + dx };
+            }
+            placed.push({ x, y0: v.y0, y1: v.y1 });
+        });
+
+        return built.map(({ e, points }) => (
+            <OrthoLine
+                key={`${e.sourceId}-${e.targetId}`}
+                points={points}
+                kind={e.link.kind} label={e.link.label}
+                onClick={() => setEditingLink({ sourceId: e.sourceId, targetId: e.targetId })}
+            />
+        ));
     })();
 
     const ancestorLines = ancestorConnections.map(conn => {
@@ -1854,6 +2040,8 @@ export function PlaygroundBoard({
                                                         onDetailSaved={handleDetailSaved}
                                                         onSetColor={(c) => handleSetColor(item.id, c)}
                                                         onSetKeyMoment={item.type === 'idea' ? (label) => handleSetKeyMoment(item.id, label) : undefined}
+                                                        threadBeats={item.type === 'idea' ? (cardBeats.get(item.id) ?? []) : undefined}
+                                                        onOpenThreadBind={item.type === 'idea' ? () => setThreadBindItem(item) : undefined}
                                                         onMeasureRef={registerItemRef}
                                                     />
                                                 ))}
@@ -1926,7 +2114,18 @@ export function PlaygroundBoard({
                 );
             })()}
 
-            {/* Idea Note Dialog */}
+            {/* ผูกปมกับการ์ด */}
+            {threadBindItem && (
+                <ThreadBindDialog
+                    cardTitle={threadBindItem.title || "การ์ดนี้"}
+                    threads={threadState}
+                    bound={cardBeats.get(threadBindItem.id) ?? []}
+                    onBind={(threadId, role) => handleBindThread(threadBindItem.id, threadId, role)}
+                    onCreateAndBind={(title, role) => handleCreateAndBind(threadBindItem.id, title, role)}
+                    onUnbind={handleUnbindThread}
+                    onClose={() => setThreadBindItem(null)}
+                />
+            )}
 
             {/* Ancestor Idea Dialog */}
             <Dialog open={!!ancestorDialogItem} onOpenChange={(open) => !open && setAncestorDialogItem(null)}>

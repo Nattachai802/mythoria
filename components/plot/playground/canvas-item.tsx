@@ -48,6 +48,8 @@ export function DraggableCanvasItem({
   onDetailSaved,
   onSetColor,
   onSetKeyMoment,
+  threadBeats,
+  onOpenThreadBind,
   onMeasureRef,
   isConnectSource,
   isConnectTarget,
@@ -56,6 +58,8 @@ export function DraggableCanvasItem({
   onRemove: () => void;
   onSetColor?: (color: string | null) => void;
   onSetKeyMoment?: (label: string | null) => void;
+  threadBeats?: Array<{ beatId: string; threadId: string; title: string; color: string | null; role: string }>;
+  onOpenThreadBind?: () => void;
   onMeasureRef?: (id: string, el: HTMLDivElement | null) => void;
   onRemoveChild?: (id: string) => void;
   onLinkStart?: (id: string) => void;
@@ -177,6 +181,8 @@ export function DraggableCanvasItem({
         onDetailSaved={onDetailSaved}
         onSetColor={onSetColor}
         onSetKeyMoment={onSetKeyMoment}
+        threadBeats={threadBeats}
+        onOpenThreadBind={onOpenThreadBind}
       />
     </div>
   );
@@ -316,10 +322,14 @@ export function CanvasItem({
   onDetailSaved,
   onSetColor,
   onSetKeyMoment,
+  threadBeats,
+  onOpenThreadBind,
 }: {
   item: any;
   onSetColor?: (color: string | null) => void;
   onSetKeyMoment?: (label: string | null) => void;
+  threadBeats?: Array<{ beatId: string; threadId: string; title: string; color: string | null; role: string }>;
+  onOpenThreadBind?: () => void;
   onRemove?: () => void;
   onRemoveChild?: (id: string) => void;
   isDragging?: boolean;
@@ -682,6 +692,29 @@ Sticky Notes: ${stickyNotes}`;
                   <Pencil className="w-3 h-3 text-amber-900/50 shrink-0 opacity-0 group-hover/km:opacity-100 transition-opacity" />
                 </button>
               ) : null}
+
+              {/* ปมเรื่องที่ผูกกับการ์ดนี้ */}
+              {isContainer && threadBeats && threadBeats.length > 0 && (
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {threadBeats.map(b => {
+                    const roleLabel = b.role === 'seed' ? 'หว่าน' : b.role === 'reinforce' ? 'ย้ำ' : b.role === 'payoff' ? 'เฉลย' : b.role;
+                    return (
+                      <button
+                        key={b.beatId}
+                        onClick={(e) => { e.stopPropagation(); onOpenThreadBind?.(); }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        className="inline-flex items-center gap-1 pl-1 pr-1.5 py-0.5 rounded-full border text-[10px] font-medium hover:brightness-95 transition"
+                        style={{ borderColor: (b.color ?? '#f59e0b') + '66', background: (b.color ?? '#f59e0b') + '1a', color: b.color ?? '#b45309' }}
+                        title={`ปม: ${b.title} · ${roleLabel}`}
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: b.color ?? '#f59e0b' }} />
+                        <span className="truncate max-w-[110px]">{b.title}</span>
+                        <span className="opacity-70">· {roleLabel}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Actions */}
@@ -730,6 +763,14 @@ Sticky Notes: ${stickyNotes}`;
                     <DropdownMenuItem onSelect={() => { setKeyMomentDraft(item.keyMomentLabel || ""); setEditingKeyMoment(true); }}>
                       <Star className="w-3.5 h-3.5 mr-2" />
                       {item.keyMomentLabel ? 'แก้ไขเหตุการณ์สำคัญ' : 'ทำเครื่องหมายเหตุการณ์สำคัญ'}
+                    </DropdownMenuItem>
+                  )}
+
+                  {/* ผูกปมเรื่อง (idea only) */}
+                  {isContainer && onOpenThreadBind && (
+                    <DropdownMenuItem onSelect={() => onOpenThreadBind()}>
+                      <LinkIcon className="w-3.5 h-3.5 mr-2" />
+                      {threadBeats && threadBeats.length > 0 ? 'จัดการปมที่ผูก' : 'ผูกปมเรื่อง'}
                     </DropdownMenuItem>
                   )}
 
