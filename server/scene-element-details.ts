@@ -1,7 +1,7 @@
 "use server"
 
 import { db } from "@/db/drizzle";
-import { sceneElementDetails, InsertSceneElementDetails, SceneElementDetails } from "@/db/schema";
+import { sceneElementDetails, timelineEvents, InsertSceneElementDetails, SceneElementDetails } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
@@ -172,6 +172,99 @@ export async function upsertSceneElementDetail(data: {
     } catch (error) {
         console.error("Error upserting scene element detail:", error);
         return { success: false, error: "Failed to save element detail" };
+    }
+}
+
+/**
+ * Promote dummy → ตัวจริง: ย้าย detail rows ของ dummy (elementId = child.id) ไปเป็นตัวละคร/ฝ่ายจริง
+ * dummyElementIds = child.id ของทุก instance ในฉาก (client รวบรวมจาก canvasData)
+ * ponytail: ไม่ merge กับ detail ของตัวจริงที่อาจมีอยู่แล้วในการ์ดเดียวกัน — เคสหายาก, เว้นไว้
+ */
+export async function promoteDummy(data: {
+    sceneId: string;
+    novelId: string;
+    fromType: "dummy_character" | "dummy_faction";
+    toType: "character" | "faction";
+    dummyElementIds: string[];
+    realId: string;
+}) {
+    try {
+        if (data.dummyElementIds.length > 0) {
+            await db
+                .update(sceneElementDetails)
+                .set({ elementType: data.toType, elementId: data.realId, updatedAt: new Date() })
+                .where(and(
+                    eq(sceneElementDetails.sceneId, data.sceneId),
+                    eq(sceneElementDetails.elementType, data.fromType),
+                    inArray(sceneElementDetails.elementId, data.dummyElementIds),
+                ));
+        }
+        revalidatePath(`/dashboard/project/${data.novelId}/plot/${data.sceneId}`);
+        return { success: true };
+    } catch (error) {
+        console.error("promoteDummy error:", error);
+        return { success: false, error: "แปลง dummy เป็นตัวจริงไม่สำเร็จ" };
+    }
+}
+
+/**
+ * Promote dummy → ตัวจริง "ทุกฉาก" ของนิยาย: แก้ canvasData + migrate detail ทุกฉากที่มี dummy ชื่อ+ชนิดเดียวกัน
+ * excludeSceneId = ฉากที่ client จัดการเอง (กันเขียนทับฉากที่กำลังแก้อยู่)
+ */
+export async function promoteDummyAllScenes(data: {
+    novelId: string;
+    excludeSceneId?: string;
+    dummyTitle: string;
+    fromType: "dummy_character" | "dummy_faction";
+    toType: "character" | "faction";
+    realId: string;
+    realName: string;
+}) {
+    try {
+        const events = await db.query.timelineEvents.findMany({
+            where: eq(timelineEvents.novelId, data.novelId),
+            columns: { id: true, canvasData: true },
+        });
+        let scenesAffected = 0;
+        for (const ev of events) {
+            if (data.excludeSceneId && ev.id === data.excludeSceneId) continue;
+            const canvas = (ev.canvasData as any[]) || [];
+            const dummyIds: string[] = [];
+            let changed = false;
+            const newCanvas = canvas.map((node: any) => {
+                if (!node?.children || !Array.isArray(node.children)) return node;
+                let nodeChanged = false;
+                const children = node.children.map((ch: any) => {
+                    if (ch?.type === data.fromType && ch?.title === data.dummyTitle) {
+                        dummyIds.push(ch.id);
+                        nodeChanged = true;
+                        return { ...ch, type: data.toType, referenceId: data.realId, title: data.realName };
+                    }
+                    return ch;
+                });
+                if (nodeChanged) { changed = true; return { ...node, children }; }
+                return node;
+            });
+            if (!changed) continue;
+            await db.update(timelineEvents)
+                .set({ canvasData: newCanvas, updatedAt: new Date() })
+                .where(eq(timelineEvents.id, ev.id));
+            if (dummyIds.length > 0) {
+                await db.update(sceneElementDetails)
+                    .set({ elementType: data.toType, elementId: data.realId, updatedAt: new Date() })
+                    .where(and(
+                        eq(sceneElementDetails.sceneId, ev.id),
+                        eq(sceneElementDetails.elementType, data.fromType),
+                        inArray(sceneElementDetails.elementId, dummyIds),
+                    ));
+            }
+            scenesAffected++;
+            revalidatePath(`/dashboard/project/${data.novelId}/plot/${ev.id}`);
+        }
+        return { success: true, scenesAffected };
+    } catch (error) {
+        console.error("promoteDummyAllScenes error:", error);
+        return { success: false, error: "แปลง dummy ข้ามฉากไม่สำเร็จ", scenesAffected: 0 };
     }
 }
 

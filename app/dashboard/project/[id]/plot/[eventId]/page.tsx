@@ -71,6 +71,7 @@ export default async function PlotPlaygroundPage({
         <PlaygroundBoard
           eventId={eventId}
           novelId={novelId}
+          event={eventRes.event}
           initialItems={initialCanvasData as any[]}
           characters={charactersRes.data || []}
           locations={locationsRes.data || []}

@@ -121,17 +121,21 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
     canvasItems.forEach((item: any) => {
         if (item.children && Array.isArray(item.children)) {
             item.children.forEach((child: any) => {
-                const targetId = child.referenceId || child.id;
-                const detail = elementDetails.find((d: any) => 
-                    d.canvasItemId === item.id && 
-                    d.elementId === targetId &&
+                const detail = elementDetails.find((d: any) =>
+                    d.canvasItemId === item.id &&
+                    d.elementId === (child.referenceId || child.id) &&
                     d.elementType === child.type
                 );
-                
-                const key = `${child.type}-${targetId}`;
-                
+
                 if (child.type === 'character' || child.type === 'dummy_character') {
-                    const realChar = child.type === 'character' ? characters.find(c => c.id === targetId) : null;
+                    // ตัวละครจริง: ยึด "ตัวตนจริง" เป็น key — referenceId ก่อน, ถ้าหายค่อย match ด้วยชื่อ
+                    // ป้องกันพระเอกในหลายการ์ดถูกนับเป็นคนละตัวเมื่อ child.referenceId หลุด (ตกไปใช้ child.id ที่ไม่ซ้ำ)
+                    const realChar = child.type === 'character'
+                        ? (characters.find(c => c.id === child.referenceId) || characters.find(c => c.name === child.title))
+                        : null;
+                    // dummy ไม่มี referenceId → ยุบด้วยชื่อ (dummy ชื่อเดียวกันในหลายการ์ด = ตัวเดียวในสรุปฉาก)
+                    const identity = realChar ? realChar.id : (child.referenceId || child.title || child.id);
+                    const key = `character-${identity}`;
                     const existing = uniqueCharsMap.get(key);
                     const actionText = detail?.action ? `${detail.action}` : '';
                     
@@ -149,6 +153,9 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
                         });
                     }
                 } else if (child.type === 'faction' || child.type === 'dummy_faction') {
+                    // กลุ่มฝ่ายจริง: ยึด referenceId ก่อน ถ้าหายค่อยชื่อ (กันนับซ้ำเหมือนตัวละคร)
+                    const identity = child.referenceId || child.title || child.id;
+                    const key = `faction-${identity}`;
                     const existing = uniqueFactionsMap.get(key);
                     const actionText = detail?.action ? `${detail.action}` : '';
                     
@@ -321,7 +328,9 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
                                     <Tooltip>
                                         <TooltipTrigger asChild>
                                             <span
-                                                className="h-2 w-2 chamfered-sm shrink-0 cursor-default transition-transform hover:scale-110"
+                                                role="img"
+                                                aria-label={`ปม: ${dot.title}`}
+                                                className="h-2 w-2 chamfered-sm shrink-0 cursor-default transition-transform hover:scale-110 motion-reduce:transition-none"
                                                 style={{
                                                     background: dot.color,
                                                     boxShadow: `0 0 5px ${dot.color}66`,
@@ -334,6 +343,11 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
                                     </Tooltip>
                                 </TooltipProvider>
                             ))}
+                            {threadDots.length > 5 && (
+                                <span className="text-[9px] font-medium text-muted-foreground tabular-nums" aria-label={`และอีก ${threadDots.length - 5} ปม`}>
+                                    +{threadDots.length - 5}
+                                </span>
+                            )}
                         </div>
                     )}
 

@@ -17,7 +17,7 @@ import { ResourceSidebar } from "./resource-sidebar";
 import { CanvasItem, DraggableCanvasItem } from "./canvas-item";
 import { updateTimelineCanvas } from "@/server/timeline";
 import { updateIdea } from "@/server/idea"; // For auto-reset isUsed flag
-import { getSceneElementDetails, getIdeaNotesForIdeas } from "@/server/scene-element-details";
+import { getSceneElementDetails, getIdeaNotesForIdeas, promoteDummy, promoteDummyAllScenes } from "@/server/scene-element-details";
 import { addBeat, createThread, deleteBeat } from "@/server/plot-threads";
 import type { ThreadWithBeats } from "@/server/plot-threads";
 import { SceneElementDetailDialog } from "./scene-element-detail-dialog";
@@ -25,7 +25,7 @@ import { SceneElementDetails } from "@/db/schema";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Save, Link2, X, Check, Download, List, Navigation, SkipBack, SkipForward, StickyNote, GitBranchPlus, Lightbulb, Loader2, Sprout, LayoutGrid, Rows3, PanelLeftClose, PanelLeftOpen, Repeat, Target } from "lucide-react";
+import { Plus, Save, Link2, X, Check, Download, List, Navigation, SkipBack, SkipForward, StickyNote, GitBranchPlus, Lightbulb, Loader2, Sprout, LayoutGrid, Rows3, PanelLeftClose, PanelLeftOpen, Repeat, Target, FileText } from "lucide-react";
 import { CreateIdeaDialog } from "@/components/project/idea/create-idea-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -35,6 +35,7 @@ interface PlaygroundBoardProps {
     eventId: string;
     novelId: string;
     initialItems: any[];
+    event?: any; // timelineEvent เต็ม — ใช้ดึงฟิลด์ดราม่า (goal/conflict/outcome/POV/เหตุ-ผล) ตอน export
     characters: any[];
     locations: any[];
     ideas: any[];
@@ -681,6 +682,7 @@ export function PlaygroundBoard({
     eventId,
     novelId,
     initialItems,
+    event,
     characters,
     locations,
     ideas,
@@ -821,6 +823,11 @@ export function PlaygroundBoard({
         [items]
     );
     const totalColumns = beatCount + 1;
+
+    // ยังไม่มีจังหวะในฉาก → เลือกได้แค่ "จังหวะใหม่"
+    useEffect(() => {
+        if (beatCount === 0 && newIdeaBeat !== 'new') setNewIdeaBeat('new');
+    }, [beatCount, newIdeaBeat]);
 
     // ---- "ตอน" — กรอบครอบช่วงจังหวะ (กำหนดผ่าน dialog เริ่ม–จบ) ----
     const chapterRanges = useMemo(() => {
@@ -1156,6 +1163,58 @@ export function PlaygroundBoard({
         ));
     }, []);
 
+    // แปลง dummy → ตัวจริง: เปลี่ยน dummy ชื่อเดียวกันทุก instance ในฉากให้ชี้ตัวละคร/ฝ่ายจริง + ย้าย detail
+    // ผู้ใช้ไม่ต้องมาผูก participant ใหม่ (action/role เดิมตามไปด้วย)
+    const handlePromoteDummy = useCallback(async (dummy: any, realId: string, scope: "scene" | "all" = "scene") => {
+        const isFaction = dummy.type === "dummy_faction";
+        const toType = isFaction ? "faction" : "character";
+        const real = (isFaction ? factions : characters).find((e: any) => e.id === realId);
+        if (!real) { toast.error("ไม่พบตัวจริง"); return; }
+
+        // รวบรวม child.id ของ dummy ชื่อเดียวกันทุกการ์ด (ไว้ย้าย detail rows)
+        const dummyElementIds: string[] = [];
+        items.forEach((it: any) => (it.children || []).forEach((ch: any) => {
+            if (ch.type === dummy.type && ch.title === dummy.title) dummyElementIds.push(ch.id);
+        }));
+
+        // แปลง children ใน state (autosave 2s จะ persist canvasData ให้เอง)
+        setItems(prev => prev.map((it: any) => ({
+            ...it,
+            children: (it.children || []).map((ch: any) =>
+                (ch.type === dummy.type && ch.title === dummy.title)
+                    ? { ...ch, type: toType, referenceId: realId, title: real.name }
+                    : ch),
+        })));
+
+        const res = await promoteDummy({ sceneId: eventId, novelId, fromType: dummy.type, toType, dummyElementIds, realId });
+        if (!res.success) { toast.error(res.error || "แปลงไม่สำเร็จ"); return; }
+
+        // โหลด detail map ใหม่ (elementId เปลี่ยนจาก child.id → realId)
+        const dres = await getSceneElementDetails(eventId);
+        if (dres.success && dres.data) {
+            const map = new Map<string, SceneElementDetails>();
+            const notes: SceneElementDetails[] = [];
+            dres.data.forEach(d => {
+                if (d.elementType === "idea_note") notes.push(d);
+                else map.set(`${d.canvasItemId}-${d.elementType}-${d.elementId}`, d);
+            });
+            setElementDetailsMap(map);
+            setIdeaNotes(notes);
+        }
+
+        // ทุกฉาก: ให้ server แปลง dummy ชื่อเดียวกันในฉากอื่นทั้งหมด (ยกเว้นฉากนี้ที่ทำไปแล้ว)
+        if (scope === "all") {
+            const res2 = await promoteDummyAllScenes({
+                novelId, excludeSceneId: eventId, dummyTitle: dummy.title,
+                fromType: dummy.type, toType, realId, realName: real.name,
+            });
+            if (res2.success) toast.success(`แปลงเป็น "${real.name}" แล้ว · อีก ${res2.scenesAffected} ฉากอื่น`);
+            else toast.error(res2.error || "แปลงข้ามฉากบางส่วนไม่สำเร็จ");
+            return;
+        }
+        toast.success(`แปลงเป็น "${real.name}" แล้ว`);
+    }, [items, characters, factions, eventId, novelId]);
+
     // เรียงลำดับ beat ตาม chain "นำไปสู่" (คงเลนเดิม แค่ปรับคอลัมน์)
     const handleAutoArrange = () => {
         if (items.length === 0) return;
@@ -1423,23 +1482,49 @@ export function PlaygroundBoard({
     }, [lanes_, beatCount]);
 
     const handleExport = () => {
+        // จัดกลุ่ม note (idea_note) ตามการ์ด
+        const notesByItem = new Map<string, SceneElementDetails[]>();
+        ideaNotes.forEach(n => {
+            if (!n.canvasItemId) return;
+            const arr = notesByItem.get(n.canvasItemId) ?? [];
+            arr.push(n);
+            notesByItem.set(n.canvasItemId, arr);
+        });
+
         const exportData = {
             exportedAt: new Date().toISOString(),
             novelId,
             eventId,
             totalItems: items.length,
+            chapters,          // ตอน (ช่วงจังหวะ)
             lanes: lanes_,
             items: items.map(item => ({
                 id: item.id,
                 type: item.type,
                 title: item.title,
                 content: item.content,
+                color: item.color ?? null,
+                keyMomentLabel: item.keyMomentLabel ?? null,
+                referenceId: item.referenceId ?? null,
                 laneId: item.laneId,
                 beatIndex: item.beatIndex,
                 links: item.links,
                 children: item.children?.map((child: any) => ({
-                    id: child.id, type: child.type, title: child.title, content: child.content, referenceId: child.referenceId
-                }))
+                    id: child.id, type: child.type, title: child.title, content: child.content, referenceId: child.referenceId,
+                    // รายละเอียดฉากของ element ลูก (บทบาท/สถานะ ฯลฯ)
+                    detail: elementDetailsMap.get(`${item.id}-${child.type}-${child.referenceId || child.id}`) ?? null,
+                })),
+                // ปมเรื่องที่ผูกกับการ์ดนี้ในฉากนี้
+                threads: (cardBeats.get(item.id) ?? []).map(b => ({ threadId: b.threadId, title: b.title, role: b.role, color: b.color })),
+                // โน้ตบนการ์ด
+                notes: notesByItem.get(item.id) ?? [],
+            })),
+            // เส้น "ทำไมถึงทำแบบนี้" (ancestor / เหตุผล)
+            ancestorConnections,
+            // ปมเรื่องทั้งหมดของนิยาย (พร้อม beats ทุกจุด)
+            threads: threadState.map(t => ({
+                id: t.id, title: t.title, type: t.type, status: t.status, importance: t.importance, color: t.color, note: t.note,
+                beats: t.beats.map(b => ({ id: b.id, eventId: b.eventId, canvasItemId: b.canvasItemId, role: b.role, note: b.note })),
             })),
         };
         const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
@@ -1452,6 +1537,82 @@ export function PlaygroundBoard({
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
         toast.success('Export Playground สำเร็จ!');
+    };
+
+    // Export Markdown — อ่านง่าย + AI-friendly: เรียงตาม beat→lane, ความสัมพันธ์เขียนเป็นคำ
+    const handleExportMarkdown = () => {
+        const ROLE_LABEL: Record<string, string> = { seed: "🌱 หว่าน", reinforce: "🔁 ย้ำ", payoff: "🎯 เฉลย" };
+        const OUTCOME_LABEL: Record<string, string> = { success: "สำเร็จ", failure: "ล้มเหลว", ongoing: "ยังไม่จบ", unknown: "ไม่แน่ชัด" };
+        const laneName = new Map(lanes_.map(l => [l.id, l.name]));
+        const laneOrder = new Map(lanes_.map((l, i) => [l.id, i]));
+        const titleById = new Map<string, string>(items.map(i => [i.id, i.title || "(ไม่มีชื่อ)"]));
+        const notesByItem = new Map<string, SceneElementDetails[]>();
+        ideaNotes.forEach(n => {
+            if (!n.canvasItemId) return;
+            const a = notesByItem.get(n.canvasItemId) ?? [];
+            a.push(n); notesByItem.set(n.canvasItemId, a);
+        });
+
+        const L: string[] = [];
+        L.push(`# ฉาก: ${event?.title || "(ไม่มีชื่อ)"}`);
+        if (event?.description) L.push("", event.description);
+
+        const drama: string[] = [];
+        if (event?.sceneGoal) drama.push(`**เป้าหมาย:** ${event.sceneGoal}`);
+        if (event?.sceneConflict) drama.push(`**อุปสรรค:** ${event.sceneConflict}`);
+        if (event?.sceneOutcome) drama.push(`**ผล:** ${OUTCOME_LABEL[event.sceneOutcome] ?? event.sceneOutcome}`);
+        if (drama.length) L.push("", drama.join(" · "));
+        if (event?.causeKind) {
+            const w = event.causeKind === "therefore" ? "ดังนั้น (therefore)" : "แต่ว่า (but)";
+            L.push("", `**เหตุ-ผล:** ${w}${event.causeNote ? ` — ${event.causeNote}` : ""}`);
+        }
+
+        // เรียงตามเวลาเล่า: จังหวะ แล้วเลน
+        const sorted = [...items].sort((a, b) =>
+            ((a.beatIndex ?? 0) - (b.beatIndex ?? 0)) || ((laneOrder.get(a.laneId) ?? 0) - (laneOrder.get(b.laneId) ?? 0)));
+
+        sorted.forEach(item => {
+            L.push("", `## จังหวะ ${String((item.beatIndex ?? 0) + 1).padStart(2, "0")} — ${item.title || "(ไม่มีชื่อ)"}   [เลน: ${laneName.get(item.laneId) ?? "-"}]`);
+            if (item.keyMomentLabel) L.push(`> ⭐ ${item.keyMomentLabel}`);
+            if (item.content) L.push("", item.content);
+
+            const kids = (item.children ?? []) as any[];
+            kids.forEach(c => {
+                const det = elementDetailsMap.get(`${item.id}-${c.type}-${c.referenceId || c.id}`);
+                const extra = det ? [det.action, det.goal && `(เพื่อ ${det.goal})`, det.outcome && `→ ${OUTCOME_LABEL[det.outcome] ?? det.outcome}`].filter(Boolean).join(" ") : "";
+                L.push(`- **${c.type}:** ${c.title}${extra ? ` — ${extra}` : ""}`);
+            });
+
+            (cardBeats.get(item.id) ?? []).forEach(b =>
+                L.push(`- ปม: ${ROLE_LABEL[b.role] ?? b.role} “${b.title}”`));
+
+            (item.links ?? []).map(normalizeLink).forEach((l: CanvasLink) => {
+                const t = titleById.get(l.targetId);
+                if (t) L.push(`- → ${LINK_KINDS[l.kind]?.label ?? l.kind} “${t}”${l.label ? ` (${l.label})` : ""}`);
+            });
+
+            (notesByItem.get(item.id) ?? []).forEach(n => n.notes && L.push(`- 📝 ${n.notes}`));
+        });
+
+        // สรุปปมทั้งเรื่อง (setup→payoff) ท้ายไฟล์
+        if (threadState.length) {
+            L.push("", "---", "", "## ปมเรื่องทั้งหมด");
+            threadState.forEach(t => {
+                const roles = t.beats.map(b => ROLE_LABEL[b.role] ?? b.role).join(" → ") || "ยังไม่ผูก";
+                L.push(`- **${t.title}** (${t.status}) — ${roles}${t.note ? ` · ${t.note}` : ""}`);
+            });
+        }
+
+        const blob = new Blob([L.join("\n")], { type: "text/markdown" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `scene-${(event?.title || "export").replace(/\s+/g, "-")}-${new Date().toISOString().split("T")[0]}.md`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        toast.success("Export Markdown สำเร็จ!");
     };
 
     // anchor เส้นที่ขอบการ์ด (ฝั่งที่หันเข้าหากัน) — เส้นวิ่งใน gutter ระหว่างช่อง ไม่พาดหน้าการ์ด
@@ -1546,13 +1707,8 @@ export function PlaygroundBoard({
             const converge = (inCount.get(e.targetId) ?? 0) > 1; // รวมเข้า target
             const split = !converge && (outCount.get(e.sourceId) ?? 0) > 1; // แตกจาก source (mirror)
 
-            const sItemDbg = items.find((x: any) => x.id === e.sourceId);
-            const tItemDbg = items.find((x: any) => x.id === e.targetId);
-            const dbgName = (it: any) => it ? `"${it.title}"(lane:${laneOrder.get(it.laneId)},beat:${it.beatIndex})` : '?';
-            const dbgHead = `[edge] ${dbgName(sItemDbg)} → ${dbgName(tItemDbg)} kind:${e.link.kind}`;
-            // log เฉพาะเส้นที่แตะ node ซึ่งมีทั้งลูกศรเข้า (เป็น target) และออก (เป็น source)
-            const isJunction = (id: string) => (inCount.get(id) ?? 0) > 0 && (outCount.get(id) ?? 0) > 0;
-            const clog = (s: string) => { if (isJunction(e.sourceId) || isJunction(e.targetId)) console.log(s); };
+            const sItem = items.find((x: any) => x.id === e.sourceId);
+            const tItem = items.find((x: any) => x.id === e.targetId);
 
             let points: Array<{ x: number; y: number }>;
             if (converge || split) {
@@ -1564,11 +1720,7 @@ export function PlaygroundBoard({
                 if (converge) { busX = bX - dir * GAP; aY = e.sPos.y; bY = targetMergeY.get(e.targetId)!; }
                 else { busX = aX + dir * GAP; aY = sourceMergeY.get(e.sourceId)!; bY = e.tPos.y; }
                 points = [{ x: aX, y: aY }, { x: busX, y: aY }, { x: busX, y: bY }, { x: bX, y: bY }];
-                clog(`🔗 ${dbgHead}\n  branch: ${converge ? 'CONVERGE (many→1)' : 'SPLIT (1→many)'} in:${inCount.get(e.targetId)} out:${outCount.get(e.sourceId)}`
-                    + `\n  ${converge ? `mergeY(target)=avg(source Ys)=${targetMergeY.get(e.targetId)?.toFixed(1)} | source center y=${e.sPos.y.toFixed(1)}`
-                        : `mergeY(source)=avg(target Ys)=${sourceMergeY.get(e.sourceId)?.toFixed(1)} | source center y=${e.sPos.y.toFixed(1)}`}`
-                    + `\n  start:(${points[0].x.toFixed(0)},${points[0].y.toFixed(0)}) busX:${busX.toFixed(0)} end:(${points[3].x.toFixed(0)},${points[3].y.toFixed(0)})`);
-            } else if (sItemDbg && tItemDbg && sItemDbg.beatIndex === tItemDbg.beatIndex) {
+            } else if (sItem && tItem && sItem.beatIndex === tItem.beatIndex) {
                 // จังหวะเดียวกัน (คอลัมน์เดียว) → ออกขวาทั้งคู่ แล้ววิ่งบัสในร่อง gutter ด้านขวา
                 // ไม่ลากดิ่งผ่ากลางคอลัมน์ (จะทับการ์ดที่คั่นอยู่ระหว่าง source กับ target)
                 const aX = e.sPos.x + e.sPos.w / 2;
@@ -1582,22 +1734,18 @@ export function PlaygroundBoard({
                 const ps = { x: aX, y: psY };
                 const pt = { x: bX, y: ptY };
                 points = [ps, { x: busX, y: psY }, { x: busX, y: ptY }, pt];
-                clog(`🔗 ${dbgHead}\n  branch: SAME-BEAT (คอลัมน์เดียว) → วนบัสขวา busX:${busX.toFixed(0)}`
-                    + `\n  anchor:(${ps.x.toFixed(0)},${ps.y.toFixed(0)})→(${pt.x.toFixed(0)},${pt.y.toFixed(0)}) points: ${points.map(p => `(${p.x.toFixed(0)},${p.y.toFixed(0)})`).join(' → ')}`);
             } else {
                 // cross-beat = แนวนอน → ถ้ากึ่งกลาง y ต่างกัน เฉลี่ยแล้วลากเส้นตรง (ต้องซ้อน y กัน); ไม่ซ้อนค่อยหักมุม
-                const sSide = sideToCard(sItemDbg, tItemDbg);
-                const tSide = sideToCard(tItemDbg, sItemDbg);
+                const sSide = sideToCard(sItem, tItem);
+                const tSide = sideToCard(tItem, sItem);
                 const ax = anchorOn(e.sPos, sSide).x;
                 const bx = anchorOn(e.tPos, tSide).x;
                 const overlapTop = Math.max(e.sPos.y - e.sPos.h / 2, e.tPos.y - e.tPos.h / 2) + 10;
                 const overlapBot = Math.min(e.sPos.y + e.sPos.h / 2, e.tPos.y + e.tPos.h / 2) - 10;
-                let straight = false;
                 if (overlapTop <= overlapBot) {
                     // การ์ดซ้อน y กัน → ลากตรงที่ y เฉลี่ย (clamp เข้าโซนซ้อน กัน anchor หลุดขอบ)
                     const y = Math.max(overlapTop, Math.min(overlapBot, (e.sPos.y + e.tPos.y) / 2));
                     points = [{ x: ax, y }, { x: bx, y }];
-                    straight = true;
                 } else {
                     // ไม่ซ้อน y เลย → หักมุมฉาก
                     const ps = anchorOn(e.sPos, sSide);
@@ -1606,9 +1754,6 @@ export function PlaygroundBoard({
                     const t1 = { x: pt.x + SIDE_VEC[tSide][0] * GAP, y: pt.y };
                     points = [ps, s1, { x: t1.x, y: s1.y }, t1, pt];
                 }
-                clog(`🔗 ${dbgHead}\n  branch: 1:1 ${straight ? 'STRAIGHT (เฉลี่ย y)' : 'ELBOW (การ์ดไม่ซ้อน y)'} sides:${sSide}/${tSide}`
-                    + `\n  source center y:${e.sPos.y.toFixed(0)} target center y:${e.tPos.y.toFixed(0)} → ${straight ? `เส้นตรง y:${points[0].y.toFixed(0)}` : 'หักมุม'}`
-                    + `\n  points: ${points.map(p => `(${p.x.toFixed(0)},${p.y.toFixed(0)})`).join(' → ')}`);
             }
 
             // ถ้าหัวลูกศร (จุดสุดท้าย) ตกทับกรอบการ์ดอื่น (ไม่ใช่ต้น/ปลายทาง) → ขยับ y ออก
@@ -1624,8 +1769,6 @@ export function PlaygroundBoard({
                 const newY = sourceAbove ? p.y - p.h / 2 - 8 : p.y + p.h / 2 + 8;
                 points[points.length - 1] = { x: tip.x, y: newY };
                 points[points.length - 2] = { x: points[points.length - 2].x, y: newY };
-                const sName = items.find((x: any) => x.id === hit[0])?.title;
-                clog(`🔗 ↳ หัวลูกศรทับการ์ด "${sName}" → ขยับ${sourceAbove ? 'ขึ้น' : 'ลง'} เป็น y:${newY.toFixed(0)}`);
             }
 
             return { e, points };
@@ -1839,8 +1982,13 @@ export function PlaygroundBoard({
                                         <div className="flex items-center chamfered-sm border border-border/60 overflow-hidden text-xs w-fit">
                                             <button
                                                 type="button"
+                                                disabled={beatCount === 0}
                                                 onClick={() => setNewIdeaBeat('latest')}
-                                                className={cn("h-8 px-3 transition-colors", newIdeaBeat === 'latest' ? "bg-[var(--forge-amber)]/15 text-[var(--forge-amber)] font-medium" : "text-muted-foreground hover:bg-muted")}
+                                                title={beatCount === 0 ? "ยังไม่มีจังหวะในฉากนี้ — สร้างจังหวะใหม่ก่อน" : undefined}
+                                                className={cn(
+                                                    "h-8 px-3 transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
+                                                    newIdeaBeat === 'latest' ? "bg-[var(--forge-amber)]/15 text-[var(--forge-amber)] font-medium" : "text-muted-foreground hover:bg-muted"
+                                                )}
                                             >
                                                 จังหวะล่าสุด
                                             </button>
@@ -1882,8 +2030,11 @@ export function PlaygroundBoard({
                             title={isSaving ? "กำลังบันทึก..." : lastSaved ? "บันทึกแล้ว" : "บันทึก Layout"}>
                             {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : lastSaved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
                         </Button>
-                        <Button onClick={handleExport} size="icon" variant="outline" className="h-8 w-8" title="Export JSON">
+                        <Button onClick={handleExport} size="icon" variant="outline" className="h-8 w-8" title="Export JSON (backup/re-import)">
                             <Download className="w-4 h-4" />
+                        </Button>
+                        <Button onClick={handleExportMarkdown} size="icon" variant="outline" className="h-8 w-8" title="Export Markdown (อ่านง่าย / ส่งให้ AI)">
+                            <FileText className="w-4 h-4" />
                         </Button>
                     </div>
 
@@ -2037,6 +2188,7 @@ export function PlaygroundBoard({
                                                         characters={characters}
                                                         factions={factions}
                                                         onAddChild={handleAddChild}
+                                                        onPromoteDummy={handlePromoteDummy}
                                                         onDetailSaved={handleDetailSaved}
                                                         onSetColor={(c) => handleSetColor(item.id, c)}
                                                         onSetKeyMoment={item.type === 'idea' ? (label) => handleSetKeyMoment(item.id, label) : undefined}

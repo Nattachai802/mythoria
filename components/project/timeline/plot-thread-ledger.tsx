@@ -10,7 +10,6 @@ import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
     Sprout, Repeat, Target, Plus, Trash2, AlertTriangle, Clock, Unlink, Link2, X,
@@ -18,7 +17,7 @@ import {
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import {
-    createThread, deleteThread, updateThread, addBeat, deleteBeat,
+    deleteThread, updateThread, addBeat, deleteBeat,
     type ThreadWithBeats,
 } from "@/server/plot-threads"
 
@@ -53,9 +52,12 @@ interface Props {
 export function PlotThreadLedger({ novelId, threads, events, chapters }: Props) {
     const router = useRouter()
     const [open, setOpen] = useState(false)
-    const [isPending, startTransition] = useTransition()
-    const [newTitle, setNewTitle] = useState("")
-    const [newType, setNewType] = useState("foreshadow")
+
+    // คลิก beat → กระโดดไปกระดานของฉากนั้น (Go-to)
+    const goto = (eventId: string) => {
+        setOpen(false)
+        router.push(`/dashboard/project/${novelId}/plot/${eventId}`)
+    }
 
     // eventId → chapter order, for warnings + labels
     const chapterOrderById = useMemo(() => {
@@ -101,15 +103,6 @@ export function PlotThreadLedger({ novelId, threads, events, chapters }: Props) 
         return a.dangling || a.stale || a.orphanPayoff
     }).length
 
-    const handleCreate = () => {
-        if (!newTitle.trim()) { toast.error("ใส่ชื่อปมก่อน"); return }
-        startTransition(async () => {
-            const res = await createThread({ novelId, title: newTitle.trim(), type: newType })
-            if (res.success) { setNewTitle(""); toast.success("เพิ่มปมแล้ว"); router.refresh() }
-            else toast.error(res.error || "ผิดพลาด")
-        })
-    }
-
     const sceneLabel = (eventId: string) => {
         const ev = eventById.get(eventId)
         if (!ev) return "(ฉากถูกลบ)"
@@ -145,36 +138,12 @@ export function PlotThreadLedger({ novelId, threads, events, chapters }: Props) 
                     </SheetDescription>
                 </SheetHeader>
 
-                {/* Create */}
-                <div className="p-4 border-b flex flex-col gap-2 bg-muted/30">
-                    <Input
-                        value={newTitle}
-                        onChange={e => setNewTitle(e.target.value)}
-                        onKeyDown={e => e.key === "Enter" && handleCreate()}
-                        placeholder="ปมใหม่… เช่น ความลับของพ่อ"
-                        className="h-9 text-sm"
-                    />
-                    <div className="flex gap-2">
-                        <Select value={newType} onValueChange={setNewType}>
-                            <SelectTrigger className="h-8 flex-1 text-xs"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                {Object.entries(TYPES).map(([k, v]) => (
-                                    <SelectItem key={k} value={k}>{v}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        <Button onClick={handleCreate} disabled={isPending} size="sm" className="h-8">
-                            <Plus className="h-3.5 w-3.5 mr-1" />เพิ่มปม
-                        </Button>
-                    </div>
-                </div>
-
                 {/* List */}
                 <ScrollArea className="flex-1">
                     <div className="p-4 space-y-3">
                         {threads.length === 0 && (
                             <div className="text-center text-sm text-muted-foreground py-10">
-                                ยังไม่มีปม — เริ่มหว่านปมแรกด้านบน
+                                ยังไม่มีปม — สร้างปมได้ที่การ์ดไอเดียบนกระดานพล็อต
                             </div>
                         )}
                         {threads.map(t => (
@@ -185,6 +154,7 @@ export function PlotThreadLedger({ novelId, threads, events, chapters }: Props) 
                                 events={events}
                                 analysis={analyze(t)}
                                 sceneLabel={sceneLabel}
+                                onGoto={goto}
                                 onChanged={() => router.refresh()}
                             />
                         ))}
@@ -196,13 +166,14 @@ export function PlotThreadLedger({ novelId, threads, events, chapters }: Props) 
 }
 
 function ThreadRow({
-    thread, novelId, events, analysis, sceneLabel, onChanged,
+    thread, novelId, events, analysis, sceneLabel, onGoto, onChanged,
 }: {
     thread: ThreadWithBeats
     novelId: string
     events: TimelineEvent[]
     analysis: { dangling: boolean; stale: boolean; orphanPayoff: boolean; gap: number | null }
     sceneLabel: (id: string) => string
+    onGoto: (eventId: string) => void
     onChanged: () => void
 }) {
     const [isPending, startTransition] = useTransition()
@@ -274,7 +245,13 @@ function ThreadRow({
                         <div key={b.id} className="flex items-center gap-2 text-xs group">
                             <RoleIcon className={cn("h-3.5 w-3.5 shrink-0", role.cls)} />
                             <span className="text-[10px] text-muted-foreground w-8 shrink-0">{role.label}</span>
-                            <span className="flex-1 truncate">{sceneLabel(b.eventId)}</span>
+                            <button
+                                className="flex-1 min-w-0 truncate text-left hover:text-[var(--forge-gold)] hover:underline transition-colors"
+                                onClick={() => onGoto(b.eventId)}
+                                title="ไปที่ฉากนี้"
+                            >
+                                {sceneLabel(b.eventId)}
+                            </button>
                             <button
                                 className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
                                 onClick={() => run(() => deleteBeat(b.id, novelId))}

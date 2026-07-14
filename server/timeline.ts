@@ -128,6 +128,36 @@ export async function getTimelineEventById(id: string) {
     }
 }
 
+// รวบรวม dummy ที่เคยสร้างไว้ ทุกฉากของนิยาย จัดกลุ่มตามฉาก — ไว้ reuse ข้ามฉาก (เลือกฉาก → เลือก dummy)
+export type SceneDummies = { sceneId: string; sceneTitle: string; dummies: { title: string; type: string }[] }
+export async function getNovelDummyParticipants(novelId: string) {
+    try {
+        const events = await db.query.timelineEvents.findMany({
+            where: eq(timelineEvents.novelId, novelId),
+            columns: { id: true, title: true, canvasData: true },
+            orderBy: [asc(timelineEvents.orderIndex)],
+        });
+        const scenes: SceneDummies[] = [];
+        for (const ev of events) {
+            const items = (ev.canvasData as any[]) || [];
+            const seen = new Map<string, { title: string; type: string }>();
+            for (const it of items) {
+                for (const ch of (it?.children || [])) {
+                    if ((ch?.type === "dummy_character" || ch?.type === "dummy_faction") && ch?.title) {
+                        const key = `${ch.type}::${ch.title}`;
+                        if (!seen.has(key)) seen.set(key, { title: ch.title, type: ch.type });
+                    }
+                }
+            }
+            if (seen.size > 0) scenes.push({ sceneId: ev.id, sceneTitle: ev.title || "(ไม่มีชื่อ)", dummies: Array.from(seen.values()) });
+        }
+        return { success: true, data: scenes };
+    } catch (error) {
+        console.error("getNovelDummyParticipants error:", error);
+        return { success: false, data: [] as SceneDummies[] };
+    }
+}
+
 export async function updateTimelineCanvas(id: string, canvasData: any) {
     try {
         await db

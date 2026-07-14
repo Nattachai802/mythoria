@@ -79,7 +79,7 @@ export function ChapterColumn({
         <div
             ref={setNodeRef}
             className={cn(
-                "flex flex-col items-center min-w-[260px] max-w-[260px] h-full relative group transition-opacity duration-300",
+                "flex flex-col items-center min-w-[260px] max-w-[260px] self-start relative group transition-opacity duration-300",
                 isOver && "ring-2 ring-primary/20 rounded-lg",
                 columnDimmed && "opacity-30"
             )}
@@ -218,14 +218,14 @@ export function ChapterColumn({
                 </div>
             </div>
 
-            {/* Filmstrip Container - Collapsible */}
+            {/* Filmstrip Container - Collapsible (ไม่ scroll เอง — ปล่อยให้ board เลื่อนแนวตั้งเดียว) */}
             <div
                 className={cn(
-                    "w-full mt-20 flex-1 min-h-0 overflow-hidden transition-all duration-500 ease-in-out",
-                    isExpanded ? "opacity-100 max-h-[calc(100vh-320px)]" : "opacity-0 max-h-0"
+                    "w-full mt-20 transition-all duration-500 ease-in-out",
+                    isExpanded ? "opacity-100 max-h-none overflow-visible" : "opacity-0 max-h-0 overflow-hidden"
                 )}
             >
-                <div className="h-full overflow-y-auto no-scrollbar">
+                <div className="w-full">
                     <div className="relative flex">
                         {/* Left Perforation */}
                         <div

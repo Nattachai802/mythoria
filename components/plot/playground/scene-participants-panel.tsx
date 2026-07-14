@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect } from "react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,11 +12,12 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import {
-    Users, User, Trash2, Plus, Check, Shield, Loader2, Route,
+    Users, User, Trash2, Plus, Check, Shield, Loader2, Route, UserCheck,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { upsertSceneElementDetail, deleteSceneElementDetail } from "@/server/scene-element-details"
+import { getNovelDummyParticipants } from "@/server/timeline"
 import { SceneElementDetails } from "@/db/schema"
 import { CharacterThroughLine } from "./character-through-line"
 
@@ -37,6 +38,7 @@ interface Props {
     factions: any[]
     elementDetails?: Map<string, SceneElementDetails>
     onAddChild: (ideaId: string, child: any) => void
+    onPromoteDummy?: (dummy: any, realId: string, scope?: "scene" | "all") => void
     onRemoveChild: (childId: string) => void
     onDetailSaved: (detail: SceneElementDetails) => void
 }
@@ -47,7 +49,7 @@ const detailKey = (ideaId: string, child: any) =>
 
 export function SceneParticipantsPanel({
     ideaItem, sceneId, novelId, characters, factions,
-    elementDetails, onAddChild, onRemoveChild, onDetailSaved,
+    elementDetails, onAddChild, onPromoteDummy, onRemoveChild, onDetailSaved,
 }: Props) {
     const [open, setOpen] = useState(false)
     const [isPending, startTransition] = useTransition()
@@ -68,6 +70,14 @@ export function SceneParticipantsPanel({
 
     const participants = (ideaItem.children || []).filter((c: any) => PARTICIPANT_TYPES.includes(c.type))
     const isDummyType = partType === "dummy_character" || partType === "dummy_faction"
+
+    // dummy ที่เคยสร้างในฉากอื่นของนิยาย — ไว้ suggest ให้ reuse ข้ามฉาก (โหลดครั้งเดียวตอนเปิดแผง)
+    const [novelDummies, setNovelDummies] = useState<{ title: string; type: string }[]>([])
+    useEffect(() => {
+        if (!open) return
+        getNovelDummyParticipants(novelId).then(res => { if (res.success) setNovelDummies(res.data) })
+    }, [open, novelId])
+    const dummySuggestions = novelDummies.filter(d => d.type === partType)
 
     const handleAdd = () => {
         let title = ""
@@ -260,12 +270,22 @@ export function SceneParticipantsPanel({
                                     </SelectContent>
                                 </Select>
                             ) : (
-                                <Input
-                                    value={dummyName}
-                                    onChange={e => setDummyName(e.target.value)}
-                                    placeholder={partType === "dummy_character" ? "เช่น ทหารยาม, ชายสวมผ้าคลุม" : "เช่น กองกำลังไม่ทราบชื่อ"}
-                                    className="h-8 text-xs chamfered-sm"
-                                />
+                                <>
+                                    <Input
+                                        value={dummyName}
+                                        onChange={e => setDummyName(e.target.value)}
+                                        placeholder={partType === "dummy_character" ? "เช่น ทหารยาม, ชายสวมผ้าคลุม" : "เช่น กองกำลังไม่ทราบชื่อ"}
+                                        className="h-8 text-xs chamfered-sm"
+                                        list="dummy-reuse-suggestions"
+                                    />
+                                    {/* ยกข้ามฉาก: เลือกชื่อ dummy ที่เคยมีในฉากอื่น */}
+                                    <datalist id="dummy-reuse-suggestions">
+                                        {dummySuggestions.map(d => <option key={d.title} value={d.title} />)}
+                                    </datalist>
+                                    {dummySuggestions.length > 0 && (
+                                        <p className="text-[9px] text-muted-foreground mt-0.5">มี {dummySuggestions.length} ตัวจากฉากอื่น — พิมพ์เพื่อเลือกซ้ำ</p>
+                                    )}
+                                </>
                             )}
                         </div>
 
@@ -338,6 +358,14 @@ export function SceneParticipantsPanel({
                                                         >
                                                             <Route className="w-3.5 h-3.5" />
                                                         </button>
+                                                    )}
+                                                    {isDummy && onPromoteDummy && (
+                                                        <PromoteDummyButton
+                                                            dummy={child}
+                                                            characters={characters}
+                                                            factions={factions}
+                                                            onPromote={onPromoteDummy}
+                                                        />
                                                     )}
                                                     <button
                                                         onClick={() => handleDelete(child)}
@@ -417,6 +445,71 @@ export function SceneParticipantsPanel({
                     currentSceneId={sceneId}
                 />
             )}
+        </Popover>
+    )
+}
+
+// ปุ่มแปลง dummy → ตัวจริง: เลือกตัวละคร/กลุ่มฝ่ายจริงที่มีอยู่ แล้วแปลงทั้งฉาก
+function PromoteDummyButton({ dummy, characters, factions, onPromote }: {
+    dummy: any
+    characters: any[]
+    factions: any[]
+    onPromote: (dummy: any, realId: string, scope?: "scene" | "all") => void
+}) {
+    const isFaction = dummy.type === "dummy_faction"
+    const list = isFaction ? factions : characters
+    const [sel, setSel] = useState("")
+    const [open, setOpen] = useState(false)
+    const label = isFaction ? "กลุ่มฝ่าย" : "ตัวละคร"
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <button
+                    className="text-muted-foreground hover:text-emerald-500 p-0.5 transition-colors opacity-0 group-hover:opacity-100"
+                    title="แปลงเป็นตัวจริง"
+                >
+                    <UserCheck className="w-3.5 h-3.5" />
+                </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-56 p-2.5 space-y-2" onClick={e => e.stopPropagation()}>
+                <p className="text-[11px] text-muted-foreground leading-snug">
+                    แปลง <span className="font-medium text-foreground">“{dummy.title}”</span> เป็น{label}จริง (ทั้งฉาก)
+                </p>
+                {list.length === 0 ? (
+                    <p className="text-[11px] text-muted-foreground italic py-1">ยังไม่มี{label}จริง — สร้างก่อน</p>
+                ) : (
+                    <>
+                        <Select value={sel} onValueChange={setSel}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder={`เลือก${label}…`} /></SelectTrigger>
+                            <SelectContent>
+                                {list.map(e => (
+                                    <SelectItem key={e.id} value={e.id} className="text-xs">{e.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <div className="flex flex-col gap-1">
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 w-full text-xs"
+                                disabled={!sel}
+                                onClick={() => { onPromote(dummy, sel, "scene"); setOpen(false); setSel("") }}
+                            >
+                                <Check className="w-3.5 h-3.5 mr-1" />เฉพาะฉากนี้
+                            </Button>
+                            <Button
+                                size="sm"
+                                className="h-7 w-full text-xs"
+                                disabled={!sel}
+                                onClick={() => { onPromote(dummy, sel, "all"); setOpen(false); setSel("") }}
+                            >
+                                <Check className="w-3.5 h-3.5 mr-1" />ทุกฉากในนิยาย
+                            </Button>
+                        </div>
+                    </>
+                )}
+            </PopoverContent>
         </Popover>
     )
 }

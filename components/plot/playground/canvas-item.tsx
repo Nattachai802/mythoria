@@ -45,6 +45,7 @@ export function DraggableCanvasItem({
   characters,
   factions,
   onAddChild,
+  onPromoteDummy,
   onDetailSaved,
   onSetColor,
   onSetKeyMoment,
@@ -79,6 +80,7 @@ export function DraggableCanvasItem({
   characters?: any[];
   factions?: any[];
   onAddChild?: (ideaId: string, child: any) => void;
+  onPromoteDummy?: (dummy: any, realId: string, scope?: "scene" | "all") => void;
   onDetailSaved?: (detail: SceneElementDetails) => void;
   isConnectSource?: boolean;
   isConnectTarget?: boolean;
@@ -178,6 +180,7 @@ export function DraggableCanvasItem({
         characters={characters}
         factions={factions}
         onAddChild={onAddChild}
+        onPromoteDummy={onPromoteDummy}
         onDetailSaved={onDetailSaved}
         onSetColor={onSetColor}
         onSetKeyMoment={onSetKeyMoment}
@@ -319,6 +322,7 @@ export function CanvasItem({
   characters,
   factions,
   onAddChild,
+  onPromoteDummy,
   onDetailSaved,
   onSetColor,
   onSetKeyMoment,
@@ -351,6 +355,7 @@ export function CanvasItem({
   characters?: any[];
   factions?: any[];
   onAddChild?: (ideaId: string, child: any) => void;
+  onPromoteDummy?: (dummy: any, realId: string, scope?: "scene" | "all") => void;
   onDetailSaved?: (detail: SceneElementDetails) => void;
 }) {
   // If use Sticky Note
@@ -1202,6 +1207,7 @@ Sticky Notes: ${stickyNotes}`;
                     factions={factions || []}
                     elementDetails={elementDetails}
                     onAddChild={onAddChild}
+                    onPromoteDummy={onPromoteDummy}
                     onRemoveChild={(childId) => onRemoveChild?.(childId)}
                     onDetailSaved={onDetailSaved}
                   />

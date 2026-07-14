@@ -19,10 +19,11 @@ import {
     SortableContext,
     verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
+import Link from "next/link"
 import { Chapter, TimelineEvent, Character, Location } from "@/db/schema"
 import { ChapterColumn } from "./chapter-column"
 import { EventCard } from "./event-card"
-import { Clock, CheckCircle2, FolderOpen, SlidersHorizontal, Eye, X, Activity, AlertTriangle, Route } from "lucide-react"
+import { Clock, CheckCircle2, FolderOpen, SlidersHorizontal, Eye, X, Activity, AlertTriangle, Route, Loader2, BookPlus } from "lucide-react"
 import { reorderTimelineEvents, updateTimelineEvent } from "@/server/timeline"
 import { useMemo } from "react"
 import { toast } from "sonner"
@@ -322,11 +323,16 @@ export function TimelineBoard({
 
     if (chapters.length === 0) {
         return (
-            <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
-                <div className="flex flex-col items-center gap-2">
-                    <Clock className="w-10 h-10 mb-2 opacity-50" />
-                    <h3 className="font-semibold text-lg">No Chapters Yet</h3>
-                    <p className="text-sm">Please create a chapter to start building your timeline.</p>
+            <div className="h-full flex flex-col items-center justify-center text-muted-foreground px-6 text-center">
+                <div className="flex flex-col items-center gap-3 max-w-sm">
+                    <Clock className="w-10 h-10 opacity-50" />
+                    <h3 className="font-display font-semibold text-lg text-foreground">ยังไม่มีบท</h3>
+                    <p className="text-sm">สร้างบทแรกก่อน แล้วค่อยเริ่มวางฉากบนเส้นเวลา</p>
+                    <Button asChild size="sm" className="mt-1">
+                        <Link href={`/dashboard/project/${novelId}`}>
+                            <BookPlus className="h-4 w-4 mr-1.5" />ไปสร้างบท
+                        </Link>
+                    </Button>
                 </div>
             </div>
         )
@@ -360,7 +366,7 @@ export function TimelineBoard({
                     </div>
 
                     {/* Tools · Filters · Views */}
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div role="toolbar" aria-label="เครื่องมือกระดานพล็อต" className="flex flex-wrap items-center gap-2">
                         <StoryStructureCheatSheet />
                         <PlotThreadLedger
                             novelId={novelId}
@@ -382,7 +388,9 @@ export function TimelineBoard({
                                 >
                                     <AlertTriangle className="h-3.5 w-3.5" />
                                     ข้อขัดแย้ง
-                                    {conflicts && conflicts.length > 0 ? (
+                                    {conflicts === null ? (
+                                        <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" aria-label="กำลังตรวจสอบ" />
+                                    ) : conflicts.length > 0 ? (
                                         <span className="ml-0.5 inline-flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold tabular-nums text-black">
                                             {conflicts.length}
                                         </span>
@@ -428,6 +436,11 @@ export function TimelineBoard({
                                         </button>
                                     )}
                                 </div>
+                                {isFiltering && (
+                                    <p className="text-[11px] text-muted-foreground tabular-nums -mt-1">
+                                        แสดง <span className="text-[var(--forge-amber)] font-medium">{matchedIds.size}</span>/{totalScenes} ฉาก
+                                    </p>
+                                )}
                                 <FilterRow label="ประเภท">
                                     <Select value={filterType} onValueChange={setFilterType}>
                                         <SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger>
@@ -534,8 +547,11 @@ export function TimelineBoard({
                                 </FilterRow>
                                 <button
                                     onClick={() => setShowTension(v => !v)}
+                                    role="switch"
+                                    aria-checked={showTension}
+                                    aria-label="เลนส์เส้น tension"
                                     className={cn(
-                                        "w-full flex items-center justify-between h-8 px-2.5 chamfered-sm border text-xs transition-colors",
+                                        "w-full flex items-center justify-between h-8 px-2.5 chamfered-sm border text-xs transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--forge-amber)] focus-visible:ring-offset-1 focus-visible:ring-offset-background",
                                         showTension
                                             ? "border-[var(--forge-amber)]/50 text-[var(--forge-amber)] bg-[var(--forge-amber)]/5"
                                             : "border-border text-muted-foreground hover:text-foreground"
@@ -550,8 +566,11 @@ export function TimelineBoard({
                                 </button>
                                 <button
                                     onClick={() => setShowRibbon(v => !v)}
+                                    role="switch"
+                                    aria-checked={showRibbon}
+                                    aria-label="เลนส์เลนปม"
                                     className={cn(
-                                        "w-full flex items-center justify-between h-8 px-2.5 chamfered-sm border text-xs transition-colors",
+                                        "w-full flex items-center justify-between h-8 px-2.5 chamfered-sm border text-xs transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--forge-amber)] focus-visible:ring-offset-1 focus-visible:ring-offset-background",
                                         showRibbon
                                             ? "border-[var(--forge-amber)]/50 text-[var(--forge-amber)] bg-[var(--forge-amber)]/5"
                                             : "border-border text-muted-foreground hover:text-foreground"
@@ -569,9 +588,9 @@ export function TimelineBoard({
                     </div>
                 </div>
 
-                {/* Timeline Area */}
-                <div className="flex-1 overflow-x-auto overflow-y-hidden px-8 pt-4 pb-8">
-                    <div className="min-w-max flex flex-col h-full">
+                {/* Timeline Area — เลื่อนแนวตั้งเดียวทั้ง board (ทุกคอลัมน์เลื่อนพร้อมกัน) */}
+                <div className="flex-1 overflow-auto px-8 pt-4 pb-8">
+                    <div className="min-w-max flex flex-col min-h-full">
                         {/* Story Arc strip */}
                         <ArcStrip
                             novelId={novelId}
@@ -595,7 +614,7 @@ export function TimelineBoard({
                         )}
 
                         {/* Chapter columns */}
-                        <div className="flex flex-1 min-w-max items-start pt-6">
+                        <div className="flex min-w-max items-start pt-6">
                         {sortedChapters.map((chapter, index) => {
                             const chapterEvents = events.filter(e => e.relatedChapterId === chapter.id)
                             return (
