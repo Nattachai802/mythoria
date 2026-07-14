@@ -12,12 +12,12 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import {
-    Users, User, Trash2, Plus, Check, Shield, Loader2, Route, UserCheck,
+    Users, User, Trash2, Plus, Check, Shield, Loader2, Route, UserCheck, Copy, ChevronLeft,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { upsertSceneElementDetail, deleteSceneElementDetail } from "@/server/scene-element-details"
-import { getNovelDummyParticipants } from "@/server/timeline"
+import { getNovelDummyParticipants, type SceneDummies } from "@/server/timeline"
 import { SceneElementDetails } from "@/db/schema"
 import { CharacterThroughLine } from "./character-through-line"
 
@@ -71,13 +71,12 @@ export function SceneParticipantsPanel({
     const participants = (ideaItem.children || []).filter((c: any) => PARTICIPANT_TYPES.includes(c.type))
     const isDummyType = partType === "dummy_character" || partType === "dummy_faction"
 
-    // dummy ที่เคยสร้างในฉากอื่นของนิยาย — ไว้ suggest ให้ reuse ข้ามฉาก (โหลดครั้งเดียวตอนเปิดแผง)
-    const [novelDummies, setNovelDummies] = useState<{ title: string; type: string }[]>([])
+    // dummy จากฉากอื่นในนิยาย (จัดกลุ่มตามฉาก) — ไว้ reuse: เลือกฉาก → เลือก dummy
+    const [dummyScenes, setDummyScenes] = useState<SceneDummies[]>([])
     useEffect(() => {
         if (!open) return
-        getNovelDummyParticipants(novelId).then(res => { if (res.success) setNovelDummies(res.data) })
+        getNovelDummyParticipants(novelId).then(res => { if (res.success) setDummyScenes(res.data) })
     }, [open, novelId])
-    const dummySuggestions = novelDummies.filter(d => d.type === partType)
 
     const handleAdd = () => {
         let title = ""
@@ -270,22 +269,20 @@ export function SceneParticipantsPanel({
                                     </SelectContent>
                                 </Select>
                             ) : (
-                                <>
+                                <div className="flex gap-1.5">
                                     <Input
                                         value={dummyName}
                                         onChange={e => setDummyName(e.target.value)}
                                         placeholder={partType === "dummy_character" ? "เช่น ทหารยาม, ชายสวมผ้าคลุม" : "เช่น กองกำลังไม่ทราบชื่อ"}
-                                        className="h-8 text-xs chamfered-sm"
-                                        list="dummy-reuse-suggestions"
+                                        className="h-8 text-xs chamfered-sm flex-1"
                                     />
-                                    {/* ยกข้ามฉาก: เลือกชื่อ dummy ที่เคยมีในฉากอื่น */}
-                                    <datalist id="dummy-reuse-suggestions">
-                                        {dummySuggestions.map(d => <option key={d.title} value={d.title} />)}
-                                    </datalist>
-                                    {dummySuggestions.length > 0 && (
-                                        <p className="text-[9px] text-muted-foreground mt-0.5">มี {dummySuggestions.length} ตัวจากฉากอื่น — พิมพ์เพื่อเลือกซ้ำ</p>
-                                    )}
-                                </>
+                                    <ReuseDummyPicker
+                                        scenes={dummyScenes}
+                                        partType={partType}
+                                        currentSceneId={sceneId}
+                                        onPick={(title) => setDummyName(title)}
+                                    />
+                                </div>
                             )}
                         </div>
 
@@ -445,6 +442,83 @@ export function SceneParticipantsPanel({
                     currentSceneId={sceneId}
                 />
             )}
+        </Popover>
+    )
+}
+
+// ยก dummy จากฉากอื่น: เลือกฉากก่อน → โชว์ dummy ในฉากนั้น → คลิกเพื่อใส่ชื่อ (UI ของเราเอง)
+function ReuseDummyPicker({ scenes, partType, currentSceneId, onPick }: {
+    scenes: SceneDummies[]
+    partType: string
+    currentSceneId: string
+    onPick: (title: string) => void
+}) {
+    const [open, setOpen] = useState(false)
+    const [sceneId, setSceneId] = useState<string | null>(null)
+
+    // ฉากอื่นที่มี dummy ชนิดเดียวกับที่กำลังเพิ่ม
+    const usableScenes = scenes
+        .filter(s => s.sceneId !== currentSceneId && s.dummies.some(d => d.type === partType))
+    const selected = usableScenes.find(s => s.sceneId === sceneId)
+    const dummies = selected ? selected.dummies.filter(d => d.type === partType) : []
+    const label = partType === "dummy_faction" ? "กลุ่มฝ่าย" : "ตัวละคร"
+
+    return (
+        <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSceneId(null) }}>
+            <PopoverTrigger asChild>
+                <Button type="button" variant="outline" size="icon" className="h-8 w-8 shrink-0" title="ยกจากฉากอื่น">
+                    <Copy className="w-3.5 h-3.5" />
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-64 p-0 overflow-hidden" onClick={e => e.stopPropagation()}>
+                <div className="px-3 py-2 border-b bg-muted/40 flex items-center gap-2">
+                    {selected && (
+                        <button onClick={() => setSceneId(null)} className="text-muted-foreground hover:text-foreground" title="กลับ">
+                            <ChevronLeft className="w-4 h-4" />
+                        </button>
+                    )}
+                    <span className="text-xs font-medium truncate">
+                        {selected ? selected.sceneTitle : `ยก${label}ชั่วคราวจากฉากอื่น`}
+                    </span>
+                </div>
+
+                {usableScenes.length === 0 ? (
+                    <p className="text-[11px] text-muted-foreground text-center py-6 px-3">ยังไม่มี{label}ชั่วคราวในฉากอื่น</p>
+                ) : !selected ? (
+                    // ขั้น 1: เลือกฉาก
+                    <div className="max-h-[240px] overflow-y-auto py-1">
+                        {usableScenes.map(s => {
+                            const n = s.dummies.filter(d => d.type === partType).length
+                            return (
+                                <button
+                                    key={s.sceneId}
+                                    onClick={() => setSceneId(s.sceneId)}
+                                    className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-xs hover:bg-muted transition-colors"
+                                >
+                                    <span className="truncate">{s.sceneTitle}</span>
+                                    <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">{n}</span>
+                                </button>
+                            )
+                        })}
+                    </div>
+                ) : (
+                    // ขั้น 2: เลือก dummy ในฉากนั้น
+                    <div className="max-h-[240px] overflow-y-auto py-1">
+                        {dummies.map(d => (
+                            <button
+                                key={d.title}
+                                onClick={() => { onPick(d.title); setOpen(false); setSceneId(null) }}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-muted transition-colors"
+                            >
+                                {partType === "dummy_faction"
+                                    ? <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                                    : <User className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
+                                <span className="truncate">{d.title}</span>
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </PopoverContent>
         </Popover>
     )
 }
