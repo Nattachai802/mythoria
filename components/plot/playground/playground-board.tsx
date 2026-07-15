@@ -625,6 +625,20 @@ function DraftIdeaCard({ onCommit, onCancel }: { onCommit: (title: string) => vo
     );
 }
 
+// Skeleton ระหว่างรอ createIdea — กันช่องว่างวูบหลัง commit draft (ผู้ใช้เข้าใจผิดว่าบั๊คแล้วกดสร้างซ้ำ)
+function CreatingIdeaSkeleton({ title }: { title: string }) {
+    return (
+        <div className="rounded-md border border-dashed border-border/60 bg-card/60 p-2 animate-pulse">
+            <div className="flex items-center gap-1.5 mb-1.5">
+                <Loader2 className="w-3.5 h-3.5 text-[var(--forge-amber)] animate-spin" />
+                <span className="text-[9px] uppercase font-technical tracking-wide text-muted-foreground">กำลังสร้าง…</span>
+            </div>
+            <p className="text-sm font-semibold text-foreground/70 truncate">{title}</p>
+            <div className="mt-1.5 h-2 w-3/4 rounded bg-muted" />
+        </div>
+    );
+}
+
 const THREAD_ROLES: Array<{ value: string; label: string; icon: typeof Sprout; cls: string }> = [
     { value: "seed", label: "หว่าน", icon: Sprout, cls: "text-amber-500" },
     { value: "reinforce", label: "ย้ำ", icon: Repeat, cls: "text-blue-500" },
@@ -2209,7 +2223,10 @@ export function PlaygroundBoard({
                                                 laneIndex={laneIndex}
                                                 isTrailing={beatIndex === beatCount}
                                                 laneColor={laneColor}
-                                                isDrafting={draftCell?.laneId === lane.id && draftCell?.beatIndex === beatIndex}
+                                                isDrafting={
+                                                    (draftCell?.laneId === lane.id && draftCell?.beatIndex === beatIndex) ||
+                                                    (creatingCell?.laneId === lane.id && creatingCell?.beatIndex === beatIndex)
+                                                }
                                                 onAddIdea={() => setDraftCell({ laneId: lane.id, beatIndex })}
                                             >
                                                 {cellItems.map(item => (
@@ -2258,8 +2275,10 @@ export function PlaygroundBoard({
                                                     />
                                                 ))}
 
-                                                {/* สร้างไอเดีย inline: การ์ดร่าง หรือปุ่ม + (โผล่ตอน hover ช่อง) */}
-                                                {draftCell?.laneId === lane.id && draftCell?.beatIndex === beatIndex ? (
+                                                {/* สร้างไอเดีย inline: การ์ดร่าง → skeleton ระหว่างรอ → ปุ่ม + (โผล่ตอน hover ช่อง) */}
+                                                {creatingCell?.laneId === lane.id && creatingCell?.beatIndex === beatIndex ? (
+                                                    <CreatingIdeaSkeleton title={creatingCell.title} />
+                                                ) : draftCell?.laneId === lane.id && draftCell?.beatIndex === beatIndex ? (
                                                     <DraftIdeaCard
                                                         onCommit={handleCommitDraft}
                                                         onCancel={() => setDraftCell(null)}

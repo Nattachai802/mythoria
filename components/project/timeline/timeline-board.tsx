@@ -42,6 +42,7 @@ import { StoryStructureCheatSheet } from "./story-structure-cheatsheet"
 import { StructureOverlay, POSITIONAL_STRUCTURES } from "./structure-overlay"
 import type { ThreadWithBeats } from "@/server/plot-threads"
 import { ArcStrip } from "./arc-strip"
+import { PlotUndoMenu } from "./plot-undo-menu"
 import { TensionCurve } from "./tension-curve"
 import { ThreadRibbon } from "./thread-ribbon"
 import { ChronoTimelineSheet } from "./chrono-timeline-sheet"
@@ -368,6 +369,7 @@ export function TimelineBoard({
                     {/* Tools · Filters · Views */}
                     <div role="toolbar" aria-label="เครื่องมือกระดานพล็อต" className="flex flex-wrap items-center gap-2">
                         <StoryStructureCheatSheet />
+                        <PlotUndoMenu novelId={novelId} />
                         <PlotThreadLedger
                             novelId={novelId}
                             threads={threads}

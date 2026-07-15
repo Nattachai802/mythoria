@@ -29,6 +29,8 @@ import {
 import { CreateSceneDialog } from "@/components/project/timeline/create-scene-dialog"
 import { deleteTimelineEvent } from "@/server/timeline"
 import { toast } from "sonner"
+import { pushPlotUndo, removePlotUndo } from "@/hooks/use-plot-undo-stack"
+import { restorePlotUndoEntry } from "@/lib/plot-undo-restore"
 import Link from "next/link"
 
 interface SceneNavigatorProps {
@@ -75,16 +77,40 @@ export function SceneNavigator({
         return { grouped, chapterOrder }
     }, [chapters, events])
 
+    // ลบฉาก — snapshot field หลักเก็บเข้าสแตกกู้คืนกลาง (รอด navigation เพราะ sessionStorage ไม่ใช่ React state)
+    // undo ทันทีจาก toast, หรือทีหลังจากเมนู "กู้คืนล่าสุด" ที่หน้า /plot (ปม/canvas ของฉากเดิมกู้ไม่คืน — จำกัดเฉพาะ field หลัก)
     const handleDelete = async () => {
-        if (confirm("Are you sure you want to delete this scene?")) {
-            const res = await deleteTimelineEvent(currentEvent.id)
-            if (res.success) {
-                toast.success("Scene deleted")
-                router.push(`/dashboard/project/${novelId}/plot`)
-            } else {
-                toast.error("Failed to delete scene")
-            }
-        }
+        if (!confirm("ยืนยันลบฉากนี้?")) return
+        const snapshot = currentEvent
+        const res = await deleteTimelineEvent(currentEvent.id)
+        if (!res.success) { toast.error("ลบฉากไม่สำเร็จ"); return }
+        const entry = pushPlotUndo(novelId, {
+            kind: "scene",
+            label: snapshot.title,
+            payload: {
+                novelId,
+                title: snapshot.title,
+                description: snapshot.description,
+                eventDate: snapshot.eventDate,
+                relatedChapterId: snapshot.relatedChapterId,
+                relatedCharacterIds: snapshot.relatedCharacterIds,
+                relatedLocationIds: snapshot.relatedLocationIds,
+                eventType: snapshot.eventType,
+                canvasData: snapshot.canvasData,
+            },
+        })
+        router.push(`/dashboard/project/${novelId}/plot`)
+        toast.success("ลบฉากแล้ว", {
+            action: {
+                label: "ย้อนกลับ",
+                onClick: () => restorePlotUndoEntry(novelId, entry).then(r => {
+                    if (r.success) {
+                        removePlotUndo(novelId, entry.id)
+                        if (r.sceneId) router.push(`/dashboard/project/${novelId}/plot/${r.sceneId}`)
+                    } else toast.error(r.error || "ย้อนกลับไม่สำเร็จ")
+                }),
+            },
+        })
     }
 
     const currentChapter = chapters.find(c => c.id === currentEvent.relatedChapterId)

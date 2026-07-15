@@ -20,6 +20,8 @@ import {
     deleteThread, updateThread, addBeat, deleteBeat,
     type ThreadWithBeats,
 } from "@/server/plot-threads"
+import { pushPlotUndo, removePlotUndo } from "@/hooks/use-plot-undo-stack"
+import { restorePlotUndoEntry } from "@/lib/plot-undo-restore"
 
 const TYPES: Record<string, string> = {
     mystery: "ปริศนา",
@@ -190,6 +192,54 @@ function ThreadRow({
             else toast.error(res.error || "ผิดพลาด")
         })
 
+    // ลบปม — snapshot (รวม beats ทั้งหมด) เก็บเข้าสแตกกู้คืนกลาง แทนปิด scope ไว้ใน toast เฉยๆ
+    const handleDeleteThread = () => {
+        const beatsSnapshot = thread.beats.map(b => ({ eventId: b.eventId, role: b.role, note: b.note }))
+        startTransition(async () => {
+            const res = await deleteThread(thread.id, novelId)
+            if (!res.success) { toast.error(res.error || "ผิดพลาด"); return }
+            onChanged()
+            const entry = pushPlotUndo(novelId, {
+                kind: "thread",
+                label: thread.title,
+                payload: {
+                    title: thread.title, type: thread.type, importance: thread.importance,
+                    note: thread.note, color: thread.color, beats: beatsSnapshot,
+                },
+            })
+            toast.success(`ลบปม "${thread.title}" แล้ว`, {
+                action: {
+                    label: "ย้อนกลับ",
+                    onClick: () => restorePlotUndoEntry(novelId, entry).then(r => {
+                        if (r.success) { removePlotUndo(novelId, entry.id); onChanged() }
+                    }),
+                },
+            })
+        })
+    }
+
+    // ปลดจุดผูกปม — เก็บเข้าสแตกกู้คืนกลาง
+    const handleDeleteBeat = (beat: ThreadWithBeats["beats"][number]) => {
+        startTransition(async () => {
+            const res = await deleteBeat(beat.id, novelId)
+            if (!res.success) { toast.error(res.error || "ผิดพลาด"); return }
+            onChanged()
+            const entry = pushPlotUndo(novelId, {
+                kind: "beat",
+                label: `${thread.title} · ${sceneLabel(beat.eventId)}`,
+                payload: { threadId: thread.id, eventId: beat.eventId, role: beat.role, note: beat.note },
+            })
+            toast.success("ปลดจุดผูกปมแล้ว", {
+                action: {
+                    label: "ย้อนกลับ",
+                    onClick: () => restorePlotUndoEntry(novelId, entry).then(r => {
+                        if (r.success) { removePlotUndo(novelId, entry.id); onChanged() }
+                    }),
+                },
+            })
+        })
+    }
+
     return (
         <div className="chamfered-sm border border-border bg-card/50 p-3 space-y-2">
             {/* header */}
@@ -212,7 +262,7 @@ function ThreadRow({
                     </Select>
                     <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive"
                         disabled={isPending}
-                        onClick={() => run(() => deleteThread(thread.id, novelId))}>
+                        onClick={handleDeleteThread}>
                         <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                 </div>
@@ -254,7 +304,7 @@ function ThreadRow({
                             </button>
                             <button
                                 className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
-                                onClick={() => run(() => deleteBeat(b.id, novelId))}
+                                onClick={() => handleDeleteBeat(b)}
                             >
                                 <X className="h-3 w-3" />
                             </button>

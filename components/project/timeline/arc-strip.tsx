@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Trash2, Check, Clapperboard } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
+import { pushPlotUndo, removePlotUndo } from "@/hooks/use-plot-undo-stack"
+import { restorePlotUndoEntry } from "@/lib/plot-undo-restore"
 
 const COLUMN_WIDTH = 260
 
@@ -212,6 +214,30 @@ function ArcBand({ arc, novelId, chapters, left, width, onChanged }: {
         })
     )
 
+    // ลบ arc — snapshot เก็บเข้าสแตกกู้คืนกลาง (sessionStorage, cap 3) แทนปิด scope ไว้ใน toast เฉยๆ
+    // undo ทันทีได้จาก toast, หรือทีหลังจากเมนู "กู้คืนล่าสุด" บน toolbar
+    const handleDelete = () => {
+        startTransition(async () => {
+            const res = await deleteArc(arc.id, novelId)
+            if (!res.success) { toast.error(res.error || "ผิดพลาด"); return }
+            setOpen(false)
+            onChanged()
+            const entry = pushPlotUndo(novelId, {
+                kind: "arc",
+                label: arc.title,
+                payload: { title: arc.title, color: arc.color, startChapterId: arc.startChapterId, endChapterId: arc.endChapterId },
+            })
+            toast.success(`ลบ "${arc.title}" แล้ว`, {
+                action: {
+                    label: "ย้อนกลับ",
+                    onClick: () => restorePlotUndoEntry(novelId, entry).then(r => {
+                        if (r.success) { removePlotUndo(novelId, entry.id); onChanged() }
+                    }),
+                },
+            })
+        })
+    }
+
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
@@ -280,7 +306,7 @@ function ArcBand({ arc, novelId, chapters, left, width, onChanged }: {
                     <div className="flex gap-1.5">
                         <Button size="sm" className="h-8 flex-1 chamfered-sm" disabled={isPending} onClick={handleSave}>บันทึก</Button>
                         <Button size="sm" variant="ghost" className="h-8 px-2 text-muted-foreground hover:text-destructive"
-                            disabled={isPending} onClick={() => run(() => deleteArc(arc.id, novelId))}>
+                            disabled={isPending} onClick={handleDelete}>
                             <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                     </div>
