@@ -204,31 +204,31 @@ export function SceneParticipantsPanel({
                 </Button>
             </PopoverTrigger>
             <PopoverContent
-                className="w-[380px] p-0 overflow-hidden"
+                className="w-[300px] p-0 overflow-hidden"
                 align="start"
                 onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="flex items-center gap-2 px-3 py-2 bg-zinc-900 border-b border-zinc-700/60">
-                    <Users className="h-3.5 w-3.5 text-[var(--forge-amber)]" />
-                    <span className="font-technical text-[10px] uppercase tracking-widest text-zinc-300 truncate">
+                <div className="flex items-center gap-2 px-2.5 py-1.5 bg-zinc-900 border-b border-zinc-700/60">
+                    <Users className="h-3 w-3 text-[var(--forge-amber)]" />
+                    <span className="font-technical text-[9px] uppercase tracking-widest text-zinc-300 truncate">
                         ผู้เข้าร่วม: {ideaItem.title}
                     </span>
                 </div>
 
-                <div className="p-3 space-y-4 max-h-[70vh] overflow-y-auto">
+                <div className="p-2 space-y-2.5 max-h-[65vh] overflow-y-auto">
                     {/* Add Form */}
-                    <div className="bg-muted/30 p-2.5 rounded border border-border/40 space-y-2.5">
-                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-technical font-semibold flex items-center gap-1">
-                            <Plus className="w-3.5 h-3.5 text-[var(--forge-amber)]" /> เพิ่มผู้ร่วมไอเดีย
+                    <div className="bg-muted/30 p-2 rounded border border-border/40 space-y-1.5">
+                        <span className="text-[9px] uppercase tracking-wide text-muted-foreground font-technical font-semibold flex items-center gap-1">
+                            <Plus className="w-3 h-3 text-[var(--forge-amber)]" /> เพิ่มผู้ร่วมไอเดีย
                         </span>
 
                         <div className="grid grid-cols-2 gap-2">
                             <div className="space-y-1 min-w-0">
                                 <label className="text-[9px] font-technical text-muted-foreground uppercase">ประเภท</label>
                                 <Select value={partType} onValueChange={(v: any) => { setPartType(v); setSelectedEntityId("") }}>
-                                    <SelectTrigger className="h-8 w-full text-xs border-steel-800 [&>span]:truncate">
+                                    <SelectTrigger className="h-7 w-full text-xs border-steel-800 [&>span]:truncate">
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -243,7 +243,7 @@ export function SceneParticipantsPanel({
                             <div className="space-y-1 min-w-0">
                                 <label className="text-[9px] font-technical text-muted-foreground uppercase">บทบาท</label>
                                 <Select value={role} onValueChange={setRole}>
-                                    <SelectTrigger className="h-8 w-full text-xs border-steel-800 [&>span]:truncate">
+                                    <SelectTrigger className="h-7 w-full text-xs border-steel-800 [&>span]:truncate">
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -259,7 +259,7 @@ export function SceneParticipantsPanel({
                             <label className="text-[9px] font-technical text-muted-foreground uppercase">ชื่อผู้ร่วมไอเดีย</label>
                             {!isDummyType ? (
                                 <Select value={selectedEntityId} onValueChange={setSelectedEntityId}>
-                                    <SelectTrigger className="h-8 text-xs border-steel-800">
+                                    <SelectTrigger className="h-7 text-xs border-steel-800">
                                         <SelectValue placeholder={partType === "character" ? "เลือกตัวละคร..." : "เลือกกลุ่มฝ่าย..."} />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -274,7 +274,7 @@ export function SceneParticipantsPanel({
                                         value={dummyName}
                                         onChange={e => setDummyName(e.target.value)}
                                         placeholder={partType === "dummy_character" ? "เช่น ทหารยาม, ชายสวมผ้าคลุม" : "เช่น กองกำลังไม่ทราบชื่อ"}
-                                        className="h-8 text-xs chamfered-sm flex-1"
+                                        className="h-7 text-xs chamfered-sm flex-1"
                                     />
                                     <ReuseDummyPicker
                                         scenes={dummyScenes}
@@ -292,11 +292,11 @@ export function SceneParticipantsPanel({
                                 value={action}
                                 onChange={e => setAction(e.target.value)}
                                 placeholder="เช่น ลอบโจมตีเพื่อชิงหลักฐาน แต่ถูกจับได้"
-                                className="h-8 text-xs chamfered-sm"
+                                className="h-7 text-xs chamfered-sm"
                             />
                         </div>
 
-                        <Button size="sm" className="w-full h-8 gap-1 chamfered-sm text-xs" onClick={handleAdd} disabled={isPending}>
+                        <Button size="sm" className="w-full h-7 gap-1 chamfered-sm text-xs" onClick={handleAdd} disabled={isPending}>
                             {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                             เพิ่มเข้าไอเดีย
                         </Button>
@@ -466,7 +466,7 @@ function ReuseDummyPicker({ scenes, partType, currentSceneId, onPick }: {
     return (
         <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSceneId(null) }}>
             <PopoverTrigger asChild>
-                <Button type="button" variant="outline" size="icon" className="h-8 w-8 shrink-0" title="ยกจากฉากอื่น">
+                <Button type="button" variant="outline" size="icon" className="h-7 w-7 shrink-0" title="ยกจากฉากอื่น">
                     <Copy className="w-3.5 h-3.5" />
                 </Button>
             </PopoverTrigger>
@@ -555,7 +555,7 @@ function PromoteDummyButton({ dummy, characters, factions, onPromote }: {
                 ) : (
                     <>
                         <Select value={sel} onValueChange={setSel}>
-                            <SelectTrigger className="h-8 text-xs"><SelectValue placeholder={`เลือก${label}…`} /></SelectTrigger>
+                            <SelectTrigger className="h-7 text-xs"><SelectValue placeholder={`เลือก${label}…`} /></SelectTrigger>
                             <SelectContent>
                                 {list.map(e => (
                                     <SelectItem key={e.id} value={e.id} className="text-xs">{e.name}</SelectItem>

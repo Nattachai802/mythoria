@@ -16,7 +16,7 @@ import {
 import { ResourceSidebar } from "./resource-sidebar";
 import { CanvasItem, DraggableCanvasItem } from "./canvas-item";
 import { updateTimelineCanvas } from "@/server/timeline";
-import { updateIdea } from "@/server/idea"; // For auto-reset isUsed flag
+import { updateIdea, createIdea } from "@/server/idea"; // updateIdea: auto-reset isUsed flag
 import { getSceneElementDetails, getIdeaNotesForIdeas, promoteDummy, promoteDummyAllScenes } from "@/server/scene-element-details";
 import { addBeat, createThread, deleteBeat } from "@/server/plot-threads";
 import type { ThreadWithBeats } from "@/server/plot-threads";
@@ -494,12 +494,14 @@ function LaneLabel({ lane, laneIndex, color, onRename, onRemove, onSetColor, can
     );
 }
 
-function BeatCell({ laneId, beatIndex, laneIndex, isTrailing, laneColor, children }: {
+function BeatCell({ laneId, beatIndex, laneIndex, isTrailing, laneColor, isDrafting, onAddIdea, children }: {
     laneId: string;
     beatIndex: number;
     laneIndex: number;
     isTrailing: boolean;
     laneColor: string;
+    isDrafting?: boolean;
+    onAddIdea?: () => void;
     children: React.ReactNode;
 }) {
     const { setNodeRef, isOver } = useDroppable({
@@ -517,15 +519,20 @@ function BeatCell({ laneId, beatIndex, laneIndex, isTrailing, laneColor, childre
                 background: isOver ? undefined : hexA(laneColor, 0.05),
             }}
             className={cn(
-                "min-h-[140px] p-1.5 border-r border-b flex flex-col gap-1.5 transition-colors",
+                "group/cell min-h-[140px] p-1.5 border-r border-b flex flex-col gap-1.5 transition-colors",
                 isTrailing ? "border-dashed border-border/40" : "border-border/40",
                 isOver && "bg-[var(--forge-amber)]/8 ring-1 ring-inset ring-[var(--forge-amber)]/40"
             )}
         >
-            {isTrailing && (
-                <div className="flex-1 flex items-center justify-center text-muted-foreground/30">
+            {isTrailing && !isDrafting && (
+                <button
+                    onClick={(e) => { e.stopPropagation(); onAddIdea?.(); }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    className="flex-1 flex items-center justify-center text-muted-foreground/30 hover:text-[var(--forge-amber)] transition-colors"
+                    title="เพิ่มไอเดียในจังหวะใหม่"
+                >
                     <Plus className="w-5 h-5" />
-                </div>
+                </button>
             )}
             {children}
         </div>
@@ -585,6 +592,36 @@ function ChapterPopover({ trigger, initial, beatCount, onSave, onDelete }: {
                 </div>
             </PopoverContent>
         </Popover>
+    );
+}
+
+// การ์ดร่างสร้างไอเดีย inline — ใส่แค่ชื่อ, Enter/blur ที่มีชื่อ = บันทึก, ว่าง/Esc = ทิ้ง
+function DraftIdeaCard({ onCommit, onCancel }: { onCommit: (title: string) => void; onCancel: () => void }) {
+    const [title, setTitle] = useState("");
+    const cancelRef = useRef(false);
+    return (
+        <div
+            className="rounded-md border border-[var(--forge-amber)]/60 bg-card p-2 shadow-sm animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+        >
+            <div className="flex items-center gap-1.5 mb-1">
+                <Lightbulb className="w-3.5 h-3.5 text-[var(--forge-amber)]" />
+                <span className="text-[9px] uppercase font-technical tracking-wide text-muted-foreground">ไอเดียใหม่</span>
+            </div>
+            <input
+                autoFocus
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); }
+                    else if (e.key === "Escape") { cancelRef.current = true; e.currentTarget.blur(); }
+                }}
+                onBlur={() => { if (cancelRef.current || !title.trim()) onCancel(); else onCommit(title.trim()); }}
+                placeholder="ชื่อไอเดีย… (Enter บันทึก, ปล่อยว่าง = ทิ้ง)"
+                className="w-full h-7 px-1 text-sm font-semibold bg-transparent border-b border-border/60 focus:outline-none focus:border-[var(--forge-amber)]"
+            />
+        </div>
     );
 }
 
@@ -699,6 +736,27 @@ export function PlaygroundBoard({
     // ไอเดียใหม่จะวางที่จังหวะไหน: 'latest' = จังหวะล่าสุด (คอลัมน์ที่มีอยู่) | 'new' = จังหวะใหม่ (คอลัมน์ท้าย)
     const [newIdeaBeat, setNewIdeaBeat] = useState<'latest' | 'new'>('new');
     const [newIdeaLaneId, setNewIdeaLaneId] = useState<string>(''); // '' = เลนแรก
+
+    // สร้างไอเดีย inline: การ์ดร่างในช่องที่กด +
+    const [draftCell, setDraftCell] = useState<{ laneId: string; beatIndex: number } | null>(null);
+    // ระหว่างรอ createIdea → โชว์ skeleton ในช่องเดิม กันดูเหมือนบั๊ค/กดรัว
+    const [creatingCell, setCreatingCell] = useState<{ laneId: string; beatIndex: number; title: string } | null>(null);
+    const handleCommitDraft = useCallback(async (title: string) => {
+        const cell = draftCell;
+        setDraftCell(null);
+        if (!title || !cell) return;
+        setCreatingCell({ ...cell, title });
+        const res = await createIdea({ title, novelId, category: 'general' });
+        if (!res.success || !res.data) { toast.error('สร้างไอเดียไม่สำเร็จ'); setCreatingCell(null); return; }
+        const idea = res.data;
+        setItems(prev => [...prev, {
+            id: crypto.randomUUID(), type: 'idea', referenceId: idea.id,
+            title: idea.title, content: idea.content || '',
+            laneId: cell.laneId, beatIndex: cell.beatIndex, children: [], links: [],
+        }]);
+        setCreatingCell(null);
+        updateIdea(idea.id, { isUsed: true });
+    }, [draftCell, novelId]);
 
     // ปมเรื่องระดับ card: เก็บ threads เป็น state เพื่ออัปเดต badge ทันทีหลังผูก/ปลด
     const [threadState, setThreadState] = useState<ThreadWithBeats[]>(threads);
@@ -2151,6 +2209,8 @@ export function PlaygroundBoard({
                                                 laneIndex={laneIndex}
                                                 isTrailing={beatIndex === beatCount}
                                                 laneColor={laneColor}
+                                                isDrafting={draftCell?.laneId === lane.id && draftCell?.beatIndex === beatIndex}
+                                                onAddIdea={() => setDraftCell({ laneId: lane.id, beatIndex })}
                                             >
                                                 {cellItems.map(item => (
                                                     <DraggableCanvasItem
@@ -2197,6 +2257,22 @@ export function PlaygroundBoard({
                                                         onMeasureRef={registerItemRef}
                                                     />
                                                 ))}
+
+                                                {/* สร้างไอเดีย inline: การ์ดร่าง หรือปุ่ม + (โผล่ตอน hover ช่อง) */}
+                                                {draftCell?.laneId === lane.id && draftCell?.beatIndex === beatIndex ? (
+                                                    <DraftIdeaCard
+                                                        onCommit={handleCommitDraft}
+                                                        onCancel={() => setDraftCell(null)}
+                                                    />
+                                                ) : beatIndex !== beatCount ? (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setDraftCell({ laneId: lane.id, beatIndex }); }}
+                                                        onPointerDown={(e) => e.stopPropagation()}
+                                                        className="opacity-0 group-hover/cell:opacity-100 focus:opacity-100 transition-opacity flex items-center justify-center gap-1 text-[10px] text-muted-foreground hover:text-[var(--forge-amber)] border border-dashed border-border/40 hover:border-[var(--forge-amber)]/50 rounded py-1"
+                                                    >
+                                                        <Plus className="w-3 h-3" /> ไอเดีย
+                                                    </button>
+                                                ) : null}
                                             </BeatCell>
                                             {beatIndex < totalColumns - 1 && (
                                                 <div
