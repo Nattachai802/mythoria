@@ -1965,8 +1965,10 @@ export function PlaygroundBoard({
                         </div>
                     )}
 
-                    {/* Toolbar */}
-                    <div className="flex items-center gap-2 px-3 py-2 border-b bg-background/85 backdrop-blur z-30">
+                    {/* Toolbar — relative+z-40 ทำให้เป็น stacking context ของตัวเอง อยู่เหนือ sticky header ของกริด (z-30)
+                        เดิมมีแค่ "z-30" แบบ static เลยไม่มีผล เพราะ z-index ต้องมาคู่กับ position; backdrop-blur เองก็ดัน
+                        สร้าง stacking context ใหม่โดยไม่ตั้งใจ ทำให้ panel ลูก (z-50) ถูกขังอยู่ต่ำกว่ากริดที่อยู่นอก context นั้น */}
+                    <div className="relative z-40 flex items-center gap-2 px-3 py-2 border-b bg-background/85 backdrop-blur">
                         <div className="relative">
                             <Button variant={showNavigator ? "secondary" : "ghost"} size="icon" className="h-8 w-8"
                                 onClick={() => setShowNavigator(!showNavigator)} title="สารบัญ">
