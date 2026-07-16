@@ -67,6 +67,7 @@ export async function upsertSceneElementDetail(data: {
     role?: string;
     notes?: string;
     noteKind?: string;
+    noteOrder?: number;
     novelId: string;
     forceCreate?: boolean;
 }) {
@@ -106,6 +107,7 @@ export async function upsertSceneElementDetail(data: {
                 role: data.role || null,
                 notes: data.notes || null,
                 noteKind: data.noteKind || null,
+                noteOrder: data.noteOrder ?? 0,
                 novelId: data.novelId,
             };
 
@@ -385,5 +387,25 @@ export async function getIdeaNotesForIdeas(novelId: string, ideaIds: string[]) {
     } catch (error) {
         console.error("Error fetching idea notes for ideas:", error);
         return { success: false, error: "Failed to fetch idea notes" };
+    }
+}
+
+/**
+ * Persist new note_order values after drag-reordering idea_notes within a card.
+ */
+export async function reorderIdeaNotes(novelId: string, sceneId: string, orderedNoteIds: string[]) {
+    try {
+        await Promise.all(
+            orderedNoteIds.map((id, index) =>
+                db.update(sceneElementDetails)
+                    .set({ noteOrder: index, updatedAt: new Date() })
+                    .where(eq(sceneElementDetails.id, id))
+            )
+        );
+        revalidatePath(`/dashboard/project/${novelId}/plot/${sceneId}`);
+        return { success: true };
+    } catch (error) {
+        console.error("Error reordering idea notes:", error);
+        return { success: false, error: "Failed to reorder notes" };
     }
 }

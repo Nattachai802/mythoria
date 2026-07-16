@@ -17,6 +17,10 @@ import {
   Layers,
   Brain,
   ChevronRight,
+  Network,
+  BookMarked,
+  ShieldCheck,
+  Waypoints,
 } from "lucide-react";
 
 export default function Home() {
@@ -141,6 +145,26 @@ export default function Home() {
               icon={<PenTool className="w-5 h-5" />}
               title="Drag & Drop Organization"
               description="Restructure your entire novel effortlessly. Drag and drop chapters, reorder folders, and keep your narrative flowing perfectly."
+            />
+            <FeatureCard
+              icon={<Network className="w-5 h-5" />}
+              title="World Graph"
+              description="Visualize how every character, location, and power connects in an interactive relationship graph—spot gaps in your world at a glance."
+            />
+            <FeatureCard
+              icon={<BookMarked className="w-5 h-5" />}
+              title="Story Codex"
+              description="A living, auto-linked wiki of your universe. Every mention of a character or place links straight to its full entry."
+            />
+            <FeatureCard
+              icon={<ShieldCheck className="w-5 h-5" />}
+              title="Consistency Guardian"
+              description="AI flags plot holes and worldbuilding contradictions as you write, so timeline slips and lore mismatches never make it to print."
+            />
+            <FeatureCard
+              icon={<Waypoints className="w-5 h-5" />}
+              title="Plot Playground"
+              description="Map out plot events on a visual timeline, rearrange story beats, and see your narrative structure take shape before you draft."
             />
           </div>
         </div>

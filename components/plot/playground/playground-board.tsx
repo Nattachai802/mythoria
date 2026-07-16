@@ -29,6 +29,7 @@ import { Plus, Save, Link2, X, Check, Download, List, Navigation, SkipBack, Skip
 import { CreateIdeaDialog } from "@/components/project/idea/create-idea-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 
 interface PlaygroundBoardProps {
@@ -574,15 +575,17 @@ function ChapterPopover({ trigger, initial, beatCount, onSave, onDelete }: {
                     placeholder="ชื่อตอน เช่น ตอนที่ 1"
                     className="h-8 text-sm"
                 />
-                <div className="grid grid-cols-2 gap-2">
-                    <label className="text-[10px] text-muted-foreground col-span-1 self-center">เริ่มจังหวะ</label>
-                    <select value={start} onChange={(e) => setStart(Number(e.target.value))} className="h-8 rounded-md border border-input bg-background px-2 text-sm">
-                        {Array.from({ length: beatCount }).map((_, i) => <option key={i} value={i}>{String(i + 1).padStart(2, '0')}</option>)}
-                    </select>
-                    <label className="text-[10px] text-muted-foreground col-span-1 self-center">จบจังหวะ</label>
-                    <select value={end} onChange={(e) => setEnd(Number(e.target.value))} className="h-8 rounded-md border border-input bg-background px-2 text-sm">
-                        {Array.from({ length: beatCount }).map((_, i) => <option key={i} value={i}>{String(i + 1).padStart(2, '0')}</option>)}
-                    </select>
+                <div className="space-y-1.5 pt-1">
+                    <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                        <span>จังหวะ {String(start + 1).padStart(2, '0')} – {String(end + 1).padStart(2, '0')}</span>
+                    </div>
+                    <Slider
+                        min={0}
+                        max={Math.max(0, beatCount - 1)}
+                        step={1}
+                        value={[start, end]}
+                        onValueChange={([s, e]) => { setStart(s); setEnd(e); }}
+                    />
                 </div>
                 <div className="flex items-center justify-between pt-1">
                     {onDelete ? (
@@ -1013,6 +1016,24 @@ export function PlaygroundBoard({
             toast.error("ลบไม่สำเร็จ");
         }
     }, [novelId, eventId, handleNoteDeleted]);
+
+    // ลากสลับลำดับโน้ตในการ์ด — อัปเดต local state ทันที แล้วค่อยยิงบันทึกลำดับใหม่ไป DB
+    const handleReorderNotes = useCallback(async (orderedNoteIds: string[]) => {
+        setIdeaNotes(prev => {
+            const byId = new Map(prev.map(n => [n.id, n]));
+            const reordered = orderedNoteIds
+                .map((id, index) => {
+                    const note = byId.get(id);
+                    return note ? { ...note, noteOrder: index } : undefined;
+                })
+                .filter((n) => n !== undefined);
+            const reorderedIds = new Set(orderedNoteIds);
+            return [...reordered, ...prev.filter(n => !reorderedIds.has(n.id))];
+        });
+        const { reorderIdeaNotes } = await import('@/server/scene-element-details');
+        const result = await reorderIdeaNotes(novelId, eventId, orderedNoteIds);
+        if (!result.success) toast.error("บันทึกลำดับโน้ตไม่สำเร็จ");
+    }, [novelId, eventId]);
 
     useEffect(() => {
         const fetchAncestorConnections = async () => {
@@ -2248,6 +2269,7 @@ export function PlaygroundBoard({
                                                         ideaNotes={ideaNotes}
                                                         onQuickAddNote={handleQuickAddNote}
                                                         onDeleteNote={handleDeleteNote}
+                                                        onReorderNotes={handleReorderNotes}
                                                         novelId={novelId}
                                                         onSetAncestor={item.type === 'idea' ? () => handleOpenAncestorDialog(item) : undefined}
                                                         ancestorConnections={item.type === 'idea' ? ancestorConnections

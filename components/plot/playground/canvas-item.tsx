@@ -3,7 +3,7 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { User, MapPin, Lightbulb, X, Link as LinkIcon, Pencil, StickyNote, Minimize2, ExternalLink, Copy, GitBranchPlus, Shield, Plus, Palette, Check, MoreVertical, Loader2, Star, Activity, MessageCircle, HelpCircle } from "lucide-react";
+import { User, MapPin, Lightbulb, X, Link as LinkIcon, Pencil, StickyNote, Minimize2, ExternalLink, Copy, GitBranchPlus, Shield, Plus, Palette, Check, MoreVertical, Loader2, Star } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,13 +23,8 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import { SceneParticipantsPanel } from "./scene-participants-panel";
 
-// ชนิดโน้ต — สีแยกจาก LINK_KINDS (แดง/เขียว/น้ำเงินถูกจองไว้กับเส้นเชื่อมแล้ว) กันสับสนระหว่างโน้ตกับเส้น
-// null/ไม่ตรงกับ key ใดๆ = ทั่วไป (เหลืองเดิม)
-export const NOTE_KINDS: Record<string, { label: string; icon: typeof Activity; color: string }> = {
-  tension: { label: "Tension", icon: Activity, color: "#f43f5e" },
-  dialogue: { label: "Dialogue", icon: MessageCircle, color: "#38bdf8" },
-  question: { label: "Question", icon: HelpCircle, color: "#a78bfa" },
-};
+// สีโน้ต — ผู้ใช้เลือกสีเองจากพาเลตเดียวกับป้ายจัดกลุ่มการ์ด แทนชนิดตายตัว (tension/dialogue/question เดิม)
+// noteKind เก็บค่า hex สีตรงๆ, null = ทั่วไป (เหลืองเดิม)
 
 // For items already on the canvas (moveable)
 export function DraggableCanvasItem({
@@ -45,6 +40,7 @@ export function DraggableCanvasItem({
   onAddNote,
   onQuickAddNote,
   onDeleteNote,
+  onReorderNotes,
   novelId,
   onSetAncestor,
   ancestorConnections,
@@ -80,6 +76,7 @@ export function DraggableCanvasItem({
   onAddNote?: (item: any) => void;
   onQuickAddNote?: (item: any, text: string, existingNoteId?: string, noteKind?: string) => void | Promise<void>;
   onDeleteNote?: (noteId: string) => void | Promise<void>;
+  onReorderNotes?: (orderedNoteIds: string[]) => void | Promise<void>;
   novelId?: string;
   onSetAncestor?: () => void;
   ancestorConnections?: Array<{ id: string; sourceIdeaId: string; targetIdeaId: string; label?: string | null; targetIdeaTitle?: string | null; targetIdeaContent?: string | null; targetIdeaCategory?: string | null; targetIdeaNotes?: string[] }>;
@@ -180,6 +177,7 @@ export function DraggableCanvasItem({
         onAddNote={onAddNote}
         onQuickAddNote={onQuickAddNote}
         onDeleteNote={onDeleteNote}
+        onReorderNotes={onReorderNotes}
         novelId={novelId}
         onSetAncestor={onSetAncestor}
         ancestorConnections={ancestorConnections}
@@ -322,6 +320,7 @@ export function CanvasItem({
   onAddNote,
   onQuickAddNote,
   onDeleteNote,
+  onReorderNotes,
   novelId,
   onSetAncestor,
   ancestorConnections,
@@ -355,6 +354,7 @@ export function CanvasItem({
   onAddNote?: (item: any) => void;
   onQuickAddNote?: (item: any, text: string, existingNoteId?: string, noteKind?: string) => void | Promise<void>;
   onDeleteNote?: (noteId: string) => void | Promise<void>;
+  onReorderNotes?: (orderedNoteIds: string[]) => void | Promise<void>;
   novelId?: string;
   onSetAncestor?: () => void;
   ancestorConnections?: Array<{ id: string; sourceIdeaId: string; targetIdeaId: string; label?: string | null; targetIdeaTitle?: string | null; targetIdeaContent?: string | null; targetIdeaCategory?: string | null; targetIdeaNotes?: string[] }>;
@@ -379,6 +379,7 @@ export function CanvasItem({
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null); // null = สร้างใหม่, id = แก้ไขโน้ตเดิม
   const [quickNoteKind, setQuickNoteKind] = useState<string | null>(null); // null = ทั่วไป
   const [deletingNote, setDeletingNote] = useState(false);
+  const [draggedNoteId, setDraggedNoteId] = useState<string | null>(null); // ลากสลับตำแหน่งโน้ต
   // เหตุการณ์สำคัญ (mock) — เก็บ label อิสระใน canvas node ไปก่อน, ค่อยเลื่อนขึ้นตาราง ideas ทีหลัง
   const [editingKeyMoment, setEditingKeyMoment] = useState(false);
   const [keyMomentDraft, setKeyMomentDraft] = useState(item.keyMomentLabel || "");
@@ -454,8 +455,8 @@ export function CanvasItem({
     setQuickNoteKind(null);
   };
 
-  // ค่าสี/สไตล์ของโน้ตตามชนิด — null/ไม่ตรง key ใดๆ = ทั่วไป (เหลืองเดิม)
-  const activeNoteColor = quickNoteKind ? NOTE_KINDS[quickNoteKind]?.color : undefined;
+  // quickNoteKind เก็บ hex สีตรงๆ แล้ว — null = ทั่วไป (เหลืองเดิม)
+  const activeNoteColor = quickNoteKind ?? undefined;
 
   const deleteEditingNote = async () => {
     if (!editingNoteId || !onDeleteNote) return;
@@ -479,21 +480,20 @@ export function CanvasItem({
         >
           ทั่วไป
         </button>
-        {Object.entries(NOTE_KINDS).map(([key, cfg]) => {
-          const KindIcon = cfg.icon;
-          const active = quickNoteKind === key;
+        {CARD_COLORS.map((color) => {
+          const active = quickNoteKind === color;
           return (
             <button
-              key={key}
+              key={color}
               type="button"
-              onClick={() => setQuickNoteKind(key)}
-              className="text-[10px] px-2 py-0.5 rounded border transition-colors flex items-center gap-1"
-              style={active
-                ? { borderColor: `${cfg.color}80`, background: `${cfg.color}26`, color: cfg.color }
-                : { borderColor: "var(--border)", color: "var(--muted-foreground)" }}
-            >
-              <KindIcon className="w-3 h-3" />{cfg.label}
-            </button>
+              onClick={() => setQuickNoteKind(color)}
+              title={color}
+              className={cn(
+                "w-4 h-4 rounded-full border transition-transform",
+                active ? "scale-110 border-foreground" : "border-black/10 hover:scale-105"
+              )}
+              style={{ background: color }}
+            />
           );
         })}
       </div>
@@ -594,13 +594,12 @@ export function CanvasItem({
     return elementDetails.get(key);
   };
 
-  // Helper to get notes for this idea
+  // Helper to get notes for this idea, เรียงตาม noteOrder (ลากสลับตำแหน่งได้)
   const getIdeaNotes = () => {
     if (!ideaNotes || item.type !== 'idea') return [];
-    return ideaNotes.filter(note =>
-      note.canvasItemId === item.id &&
-      note.elementType === 'idea_note'
-    );
+    return ideaNotes
+      .filter(note => note.canvasItemId === item.id && note.elementType === 'idea_note')
+      .sort((a, b) => (a.noteOrder ?? 0) - (b.noteOrder ?? 0));
   };
 
   const thisIdeaNotes = getIdeaNotes();
@@ -1262,18 +1261,36 @@ Sticky Notes: ${stickyNotes}`;
               {isContainer && onQuickAddNote && (
                 <div className="space-y-1.5">
                   {thisIdeaNotes.map((note) => {
-                    const kindCfg = note.noteKind ? NOTE_KINDS[note.noteKind] : undefined;
-                    const KindIcon = kindCfg?.icon;
+                    const noteColor = note.noteKind || undefined;
                     return editingNoteId === note.id ? (
                       <div key={note.id}>{noteEditor}</div>
                     ) : (
                       <div
                         key={note.id}
+                        draggable={!!onReorderNotes}
+                        onDragStart={(e) => { e.stopPropagation(); setDraggedNoteId(note.id); }}
+                        onDragEnd={() => setDraggedNoteId(null)}
+                        onDragOver={(e) => { if (draggedNoteId) e.preventDefault(); }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (!draggedNoteId || draggedNoteId === note.id || !onReorderNotes) return;
+                          const ids = thisIdeaNotes.map((n) => n.id);
+                          const fromIndex = ids.indexOf(draggedNoteId);
+                          const toIndex = ids.indexOf(note.id);
+                          if (fromIndex === -1 || toIndex === -1) return;
+                          const reordered = [...ids];
+                          reordered.splice(fromIndex, 1);
+                          reordered.splice(toIndex, 0, draggedNoteId);
+                          onReorderNotes(reordered);
+                          setDraggedNoteId(null);
+                        }}
                         className={cn(
                           "group/note relative rounded-md border px-2 py-1.5 text-xs cursor-pointer transition-colors",
-                          !kindCfg && "border-yellow-500/25 bg-yellow-500/10 hover:bg-yellow-500/15"
+                          !noteColor && "border-yellow-500/25 bg-yellow-500/10 hover:bg-yellow-500/15",
+                          draggedNoteId === note.id && "opacity-40"
                         )}
-                        style={kindCfg ? { borderColor: `${kindCfg.color}4d`, background: `${kindCfg.color}1a` } : undefined}
+                        style={noteColor ? { borderColor: `${noteColor}4d`, background: `${noteColor}1a` } : undefined}
                         onClick={(e) => {
                           e.stopPropagation();
                           // แก้ไข inline ตรงที่โน้ตนั้นเลย (ตัวแก้แทนที่ preview)
@@ -1283,13 +1300,9 @@ Sticky Notes: ${stickyNotes}`;
                           setQuickNoteOpen(true);
                         }}
                       >
-                        {kindCfg && KindIcon && (
-                          <div className="flex items-center gap-1 mb-1">
-                            <KindIcon className="w-3 h-3" style={{ color: kindCfg.color }} />
-                            <span className="text-[9px] font-bold uppercase tracking-wide" style={{ color: kindCfg.color }}>{kindCfg.label}</span>
-                          </div>
-                        )}
-                        <p className="text-foreground/90 whitespace-pre-wrap line-clamp-3 pr-4">{renderNoteMentions(note.notes || "")}</p>
+                        <p className="text-foreground/90 whitespace-pre-wrap line-clamp-3 pr-4">
+                          {renderNoteMentions(note.notes || "")}
+                        </p>
                         <Pencil className="w-3 h-3 absolute top-1.5 right-1.5 text-muted-foreground opacity-0 group-hover/note:opacity-100 transition-opacity" />
                       </div>
                     );
