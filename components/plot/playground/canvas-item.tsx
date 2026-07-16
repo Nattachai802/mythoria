@@ -3,7 +3,7 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { User, MapPin, Lightbulb, X, Link as LinkIcon, Pencil, StickyNote, Minimize2, ExternalLink, Copy, GitBranchPlus, Shield, Plus, Palette, Check, MoreVertical, Loader2, Star } from "lucide-react";
+import { User, MapPin, Lightbulb, X, Link as LinkIcon, Pencil, StickyNote, Minimize2, ExternalLink, Copy, GitBranchPlus, Shield, Plus, Palette, Check, MoreVertical, Loader2, Star, Activity, MessageCircle, HelpCircle } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,6 +22,14 @@ import { toast } from "sonner";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { SceneParticipantsPanel } from "./scene-participants-panel";
+
+// ชนิดโน้ต — สีแยกจาก LINK_KINDS (แดง/เขียว/น้ำเงินถูกจองไว้กับเส้นเชื่อมแล้ว) กันสับสนระหว่างโน้ตกับเส้น
+// null/ไม่ตรงกับ key ใดๆ = ทั่วไป (เหลืองเดิม)
+export const NOTE_KINDS: Record<string, { label: string; icon: typeof Activity; color: string }> = {
+  tension: { label: "Tension", icon: Activity, color: "#f43f5e" },
+  dialogue: { label: "Dialogue", icon: MessageCircle, color: "#38bdf8" },
+  question: { label: "Question", icon: HelpCircle, color: "#a78bfa" },
+};
 
 // For items already on the canvas (moveable)
 export function DraggableCanvasItem({
@@ -70,7 +78,7 @@ export function DraggableCanvasItem({
   onEditChild?: (child: any) => void;
   ideaNotes?: SceneElementDetails[];
   onAddNote?: (item: any) => void;
-  onQuickAddNote?: (item: any, text: string, existingNoteId?: string) => void | Promise<void>;
+  onQuickAddNote?: (item: any, text: string, existingNoteId?: string, noteKind?: string) => void | Promise<void>;
   onDeleteNote?: (noteId: string) => void | Promise<void>;
   novelId?: string;
   onSetAncestor?: () => void;
@@ -345,7 +353,7 @@ export function CanvasItem({
   onEditChild?: (child: any) => void;
   ideaNotes?: SceneElementDetails[];
   onAddNote?: (item: any) => void;
-  onQuickAddNote?: (item: any, text: string, existingNoteId?: string) => void | Promise<void>;
+  onQuickAddNote?: (item: any, text: string, existingNoteId?: string, noteKind?: string) => void | Promise<void>;
   onDeleteNote?: (noteId: string) => void | Promise<void>;
   novelId?: string;
   onSetAncestor?: () => void;
@@ -369,6 +377,7 @@ export function CanvasItem({
   const [quickNoteOpen, setQuickNoteOpen] = useState(false);
   const [savingQuickNote, setSavingQuickNote] = useState(false);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null); // null = สร้างใหม่, id = แก้ไขโน้ตเดิม
+  const [quickNoteKind, setQuickNoteKind] = useState<string | null>(null); // null = ทั่วไป
   const [deletingNote, setDeletingNote] = useState(false);
   // เหตุการณ์สำคัญ (mock) — เก็บ label อิสระใน canvas node ไปก่อน, ค่อยเลื่อนขึ้นตาราง ideas ทีหลัง
   const [editingKeyMoment, setEditingKeyMoment] = useState(false);
@@ -430,18 +439,23 @@ export function CanvasItem({
     const text = quickNote.trim();
     if (!text || !onQuickAddNote) return;
     setSavingQuickNote(true);
-    await onQuickAddNote(item, text, editingNoteId ?? undefined);
+    await onQuickAddNote(item, text, editingNoteId ?? undefined, quickNoteKind ?? undefined);
     setSavingQuickNote(false);
     setQuickNote("");
     setQuickNoteOpen(false);
     setEditingNoteId(null);
+    setQuickNoteKind(null);
   };
 
   const closeQuickNote = () => {
     setQuickNote("");
     setQuickNoteOpen(false);
     setEditingNoteId(null);
+    setQuickNoteKind(null);
   };
+
+  // ค่าสี/สไตล์ของโน้ตตามชนิด — null/ไม่ตรง key ใดๆ = ทั่วไป (เหลืองเดิม)
+  const activeNoteColor = quickNoteKind ? NOTE_KINDS[quickNoteKind]?.color : undefined;
 
   const deleteEditingNote = async () => {
     if (!editingNoteId || !onDeleteNote) return;
@@ -454,6 +468,35 @@ export function CanvasItem({
   // ตัวแก้โน้ต — ใช้ซ้ำทั้งตอนสร้างใหม่ (ท้ายลิสต์) และตอนแก้ (แทนที่ preview ของโน้ตนั้น)
   const noteEditor = (
     <div className="space-y-1" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+      <div className="flex flex-wrap gap-1">
+        <button
+          type="button"
+          onClick={() => setQuickNoteKind(null)}
+          className={cn(
+            "text-[10px] px-2 py-0.5 rounded border transition-colors",
+            !quickNoteKind ? "border-yellow-500/50 bg-yellow-500/15 text-yellow-700 dark:text-yellow-400" : "border-border/60 text-muted-foreground hover:border-border"
+          )}
+        >
+          ทั่วไป
+        </button>
+        {Object.entries(NOTE_KINDS).map(([key, cfg]) => {
+          const KindIcon = cfg.icon;
+          const active = quickNoteKind === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setQuickNoteKind(key)}
+              className="text-[10px] px-2 py-0.5 rounded border transition-colors flex items-center gap-1"
+              style={active
+                ? { borderColor: `${cfg.color}80`, background: `${cfg.color}26`, color: cfg.color }
+                : { borderColor: "var(--border)", color: "var(--muted-foreground)" }}
+            >
+              <KindIcon className="w-3 h-3" />{cfg.label}
+            </button>
+          );
+        })}
+      </div>
       <div className="relative">
         <Textarea
           autoFocus
@@ -473,7 +516,8 @@ export function CanvasItem({
           placeholder={mentionChars.length > 0
             ? "เขียนโน้ต… (@ เพื่อ mention ตัวละคร, ⌘/Ctrl+Enter บันทึก)"
             : "เขียนโน้ต… (⌘/Ctrl+Enter เพื่อบันทึก)"}
-          className="min-h-[52px] resize-none text-xs bg-yellow-500/10 border-yellow-500/30 focus-visible:ring-yellow-500/40"
+          className={cn("min-h-[52px] resize-none text-xs", !activeNoteColor && "bg-yellow-500/10 border-yellow-500/30 focus-visible:ring-yellow-500/40")}
+          style={activeNoteColor ? { background: `${activeNoteColor}1a`, borderColor: `${activeNoteColor}4d` } : undefined}
         />
         {qmOpen && qmMatches.length > 0 && (
           <div className="absolute left-1 right-1 bottom-1 z-50 rounded-md border border-yellow-400 bg-popover shadow-lg overflow-hidden">
@@ -1217,33 +1261,46 @@ Sticky Notes: ${stickyNotes}`;
               {/* Notes footer (idea only) — annotation รอง อยู่ท้ายการ์ด */}
               {isContainer && onQuickAddNote && (
                 <div className="space-y-1.5">
-                  {thisIdeaNotes.map((note) => (
-                    editingNoteId === note.id ? (
+                  {thisIdeaNotes.map((note) => {
+                    const kindCfg = note.noteKind ? NOTE_KINDS[note.noteKind] : undefined;
+                    const KindIcon = kindCfg?.icon;
+                    return editingNoteId === note.id ? (
                       <div key={note.id}>{noteEditor}</div>
                     ) : (
                       <div
                         key={note.id}
-                        className="group/note relative rounded-md border border-yellow-500/25 bg-yellow-500/10 px-2 py-1.5 text-xs cursor-pointer hover:bg-yellow-500/15 transition-colors"
+                        className={cn(
+                          "group/note relative rounded-md border px-2 py-1.5 text-xs cursor-pointer transition-colors",
+                          !kindCfg && "border-yellow-500/25 bg-yellow-500/10 hover:bg-yellow-500/15"
+                        )}
+                        style={kindCfg ? { borderColor: `${kindCfg.color}4d`, background: `${kindCfg.color}1a` } : undefined}
                         onClick={(e) => {
                           e.stopPropagation();
                           // แก้ไข inline ตรงที่โน้ตนั้นเลย (ตัวแก้แทนที่ preview)
                           setEditingNoteId(note.id);
                           setQuickNote(note.notes || "");
+                          setQuickNoteKind(note.noteKind ?? null);
                           setQuickNoteOpen(true);
                         }}
                       >
+                        {kindCfg && KindIcon && (
+                          <div className="flex items-center gap-1 mb-1">
+                            <KindIcon className="w-3 h-3" style={{ color: kindCfg.color }} />
+                            <span className="text-[9px] font-bold uppercase tracking-wide" style={{ color: kindCfg.color }}>{kindCfg.label}</span>
+                          </div>
+                        )}
                         <p className="text-foreground/90 whitespace-pre-wrap line-clamp-3 pr-4">{renderNoteMentions(note.notes || "")}</p>
                         <Pencil className="w-3 h-3 absolute top-1.5 right-1.5 text-muted-foreground opacity-0 group-hover/note:opacity-100 transition-opacity" />
                       </div>
-                    )
-                  ))}
+                    );
+                  })}
 
                   {/* สร้างใหม่: ตัวแก้ท้ายลิสต์ (เฉพาะตอนไม่ได้แก้โน้ตเดิม) */}
                   {editingNoteId === null && quickNoteOpen ? (
                     noteEditor
                   ) : !quickNoteOpen ? (
                     <button
-                      onClick={(e) => { e.stopPropagation(); setEditingNoteId(null); setQuickNote(""); setQuickNoteOpen(true); }}
+                      onClick={(e) => { e.stopPropagation(); setEditingNoteId(null); setQuickNote(""); setQuickNoteKind(null); setQuickNoteOpen(true); }}
                       className="flex items-center justify-center gap-1 w-full text-xs text-yellow-700/70 dark:text-yellow-500/70 hover:text-yellow-800 dark:hover:text-yellow-400 border border-dashed border-yellow-500/30 hover:border-yellow-500/50 hover:bg-yellow-500/5 rounded-md px-2 py-1.5 transition-colors"
                     >
                       <Plus className="w-3 h-3" />

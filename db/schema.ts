@@ -1061,6 +1061,7 @@ export const sceneElementDetails = pgTable("scene_element_details", {
   outcome: text("outcome"),         // ผลลัพธ์: "success" | "failure" | "ongoing" | "unknown"
   role: text("role"),               // บทบาทในไอเดีย: "protagonist" | "antagonist" | "witness" | "victim"
   notes: text("notes"),             // หมายเหตุเพิ่มเติม
+  noteKind: text("note_kind"),      // ชนิดโน้ต (เฉพาะ elementType="idea_note"): tension | dialogue | question — null = ทั่วไป
 
   // Novel reference for easy querying
   novelId: text("novel_id")

@@ -66,6 +66,7 @@ export async function upsertSceneElementDetail(data: {
     outcome?: string;
     role?: string;
     notes?: string;
+    noteKind?: string;
     novelId: string;
     forceCreate?: boolean;
 }) {
@@ -81,6 +82,7 @@ export async function upsertSceneElementDetail(data: {
                     outcome: data.outcome,
                     role: data.role,
                     notes: data.notes,
+                    noteKind: data.noteKind,
                     updatedAt: new Date(),
                 })
                 .where(eq(sceneElementDetails.id, data.id))
@@ -103,6 +105,7 @@ export async function upsertSceneElementDetail(data: {
                 outcome: data.outcome || null,
                 role: data.role || null,
                 notes: data.notes || null,
+                noteKind: data.noteKind || null,
                 novelId: data.novelId,
             };
 

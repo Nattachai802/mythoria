@@ -981,7 +981,7 @@ export function PlaygroundBoard({
     }, []);
 
     // Quick inline note — สร้างใหม่ (existingNoteId ว่าง) หรือแก้ไขโน้ตเดิม ทำ inline บนการ์ด ไม่เปิด dialog
-    const handleQuickAddNote = useCallback(async (item: any, text: string, existingNoteId?: string) => {
+    const handleQuickAddNote = useCallback(async (item: any, text: string, existingNoteId?: string, noteKind?: string) => {
         const notes = text.trim();
         if (!notes) return;
         const { upsertSceneElementDetail } = await import('@/server/scene-element-details');
@@ -992,6 +992,7 @@ export function PlaygroundBoard({
             elementId: item.referenceId || item.id,
             canvasItemId: item.id,
             notes,
+            noteKind,
             novelId,
             forceCreate: !existingNoteId,
         });
