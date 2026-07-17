@@ -15,7 +15,7 @@ import {
 } from "@dnd-kit/core";
 import { ResourceSidebar } from "./resource-sidebar";
 import { CanvasItem, DraggableCanvasItem } from "./canvas-item";
-import { updateTimelineCanvas } from "@/server/timeline";
+import { updateTimelineCanvas, getNovelDummyParticipants } from "@/server/timeline";
 import { updateIdea, createIdea } from "@/server/idea"; // updateIdea: auto-reset isUsed flag
 import { getSceneElementDetails, getIdeaNotesForIdeas, promoteDummy, promoteDummyAllScenes } from "@/server/scene-element-details";
 import { addBeat, createThread, deleteBeat } from "@/server/plot-threads";
@@ -838,6 +838,16 @@ export function PlaygroundBoard({
     const [editingChild, setEditingChild] = useState<{ child: any; canvasItemId: string } | null>(null);
 
     const [ideaNotes, setIdeaNotes] = useState<SceneElementDetails[]>([]);
+
+    // ชื่อ dummy ทั้งนิยาย (distinct) — ไว้ให้ @mention ในโน้ตอ้างถึงตัวประกอบจากฉากอื่นได้
+    const [novelDummyNames, setNovelDummyNames] = useState<string[]>([]);
+    useEffect(() => {
+        getNovelDummyParticipants(novelId).then(res => {
+            if (!res.success) return;
+            const names = Array.from(new Set(res.data.flatMap(s => s.dummies.map(d => d.title))));
+            setNovelDummyNames(names);
+        });
+    }, [novelId]);
 
     const [ancestorConnections, setAncestorConnections] = useState<Array<{
         id: string; sourceIdeaId: string; targetIdeaId: string; label?: string | null;
@@ -2288,6 +2298,7 @@ export function PlaygroundBoard({
                                                         onRemoveAncestor={item.type === 'idea' ? handleRemoveAncestor : undefined}
                                                         sceneId={eventId}
                                                         characters={characters}
+                                                        novelDummyNames={novelDummyNames}
                                                         factions={factions}
                                                         onAddChild={handleAddChild}
                                                         onPromoteDummy={handlePromoteDummy}

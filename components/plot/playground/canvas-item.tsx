@@ -3,7 +3,7 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { User, MapPin, Lightbulb, X, Link as LinkIcon, Pencil, StickyNote, Minimize2, ExternalLink, Copy, GitBranchPlus, Shield, Plus, Palette, Check, MoreVertical, Loader2, Star } from "lucide-react";
+import { User, Users, MapPin, Lightbulb, X, Link as LinkIcon, Pencil, StickyNote, Minimize2, ExternalLink, Copy, GitBranchPlus, Shield, Plus, Palette, Check, MoreVertical, Loader2, Star } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,7 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { SceneElementDetails } from "@/db/schema";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Popover, PopoverTrigger, PopoverContent, PopoverAnchor } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { SceneParticipantsPanel } from "./scene-participants-panel";
 
@@ -47,6 +47,7 @@ export function DraggableCanvasItem({
   onRemoveAncestor,
   sceneId,
   characters,
+  novelDummyNames,
   factions,
   onAddChild,
   onPromoteDummy,
@@ -83,6 +84,7 @@ export function DraggableCanvasItem({
   onRemoveAncestor?: (connectionId: string) => void;
   sceneId?: string;
   characters?: any[];
+  novelDummyNames?: string[];
   factions?: any[];
   onAddChild?: (ideaId: string, child: any) => void;
   onPromoteDummy?: (dummy: any, realId: string, scope?: "scene" | "all") => void;
@@ -184,6 +186,7 @@ export function DraggableCanvasItem({
         onRemoveAncestor={onRemoveAncestor}
         sceneId={sceneId}
         characters={characters}
+        novelDummyNames={novelDummyNames}
         factions={factions}
         onAddChild={onAddChild}
         onPromoteDummy={onPromoteDummy}
@@ -327,6 +330,7 @@ export function CanvasItem({
   onRemoveAncestor,
   sceneId,
   characters,
+  novelDummyNames,
   factions,
   onAddChild,
   onPromoteDummy,
@@ -361,6 +365,7 @@ export function CanvasItem({
   onRemoveAncestor?: (connectionId: string) => void;
   sceneId?: string;
   characters?: any[];
+  novelDummyNames?: string[];
   factions?: any[];
   onAddChild?: (ideaId: string, child: any) => void;
   onPromoteDummy?: (dummy: any, realId: string, scope?: "scene" | "all") => void;
@@ -389,19 +394,48 @@ export function CanvasItem({
   const [qmOpen, setQmOpen] = useState(false);
   const [qmQuery, setQmQuery] = useState("");
   const [qmIndex, setQmIndex] = useState(0);
-  const mentionChars: { id: string; name: string }[] = Array.from(
+  type MentionGroup = "card" | "novel" | "dummy";
+  type MentionChar = { id: string; name: string; aliases?: string[]; role?: string; group: MentionGroup };
+  // ตัวละครในการ์ดนี้ (participant ของไอเดีย)
+  const cardChars: MentionChar[] = Array.from(
     new Map(
       (item.children || [])
         .filter((c: any) => c.type === 'character' || c.type === 'dummy_character')
-        .map((c: any) => { const id = c.referenceId || c.id; return [id, { id, name: c.title }]; })
+        .map((c: any) => { const id = c.referenceId || c.id; return [id, { id, name: c.title, group: "card" as const }]; })
     ).values()
-  ) as { id: string; name: string }[];
-  const qmMatches = qmOpen
-    ? mentionChars.filter(c => c.name.toLowerCase().includes(qmQuery.toLowerCase())).slice(0, 6)
+  ) as MentionChar[];
+  const cardIds = new Set(cardChars.map(c => c.id));
+  const cardNames = new Set(cardChars.map(c => c.name));
+  // ตัวละครจริงทั้งนิยาย (ไม่ซ้ำกับในการ์ด) — mention ได้แค่แท็กอ้างอิง ไม่เพิ่มเข้าการ์ด
+  const novelChars: MentionChar[] = (characters || [])
+    .filter((c: any) => !cardIds.has(c.id))
+    .map((c: any) => ({ id: c.id, name: c.name, aliases: Array.isArray(c.aliases) ? c.aliases : undefined, role: c.role, group: "novel" as const }));
+  const novelNames = new Set(novelChars.map(c => c.name));
+  // ตัวประกอบ (dummy) จากฉากอื่นทั้งนิยาย — dedupe ด้วยชื่อ, ตัดที่ซ้ำกับในการ์ด/ตัวจริงออก
+  const dummyChars: MentionChar[] = (novelDummyNames || [])
+    .filter(n => !cardNames.has(n) && !novelNames.has(n))
+    .map(n => ({ id: `dummy:${n}`, name: n, group: "dummy" as const }));
+  const allMentionChars = [...cardChars, ...novelChars, ...dummyChars];
+
+  const ROLE_RANK: Record<string, number> = { protagonist: 0, antagonist: 1, supporting: 2, minor: 3 };
+  const q = qmQuery.toLowerCase();
+  const matchChar = (c: MentionChar) =>
+    c.name.toLowerCase().includes(q) || (c.aliases?.some(a => String(a).toLowerCase().includes(q)) ?? false);
+  // ในการ์ด: โชว์ทันทีแม้ query ว่าง — อื่นในนิยาย/ตัวประกอบ: query ว่าง = โชว์ต้นๆ (จำกัด), พิมพ์แล้ว = กรอง
+  const cardMatches = qmOpen ? cardChars.filter(c => q === "" || matchChar(c)) : [];
+  const novelMatches = qmOpen
+    ? novelChars
+        .filter(c => q === "" || matchChar(c))
+        .sort((a, b) => (ROLE_RANK[a.role ?? ""] ?? 9) - (ROLE_RANK[b.role ?? ""] ?? 9) || a.name.localeCompare(b.name))
+        .slice(0, q === "" ? 5 : 6)
     : [];
+  const dummyMatches = qmOpen
+    ? dummyChars.filter(c => q === "" || matchChar(c)).sort((a, b) => a.name.localeCompare(b.name)).slice(0, q === "" ? 5 : 6)
+    : [];
+  const qmMatches = [...cardMatches, ...novelMatches, ...dummyMatches]; // flat list สำหรับ keyboard nav
   const detectQm = (value: string, caret: number) => {
     const m = value.slice(0, caret).match(/@([^\s@]{0,30})$/);
-    if (m && mentionChars.length > 0) { setQmQuery(m[1]); setQmOpen(true); setQmIndex(0); }
+    if (m && allMentionChars.length > 0) { setQmQuery(m[1]); setQmOpen(true); setQmIndex(0); }
     else setQmOpen(false);
   };
   const insertQm = (name: string) => {
@@ -414,9 +448,9 @@ export function CanvasItem({
     requestAnimationFrame(() => { ta?.focus(); ta?.setSelectionRange(before.length, before.length); });
   };
 
-  // แสดง @ชื่อ (ที่ตรงกับตัวละครในการ์ด) เป็น tag/ชิป ตอนดูโน้ต — เรียงชื่อยาวก่อนกันชื่อซ้อน
+  // แสดง @ชื่อ (ตัวละครทั้งนิยาย) เป็น tag/ชิป ตอนดูโน้ต — เรียงชื่อยาวก่อนกันชื่อซ้อน
   const renderNoteMentions = (text: string): React.ReactNode => {
-    const names = mentionChars.map(c => c.name).filter(Boolean);
+    const names = allMentionChars.map(c => c.name).filter(Boolean);
     if (!names.length || !text) return text;
     const esc = names.slice().sort((a, b) => b.length - a.length).map(n => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
     const re = new RegExp(`@(${esc.join("|")})`, "g");
@@ -497,44 +531,70 @@ export function CanvasItem({
           );
         })}
       </div>
-      <div className="relative">
-        <Textarea
-          autoFocus
-          ref={quickNoteRef}
-          value={quickNote}
-          onChange={(e) => { setQuickNote(e.target.value); detectQm(e.target.value, e.target.selectionStart ?? e.target.value.length); }}
-          onKeyDown={(e) => {
-            if (qmOpen && qmMatches.length > 0) {
-              if (e.key === "ArrowDown") { e.preventDefault(); setQmIndex(i => (i + 1) % qmMatches.length); return; }
-              if (e.key === "ArrowUp") { e.preventDefault(); setQmIndex(i => (i - 1 + qmMatches.length) % qmMatches.length); return; }
-              if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); insertQm(qmMatches[qmIndex].name); return; }
-              if (e.key === "Escape") { e.preventDefault(); setQmOpen(false); return; }
-            }
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitQuickNote(); }
-            else if (e.key === "Escape") { closeQuickNote(); }
-          }}
-          placeholder={mentionChars.length > 0
-            ? "เขียนโน้ต… (@ เพื่อ mention ตัวละคร, ⌘/Ctrl+Enter บันทึก)"
-            : "เขียนโน้ต… (⌘/Ctrl+Enter เพื่อบันทึก)"}
-          className={cn("min-h-[52px] resize-none text-xs", !activeNoteColor && "bg-yellow-500/10 border-yellow-500/30 focus-visible:ring-yellow-500/40")}
-          style={activeNoteColor ? { background: `${activeNoteColor}1a`, borderColor: `${activeNoteColor}4d` } : undefined}
-        />
-        {qmOpen && qmMatches.length > 0 && (
-          <div className="absolute left-1 right-1 bottom-1 z-50 rounded-md border border-yellow-400 bg-popover shadow-lg overflow-hidden">
-            {qmMatches.map((c, i) => (
-              <button
-                type="button"
-                key={c.id}
-                onMouseDown={(e) => { e.preventDefault(); insertQm(c.name); }}
-                className={`w-full flex items-center gap-2 px-2 py-1 text-left text-xs ${i === qmIndex ? "bg-yellow-500/20" : "hover:bg-yellow-500/10"}`}
-              >
-                <span className="text-yellow-600 font-semibold">@</span>
-                <span className="truncate">{c.name}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      <Popover open={qmOpen && qmMatches.length > 0}>
+        <PopoverAnchor asChild>
+          <Textarea
+            autoFocus
+            ref={quickNoteRef}
+            value={quickNote}
+            onChange={(e) => { setQuickNote(e.target.value); detectQm(e.target.value, e.target.selectionStart ?? e.target.value.length); }}
+            onKeyDown={(e) => {
+              if (qmOpen && qmMatches.length > 0) {
+                if (e.key === "ArrowDown") { e.preventDefault(); setQmIndex(i => (i + 1) % qmMatches.length); return; }
+                if (e.key === "ArrowUp") { e.preventDefault(); setQmIndex(i => (i - 1 + qmMatches.length) % qmMatches.length); return; }
+                if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); insertQm(qmMatches[qmIndex].name); return; }
+                if (e.key === "Escape") { e.preventDefault(); setQmOpen(false); return; }
+              }
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitQuickNote(); }
+              else if (e.key === "Escape") { closeQuickNote(); }
+            }}
+            placeholder={allMentionChars.length > 0
+              ? "เขียนโน้ต… (@ เพื่อ mention ตัวละคร, ⌘/Ctrl+Enter บันทึก)"
+              : "เขียนโน้ต… (⌘/Ctrl+Enter เพื่อบันทึก)"}
+            className={cn("min-h-[52px] resize-none text-xs", !activeNoteColor && "bg-yellow-500/10 border-yellow-500/30 focus-visible:ring-yellow-500/40")}
+            style={activeNoteColor ? { background: `${activeNoteColor}1a`, borderColor: `${activeNoteColor}4d` } : undefined}
+          />
+        </PopoverAnchor>
+        <PopoverContent
+          side="right"
+          align="start"
+          sideOffset={8}
+          avoidCollisions={false}
+          hideWhenDetached
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          onCloseAutoFocus={(e) => e.preventDefault()}
+          className="p-0 w-56 max-h-52 overflow-y-auto border-yellow-400"
+        >
+          {qmMatches.map((c, i) => {
+            const firstCard = i === 0 && cardMatches.length > 0;
+            const firstNovel = i === cardMatches.length && novelMatches.length > 0;
+            const firstDummy = i === cardMatches.length + novelMatches.length && dummyMatches.length > 0;
+            return (
+              <div key={c.id}>
+                {firstCard && (
+                  <div className="px-2 pt-1 pb-0.5 text-[9px] uppercase tracking-wide text-muted-foreground/70 font-technical">ในการ์ดนี้</div>
+                )}
+                {firstNovel && (
+                  <div className="px-2 pt-1 pb-0.5 text-[9px] uppercase tracking-wide text-muted-foreground/70 font-technical border-t border-border/40 mt-0.5">ตัวละครอื่นในนิยาย</div>
+                )}
+                {firstDummy && (
+                  <div className="px-2 pt-1 pb-0.5 text-[9px] uppercase tracking-wide text-muted-foreground/70 font-technical border-t border-border/40 mt-0.5">ตัวประกอบจากฉากอื่น</div>
+                )}
+                <button
+                  type="button"
+                  onMouseDown={(e) => { e.preventDefault(); insertQm(c.name); }}
+                  className={`w-full flex items-center gap-2 px-2 py-1 text-left text-xs ${i === qmIndex ? "bg-yellow-500/20" : "hover:bg-yellow-500/10"}`}
+                >
+                  <span className="text-yellow-600 font-semibold">@</span>
+                  <span className="truncate flex-1">{c.name}</span>
+                  {c.group === "novel" && <User className="w-3 h-3 text-muted-foreground/50 shrink-0" />}
+                  {c.group === "dummy" && <Users className="w-3 h-3 text-muted-foreground/50 shrink-0" />}
+                </button>
+              </div>
+            );
+          })}
+        </PopoverContent>
+      </Popover>
       <div className="flex items-center gap-1">
         <div className="flex justify-end gap-1 ml-auto">
           <Button type="button" size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={closeQuickNote}>
