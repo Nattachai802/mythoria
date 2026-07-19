@@ -265,6 +265,55 @@
       0 12px);
 }
 
+/* Genealogy / org-chart — top-down tree with pure-CSS connectors */
+.genealogy ul {
+  display: flex;
+  padding-top: 22px;
+  position: relative;
+}
+.genealogy li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  padding: 22px 12px 0;
+}
+/* horizontal + vertical connector stubs above each child */
+.genealogy li::before,
+.genealogy li::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 50%;
+  width: 50%;
+  height: 22px;
+  border-top: 1px solid var(--steel-600);
+}
+.genealogy li::after {
+  right: auto;
+  left: 50%;
+  border-left: 1px solid var(--steel-600);
+}
+.genealogy li:only-child::before,
+.genealogy li:only-child::after { display: none; }
+.genealogy li:first-child::before,
+.genealogy li:last-child::after { border: 0 none; }
+.genealogy li:last-child::before { border-right: 1px solid var(--steel-600); }
+/* vertical line dropping from a parent to its children row */
+.genealogy ul ul::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  border-left: 1px solid var(--steel-600);
+  width: 0;
+  height: 22px;
+}
+/* roots have no parent above them */
+.genealogy > ul { padding-top: 0; }
+.genealogy > ul > li::before,
+.genealogy > ul > li::after { display: none; }
+
 /* Hazard Stripes - Warning pattern decoration */
 .hazard-stripe {
   background: repeating-linear-gradient(-45deg,

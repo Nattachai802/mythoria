@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { getNovelById } from "@/server/novel";
 import { getAllFactionsWithMembers, getFactionRelationships, getFactionStatusPresets } from "@/server/factions";
 import { getCharactersByNovelId } from "@/server/character";
+import { getIdeasByNovelId } from "@/server/idea";
+import { getWorldSystemsByNovelId } from "@/server/world-systems";
 import { FactionsContent } from "@/components/project/factions/factions-content";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
 
@@ -10,12 +12,14 @@ type Props = { params: Promise<{ id: string }> };
 export default async function FactionsPage({ params }: Props) {
     const { id } = await params;
 
-    const [novelResult, factionsResult, relsResult, charactersResult, presetsResult] = await Promise.all([
+    const [novelResult, factionsResult, relsResult, charactersResult, presetsResult, ideasResult, systemsResult] = await Promise.all([
         getNovelById(id),
         getAllFactionsWithMembers(id),
         getFactionRelationships(id),
         getCharactersByNovelId(id),
         getFactionStatusPresets(id),
+        getIdeasByNovelId(id),
+        getWorldSystemsByNovelId(id),
     ]);
 
     if (!novelResult.success || !novelResult.novel) {
@@ -45,6 +49,8 @@ export default async function FactionsPage({ params }: Props) {
                     initialRelationships={relsResult.data || []}
                     characters={charactersResult.data || []}
                     initialStatusPresets={presetsResult.data || []}
+                    ideas={ideasResult.data || []}
+                    systems={systemsResult.data || []}
                 />
             </div>
         </div>

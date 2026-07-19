@@ -209,11 +209,12 @@ function DraggableResource({ id, type, title, data }: any) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `sidebar-${type}-${id}`,
     data: {
+      ...data,
+      // resource kind ต้องมาทีหลังเสมอ — กัน field ชื่อชนกัน (เช่น faction.type = "ORGANIZATION") ทับ kind ที่ตั้งใจไว้
       type,
       id: id,
       title,
       from: 'sidebar',
-      ...data
     },
   });
 

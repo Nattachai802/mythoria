@@ -401,6 +401,8 @@ export const factions = pgTable("factions", {
   element: text("element"), // ธาตุ-มิติ (โลกเฉพาะเรื่อง)
   leaderId: text("leader_id").references((): any => characters.id, { onDelete: "set null" }),
   icon: text("icon"),
+  linkedIdeaIds: jsonb("linked_idea_ids"), // การ์ดไอเดียที่แปะไว้กับฝ่ายนี้ — ["ideaId1", ...]
+  linkedSystemIds: jsonb("linked_system_ids"), // ระบบโลก (world systems) ที่ผูกกับฝ่ายนี้ — ["systemId1", ...]
   importance: integer("importance").default(5), // 1-10
   orderIndex: integer("order_index").default(0),
 

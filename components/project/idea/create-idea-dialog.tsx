@@ -19,7 +19,6 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-  FormDescription,
 } from "@/components/ui/form";
 import {
   Select,
@@ -30,13 +29,22 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus } from "lucide-react";
+import { Plus, Lightbulb, MessageCircle, BookOpen, User, Globe, Shuffle, type LucideIcon } from "lucide-react";
 import { createIdea } from "@/server/idea";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+
+const CATEGORY_META: Record<string, { label: string; icon: LucideIcon }> = {
+  general: { label: "ทั่วไป", icon: MessageCircle },
+  plot: { label: "โครงเรื่อง", icon: BookOpen },
+  character: { label: "ตัวละคร", icon: User },
+  worldbuilding: { label: "โลก/ระบบ", icon: Globe },
+  subplot: { label: "เนื้อเรื่องรอง", icon: Shuffle },
+};
 
 const ideaSchema = z.object({
-  title: z.string().min(1, "Title is required"),
-  content: z.string().min(1, "Content is required"),
+  title: z.string().min(1, "ใส่หัวข้อไอเดียก่อนนะครับ"),
+  content: z.string().min(1, "ใส่รายละเอียดไอเดียก่อนนะครับ"),
   category: z.string().default("general"),
 });
 
@@ -92,12 +100,12 @@ export function CreateIdeaDialog({
     });
 
     if (result.success) {
-      toast.success("Idea created successfully");
+      toast.success("สร้างไอเดียแล้ว");
       onIdeaCreated?.(result.data);
       setOpen(false);
       form.reset();
     } else {
-      toast.error(result.error || "Failed to create idea");
+      toast.error(result.error || "สร้างไอเดียไม่สำเร็จ");
     }
     setIsSubmitting(false);
   };
@@ -106,57 +114,61 @@ export function CreateIdeaDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {trigger || (
-          <Button>
-            <Plus className="h-4 w-4 mr-2" />
-            New Idea
+          <Button variant="forge" className="chamfered-sm">
+            <Plus className="h-4 w-4 mr-1.5" />
+            ไอเดียใหม่
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Create New Idea</DialogTitle>
+      <DialogContent className="max-w-xl max-h-[88vh] overflow-y-auto p-0 gap-0 noise-texture-strong border-steel-800">
+        <DialogHeader className="px-5 py-3.5 border-b border-steel-800 text-left">
+          <DialogTitle className="flex items-center gap-2 text-sm">
+            <span className="h-7 w-7 chamfered-sm grid place-items-center bg-[var(--forge-amber)]/15 text-[var(--forge-amber)] shrink-0">
+              <Lightbulb className="h-3.5 w-3.5" />
+            </span>
+            <span className="font-technical text-[11px] uppercase tracking-[0.14em] text-[var(--forge-amber)]">สร้างไอเดียใหม่</span>
+          </DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="p-5 space-y-3.5">
             <FormField
               control={form.control}
               name="title"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Title *</FormLabel>
+                  <FormLabel className="font-technical text-[10px] uppercase tracking-[0.12em] text-muted-foreground">หัวข้อ *</FormLabel>
                   <FormControl>
-                    <Input placeholder="Idea title" {...field} />
+                    <Input placeholder="เช่น ตัวร้ายมีอดีตร่วมกับพระเอก" className="h-8 text-sm border-steel-800" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            <div className={extraContent ? "grid grid-cols-2 gap-4 items-start" : ""}>
+            <div className={cn("grid gap-3", extraContent && "grid-cols-2 items-start")}>
               <FormField
                 control={form.control}
                 name="category"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Category</FormLabel>
+                    <FormLabel className="font-technical text-[10px] uppercase tracking-[0.12em] text-muted-foreground">หมวด</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a category" />
+                        <SelectTrigger className="h-8 text-xs border-steel-800">
+                          <SelectValue placeholder="เลือกหมวด" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="general">💭 General</SelectItem>
-                        <SelectItem value="plot">📖 Plot</SelectItem>
-                        <SelectItem value="character">👤 Character</SelectItem>
-                        <SelectItem value="worldbuilding">🌍 Worldbuilding</SelectItem>
-                        <SelectItem value="subplot">🔀 Subplot</SelectItem>
+                        {Object.entries(CATEGORY_META).map(([k, v]) => (
+                          <SelectItem key={k} value={k}>
+                            <span className="inline-flex items-center gap-1.5">
+                              <v.icon className="h-3.5 w-3.5 text-muted-foreground" /> {v.label}
+                            </span>
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
-                    <FormDescription>
-                      ประเภทของไอเดียนี้
-                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -169,11 +181,11 @@ export function CreateIdeaDialog({
               name="content"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Content *</FormLabel>
+                  <FormLabel className="font-technical text-[10px] uppercase tracking-[0.12em] text-muted-foreground">รายละเอียด *</FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="Describe your idea..."
-                      className="min-h-[200px]"
+                      placeholder="อธิบายไอเดียของคุณ..."
+                      className="min-h-[160px] text-sm border-steel-800"
                       {...field}
                     />
                   </FormControl>
@@ -182,16 +194,18 @@ export function CreateIdeaDialog({
               )}
             />
 
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-end gap-2 pt-1">
               <Button
                 type="button"
-                variant="outline"
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs"
                 onClick={() => setOpen(false)}
               >
-                Cancel
+                ยกเลิก
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Creating..." : "Create Idea"}
+              <Button type="submit" disabled={isSubmitting} size="sm" variant="forge" className="h-8 text-xs chamfered-sm min-w-24">
+                {isSubmitting ? "กำลังสร้าง..." : "สร้างไอเดีย"}
               </Button>
             </div>
           </form>

@@ -1260,6 +1260,14 @@ export function PlaygroundBoard({
         ));
     };
 
+    // แก้ field บน child เดี่ยว ๆ (เช่น pinnedIdeaIds สำหรับเลือกว่าจะโชว์ไอเดียไหนของฝ่ายบนการ์ด)
+    const handleUpdateChild = useCallback((parentId: string, childId: string, patch: any) => {
+        setItems(prev => prev.map(item => item.id === parentId
+            ? { ...item, children: (item.children || []).map((c: any) => c.id === childId ? { ...c, ...patch } : c) }
+            : item
+        ));
+    }, []);
+
     const handleAddChild = useCallback((ideaId: string, child: any) => {
         setItems(prev => prev.map(item => item.id === ideaId
             ? { ...item, children: [...(item.children || []), child] }
@@ -1563,6 +1571,11 @@ export function PlaygroundBoard({
         setItems(prev => prev.map(item => item.id === id ? { ...item, keyMomentLabel: label } : item));
     };
 
+    // ปักหมุดการ์ดว่าเป็น "คำบรรยาย/Narrator" (ไม่มีฉาก ไม่มีตัวละครร่วม) — เก็บใน canvas node เหมือน keyMoment, ไม่ต้องเพิ่มคอลัมน์ DB
+    const handleSetNarration = (id: string, isNarration: boolean) => {
+        setItems(prev => prev.map(item => item.id === id ? { ...item, isNarration } : item));
+    };
+
     const handleRemoveItem = async (id: string) => {
         const removedItem = items.find(item => item.id === id);
         setItems((prev) => prev.filter((item) => item.id !== id));
@@ -1609,6 +1622,7 @@ export function PlaygroundBoard({
                 content: item.content,
                 color: item.color ?? null,
                 keyMomentLabel: item.keyMomentLabel ?? null,
+                isNarration: item.isNarration ?? false,
                 referenceId: item.referenceId ?? null,
                 laneId: item.laneId,
                 beatIndex: item.beatIndex,
@@ -2300,11 +2314,14 @@ export function PlaygroundBoard({
                                                         characters={characters}
                                                         novelDummyNames={novelDummyNames}
                                                         factions={factions}
+                                                        ideas={ideas}
                                                         onAddChild={handleAddChild}
+                                                        onUpdateChild={handleUpdateChild}
                                                         onPromoteDummy={handlePromoteDummy}
                                                         onDetailSaved={handleDetailSaved}
                                                         onSetColor={(c) => handleSetColor(item.id, c)}
                                                         onSetKeyMoment={item.type === 'idea' ? (label) => handleSetKeyMoment(item.id, label) : undefined}
+                                                        onSetNarration={item.type === 'idea' ? (v) => handleSetNarration(item.id, v) : undefined}
                                                         threadBeats={item.type === 'idea' ? (cardBeats.get(item.id) ?? []) : undefined}
                                                         onOpenThreadBind={item.type === 'idea' ? () => setThreadBindItem(item) : undefined}
                                                         onMeasureRef={registerItemRef}

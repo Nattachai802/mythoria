@@ -3,7 +3,7 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { User, Users, MapPin, Lightbulb, X, Link as LinkIcon, Pencil, StickyNote, Minimize2, ExternalLink, Copy, GitBranchPlus, Shield, Plus, Palette, Check, MoreVertical, Loader2, Star } from "lucide-react";
+import { User, Users, MapPin, Lightbulb, X, Link as LinkIcon, Pencil, StickyNote, Minimize2, ExternalLink, Copy, GitBranchPlus, Shield, Plus, Palette, Check, MoreVertical, Loader2, Star, MessageCircle, BookOpen, Quote } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,11 +49,14 @@ export function DraggableCanvasItem({
   characters,
   novelDummyNames,
   factions,
+  ideas,
   onAddChild,
+  onUpdateChild,
   onPromoteDummy,
   onDetailSaved,
   onSetColor,
   onSetKeyMoment,
+  onSetNarration,
   threadBeats,
   onOpenThreadBind,
   onMeasureRef,
@@ -64,6 +67,7 @@ export function DraggableCanvasItem({
   onRemove: () => void;
   onSetColor?: (color: string | null) => void;
   onSetKeyMoment?: (label: string | null) => void;
+  onSetNarration?: (isNarration: boolean) => void;
   threadBeats?: Array<{ beatId: string; threadId: string; title: string; color: string | null; role: string }>;
   onOpenThreadBind?: () => void;
   onMeasureRef?: (id: string, el: HTMLDivElement | null) => void;
@@ -86,7 +90,9 @@ export function DraggableCanvasItem({
   characters?: any[];
   novelDummyNames?: string[];
   factions?: any[];
+  ideas?: any[];
   onAddChild?: (ideaId: string, child: any) => void;
+  onUpdateChild?: (parentId: string, childId: string, patch: any) => void;
   onPromoteDummy?: (dummy: any, realId: string, scope?: "scene" | "all") => void;
   onDetailSaved?: (detail: SceneElementDetails) => void;
   isConnectSource?: boolean;
@@ -188,11 +194,14 @@ export function DraggableCanvasItem({
         characters={characters}
         novelDummyNames={novelDummyNames}
         factions={factions}
+        ideas={ideas}
         onAddChild={onAddChild}
+        onUpdateChild={onUpdateChild}
         onPromoteDummy={onPromoteDummy}
         onDetailSaved={onDetailSaved}
         onSetColor={onSetColor}
         onSetKeyMoment={onSetKeyMoment}
+        onSetNarration={onSetNarration}
         threadBeats={threadBeats}
         onOpenThreadBind={onOpenThreadBind}
       />
@@ -332,17 +341,21 @@ export function CanvasItem({
   characters,
   novelDummyNames,
   factions,
+  ideas,
   onAddChild,
+  onUpdateChild,
   onPromoteDummy,
   onDetailSaved,
   onSetColor,
   onSetKeyMoment,
+  onSetNarration,
   threadBeats,
   onOpenThreadBind,
 }: {
   item: any;
   onSetColor?: (color: string | null) => void;
   onSetKeyMoment?: (label: string | null) => void;
+  onSetNarration?: (isNarration: boolean) => void;
   threadBeats?: Array<{ beatId: string; threadId: string; title: string; color: string | null; role: string }>;
   onOpenThreadBind?: () => void;
   onRemove?: () => void;
@@ -367,7 +380,9 @@ export function CanvasItem({
   characters?: any[];
   novelDummyNames?: string[];
   factions?: any[];
+  ideas?: any[];
   onAddChild?: (ideaId: string, child: any) => void;
+  onUpdateChild?: (parentId: string, childId: string, patch: any) => void;
   onPromoteDummy?: (dummy: any, realId: string, scope?: "scene" | "all") => void;
   onDetailSaved?: (detail: SceneElementDetails) => void;
 }) {
@@ -394,8 +409,10 @@ export function CanvasItem({
   const [qmOpen, setQmOpen] = useState(false);
   const [qmQuery, setQmQuery] = useState("");
   const [qmIndex, setQmIndex] = useState(0);
-  type MentionGroup = "card" | "novel" | "dummy";
+  type MentionGroup = "narrator" | "card" | "novel" | "dummy";
   type MentionChar = { id: string; name: string; aliases?: string[]; role?: string; group: MentionGroup };
+  // การ์ดคำบรรยาย (Narrator) — mention ตัว "narrator" ได้เสมอ ไม่ต้องเป็นตัวละครจริง
+  const narratorChars: MentionChar[] = item.isNarration ? [{ id: 'narrator', name: 'narrator', group: 'narrator' as const }] : [];
   // ตัวละครในการ์ดนี้ (participant ของไอเดีย)
   const cardChars: MentionChar[] = Array.from(
     new Map(
@@ -415,13 +432,14 @@ export function CanvasItem({
   const dummyChars: MentionChar[] = (novelDummyNames || [])
     .filter(n => !cardNames.has(n) && !novelNames.has(n))
     .map(n => ({ id: `dummy:${n}`, name: n, group: "dummy" as const }));
-  const allMentionChars = [...cardChars, ...novelChars, ...dummyChars];
+  const allMentionChars = [...narratorChars, ...cardChars, ...novelChars, ...dummyChars];
 
   const ROLE_RANK: Record<string, number> = { protagonist: 0, antagonist: 1, supporting: 2, minor: 3 };
   const q = qmQuery.toLowerCase();
   const matchChar = (c: MentionChar) =>
     c.name.toLowerCase().includes(q) || (c.aliases?.some(a => String(a).toLowerCase().includes(q)) ?? false);
   // ในการ์ด: โชว์ทันทีแม้ query ว่าง — อื่นในนิยาย/ตัวประกอบ: query ว่าง = โชว์ต้นๆ (จำกัด), พิมพ์แล้ว = กรอง
+  const narratorMatches = qmOpen ? narratorChars.filter(c => q === "" || matchChar(c)) : [];
   const cardMatches = qmOpen ? cardChars.filter(c => q === "" || matchChar(c)) : [];
   const novelMatches = qmOpen
     ? novelChars
@@ -432,7 +450,7 @@ export function CanvasItem({
   const dummyMatches = qmOpen
     ? dummyChars.filter(c => q === "" || matchChar(c)).sort((a, b) => a.name.localeCompare(b.name)).slice(0, q === "" ? 5 : 6)
     : [];
-  const qmMatches = [...cardMatches, ...novelMatches, ...dummyMatches]; // flat list สำหรับ keyboard nav
+  const qmMatches = [...narratorMatches, ...cardMatches, ...novelMatches, ...dummyMatches]; // flat list สำหรับ keyboard nav
   const detectQm = (value: string, caret: number) => {
     const m = value.slice(0, caret).match(/@([^\s@]{0,30})$/);
     if (m && allMentionChars.length > 0) { setQmQuery(m[1]); setQmOpen(true); setQmIndex(0); }
@@ -566,13 +584,17 @@ export function CanvasItem({
           className="p-0 w-56 max-h-52 overflow-y-auto border-yellow-400"
         >
           {qmMatches.map((c, i) => {
-            const firstCard = i === 0 && cardMatches.length > 0;
-            const firstNovel = i === cardMatches.length && novelMatches.length > 0;
-            const firstDummy = i === cardMatches.length + novelMatches.length && dummyMatches.length > 0;
+            const firstNarrator = i === 0 && narratorMatches.length > 0;
+            const firstCard = i === narratorMatches.length && cardMatches.length > 0;
+            const firstNovel = i === narratorMatches.length + cardMatches.length && novelMatches.length > 0;
+            const firstDummy = i === narratorMatches.length + cardMatches.length + novelMatches.length && dummyMatches.length > 0;
             return (
               <div key={c.id}>
+                {firstNarrator && (
+                  <div className="px-2 pt-1 pb-0.5 text-[9px] uppercase tracking-wide text-amber-600/80 font-technical">คำบรรยาย</div>
+                )}
                 {firstCard && (
-                  <div className="px-2 pt-1 pb-0.5 text-[9px] uppercase tracking-wide text-muted-foreground/70 font-technical">ในการ์ดนี้</div>
+                  <div className="px-2 pt-1 pb-0.5 text-[9px] uppercase tracking-wide text-muted-foreground/70 font-technical border-t border-border/40 mt-0.5">ในการ์ดนี้</div>
                 )}
                 {firstNovel && (
                   <div className="px-2 pt-1 pb-0.5 text-[9px] uppercase tracking-wide text-muted-foreground/70 font-technical border-t border-border/40 mt-0.5">ตัวละครอื่นในนิยาย</div>
@@ -587,6 +609,7 @@ export function CanvasItem({
                 >
                   <span className="text-yellow-600 font-semibold">@</span>
                   <span className="truncate flex-1">{c.name}</span>
+                  {c.group === "narrator" && <Quote className="w-3 h-3 text-amber-500 shrink-0" fill="currentColor" />}
                   {c.group === "novel" && <User className="w-3 h-3 text-muted-foreground/50 shrink-0" />}
                   {c.group === "dummy" && <Users className="w-3 h-3 text-muted-foreground/50 shrink-0" />}
                 </button>
@@ -739,8 +762,9 @@ Sticky Notes: ${stickyNotes}`;
           ${isOver ? 'ring-2 ring-[var(--forge-amber)] ring-offset-1' : ''}
           ${isLinkingSource ? 'ring-2 ring-blue-500 ring-offset-1' : ''}
           ${isKeyMoment ? 'ring-1 ring-amber-400/60 shadow-[0_0_14px_-2px] shadow-amber-500/40' : ''}
-          border border-border/70 shadow-sm hover:shadow-md transition-shadow duration-200
-          ${isDragging && !isOverlay ? 'opacity-0' : 'opacity-100'}
+          ${item.isNarration ? 'border-dashed border-amber-500/30 opacity-75 hover:opacity-100' : 'border-border/70'}
+          border shadow-sm hover:shadow-md transition-all duration-200
+          ${isDragging && !isOverlay ? 'opacity-0' : ''}
       `}
       >
         {/* แถบสีหัวการ์ด — ป้ายจัดกลุ่ม/ชนิด (เหตุการณ์สำคัญ = แถบอำพันหนา) */}
@@ -758,6 +782,14 @@ Sticky Notes: ${stickyNotes}`;
                   <Icon />
                 </div>
                 <p className="font-semibold text-sm truncate">{item.title}</p>
+                {item.isNarration && (
+                  <span
+                    title="คำบรรยาย (Narrator) — ไม่มีตัวละครร่วมฉาก"
+                    className="inline-flex items-center gap-1 shrink-0 text-[10px] font-bold uppercase tracking-wide text-amber-500"
+                  >
+                    <Quote className="w-3 h-3" fill="currentColor" /> บรรยาย
+                  </span>
+                )}
               </div>
 
               {item.type === 'idea' && item.content && (
@@ -827,6 +859,24 @@ Sticky Notes: ${stickyNotes}`;
 
             {/* Actions */}
             <div className="flex flex-col gap-1 -mr-1 -mt-1">
+              {/* ทำเครื่องหมายคำบรรยาย/Narrator — ฉากที่ไม่มีตัวละครร่วม แค่บรรยาย (idea only) */}
+              {isContainer && onSetNarration && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    "h-6 w-6 shrink-0 transition-opacity",
+                    item.isNarration
+                      ? "text-amber-500 hover:text-amber-600 opacity-100"
+                      : "text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100"
+                  )}
+                  onClick={(e) => { e.stopPropagation(); onSetNarration(!item.isNarration); }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  title={item.isNarration ? "เอาเครื่องหมายคำบรรยายออก" : "ทำเครื่องหมายเป็นคำบรรยาย (Narrator)"}
+                >
+                  <Quote className="w-3 h-3" fill={item.isNarration ? "currentColor" : "none"} />
+                </Button>
+              )}
               {/* Three-dot menu */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -1011,33 +1061,29 @@ Sticky Notes: ${stickyNotes}`;
           )}
 
 
-          {/* Ancestor Connections Badge */}
+          {/* Ancestor Connections — เหตุผล/ที่มา, สไตล์ pill เดียวกับ thread beats badge */}
           {isContainer && ancestorConnections && ancestorConnections.length > 0 && (
-            <div className="space-y-1 mb-2 border-t pt-2 mt-2">
-              <p className="text-[10px] uppercase font-bold text-blue-500/80 tracking-wider mb-1 flex items-center gap-1">
-                <GitBranchPlus className="w-3 h-3" /> เหตุผล / ที่มา
-              </p>
+            <div className="flex flex-wrap gap-1 mt-1.5">
               {ancestorConnections.map((conn) => {
-                // Find the ancestor idea title from items or ideas
                 const ancestorTitle = conn.label || conn.targetIdeaTitle || conn.targetIdeaId.slice(0, 8) + '...';
                 const categoryLabels: Record<string, string> = {
-                  plot: '📖 พล็อต',
-                  character: '👤 ตัวละคร',
-                  worldbuilding: '🌍 สร้างโลก',
-                  subplot: '📝 เนื้อรอง',
-                  general: '💡 ทั่วไป',
+                  plot: 'พล็อต',
+                  character: 'ตัวละคร',
+                  worldbuilding: 'สร้างโลก',
+                  subplot: 'เนื้อรอง',
+                  general: 'ทั่วไป',
                 };
                 return (
                   <Popover key={conn.id}>
-                    <div className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded px-2 py-1 text-xs group/ancestor">
+                    <div className="group/ancestor inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded-full border border-amber-500/40 bg-amber-500/10 text-[10px] font-medium">
                       <PopoverTrigger asChild>
                         <button
                           onClick={(e) => e.stopPropagation()}
                           onPointerDown={(e) => e.stopPropagation()}
-                          className="flex items-center gap-1.5 flex-1 min-w-0 text-left hover:text-blue-900 transition-colors cursor-pointer"
+                          className="flex items-center gap-1 cursor-pointer text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-100 transition-colors"
                         >
-                          <span className="text-blue-600 shrink-0">🧬</span>
-                          <span className="truncate flex-1 text-blue-700">{ancestorTitle}</span>
+                          <GitBranchPlus className="w-3 h-3 shrink-0" />
+                          <span className="truncate max-w-[110px]">{ancestorTitle}</span>
                         </button>
                       </PopoverTrigger>
                       {onRemoveAncestor && (
@@ -1047,7 +1093,7 @@ Sticky Notes: ${stickyNotes}`;
                             onRemoveAncestor(conn.id);
                           }}
                           onPointerDown={(e) => e.stopPropagation()}
-                          className="opacity-0 group-hover/ancestor:opacity-100 hover:text-red-500 transition-opacity text-blue-400 shrink-0"
+                          className="opacity-0 group-hover/ancestor:opacity-100 hover:text-destructive transition-opacity text-amber-500/70 shrink-0"
                         >
                           <X className="w-3 h-3" />
                         </button>
@@ -1056,48 +1102,44 @@ Sticky Notes: ${stickyNotes}`;
                     <PopoverContent
                       side="top"
                       align="start"
-                      className="w-72 p-0 shadow-xl border-blue-200"
+                      className="w-72 p-3 space-y-2"
                       onClick={(e) => e.stopPropagation()}
                       onPointerDown={(e) => e.stopPropagation()}
                     >
-                      <div className="bg-gradient-to-r from-blue-500 to-blue-600 px-3 py-2 rounded-t-md">
-                        <div className="flex items-center gap-2">
-                          <Lightbulb className="w-4 h-4 text-white shrink-0" />
-                          <p className="text-sm font-semibold text-white truncate">
-                            {conn.targetIdeaTitle || 'Idea'}
-                          </p>
+                      <div className="flex items-center gap-2">
+                        <Lightbulb className="w-4 h-4 text-amber-500 shrink-0" />
+                        <p className="text-sm font-semibold truncate">{conn.targetIdeaTitle || 'Idea'}</p>
+                      </div>
+                      {conn.targetIdeaCategory && (
+                        <span className="inline-block text-[10px] font-medium text-amber-700 dark:text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded px-1.5 py-0.5">
+                          {categoryLabels[conn.targetIdeaCategory] || conn.targetIdeaCategory}
+                        </span>
+                      )}
+                      {conn.label && (
+                        <div className="flex items-start gap-1.5">
+                          <MessageCircle className="w-3 h-3 text-muted-foreground shrink-0 mt-0.5" />
+                          <p className="text-xs text-foreground/80 italic">{conn.label}</p>
                         </div>
-                        {conn.targetIdeaCategory && (
-                          <span className="text-[10px] text-blue-100 mt-0.5 block">
-                            {categoryLabels[conn.targetIdeaCategory] || conn.targetIdeaCategory}
-                          </span>
-                        )}
-                      </div>
-                      <div className="p-3 space-y-2">
-                        {conn.label && (
-                          <div className="flex items-start gap-1.5">
-                            <span className="text-blue-500 text-xs shrink-0 mt-0.5">💬</span>
-                            <p className="text-xs text-blue-700 italic">{conn.label}</p>
-                          </div>
-                        )}
-                        {conn.targetIdeaContent ? (
-                          <p className="text-xs text-muted-foreground whitespace-pre-wrap line-clamp-6">
-                            {conn.targetIdeaContent}
+                      )}
+                      {conn.targetIdeaContent ? (
+                        <p className="text-xs text-muted-foreground whitespace-pre-wrap line-clamp-6">
+                          {conn.targetIdeaContent}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground/50 italic">ไม่มีเนื้อหาเพิ่มเติม</p>
+                      )}
+                      {conn.targetIdeaNotes && conn.targetIdeaNotes.length > 0 && (
+                        <div className="pt-2 border-t border-border/60 space-y-1">
+                          <p className="text-[10px] font-semibold text-muted-foreground uppercase flex items-center gap-1">
+                            <BookOpen className="w-3 h-3" /> Notes
                           </p>
-                        ) : (
-                          <p className="text-xs text-muted-foreground/50 italic">ไม่มีเนื้อหาเพิ่มเติม</p>
-                        )}
-                        {conn.targetIdeaNotes && conn.targetIdeaNotes.length > 0 && (
-                          <div className="mt-2 pt-2 border-t border-blue-100 space-y-1">
-                            <p className="text-[10px] font-semibold text-blue-500 uppercase">📝 Notes</p>
-                            {conn.targetIdeaNotes.map((note, idx) => (
-                              <p key={idx} className="text-xs text-yellow-800 bg-yellow-50 border border-yellow-200 rounded px-2 py-1 whitespace-pre-wrap">
-                                {note}
-                              </p>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                          {conn.targetIdeaNotes.map((note, idx) => (
+                            <p key={idx} className="text-xs text-foreground/80 bg-yellow-500/10 border border-yellow-500/20 rounded px-2 py-1 whitespace-pre-wrap">
+                              {note}
+                            </p>
+                          ))}
+                        </div>
+                      )}
                     </PopoverContent>
                   </Popover>
                 );
@@ -1173,15 +1215,33 @@ Sticky Notes: ${stickyNotes}`;
                       .filter((c: any) => c.type === 'faction' || c.type === 'dummy_faction')
                       .map((child: any) => {
                         const detail = getChildDetail(child);
-                        const hasDetail = detail && (detail.action || detail.how || detail.goal);
                         const isDummy = child.type === 'dummy_faction';
+                        // ข้อมูลจริงของฝ่าย (เป้าหมาย/คำอธิบาย) — ดึงจาก referenceId ที่ผูกไว้ตอนลากมาวาง
+                        const realFaction = !isDummy ? factions?.find((f: any) => f.id === child.referenceId) : null;
+                        const factionBlurb: string | null = realFaction?.goal || realFaction?.description || null;
+                        const allLinkedIdeas: any[] = realFaction?.linkedIdeaIds
+                          ? realFaction.linkedIdeaIds.map((id: string) => ideas?.find((i: any) => i.id === id)).filter(Boolean)
+                          : [];
+                        // pinnedIdeaIds ยังไม่ตั้ง = โชว์ทั้งหมด (ค่าเริ่มต้นเดิม); ตั้งแล้ว = โชว์เฉพาะที่เลือก
+                        const linkedIdeas = child.pinnedIdeaIds
+                          ? allLinkedIdeas.filter((i: any) => child.pinnedIdeaIds.includes(i.id))
+                          : allLinkedIdeas;
+                        const togglePinnedIdea = (ideaId: string) => {
+                          const current: string[] = child.pinnedIdeaIds ?? allLinkedIdeas.map((i: any) => i.id);
+                          const next = current.includes(ideaId) ? current.filter((id) => id !== ideaId) : [...current, ideaId];
+                          onUpdateChild?.(item.id, child.id, { pinnedIdeaIds: next });
+                        };
                         return (
                           <div key={child.id} className="py-1 text-xs group/item">
                             <div className="flex items-center gap-1.5">
-                              <Shield className={cn("w-3 h-3 shrink-0", isDummy ? "text-muted-foreground" : "text-emerald-500")} />
+                              <Shield className={cn("w-3 h-3 shrink-0", isDummy ? "text-muted-foreground" : "text-emerald-500")}
+                                style={!isDummy && realFaction?.color ? { color: realFaction.color } : undefined} />
                               <span className={cn("truncate font-medium text-foreground", isDummy && "italic text-muted-foreground")}>
                                 {child.title}{isDummy && <span className="text-[10px] text-muted-foreground font-normal ml-1">(Dummy)</span>}
                               </span>
+                              {realFaction?.type && (
+                                <span className="text-[9px] uppercase tracking-wide text-muted-foreground/70 shrink-0">{realFaction.type}</span>
+                              )}
                               <span className="flex-1" />
                               {onEditChild && (
                                 <button
@@ -1207,10 +1267,46 @@ Sticky Notes: ${stickyNotes}`;
                                 </button>
                               )}
                             </div>
+                            {/* บันทึกเฉพาะฉากนี้ (ที่ผู้ใช้พิมพ์เอง) — มาก่อนรายละเอียดจริงของฝ่าย */}
                             {detail?.action && (
                               <p className="mt-0.5 ml-[18px] text-[11px] leading-snug text-muted-foreground whitespace-pre-wrap">
                                 {detail.action}
                               </p>
+                            )}
+                            {!detail?.action && factionBlurb && (
+                              <p className="mt-0.5 ml-[18px] text-[11px] leading-snug text-muted-foreground/80 line-clamp-2 whitespace-pre-wrap">
+                                {factionBlurb}
+                              </p>
+                            )}
+                            {/* ไอเดียที่แปะไว้กับฝ่ายนี้ — "ในฝ่ายนี้เราจะเล่าเพียงเท่านี้ก่อน" กดกากบาทเพื่อซ่อนออกจากการ์ดนี้ */}
+                            {linkedIdeas.length > 0 && (
+                              <div className="mt-1 ml-[18px] flex flex-wrap items-center gap-1">
+                                {linkedIdeas.map((idea: any) => (
+                                  <span key={idea.id}
+                                    className="group/idea inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded border border-amber-500/30 bg-amber-500/10 text-[10px] text-amber-600 dark:text-amber-400"
+                                    title={idea.summary || idea.content || idea.title}>
+                                    <Lightbulb className="w-2.5 h-2.5 shrink-0" />
+                                    <span className="truncate max-w-[140px]">{idea.title}</span>
+                                    {onUpdateChild && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); togglePinnedIdea(idea.id); }}
+                                        className="shrink-0 opacity-40 hover:opacity-100 hover:text-destructive transition-opacity"
+                                        title="ซ่อนไอเดียนี้ออกจากการ์ด"
+                                      >
+                                        <X className="w-2.5 h-2.5" />
+                                      </button>
+                                    )}
+                                  </span>
+                                ))}
+                                {allLinkedIdeas.length > linkedIdeas.length && onUpdateChild && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); onUpdateChild(item.id, child.id, { pinnedIdeaIds: undefined }); }}
+                                    className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+                                  >
+                                    +{allLinkedIdeas.length - linkedIdeas.length} ซ่อนอยู่ · แสดงทั้งหมด
+                                  </button>
+                                )}
+                              </div>
                             )}
                           </div>
                         );
