@@ -941,25 +941,28 @@ function StatusColumn({
                 const kidsOf = (pid: string) => factions.filter((f) => f.parentFactionId === pid);
                 const rootsHere = factions.filter((f) => !f.parentFactionId || !inSection.has(f.parentFactionId));
                 const renderNode = (f: Faction): React.ReactNode => (
-                    <div key={f.id} className="space-y-1.5">
-                        <div className="relative">
-                            <span className="absolute -left-3 top-0 h-1/2 w-3 border-l border-b border-steel-600/60" aria-hidden="true" />
+                    <li key={f.id}>
+                        <div className="w-56">
                             <DraggableCard f={f} compact active={f.id === selectedId} onClick={() => onSelect(f)}
                                 parentName={null} leaderName={charName(f.leaderId)} statusColor={meta.color} />
                         </div>
-                        {kidsOf(f.id).length > 0 && <div className="ml-5 space-y-1.5">{kidsOf(f.id).map(renderNode)}</div>}
-                    </div>
+                        {kidsOf(f.id).length > 0 && <ul>{kidsOf(f.id).map(renderNode)}</ul>}
+                    </li>
                 );
                 return (
-                    <div className="grid gap-3 items-start" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" }}>
-                        {rootsHere.map((root) => (
-                            <div key={root.id} className="space-y-1.5">
-                                <DraggableCard f={root} active={root.id === selectedId} onClick={() => onSelect(root)}
-                                    parentName={root.parentFactionId && !inSection.has(root.parentFactionId) ? nameById(root.parentFactionId) : null}
-                                    leaderName={charName(root.leaderId)} statusColor={meta.color} />
-                                {kidsOf(root.id).length > 0 && <div className="ml-5 space-y-1.5">{kidsOf(root.id).map(renderNode)}</div>}
-                            </div>
-                        ))}
+                    <div className="genealogy overflow-x-auto pb-2">
+                        <ul>
+                            {rootsHere.map((root) => (
+                                <li key={root.id}>
+                                    <div className="w-56">
+                                        <DraggableCard f={root} active={root.id === selectedId} onClick={() => onSelect(root)}
+                                            parentName={root.parentFactionId && !inSection.has(root.parentFactionId) ? nameById(root.parentFactionId) : null}
+                                            leaderName={charName(root.leaderId)} statusColor={meta.color} />
+                                    </div>
+                                    {kidsOf(root.id).length > 0 && <ul>{kidsOf(root.id).map(renderNode)}</ul>}
+                                </li>
+                            ))}
+                        </ul>
                     </div>
                 );
             })() : (
