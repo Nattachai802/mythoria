@@ -507,7 +507,12 @@ RESEND_API_KEY="..."
 
 # Discord (Optional)
 DISCORD_BOT_TOKEN="..."
+
+# Error tracking (Optional) — ทำงานเฉพาะ production, ว่างไว้ตอน dev ก็ได้
+NEXT_PUBLIC_SENTRY_DSN=""
 ```
+
+> ดู `.env.example` สำหรับรายการตัวแปรทั้งหมด — copy เป็นจุดเริ่มต้นได้เลย: `cp .env.example .env`
 
 สร้างไฟล์ `pythonservice/.env`:
 
@@ -536,6 +541,19 @@ npm run dev:python   # Python Service (port 8000)
 - **Web App**: `http://localhost:3000`
 - **AI Service**: `http://localhost:8000`
 - **DB Studio**: `npm run db:studio`
+
+#### 6. เช็คก่อน commit (ตัวเดียวกับที่ CI รันอัตโนมัติทุก push)
+
+```bash
+npm run typecheck   # tsc --noEmit
+npm run build        # next build
+```
+
+> โปรเจกต์นี้มี TS error เก่าอยู่ในบาง route/server action (ส่วนใหญ่เป็น implicit-any) ที่ยังไม่ได้ไล่แก้ — ถ้าเจอ error ในไฟล์ที่คุณไม่ได้แตะ ไม่ต้องตกใจ ไม่ใช่ของที่คุณทำพัง แต่ก็อย่าเพิ่มเข้าไปอีกในไฟล์ที่แก้ใหม่
+
+#### หมายเหตุ: `pythonservice/discord_bot/`
+
+โฟลเดอร์นี้เป็น **repo แยกต่างหาก** ([Mythoria_bot](https://github.com/Nattachai802/Mythoria_bot)) ที่ deploy ผ่าน Render เอง ไม่ได้ผูกกับ repo นี้ — ถูกใส่ไว้ใน `.gitignore` แล้ว ไม่ต้อง `git add` โฟลเดอร์นี้จาก repo `mythoria`
 
 ---
 

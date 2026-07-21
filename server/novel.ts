@@ -5,17 +5,20 @@ import { novels, InsertNovel } from "@/db/schema";
 import { eq, desc, and, or, like } from "drizzle-orm";
 import { unstable_cache, revalidateTag } from "next/cache";
 import { CACHE_TAGS, CACHE_DURATION } from "@/lib/cache-config";
+import { requireNovelAccess, requireUser, authErrorMessage } from "@/lib/authz";
 
 // ====================================
 // CREATE - สร้าง Novel ใหม่
 // ====================================
 export const createNovel = async (values: InsertNovel) => {
     try {
-        const [novel] = await db.insert(novels).values(values).returning();
+        // ห้ามสร้างนิยายใต้ userId คนอื่นผ่าน payload — บังคับใช้ userId ของ session เท่านั้น
+        const userId = await requireUser();
+        const [novel] = await db.insert(novels).values({ ...values, userId }).returning();
         return { success: true, message: "Novel created successfully", novel };
     } catch (error) {
         console.error("Create novel error:", error);
-        return { success: false, message: "Failed to create novel" };
+        return { success: false, message: authErrorMessage(error, "Failed to create novel") };
     }
 };
 
@@ -26,8 +29,10 @@ export const createNovel = async (values: InsertNovel) => {
 // ดึง novels ทั้งหมดของ user
 export const getNovelsByUserId = async (userId: string) => {
     try {
+        // เพิกเฉยค่า userId ที่ส่งเข้ามา ใช้ userId ของ session ที่ยืนยันแล้วเสมอ กัน caller ผิดพลาดในอนาคต
+        const verifiedUserId = await requireUser();
         const novelsList = await db.query.novels.findMany({
-            where: eq(novels.userId, userId),
+            where: eq(novels.userId, verifiedUserId),
             orderBy: [desc(novels.updatedAt)],
             with: {
                 chapters: {
@@ -38,13 +43,14 @@ export const getNovelsByUserId = async (userId: string) => {
         return { success: true, novels: novelsList };
     } catch (error) {
         console.error("Get novels error:", error);
-        return { success: false, message: "Failed to get novels" };
+        return { success: false, message: authErrorMessage(error, "Failed to get novels") };
     }
 };
 
 // ดึง novel ตาม id พร้อมข้อมูลเต็ม (ใช้เฉพาะหน้าที่ต้องการทุกอย่างจริงๆ)
 export const getNovelById = async (id: string) => {
     try {
+        await requireNovelAccess(id);
         const novel = await db.query.novels.findFirst({
             where: eq(novels.id, id),
             with: {
@@ -77,7 +83,7 @@ export const getNovelById = async (id: string) => {
         return { success: true, novel };
     } catch (error) {
         console.error("Get novel error:", error);
-        return { success: false, message: "Failed to get novel" };
+        return { success: false, message: authErrorMessage(error, "Failed to get novel") };
     }
 };
 
@@ -131,7 +137,13 @@ const _getNovelByIdLight = async (id: string) => {
 };
 
 // Cached version - ดึง novel แบบ light สำหรับ Overview page (มี cache 60 วินาที)
+// เช็คสิทธิ์นอก unstable_cache เสมอ — ถ้าเช็คในนั้น cache hit จะข้ามการเช็คไปเลย (คนละ user เห็นของ cache กันได้)
 export const getNovelByIdLight = async (id: string) => {
+    try {
+        await requireNovelAccess(id);
+    } catch (error) {
+        return { success: false as const, message: authErrorMessage(error, "Failed to get novel") };
+    }
     const cachedFn = unstable_cache(
         () => _getNovelByIdLight(id),
         [`novel-light-${id}`],
@@ -146,6 +158,7 @@ export const getNovelByIdLight = async (id: string) => {
 // ดึง novel แบบง่าย (ไม่มี relations)
 export const getNovelByIdSimple = async (id: string) => {
     try {
+        await requireNovelAccess(id);
         const novel = await db.query.novels.findFirst({
             where: eq(novels.id, id)
         });
@@ -157,16 +170,17 @@ export const getNovelByIdSimple = async (id: string) => {
         return { success: true, novel };
     } catch (error) {
         console.error("Get novel error:", error);
-        return { success: false, message: "Failed to get novel" };
+        return { success: false, message: authErrorMessage(error, "Failed to get novel") };
     }
 };
 
 // ค้นหา novels ตาม title หรือ description
 export const searchNovels = async (userId: string, searchTerm: string) => {
     try {
+        const verifiedUserId = await requireUser();
         const novelsList = await db.query.novels.findMany({
             where: and(
-                eq(novels.userId, userId),
+                eq(novels.userId, verifiedUserId),
                 or(
                     like(novels.title, `%${searchTerm}%`),
                     like(novels.description, `%${searchTerm}%`)
@@ -177,16 +191,17 @@ export const searchNovels = async (userId: string, searchTerm: string) => {
         return { success: true, novels: novelsList };
     } catch (error) {
         console.error("Search novels error:", error);
-        return { success: false, message: "Failed to search novels" };
+        return { success: false, message: authErrorMessage(error, "Failed to search novels") };
     }
 };
 
 // ดึง novels ตาม status
 export const getNovelsByStatus = async (userId: string, status: string) => {
     try {
+        const verifiedUserId = await requireUser();
         const novelsList = await db.query.novels.findMany({
             where: and(
-                eq(novels.userId, userId),
+                eq(novels.userId, verifiedUserId),
                 eq(novels.status, status)
             ),
             orderBy: [desc(novels.updatedAt)]
@@ -194,16 +209,17 @@ export const getNovelsByStatus = async (userId: string, status: string) => {
         return { success: true, novels: novelsList };
     } catch (error) {
         console.error("Get novels by status error:", error);
-        return { success: false, message: "Failed to get novels" };
+        return { success: false, message: authErrorMessage(error, "Failed to get novels") };
     }
 };
 
 // ดึง novels ตาม genre
 export const getNovelsByGenre = async (userId: string, genre: string) => {
     try {
+        const verifiedUserId = await requireUser();
         const novelsList = await db.query.novels.findMany({
             where: and(
-                eq(novels.userId, userId),
+                eq(novels.userId, verifiedUserId),
                 eq(novels.genre, genre)
             ),
             orderBy: [desc(novels.updatedAt)]
@@ -211,7 +227,7 @@ export const getNovelsByGenre = async (userId: string, genre: string) => {
         return { success: true, novels: novelsList };
     } catch (error) {
         console.error("Get novels by genre error:", error);
-        return { success: false, message: "Failed to get novels" };
+        return { success: false, message: authErrorMessage(error, "Failed to get novels") };
     }
 };
 
@@ -220,9 +236,12 @@ export const getNovelsByGenre = async (userId: string, genre: string) => {
 // ====================================
 export const updateNovel = async (id: string, values: Partial<InsertNovel>) => {
     try {
+        await requireNovelAccess(id);
+        // ห้ามย้ายความเป็นเจ้าของนิยายผ่าน payload
+        const { userId: _ignored, ...safeValues } = values as Partial<InsertNovel> & { userId?: string };
         const [updatedNovel] = await db
             .update(novels)
-            .set({ ...values, updatedAt: new Date() })
+            .set({ ...safeValues, updatedAt: new Date() })
             .where(eq(novels.id, id))
             .returning();
 
@@ -233,13 +252,14 @@ export const updateNovel = async (id: string, values: Partial<InsertNovel>) => {
         return { success: true, message: "Novel updated successfully", novel: updatedNovel };
     } catch (error) {
         console.error("Update novel error:", error);
-        return { success: false, message: "Failed to update novel" };
+        return { success: false, message: authErrorMessage(error, "Failed to update novel") };
     }
 };
 
 // อัพเดท word count (เรียกเมื่อมีการเปลี่ยนแปลง chapters)
 export const updateNovelWordCount = async (novelId: string, totalWordCount: number) => {
     try {
+        await requireNovelAccess(novelId);
         await db
             .update(novels)
             .set({ wordCount: totalWordCount, updatedAt: new Date() })
@@ -248,13 +268,14 @@ export const updateNovelWordCount = async (novelId: string, totalWordCount: numb
         return { success: true, message: "Word count updated successfully" };
     } catch (error) {
         console.error("Update word count error:", error);
-        return { success: false, message: "Failed to update word count" };
+        return { success: false, message: authErrorMessage(error, "Failed to update word count") };
     }
 };
 
 // เปลี่ยน status
 export const updateNovelStatus = async (id: string, status: string) => {
     try {
+        await requireNovelAccess(id);
         const [updatedNovel] = await db
             .update(novels)
             .set({ status, updatedAt: new Date() })
@@ -268,13 +289,14 @@ export const updateNovelStatus = async (id: string, status: string) => {
         return { success: true, message: "Status updated successfully", novel: updatedNovel };
     } catch (error) {
         console.error("Update status error:", error);
-        return { success: false, message: "Failed to update status" };
+        return { success: false, message: authErrorMessage(error, "Failed to update status") };
     }
 };
 
 // เปลี่ยน visibility
 export const updateNovelVisibility = async (id: string, visibility: string) => {
     try {
+        await requireNovelAccess(id);
         const [updatedNovel] = await db
             .update(novels)
             .set({ visibility, updatedAt: new Date() })
@@ -288,7 +310,7 @@ export const updateNovelVisibility = async (id: string, visibility: string) => {
         return { success: true, message: "Visibility updated successfully", novel: updatedNovel };
     } catch (error) {
         console.error("Update visibility error:", error);
-        return { success: false, message: "Failed to update visibility" };
+        return { success: false, message: authErrorMessage(error, "Failed to update visibility") };
     }
 };
 
@@ -297,6 +319,7 @@ export const updateNovelVisibility = async (id: string, visibility: string) => {
 // ====================================
 export const deleteNovel = async (id: string) => {
     try {
+        await requireNovelAccess(id);
         const [deletedNovel] = await db
             .delete(novels)
             .where(eq(novels.id, id))
@@ -309,7 +332,7 @@ export const deleteNovel = async (id: string) => {
         return { success: true, message: "Novel deleted successfully" };
     } catch (error) {
         console.error("Delete novel error:", error);
-        return { success: false, message: "Failed to delete novel" };
+        return { success: false, message: authErrorMessage(error, "Failed to delete novel") };
     }
 };
 
@@ -320,6 +343,7 @@ export const deleteNovel = async (id: string) => {
 // ดึงสถิติของ novel
 export const getNovelStats = async (id: string) => {
     try {
+        await requireNovelAccess(id);
         const novel = await db.query.novels.findFirst({
             where: eq(novels.id, id),
             with: {
@@ -351,7 +375,7 @@ export const getNovelStats = async (id: string) => {
         return { success: true, stats };
     } catch (error) {
         console.error("Get novel stats error:", error);
-        return { success: false, message: "Failed to get novel statistics" };
+        return { success: false, message: authErrorMessage(error, "Failed to get novel statistics") };
     }
 };
 
