@@ -6,6 +6,7 @@ import { eq, and, or, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import { requireNovelAccess, authErrorMessage } from "@/lib/authz";
 import { addReference, removeReferenceEdge } from "./references"; // Context Fabric dual-write (P4)
 
 // --- Factions CRUD ---
@@ -27,6 +28,8 @@ export async function createFaction(data: {
     novelId: string;
 }) {
     try {
+        await requireNovelAccess(data.novelId);
+
         const [newFaction] = await db
             .insert(factions)
             .values(data)
@@ -36,7 +39,7 @@ export async function createFaction(data: {
         return { success: true, data: newFaction };
     } catch (error) {
         console.error("Error creating faction:", error);
-        return { success: false, error: "Failed to create faction" };
+        return { success: false, error: authErrorMessage(error, "Failed to create faction") };
     }
 }
 
@@ -55,9 +58,17 @@ export async function getFactionsByNovelId(novelId: string) {
 
 export async function updateFaction(factionId: string, data: Partial<Faction>) {
     try {
+        // factionId มาจาก client เชื่อตรง ๆ ไม่ได้ — ต้องหา novelId เจ้าของจริงก่อน แล้วเช็คสิทธิ์
+        const [existing] = await db.select({ novelId: factions.novelId }).from(factions).where(eq(factions.id, factionId)).limit(1);
+        if (!existing) return { success: false, error: "Faction not found" };
+        await requireNovelAccess(existing.novelId);
+
+        // ห้าม client ย้ายฝ่ายข้ามไปนิยายอื่นผ่าน payload (novelId ไม่ควรแก้ได้จากช่องทางนี้)
+        const { novelId: _ignored, ...safeData } = data as Partial<Faction> & { novelId?: string };
+
         const [updatedFaction] = await db
             .update(factions)
-            .set({ ...data, updatedAt: new Date() })
+            .set({ ...safeData, updatedAt: new Date() })
             .where(eq(factions.id, factionId))
             .returning();
 
@@ -65,12 +76,16 @@ export async function updateFaction(factionId: string, data: Partial<Faction>) {
         return { success: true, data: updatedFaction };
     } catch (error) {
         console.error("Error updating faction:", error);
-        return { success: false, error: "Failed to update faction" };
+        return { success: false, error: authErrorMessage(error, "Failed to update faction") };
     }
 }
 
 export async function deleteFaction(factionId: string) {
     try {
+        const [existing] = await db.select({ novelId: factions.novelId }).from(factions).where(eq(factions.id, factionId)).limit(1);
+        if (!existing) return { success: false, error: "Faction not found" };
+        await requireNovelAccess(existing.novelId);
+
         const [deletedFaction] = await db
             .delete(factions)
             .where(eq(factions.id, factionId))
@@ -83,7 +98,7 @@ export async function deleteFaction(factionId: string) {
         return { success: true, data: deletedFaction };
     } catch (error) {
         console.error("Error deleting faction:", error);
-        return { success: false, error: "Failed to delete faction" };
+        return { success: false, error: authErrorMessage(error, "Failed to delete faction") };
     }
 }
 
