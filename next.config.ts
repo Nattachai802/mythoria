@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   reactStrictMode: false, // Disable to reduce Radix UI hydration warnings
@@ -35,4 +36,10 @@ const nextConfig: NextConfig = {
   // run `npm run dev:webpack` inside Docker/WSL where native file watching fails.
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  // ไม่มี org/project auth token ก็ build ได้ปกติ — แค่จะไม่ได้ source map ที่อ่าน stack trace เป็นโค้ดจริง (readable) บน Sentry
+  org: "nattachai-6f",
+  project: "mythoria",
+  silent: true, // ไม่ต้อง log ระหว่าง build ให้รก
+  widenClientFileUpload: true,
+});

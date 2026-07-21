@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+        env:
+          # ค่า dummy — build ไม่ได้เชื่อมต่อจริง แค่กันโมดูลที่อ่าน env ตอน import แล้ว throw
+          NEXT_PUBLIC_BASE_URL: http://localhost:3000
+          BETTER_AUTH_SECRET: ci-dummy-secret-min-32-characters-long
+          BETTER_AUTH_URL: http://localhost:3000
+          DATABASE_URL: postgresql://user:pass@localhost:5432/db
+          GEMINI_API_KEY: dummy
+          TYPHOON_API_KEY: dummy
+          GROQ_API_KEY: dummy
+          GOOGLE_CLIENT_ID: dummy
+          GOOGLE_CLIENT_SECRET: dummy
+          CLOUDINARY_CLOUD_NAME: dummy
+          CLOUDINARY_API_KEY: dummy
+          CLOUDINARY_API_SECRET: dummy
+          RESEND_API_KEY: dummy
+          RESEND_FROM_EMAIL: onboarding@resend.dev
+          REGISTRATION_CODE: dummy
+          NEXT_PUBLIC_SENTRY_DSN: ""
