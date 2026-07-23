@@ -2,8 +2,9 @@
 
 import { db } from "@/db/drizzle";
 import { locations } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { requireNovelAccess } from "@/lib/authz";
 
 export async function createLocation(data: {
     name: string;
@@ -24,6 +25,7 @@ export async function createLocation(data: {
     history?: string;
 }) {
     try {
+        await requireNovelAccess(data.novelId);
         // Convert empty string to null for parentLocationId
         const locationData = {
             ...data,
@@ -49,6 +51,7 @@ export async function createLocation(data: {
 
 export async function getLocationsByNovelId(novelId: string) {
     try {
+        await requireNovelAccess(novelId);
         const allLocations = await db.query.locations.findMany({
             where: eq(locations.novelId, novelId),
             with: {
@@ -77,6 +80,7 @@ export async function getLocationById(locationId: string) {
         if (!location) {
             return { success: false, error: "Location not found" };
         }
+        await requireNovelAccess(location.novelId);
 
         return { success: true, data: location };
     } catch (error) {
@@ -106,6 +110,12 @@ export async function updateLocation(
     }>
 ) {
     try {
+        const [owner] = await db.select({ novelId: locations.novelId }).from(locations).where(eq(locations.id, locationId)).limit(1);
+        if (!owner) {
+            return { success: false, error: "Location not found" };
+        }
+        await requireNovelAccess(owner.novelId);
+
         // Sanitize data - convert empty strings to null for foreign keys
         const sanitizedData = {
             ...data,
@@ -137,6 +147,12 @@ export async function updateLocation(
 
 export async function deleteLocation(locationId: string) {
     try {
+        const [owner] = await db.select({ novelId: locations.novelId }).from(locations).where(eq(locations.id, locationId)).limit(1);
+        if (!owner) {
+            return { success: false, error: "Location not found" };
+        }
+        await requireNovelAccess(owner.novelId);
+
         const [deletedLocation] = await db
             .delete(locations)
             .where(eq(locations.id, locationId))
@@ -158,6 +174,10 @@ export async function deleteLocation(locationId: string) {
 // Get breadcrumb path for a location
 export async function getLocationPath(locationId: string) {
     try {
+        const [owner] = await db.select({ novelId: locations.novelId }).from(locations).where(eq(locations.id, locationId)).limit(1);
+        if (!owner) return { success: false, error: "Location not found" };
+        await requireNovelAccess(owner.novelId);
+
         const path: any[] = [];
         let currentId: string | null = locationId;
 
@@ -186,6 +206,9 @@ export async function validateLocationDepth(parentLocationId: string | null): Pr
     }
 
     try {
+        const [owner] = await db.select({ novelId: locations.novelId }).from(locations).where(eq(locations.id, parentLocationId)).limit(1);
+        if (owner) await requireNovelAccess(owner.novelId);
+
         let depth = 1;
         let currentId: string | null = parentLocationId;
 
@@ -221,13 +244,14 @@ export async function saveMapLayout(
     positions: { id: string; x: number; y: number }[]
 ) {
     try {
-        // Update each location's mapPosition
+        await requireNovelAccess(novelId);
+        // Update each location's mapPosition — scope by novelId กัน update ข้าม novel
         await Promise.all(
             positions.map(pos =>
                 db
                     .update(locations)
                     .set({ mapPosition: { x: pos.x, y: pos.y } })
-                    .where(eq(locations.id, pos.id))
+                    .where(and(eq(locations.id, pos.id), eq(locations.novelId, novelId)))
             )
         );
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db/drizzle";
 import { chapters, characters, chapterStylometry, notes } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { pyFetch } from "@/lib/python-service";
 
 export async function POST(
   request: Request,
@@ -58,7 +59,7 @@ export async function POST(
     });
 
     // 3. Send request to Python API
-    const pythonResponse = await fetch("http://localhost:8000/analyze-chapter-style", {
+    const pythonResponse = await pyFetch("/analyze-chapter-style", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -6,7 +6,7 @@ import { eq, and, or, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
-import { requireNovelAccess, authErrorMessage } from "@/lib/authz";
+import { requireNovelAccess, requireUser, authErrorMessage } from "@/lib/authz";
 import { addReference, removeReferenceEdge } from "./references"; // Context Fabric dual-write (P4)
 
 // --- Factions CRUD ---
@@ -45,6 +45,7 @@ export async function createFaction(data: {
 
 export async function getFactionsByNovelId(novelId: string) {
     try {
+        await requireNovelAccess(novelId);
         const allFactions = await db
             .select()
             .from(factions)
@@ -114,6 +115,12 @@ export async function addCharacterToFaction(data: {
     currentChapterId?: string; // Optional context
 }) {
     try {
+        await requireNovelAccess(data.novelId);
+        // ยืนยัน faction เป็นของ novel นี้จริง กันแนบสมาชิกข้าม novel
+        const [f] = await db.select({ id: factions.id }).from(factions)
+            .where(and(eq(factions.id, data.factionId), eq(factions.novelId, data.novelId))).limit(1);
+        if (!f) return { success: false, error: "Faction not found in this novel" };
+
         const [membership] = await db
             .insert(characterFactions)
             .values({
@@ -143,6 +150,9 @@ export async function addCharacterToFaction(data: {
 
 export async function getCharacterFactions(characterId: string) {
     try {
+        const [owner] = await db.select({ novelId: characters.novelId }).from(characters).where(eq(characters.id, characterId)).limit(1);
+        if (!owner) return { success: false, error: "Character not found" };
+        await requireNovelAccess(owner.novelId);
         const memberships = await db.query.characterFactions.findMany({
             where: (cf, { eq }) => eq(cf.characterId, characterId),
             with: {
@@ -159,6 +169,7 @@ export async function getCharacterFactions(characterId: string) {
 // Fetch all faction data for the relationship board (including members)
 export async function getAllFactionsWithMembers(novelId: string) {
     try {
+        await requireNovelAccess(novelId);
         const result = await db.query.factions.findMany({
             where: (f, { eq }) => eq(f.novelId, novelId),
             with: {
@@ -178,6 +189,14 @@ export async function getAllFactionsWithMembers(novelId: string) {
 
 export async function removeCharacterFromFaction(membershipId: string, novelId: string) {
     try {
+        await requireNovelAccess(novelId);
+        // ยืนยัน membership สังกัด faction ของ novel นี้
+        const [owned] = await db.select({ id: characterFactions.id })
+            .from(characterFactions)
+            .innerJoin(factions, eq(factions.id, characterFactions.factionId))
+            .where(and(eq(characterFactions.id, membershipId), eq(factions.novelId, novelId))).limit(1);
+        if (!owned) return { success: false, error: "Membership not found in this novel" };
+
         const [deleted] = await db
             .delete(characterFactions)
             .where(eq(characterFactions.id, membershipId))
@@ -209,6 +228,7 @@ export async function autoLinkFactions(
     links: { name: string; parentName?: string; leaderName?: string }[],
 ) {
     try {
+        await requireNovelAccess(novelId);
         const allFactions = await db.select().from(factions).where(eq(factions.novelId, novelId));
         const allChars = await db.select().from(characters).where(eq(characters.novelId, novelId));
 
@@ -267,6 +287,7 @@ export async function createFactionRelationship(data: {
     description?: string;
 }) {
     try {
+        await requireNovelAccess(data.novelId);
         const [row] = await db.insert(factionRelationships).values(data).returning();
         // Context Fabric edge (faction→faction)
         await addReference({
@@ -286,6 +307,7 @@ export async function createFactionRelationship(data: {
 
 export async function getFactionRelationships(novelId: string) {
     try {
+        await requireNovelAccess(novelId);
         const rows = await db.query.factionRelationships.findMany({
             where: (fr, { eq }) => eq(fr.novelId, novelId),
             with: { sourceFaction: true, targetFaction: true },
@@ -299,9 +321,10 @@ export async function getFactionRelationships(novelId: string) {
 
 export async function deleteFactionRelationship(relId: string, novelId: string) {
     try {
+        await requireNovelAccess(novelId);
         const [deleted] = await db
             .delete(factionRelationships)
-            .where(eq(factionRelationships.id, relId))
+            .where(and(eq(factionRelationships.id, relId), eq(factionRelationships.novelId, novelId)))
             .returning();
         if (deleted) {
             await removeReferenceEdge({
@@ -358,6 +381,8 @@ export async function createFactionStatusPreset(data: {
     try {
         const session = await auth.api.getSession({ headers: await headers() });
         if (!session?.user?.id) return { success: false, error: "Unauthorized" };
+        // ถ้าเป็น preset ผูก novel ต้องเป็นเจ้าของ novel นั้นด้วย
+        if (data.novelId) await requireNovelAccess(data.novelId);
 
         const [row] = await db
             .insert(factionStatusPresets)
@@ -386,12 +411,15 @@ export async function updateFactionStatusPreset(
     novelId?: string,
 ) {
     try {
+        // preset เป็นของ user (อาจ global) — scope ด้วย userId ของ session เท่านั้น
+        const userId = await requireUser();
         const [row] = await db
             .update(factionStatusPresets)
             .set({ ...data, updatedAt: new Date() })
-            .where(eq(factionStatusPresets.id, presetId))
+            .where(and(eq(factionStatusPresets.id, presetId), eq(factionStatusPresets.userId, userId)))
             .returning();
 
+        if (!row) return { success: false, error: "Preset not found" };
         if (novelId) revalidatePath(`/dashboard/project/${novelId}/factions`);
         return { success: true, data: row };
     } catch (error) {
@@ -403,9 +431,10 @@ export async function updateFactionStatusPreset(
 /** ลบ preset */
 export async function deleteFactionStatusPreset(presetId: string, novelId?: string) {
     try {
+        const userId = await requireUser();
         const [deleted] = await db
             .delete(factionStatusPresets)
-            .where(eq(factionStatusPresets.id, presetId))
+            .where(and(eq(factionStatusPresets.id, presetId), eq(factionStatusPresets.userId, userId)))
             .returning();
 
         if (novelId) revalidatePath(`/dashboard/project/${novelId}/factions`);

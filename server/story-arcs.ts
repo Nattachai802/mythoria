@@ -2,14 +2,16 @@
 
 import { db } from "@/db/drizzle"
 import { storyArcs } from "@/db/schema"
-import { eq } from "drizzle-orm"
+import { eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import type { StoryArc } from "@/db/schema"
+import { requireNovelAccess } from "@/lib/authz"
 
 const plotPath = (novelId: string) => `/dashboard/project/${novelId}/plot`
 
 export async function getArcsByNovelId(novelId: string): Promise<{ success: boolean; data: StoryArc[] }> {
     try {
+        await requireNovelAccess(novelId)
         const arcs = await db
             .select()
             .from(storyArcs)
@@ -30,6 +32,7 @@ export async function createArc(data: {
     endChapterId?: string
 }) {
     try {
+        await requireNovelAccess(data.novelId)
         const existing = await db.select().from(storyArcs).where(eq(storyArcs.novelId, data.novelId))
         const [arc] = await db
             .insert(storyArcs)
@@ -56,10 +59,11 @@ export async function updateArc(
     patch: Partial<{ title: string; color: string; startChapterId: string | null; endChapterId: string | null }>
 ) {
     try {
+        await requireNovelAccess(novelId)
         const [arc] = await db
             .update(storyArcs)
             .set(patch)
-            .where(eq(storyArcs.id, id))
+            .where(and(eq(storyArcs.id, id), eq(storyArcs.novelId, novelId)))
             .returning()
         revalidatePath(plotPath(novelId))
         return { success: true, data: arc }
@@ -71,7 +75,8 @@ export async function updateArc(
 
 export async function deleteArc(id: string, novelId: string) {
     try {
-        await db.delete(storyArcs).where(eq(storyArcs.id, id))
+        await requireNovelAccess(novelId)
+        await db.delete(storyArcs).where(and(eq(storyArcs.id, id), eq(storyArcs.novelId, novelId)))
         revalidatePath(plotPath(novelId))
         return { success: true }
     } catch (error) {

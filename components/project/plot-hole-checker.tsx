@@ -64,7 +64,7 @@ export function PlotHoleChecker({
             // Extract plain text from HTML
             const plainText = content.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").trim();
 
-            const response = await fetch("http://localhost:8000/analyze-plot", {
+            const response = await fetch("/api/py/analyze-plot", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

@@ -5,6 +5,7 @@ import { powers, powerLevels, powerCombinations, Power, PowerLevel, PowerCombina
 import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { addReference, removeReferenceEdge } from "./references"; // Context Fabric dual-write (P4)
+import { requireNovelAccess } from "@/lib/authz";
 
 // ============================================
 // POWER CRUD
@@ -22,6 +23,7 @@ export async function createPower(data: {
     novelId: string;
 }) {
     try {
+        await requireNovelAccess(data.novelId);
         const [newPower] = await db
             .insert(powers)
             .values({
@@ -48,6 +50,7 @@ export async function createPower(data: {
 
 export async function getPowersByNovelId(novelId: string) {
     try {
+        await requireNovelAccess(novelId);
         const allPowers = await db.query.powers.findMany({
             where: eq(powers.novelId, novelId),
             with: {
@@ -77,6 +80,7 @@ export async function getPowerById(powerId: string) {
         if (!power) {
             return { success: false, error: "Power not found" };
         }
+        await requireNovelAccess(power.novelId);
 
         return { success: true, data: power };
     } catch (error) {
@@ -99,6 +103,12 @@ export async function updatePower(
     }>
 ) {
     try {
+        const [owner] = await db.select({ novelId: powers.novelId }).from(powers).where(eq(powers.id, powerId)).limit(1);
+        if (!owner) {
+            return { success: false, error: "Power not found" };
+        }
+        await requireNovelAccess(owner.novelId);
+
         const [updatedPower] = await db
             .update(powers)
             .set({ ...data, updatedAt: new Date() })
@@ -120,6 +130,12 @@ export async function updatePower(
 
 export async function deletePower(powerId: string) {
     try {
+        const [owner] = await db.select({ novelId: powers.novelId }).from(powers).where(eq(powers.id, powerId)).limit(1);
+        if (!owner) {
+            return { success: false, error: "Power not found" };
+        }
+        await requireNovelAccess(owner.novelId);
+
         const [deletedPower] = await db
             .delete(powers)
             .where(eq(powers.id, powerId))
@@ -155,6 +171,12 @@ export async function addPowerLevel(data: {
     manaCost?: number;
 }) {
     try {
+        const [p] = await db.select({ novelId: powers.novelId }).from(powers).where(eq(powers.id, data.powerId)).limit(1);
+        if (!p) {
+            return { success: false, error: "Power not found" };
+        }
+        await requireNovelAccess(p.novelId);
+
         const [newLevel] = await db
             .insert(powerLevels)
             .values({
@@ -192,6 +214,17 @@ export async function updatePowerLevel(
     }>
 ) {
     try {
+        const [owner] = await db
+            .select({ novelId: powers.novelId })
+            .from(powerLevels)
+            .innerJoin(powers, eq(powers.id, powerLevels.powerId))
+            .where(eq(powerLevels.id, levelId))
+            .limit(1);
+        if (!owner) {
+            return { success: false, error: "Power level not found" };
+        }
+        await requireNovelAccess(owner.novelId);
+
         const [updatedLevel] = await db
             .update(powerLevels)
             .set(data)
@@ -211,6 +244,17 @@ export async function updatePowerLevel(
 
 export async function deletePowerLevel(levelId: string) {
     try {
+        const [owner] = await db
+            .select({ novelId: powers.novelId })
+            .from(powerLevels)
+            .innerJoin(powers, eq(powers.id, powerLevels.powerId))
+            .where(eq(powerLevels.id, levelId))
+            .limit(1);
+        if (!owner) {
+            return { success: false, error: "Power level not found" };
+        }
+        await requireNovelAccess(owner.novelId);
+
         const [deletedLevel] = await db
             .delete(powerLevels)
             .where(eq(powerLevels.id, levelId))
@@ -239,6 +283,7 @@ export async function createPowerCombination(data: {
     description?: string;
 }) {
     try {
+        await requireNovelAccess(data.novelId);
         const [combination] = await db
             .insert(powerCombinations)
             .values({
@@ -272,6 +317,7 @@ export async function createPowerCombination(data: {
 
 export async function getPowerCombinationsByNovelId(novelId: string) {
     try {
+        await requireNovelAccess(novelId);
         const combinations = await db.query.powerCombinations.findMany({
             where: eq(powerCombinations.novelId, novelId),
             with: {
@@ -288,6 +334,12 @@ export async function getPowerCombinationsByNovelId(novelId: string) {
 
 export async function deletePowerCombination(combinationId: string) {
     try {
+        const [owner] = await db.select({ novelId: powerCombinations.novelId }).from(powerCombinations).where(eq(powerCombinations.id, combinationId)).limit(1);
+        if (!owner) {
+            return { success: false, error: "Power combination not found" };
+        }
+        await requireNovelAccess(owner.novelId);
+
         const [deleted] = await db
             .delete(powerCombinations)
             .where(eq(powerCombinations.id, combinationId))

@@ -5,6 +5,15 @@ import { noteCharacters, notes, InsertNoteCharacter } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { syncChapterCharactersFromNotes } from "./analysis-helper";
 import { addReference, removeReferenceEdge } from "./references";
+import { requireNovelAccess } from "@/lib/authz";
+
+// เช็คสิทธิ์เจ้าของผ่าน noteId (junction ไม่มี novelId ตรง ๆ) — คืน note ถ้าผ่าน, null ถ้าไม่พบ
+async function noteAccessOrNull(noteId: string) {
+    const note = await db.query.notes.findFirst({ where: eq(notes.id, noteId) });
+    if (!note) return null;
+    await requireNovelAccess(note.novelId);
+    return note;
+}
 
 // ponytail: dual-write to Context Fabric references (L1). Same pattern for the
 // other MIGRATE junctions — copy these 3 calls when each gets touched.
@@ -14,6 +23,9 @@ const noteCharEdge = (noteId: string, characterId: string) =>
 // Add character to note's cast deck
 export async function addCharacterToNote(noteId: string, characterId: string, role?: string) {
     try {
+        const note = await noteAccessOrNull(noteId);
+        if (!note) return { success: false, message: "Note not found" };
+
         // Check if already exists
         const existing = await db.query.noteCharacters.findFirst({
             where: and(
@@ -32,12 +44,7 @@ export async function addCharacterToNote(noteId: string, characterId: string, ro
             role,
         }).returning();
 
-        // Trigger sync for chapter if note is linked to a chapter
-        const note = await db.query.notes.findFirst({
-            where: eq(notes.id, noteId)
-        });
-
-        if (note) {
+        {
             await addReference({ novelId: note.novelId, ...noteCharEdge(noteId, characterId), meta: role ? { role } : null });
         }
 
@@ -56,6 +63,9 @@ export async function addCharacterToNote(noteId: string, characterId: string, ro
 // Remove character from note's cast deck
 export async function removeCharacterFromNote(noteId: string, characterId: string) {
     try {
+        const note = await noteAccessOrNull(noteId);
+        if (!note) return { success: false, message: "Note not found" };
+
         await db.delete(noteCharacters).where(
             and(
                 eq(noteCharacters.noteId, noteId),
@@ -64,11 +74,6 @@ export async function removeCharacterFromNote(noteId: string, characterId: strin
         );
 
         await removeReferenceEdge(noteCharEdge(noteId, characterId));
-
-        // Trigger sync for chapter if note is linked to a chapter
-        const note = await db.query.notes.findFirst({
-            where: eq(notes.id, noteId)
-        });
 
         if (note?.linkedToChapterId) {
             syncChapterCharactersFromNotes(note.linkedToChapterId, note.novelId)
@@ -85,6 +90,7 @@ export async function removeCharacterFromNote(noteId: string, characterId: strin
 // Get all characters in a note's cast deck
 export async function getNoteCharacters(noteId: string) {
     try {
+        if (!(await noteAccessOrNull(noteId))) return { success: false, message: "Note not found" };
         const characters = await db.query.noteCharacters.findMany({
             where: eq(noteCharacters.noteId, noteId),
             with: {
@@ -102,6 +108,9 @@ export async function getNoteCharacters(noteId: string) {
 // Update role of a character in note
 export async function updateNoteCharacterRole(noteId: string, characterId: string, role: string) {
     try {
+        const note = await noteAccessOrNull(noteId);
+        if (!note) return { success: false, message: "Note not found" };
+
         const [updated] = await db.update(noteCharacters)
             .set({ role })
             .where(
@@ -112,8 +121,7 @@ export async function updateNoteCharacterRole(noteId: string, characterId: strin
             )
             .returning();
 
-        const note = await db.query.notes.findFirst({ where: eq(notes.id, noteId) });
-        if (note) await addReference({ novelId: note.novelId, ...noteCharEdge(noteId, characterId), meta: { role } });
+        await addReference({ novelId: note.novelId, ...noteCharEdge(noteId, characterId), meta: { role } });
 
         return { success: true, noteCharacter: updated };
     } catch (error) {

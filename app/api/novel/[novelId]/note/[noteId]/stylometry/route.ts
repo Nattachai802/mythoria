@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/db/drizzle";
 import { notes, characters, noteStylometry } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
+import { pyFetch } from "@/lib/python-service";
 
 export async function POST(
   request: Request,
@@ -41,7 +42,7 @@ export async function POST(
     });
 
     // 3. Send request to Python API
-    const pythonResponse = await fetch("http://localhost:8000/analyze-chapter-style", {
+    const pythonResponse = await pyFetch("/analyze-chapter-style", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -67,7 +68,7 @@ export async function POST(
         });
 
         if (historyData.length > 0) {
-            const fingerprintResponse = await fetch("http://localhost:8000/analyze-fingerprint", {
+            const fingerprintResponse = await pyFetch("/analyze-fingerprint", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

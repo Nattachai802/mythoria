@@ -6,6 +6,7 @@ import { eq, asc, lt, and, isNotNull, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { extractLoreEntitiesInBackground } from "./lore-extractor";
 import { after } from "next/server";
+import { requireNovelAccess } from "@/lib/authz";
 
 // ============================================
 // HELPER FUNCTIONS FOR ERA AUTO-DETECTION
@@ -164,6 +165,7 @@ export async function createLoreEntry(data: {
     importance?: number;
 }) {
     try {
+        await requireNovelAccess(data.novelId);
         // Get max orderIndex if not provided
         let orderIndex: number;
         if (data.orderIndex === undefined) {
@@ -221,6 +223,7 @@ export async function createLoreEntry(data: {
 
 export async function getLoreEntriesByNovelId(novelId: string) {
     try {
+        await requireNovelAccess(novelId);
         const allEntries = await db.query.loreEntries.findMany({
             where: eq(loreEntries.novelId, novelId),
             orderBy: [asc(loreEntries.orderIndex)],
@@ -249,6 +252,7 @@ export async function getLoreEntryById(loreId: string) {
         if (!entry) {
             return { success: false, error: "Lore entry not found" };
         }
+        await requireNovelAccess(entry.novelId);
 
         return { success: true, data: entry };
     } catch (error) {
@@ -283,6 +287,10 @@ export async function updateLoreEntry(
         const oldEntry = await db.query.loreEntries.findFirst({
             where: eq(loreEntries.id, loreId),
         });
+        if (!oldEntry) {
+            return { success: false, error: "Lore entry not found" };
+        }
+        await requireNovelAccess(oldEntry.novelId);
 
         const updateData: any = { ...data, updatedAt: new Date() };
         if (data.content !== undefined) {
@@ -327,6 +335,16 @@ export async function updateLoreEntry(
 
 export async function deleteLoreEntry(loreId: string) {
     try {
+        const [owner] = await db
+            .select({ novelId: loreEntries.novelId })
+            .from(loreEntries)
+            .where(eq(loreEntries.id, loreId))
+            .limit(1);
+        if (!owner) {
+            return { success: false, error: "Lore entry not found" };
+        }
+        await requireNovelAccess(owner.novelId);
+
         const [deletedEntry] = await db
             .delete(loreEntries)
             .where(eq(loreEntries.id, loreId))
@@ -348,12 +366,13 @@ export async function deleteLoreEntry(loreId: string) {
 // Reorder lore entries (for horizontal timeline drag-drop)
 export async function reorderLoreEntries(novelId: string, orderedIds: string[]) {
     try {
-        // Update each entry with new orderIndex
+        await requireNovelAccess(novelId);
+        // Update each entry with new orderIndex — scope by novelId กัน reorder ข้าม novel
         const updates = orderedIds.map((id, index) =>
             db
                 .update(loreEntries)
                 .set({ orderIndex: index, updatedAt: new Date() })
-                .where(eq(loreEntries.id, id))
+                .where(and(eq(loreEntries.id, id), eq(loreEntries.novelId, novelId)))
         );
 
         await Promise.all(updates);
@@ -370,6 +389,7 @@ export async function reorderLoreEntries(novelId: string, orderedIds: string[]) 
 // Get lore by type
 export async function getLoreByType(novelId: string, type: string) {
     try {
+        await requireNovelAccess(novelId);
         const filtered = await db.query.loreEntries.findMany({
             where: and(
                 eq(loreEntries.novelId, novelId),
@@ -411,6 +431,7 @@ export async function setLoreEraWithAutoFill(
     novelId: string
 ) {
     try {
+        await requireNovelAccess(novelId);
         // 1. Get all eras ordered by orderIndex
         const allEras = await db.query.eras.findMany({
             where: eq(eras.novelId, novelId),
@@ -519,6 +540,7 @@ export async function setLoreEraWithAutoFill(
 
 export async function getLoreExtractionStatuses(novelId: string) {
     try {
+        await requireNovelAccess(novelId);
         const filtered = await db.query.loreEntries.findMany({
             where: and(
                 eq(loreEntries.novelId, novelId),

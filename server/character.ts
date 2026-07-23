@@ -6,6 +6,7 @@ import { eq, and, desc, asc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { v2 as cloudinary } from "cloudinary";
 import { addReference, removeReferenceEdge } from "./references"; // Context Fabric dual-write (P4)
+import { requireNovelAccess } from "@/lib/authz";
 
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -59,6 +60,7 @@ export async function createCharacter(data: {
     aliases?: string[];
 }) {
     try {
+        await requireNovelAccess(data.novelId);
         const [newCharacter] = await db
             .insert(characters)
             .values(data)
@@ -76,6 +78,7 @@ export async function createCharacter(data: {
 
 export async function getCharactersByNovelId(novelId: string) {
     try {
+        await requireNovelAccess(novelId);
         const allCharacters = await db
             .select()
             .from(characters)
@@ -101,6 +104,7 @@ export async function getCharacterById(characterId: string) {
         if (!character) {
             return { success: false, error: "Character not found" };
         }
+        await requireNovelAccess(character.novelId);
 
         return { success: true, data: character };
     } catch (error) {
@@ -132,18 +136,20 @@ export async function updateCharacter(
     }>
 ) {
     try {
-        // ถ้ามีการเปลี่ยนรูป ดึงรูปเก่าออกมาก่อน update
+        const [owner] = await db
+            .select({ novelId: characters.novelId, image: characters.image })
+            .from(characters)
+            .where(eq(characters.id, characterId))
+            .limit(1);
+        if (!owner) {
+            return { success: false, error: "Character not found" };
+        }
+        await requireNovelAccess(owner.novelId);
+
+        // ถ้ามีการเปลี่ยนรูป เก็บรูปเก่าไว้ลบหลัง update สำเร็จ (เฉพาะเมื่อรูปใหม่ต่างจากเดิม)
         let oldImageUrl: string | null = null;
-        if (data.image !== undefined) {
-            const [existing] = await db
-                .select({ image: characters.image })
-                .from(characters)
-                .where(eq(characters.id, characterId))
-                .limit(1);
-            // เก็บรูปเก่าเฉพาะเมื่อมีรูปเก่าและรูปใหม่ต่างออกไป
-            if (existing?.image && existing.image !== data.image) {
-                oldImageUrl = existing.image;
-            }
+        if (data.image !== undefined && owner.image && owner.image !== data.image) {
+            oldImageUrl = owner.image;
         }
 
         const [updatedCharacter] = await db
@@ -173,6 +179,16 @@ export async function updateCharacter(
 
 export async function deleteCharacter(characterId: string) {
     try {
+        const [owner] = await db
+            .select({ novelId: characters.novelId })
+            .from(characters)
+            .where(eq(characters.id, characterId))
+            .limit(1);
+        if (!owner) {
+            return { success: false, error: "Character not found" };
+        }
+        await requireNovelAccess(owner.novelId);
+
         const [deletedCharacter] = await db
             .delete(characters)
             .where(eq(characters.id, characterId))
@@ -202,6 +218,7 @@ export async function createCharacterRelationship(data: {
     sentiment?: string;
 }) {
     try {
+        await requireNovelAccess(data.novelId);
         const [newRelationship] = await db
             .insert(characterRelationships)
             .values({
@@ -238,6 +255,16 @@ export async function updateCharacterRelationship(
     }>
 ) {
     try {
+        const [owner] = await db
+            .select({ novelId: characterRelationships.novelId })
+            .from(characterRelationships)
+            .where(eq(characterRelationships.id, relationshipId))
+            .limit(1);
+        if (!owner) {
+            return { success: false, error: "Relationship not found" };
+        }
+        await requireNovelAccess(owner.novelId);
+
         const [updated] = await db
             .update(characterRelationships)
             .set({ ...data, updatedAt: new Date() })
@@ -259,6 +286,9 @@ export async function updateCharacterRelationship(
 
 export async function getCharacterRelationships(characterId: string) {
     try {
+        const [owner] = await db.select({ novelId: characters.novelId }).from(characters).where(eq(characters.id, characterId)).limit(1);
+        if (!owner) return { success: false, error: "Character not found" };
+        await requireNovelAccess(owner.novelId);
         const relationships = await db.query.characterRelationships.findMany({
             where: (relationships, { eq, or }) => or(
                 eq(relationships.sourceCharacterId, characterId),
@@ -303,6 +333,16 @@ export async function getCharacterRelationships(characterId: string) {
 
 export async function deleteCharacterRelationship(relationshipId: string) {
     try {
+        const [owner] = await db
+            .select({ novelId: characterRelationships.novelId })
+            .from(characterRelationships)
+            .where(eq(characterRelationships.id, relationshipId))
+            .limit(1);
+        if (!owner) {
+            return { success: false, error: "Relationship not found" };
+        }
+        await requireNovelAccess(owner.novelId);
+
         const [deleted] = await db
             .delete(characterRelationships)
             .where(eq(characterRelationships.id, relationshipId))
@@ -329,6 +369,7 @@ export async function deleteCharacterRelationship(relationshipId: string) {
 
 export async function getAllCharacterRelationships(novelId: string) {
     try {
+        await requireNovelAccess(novelId);
         const relationships = await db.query.characterRelationships.findMany({
             where: (relationships, { eq }) => eq(relationships.novelId, novelId),
             with: {
@@ -357,6 +398,7 @@ export async function addRelationshipHistoryEntry(data: {
     reason?: string;
 }) {
     try {
+        await requireNovelAccess(data.novelId);
         const [entry] = await db
             .insert(relationshipHistory)
             .values(data)
@@ -371,6 +413,8 @@ export async function addRelationshipHistoryEntry(data: {
 
 export async function getRelationshipHistory(relationshipId: string) {
     try {
+        const [owner] = await db.select({ novelId: relationshipHistory.novelId }).from(relationshipHistory).where(eq(relationshipHistory.relationshipId, relationshipId)).limit(1);
+        if (owner) await requireNovelAccess(owner.novelId);
         const history = await db.query.relationshipHistory.findMany({
             where: eq(relationshipHistory.relationshipId, relationshipId),
             with: {
@@ -395,6 +439,7 @@ export async function recordOpinionChange(
     reason?: string
 ) {
     try {
+        await requireNovelAccess(novelId);
         // Get the last history entry to compare
         const lastEntry = await db.query.relationshipHistory.findFirst({
             where: eq(relationshipHistory.relationshipId, relationshipId),

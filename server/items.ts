@@ -4,6 +4,7 @@ import { db } from "@/db/drizzle";
 import { items, characters, locations } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { requireNovelAccess } from "@/lib/authz";
 
 export async function createItem(data: {
     name: string;
@@ -19,6 +20,7 @@ export async function createItem(data: {
     icon?: string;
 }) {
     try {
+        await requireNovelAccess(data.novelId);
         const [newItem] = await db
             .insert(items)
             .values({
@@ -39,6 +41,7 @@ export async function createItem(data: {
 
 export async function getItemsByNovelId(novelId: string) {
     try {
+        await requireNovelAccess(novelId);
         const allItems = await db.query.items.findMany({
             where: eq(items.novelId, novelId),
             with: {
@@ -68,6 +71,7 @@ export async function getItemById(itemId: string) {
         if (!item) {
             return { success: false, error: "Item not found" };
         }
+        await requireNovelAccess(item.novelId);
 
         return { success: true, data: item };
     } catch (error) {
@@ -92,6 +96,12 @@ export async function updateItem(
     }>
 ) {
     try {
+        const [owner] = await db.select({ novelId: items.novelId }).from(items).where(eq(items.id, itemId)).limit(1);
+        if (!owner) {
+            return { success: false, error: "Item not found" };
+        }
+        await requireNovelAccess(owner.novelId);
+
         const [updatedItem] = await db
             .update(items)
             .set({ ...data, updatedAt: new Date() })
@@ -113,6 +123,12 @@ export async function updateItem(
 
 export async function deleteItem(itemId: string) {
     try {
+        const [owner] = await db.select({ novelId: items.novelId }).from(items).where(eq(items.id, itemId)).limit(1);
+        if (!owner) {
+            return { success: false, error: "Item not found" };
+        }
+        await requireNovelAccess(owner.novelId);
+
         const [deletedItem] = await db
             .delete(items)
             .where(eq(items.id, itemId))
@@ -134,6 +150,12 @@ export async function deleteItem(itemId: string) {
 // Transfer item ownership
 export async function transferItemOwner(itemId: string, newOwnerId: string | null) {
     try {
+        const [owner] = await db.select({ novelId: items.novelId }).from(items).where(eq(items.id, itemId)).limit(1);
+        if (!owner) {
+            return { success: false, error: "Item not found" };
+        }
+        await requireNovelAccess(owner.novelId);
+
         const [updatedItem] = await db
             .update(items)
             .set({
@@ -159,6 +181,9 @@ export async function transferItemOwner(itemId: string, newOwnerId: string | nul
 // Get items by character (owner)
 export async function getItemsByCharacter(characterId: string) {
     try {
+        const [owner] = await db.select({ novelId: characters.novelId }).from(characters).where(eq(characters.id, characterId)).limit(1);
+        if (!owner) return { success: false, error: "Character not found" };
+        await requireNovelAccess(owner.novelId);
         const characterItems = await db.query.items.findMany({
             where: eq(items.currentOwnerId, characterId),
             with: {
@@ -176,6 +201,9 @@ export async function getItemsByCharacter(characterId: string) {
 // Get items at location
 export async function getItemsByLocation(locationId: string) {
     try {
+        const [owner] = await db.select({ novelId: locations.novelId }).from(locations).where(eq(locations.id, locationId)).limit(1);
+        if (!owner) return { success: false, error: "Location not found" };
+        await requireNovelAccess(owner.novelId);
         const locationItems = await db.query.items.findMany({
             where: eq(items.locationId, locationId),
             with: {

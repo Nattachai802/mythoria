@@ -1,8 +1,23 @@
 # Phase 2 — Data Isolation Plan
 
-## Status
-`lib/authz.ts` created with `requireNovelAccess(novelId)`, `requireUser()`, `authErrorMessage()`.
-Applied as a worked example to `server/factions.ts`: `createFaction`, `updateFaction`, `deleteFaction`.
+## Status — Phase 2.1 COMPLETE ✅
+`lib/authz.ts`: `requireNovelAccess(novelId)`, `requireUser()`, `authErrorMessage()`.
+All ~24 server files with novel-scoped data now enforce ownership. Done this pass:
+chapter, idea, character, discord-sync, lore, note, power, items, locations, eras,
+timeline, life-events, plot-threads, story-arcs, world-systems, version-history, graph,
+location-connections, chapter-characters, note-character, character-power — plus the
+remaining factions.ts functions (incl. two preset write actions that had **no session
+check at all**: updateFactionStatusPreset / deleteFactionStatusPreset, now userId-scoped).
+Earlier: novel.ts (all), factions.ts create/update/delete.
+
+Verified: normalized `tsc` error set is **identical to HEAD baseline** — zero new type
+errors introduced (pre-existing ~130 implicit-any untouched).
+
+Patterns used: (1) direct novelId → `requireNovelAccess` first; (2) entity id → look up
+novelId *before* mutating (never from `.returning()`); (3) `unstable_cache` → check
+*outside* the cached fn; (4) `id`+`novelId` both passed → also scope the `where` by novelId
+so a valid-novel caller can't touch another novel's row by id; (5) junction rows with no
+novelId → verify via `innerJoin` to the parent's novelId.
 
 ## The gap (from audit)
 Almost the entire `server/` directory (~50 files) has no session/ownership check at all.

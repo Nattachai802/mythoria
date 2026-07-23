@@ -2,13 +2,15 @@
 
 import { db } from "@/db/drizzle";
 import { timelineEvents, InsertTimelineEvent } from "@/db/schema"
-import { eq, and, asc } from "drizzle-orm"
+import { eq, and, asc, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+import { requireNovelAccess } from "@/lib/authz"
 
 
 
 export async function getTimeLineEvents(novelId: string) {
     try {
+        await requireNovelAccess(novelId);
         const events = await db.query.timelineEvents.findMany({
             where: (eq(timelineEvents.novelId, novelId)),
             orderBy: [asc(timelineEvents.orderIndex)],
@@ -25,6 +27,7 @@ export async function getTimeLineEvents(novelId: string) {
 
 export async function createTimelineEvent(data: InsertTimelineEvent) {
     try {
+        await requireNovelAccess(data.novelId);
         const existingEvents = await db.query.timelineEvents.findMany({
             where: and(
                 eq(timelineEvents.novelId, data.novelId),
@@ -55,9 +58,15 @@ export async function updateTimelineEvent(
     data: Partial<InsertTimelineEvent>
 ) {
     try {
+        const [owner] = await db.select({ novelId: timelineEvents.novelId }).from(timelineEvents).where(eq(timelineEvents.id, id)).limit(1)
+        if (!owner) return { success: false, error: "Event not found" }
+        await requireNovelAccess(owner.novelId)
+
+        // กัน novelId/id ไม่ให้แก้ผ่าน data — ล็อก event ให้อยู่นิยายเดิมเสมอ
+        const { novelId: _n, id: _i, ...safe } = data
         const [updatedEvent] = await db
             .update(timelineEvents)
-            .set({ ...data, updatedAt: new Date() })
+            .set({ ...safe, updatedAt: new Date() })
             .where(eq(timelineEvents.id, id))
             .returning()
 
@@ -74,6 +83,10 @@ export async function updateTimelineEvent(
 
 export async function deleteTimelineEvent(id: string) {
     try {
+        const [owner] = await db.select({ novelId: timelineEvents.novelId }).from(timelineEvents).where(eq(timelineEvents.id, id)).limit(1)
+        if (!owner) return { success: false, error: "Event not found" }
+        await requireNovelAccess(owner.novelId)
+
         const [deletedEvent] = await db
             .delete(timelineEvents)
             .where(eq(timelineEvents.id, id))
@@ -94,6 +107,15 @@ export async function reorderTimelineEvents(
     items: { id: string; orderIndex: number; relatedChapterId: string | null }[]
 ) {
     try {
+        // verify เจ้าของของทุก event ก่อน reorder (ไม่มี novelId ส่งมา)
+        const ids = items.map((i) => i.id)
+        const rows: { novelId: string }[] = ids.length
+            ? await db.select({ novelId: timelineEvents.novelId }).from(timelineEvents).where(inArray(timelineEvents.id, ids))
+            : []
+        for (const nid of new Set<string>(rows.map((r) => r.novelId))) {
+            await requireNovelAccess(nid)
+        }
+
         await Promise.all(
             items.map((item) =>
                 db
@@ -120,6 +142,8 @@ export async function getTimelineEventById(id: string) {
                 elementDetails: true
             }
         });
+        if (!event) return { success: false, error: "Event not found" };
+        await requireNovelAccess(event.novelId);
 
         return { success: true, event };
     } catch (error) {
@@ -132,6 +156,7 @@ export async function getTimelineEventById(id: string) {
 export type SceneDummies = { sceneId: string; sceneTitle: string; dummies: { title: string; type: string }[] }
 export async function getNovelDummyParticipants(novelId: string) {
     try {
+        await requireNovelAccess(novelId);
         const events = await db.query.timelineEvents.findMany({
             where: eq(timelineEvents.novelId, novelId),
             columns: { id: true, title: true, canvasData: true },
@@ -160,6 +185,10 @@ export async function getNovelDummyParticipants(novelId: string) {
 
 export async function updateTimelineCanvas(id: string, canvasData: any) {
     try {
+        const [owner] = await db.select({ novelId: timelineEvents.novelId }).from(timelineEvents).where(eq(timelineEvents.id, id)).limit(1);
+        if (!owner) return { success: false, error: "Event not found" };
+        await requireNovelAccess(owner.novelId);
+
         await db
             .update(timelineEvents)
             .set({

@@ -215,7 +215,8 @@ export function LibrarianPanel({ novelId, onSources, className }: LibrarianPanel
     );
 }
 
-const PYTHON_URL = process.env.NEXT_PUBLIC_PYTHON_SERVICE_URL || "http://localhost:8000";
+// เรียกผ่าน same-origin proxy (/api/py) — proxy เช็ค session + แนบ internal key ให้ Python
+const PYTHON_URL = "/api/py";
 
 /** แถบสถานะคลังข้อมูล + ปุ่มซิงค์ในตัว panel
  *  - จำนวนรายการในคลัง: จาก /status (จริง, cross-device)

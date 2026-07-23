@@ -94,7 +94,7 @@ export function VectorSyncButton({ novelId, lastSyncedAt }: VectorSyncButtonProp
         setStatus("idle");
         try {
             toast.info("กำลังซิงค์ข้อมูล...", { description: "สร้าง embeddings สำหรับเนื้อหาทั้งหมด" });
-            const response = await fetch(`http://localhost:8000/sync/${novelId}`, { method: "POST" });
+            const response = await fetch(`/api/py/sync/${novelId}`, { method: "POST" });
             const result = await response.json();
             if (result.success) {
                 // rebuild ดัชนี references (graph/RAG) ให้สดพร้อม vector ในคราวเดียว

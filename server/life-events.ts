@@ -1,9 +1,10 @@
 'use server';
 
 import { db } from "@/db/drizzle";
-import { characterLifeEvents } from "@/db/schema";
+import { characterLifeEvents, characters } from "@/db/schema";
 import { eq, and, asc, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { requireNovelAccess } from "@/lib/authz";
 
 
 export async function createLifeEvent(data: {
@@ -18,6 +19,7 @@ export async function createLifeEvent(data: {
     changedTraits?: string[];
 }) {
     try {
+        await requireNovelAccess(data.novelId);
         const [event] = await db
             .insert(characterLifeEvents)
             .values({
@@ -40,6 +42,9 @@ export async function createLifeEvent(data: {
 
 export async function getCharacterLifeEvents(characterId: string) {
     try {
+        const [owner] = await db.select({ novelId: characters.novelId }).from(characters).where(eq(characters.id, characterId)).limit(1);
+        if (!owner) return { success: false, error: "Character not found" };
+        await requireNovelAccess(owner.novelId);
         const events = await db.query.characterLifeEvents.findMany({
             where: eq(characterLifeEvents.characterId, characterId),
             with: {
@@ -57,6 +62,7 @@ export async function getCharacterLifeEvents(characterId: string) {
 
 export async function getLifeEventsForNovel(novelId: string, characterId?: string) {
     try {
+        await requireNovelAccess(novelId);
         const events = await db.query.characterLifeEvents.findMany({
             where: characterId
                 ? and(
@@ -91,6 +97,12 @@ export async function updateLifeEvent(
     }>
 ) {
     try {
+        const [owner] = await db.select({ novelId: characterLifeEvents.novelId }).from(characterLifeEvents).where(eq(characterLifeEvents.id, eventId)).limit(1);
+        if (!owner) {
+            return { success: false, error: "Life event not found" };
+        }
+        await requireNovelAccess(owner.novelId);
+
         const [updated] = await db
             .update(characterLifeEvents)
             .set({ ...data, updatedAt: new Date() })
@@ -112,6 +124,12 @@ export async function updateLifeEvent(
 
 export async function deleteLifeEvent(eventId: string) {
     try {
+        const [owner] = await db.select({ novelId: characterLifeEvents.novelId }).from(characterLifeEvents).where(eq(characterLifeEvents.id, eventId)).limit(1);
+        if (!owner) {
+            return { success: false, error: "Life event not found" };
+        }
+        await requireNovelAccess(owner.novelId);
+
         const [deleted] = await db
             .delete(characterLifeEvents)
             .where(eq(characterLifeEvents.id, eventId))

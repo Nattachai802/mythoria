@@ -4,6 +4,7 @@ import { db } from "@/db/drizzle";
 import { noteVersions, notes } from "@/db/schema";
 import { eq, desc, asc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { requireNovelAccess } from "@/lib/authz";
 
 const MAX_VERSIONS = 3;
 
@@ -23,6 +24,11 @@ export async function createNoteVersion(
     saveType: "manual" | "auto"
 ) {
     try {
+        // ยืนยันเจ้าของ note ก่อน (noteId → notes.novelId)
+        const [note] = await db.select({ novelId: notes.novelId }).from(notes).where(eq(notes.id, noteId)).limit(1);
+        if (!note) return { success: false, error: "Note not found" };
+        await requireNovelAccess(note.novelId);
+
         // 1. หา version number ล่าสุด
         const existingVersions = await db
             .select({ versionNumber: noteVersions.versionNumber })
@@ -75,6 +81,10 @@ export async function createNoteVersion(
  */
 export async function getNoteVersions(noteId: string) {
     try {
+        const [note] = await db.select({ novelId: notes.novelId }).from(notes).where(eq(notes.id, noteId)).limit(1);
+        if (!note) return { success: false, versions: [], error: "Note not found" };
+        await requireNovelAccess(note.novelId);
+
         const versions = await db
             .select()
             .from(noteVersions)
@@ -117,6 +127,8 @@ export async function restoreNoteVersion(versionId: string, novelId: string) {
         if (!currentNote) {
             return { success: false, error: "Note not found" };
         }
+        // เช็คสิทธิ์จาก novelId จริงของ note ไม่ใช่ค่าที่ client ส่งมา
+        await requireNovelAccess(currentNote.novelId);
 
         // 3. สร้าง version ใหม่จาก state ปัจจุบัน (ก่อน restore)
         const contentText = (currentNote.content as any)?.text || "";
@@ -169,6 +181,13 @@ export async function getVersionsForCompare(version1Id: string, version2Id: stri
 
         if (!v1 || !v2) {
             return { success: false, error: "One or both versions not found" };
+        }
+
+        // เช็คสิทธิ์ผ่าน note เจ้าของของแต่ละ version
+        for (const noteId of new Set([v1.noteId, v2.noteId])) {
+            const [note] = await db.select({ novelId: notes.novelId }).from(notes).where(eq(notes.id, noteId)).limit(1);
+            if (!note) return { success: false, error: "Note not found" };
+            await requireNovelAccess(note.novelId);
         }
 
         return {

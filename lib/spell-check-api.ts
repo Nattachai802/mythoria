@@ -1,4 +1,5 @@
-const PYTHON_SERVICE_URL = process.env.NEXT_PUBLIC_PYTHON_SERVICE_URL || "http://localhost:8000";
+// เรียกผ่าน same-origin proxy (/api/py) — proxy เช็ค session + แนบ internal key ให้ Python
+const PYTHON_SERVICE_URL = "/api/py";
 
 export interface SpellError {
   word: string;

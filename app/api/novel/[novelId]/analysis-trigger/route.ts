@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/drizzle";
 import { characterAnalysisQueue, chapters } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
+import { pyFetch } from "@/lib/python-service";
 
-const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL || "http://localhost:8000";
 
 type Props = {
     params: Promise<{ novelId: string }>;
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest, { params }: Props) {
         // 3. ทริกเกอร์ไปที่ Python Service (FastAPI) แบบเบื้องหลัง
         try {
             console.log(`[Queue Trigger] Requesting Python Worker for novel ${novelId}...`);
-            const triggerRes = await fetch(`${PYTHON_SERVICE_URL}/analyze-queue/${novelId}`, {
+            const triggerRes = await pyFetch(`/analyze-queue/${novelId}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ characterId, analysisType }),

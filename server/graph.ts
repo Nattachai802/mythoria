@@ -4,6 +4,7 @@ import { db } from "@/db/drizzle";
 import { characters, characterRelationships, references } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { resolveMany, type EntityType } from "./registry/entity-registry";
+import { requireNovelAccess } from "@/lib/authz";
 
 export interface GraphNode {
     id: string;
@@ -28,6 +29,7 @@ export interface GraphData {
 
 export async function getCharacterNetwork(novelId: string): Promise<{ success: boolean; data?: GraphData; error?: string }> {
     try {
+        await requireNovelAccess(novelId);
         // 1. Fetch all characters in the novel
         const chars = await db.query.characters.findMany({
             where: eq(characters.novelId, novelId),
@@ -101,6 +103,7 @@ export async function getNovelGraph(
     opts?: { relations?: string[]; createdBy?: string[] },
 ): Promise<{ success: boolean; data?: WorldGraphData; error?: string }> {
     try {
+        await requireNovelAccess(novelId);
         const rows = await db.query.references.findMany({
             where: eq(references.novelId, novelId),
         });

@@ -2,8 +2,9 @@
 
 import { db } from "@/db/drizzle"
 import { plotThreads, plotThreadBeats } from "@/db/schema"
-import { eq, inArray } from "drizzle-orm"
+import { eq, and, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+import { requireNovelAccess } from "@/lib/authz"
 
 export interface ThreadBeat {
     id: string
@@ -30,6 +31,7 @@ const plotPath = (novelId: string) => `/dashboard/project/${novelId}/plot`
 
 export async function getThreadsByNovelId(novelId: string): Promise<{ success: boolean; data: ThreadWithBeats[] }> {
     try {
+        await requireNovelAccess(novelId)
         const threads = await db
             .select()
             .from(plotThreads)
@@ -72,6 +74,7 @@ export async function createThread(data: {
     color?: string
 }) {
     try {
+        await requireNovelAccess(data.novelId)
         const [thread] = await db
             .insert(plotThreads)
             .values({
@@ -97,10 +100,11 @@ export async function updateThread(
     patch: Partial<{ title: string; type: string; status: string; importance: string; note: string; color: string }>
 ) {
     try {
+        await requireNovelAccess(novelId)
         const [thread] = await db
             .update(plotThreads)
             .set(patch)
-            .where(eq(plotThreads.id, id))
+            .where(and(eq(plotThreads.id, id), eq(plotThreads.novelId, novelId)))
             .returning()
         revalidatePath(plotPath(novelId))
         return { success: true, data: thread }
@@ -112,7 +116,8 @@ export async function updateThread(
 
 export async function deleteThread(id: string, novelId: string) {
     try {
-        await db.delete(plotThreads).where(eq(plotThreads.id, id))
+        await requireNovelAccess(novelId)
+        await db.delete(plotThreads).where(and(eq(plotThreads.id, id), eq(plotThreads.novelId, novelId)))
         revalidatePath(plotPath(novelId))
         return { success: true }
     } catch (error) {
@@ -130,6 +135,12 @@ export async function addBeat(data: {
     canvasItemId?: string | null
 }) {
     try {
+        await requireNovelAccess(data.novelId)
+        // ยืนยันว่า thread เป็นของ novel นี้จริง กันแนบ beat ข้าม novel
+        const [thread] = await db.select({ id: plotThreads.id }).from(plotThreads)
+            .where(and(eq(plotThreads.id, data.threadId), eq(plotThreads.novelId, data.novelId))).limit(1)
+        if (!thread) return { success: false, error: "ไม่พบปมในนิยายนี้" }
+
         const [beat] = await db
             .insert(plotThreadBeats)
             .values({
@@ -155,6 +166,14 @@ export async function addBeat(data: {
 
 export async function deleteBeat(id: string, novelId: string) {
     try {
+        await requireNovelAccess(novelId)
+        // ยืนยัน beat สังกัด thread ของ novel นี้ (beat ไม่มี novelId ตรง ๆ)
+        const [owned] = await db.select({ id: plotThreadBeats.id })
+            .from(plotThreadBeats)
+            .innerJoin(plotThreads, eq(plotThreads.id, plotThreadBeats.threadId))
+            .where(and(eq(plotThreadBeats.id, id), eq(plotThreads.novelId, novelId))).limit(1)
+        if (!owned) return { success: false, error: "ไม่พบจุดผูกปมในนิยายนี้" }
+
         await db.delete(plotThreadBeats).where(eq(plotThreadBeats.id, id))
         revalidatePath(plotPath(novelId))
         return { success: true }

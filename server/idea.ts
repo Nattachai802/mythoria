@@ -6,6 +6,7 @@ import { eq, and, inArray, ilike } from "drizzle-orm";
 import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
 import { CACHE_TAGS, CACHE_DURATION } from "@/lib/cache-config";
 import { addReference, removeReferenceEdge } from "./references"; // Context Fabric dual-write (P4)
+import { requireNovelAccess } from "@/lib/authz";
 
 const ideaRelation = (t?: string): "derived_from" | "linked_to" => (t === "ancestor" ? "derived_from" : "linked_to");
 
@@ -37,6 +38,7 @@ export async function createIdea(data: {
     isUsed?: boolean;
 }) {
     try {
+        await requireNovelAccess(data.novelId);
         const duplicate = await findIdeaByTitle(data.novelId, data.title);
         if (duplicate) {
             return { success: true, data: duplicate, isDuplicate: true };
@@ -96,6 +98,7 @@ export async function createIdeaWithoutRevalidate(data: {
     isUsed?: boolean;
 }) {
     try {
+        await requireNovelAccess(data.novelId);
         const duplicate = await findIdeaByTitle(data.novelId, data.title);
         if (duplicate) {
             return { success: true, data: duplicate, isDuplicate: true };
@@ -132,6 +135,7 @@ export async function createIdeaWithoutRevalidate(data: {
 
 export async function getIdeasByNovelId(novelId: string, includeDetected: boolean = false) {
     try {
+        await requireNovelAccess(novelId);
         const allIdeas = await db
             .select()
             .from(ideas)
@@ -166,6 +170,8 @@ const _getIdeasCount = async (novelId: string) => {
 
 // Cached version - Fast count-only query with 60s cache
 export async function getIdeasCount(novelId: string) {
+    // เช็คสิทธิ์นอก unstable_cache เสมอ — ถ้าเช็คในนั้น cache hit จะข้ามการเช็คไป
+    await requireNovelAccess(novelId);
     const cachedFn = unstable_cache(
         () => _getIdeasCount(novelId),
         [`ideas-count-${novelId}`],
@@ -188,6 +194,7 @@ export async function getIdeaById(ideaId: string) {
         if (!idea) {
             return { success: false, error: "Idea not found" };
         }
+        await requireNovelAccess(idea.novelId);
 
         return { success: true, data: idea };
     } catch (error) {
@@ -220,6 +227,16 @@ export async function updateIdea(
     }>
 ) {
     try {
+        const [existing] = await db
+            .select({ novelId: ideas.novelId })
+            .from(ideas)
+            .where(eq(ideas.id, ideaId))
+            .limit(1);
+        if (!existing) {
+            return { success: false, error: "Idea not found" };
+        }
+        await requireNovelAccess(existing.novelId);
+
         const [updatedIdea] = await db
             .update(ideas)
             .set({ ...data, updatedAt: new Date() })
@@ -241,6 +258,16 @@ export async function updateIdea(
 
 export async function deleteIdea(ideaId: string) {
     try {
+        const [existing] = await db
+            .select({ novelId: ideas.novelId })
+            .from(ideas)
+            .where(eq(ideas.id, ideaId))
+            .limit(1);
+        if (!existing) {
+            return { success: false, error: "Idea not found" };
+        }
+        await requireNovelAccess(existing.novelId);
+
         const [deletedIdea] = await db
             .delete(ideas)
             .where(eq(ideas.id, ideaId))
@@ -261,6 +288,7 @@ export async function deleteIdea(ideaId: string) {
 
 export async function deleteAllIdeas(novelId: string) {
     try {
+        await requireNovelAccess(novelId);
         const deletedIdeas = await db
             .delete(ideas)
             .where(eq(ideas.novelId, novelId))
@@ -286,6 +314,7 @@ export async function acceptMultipleIdeas(ideaIds: string[], novelId: string) {
         if (!ideaIds || ideaIds.length === 0) {
             return { success: false, error: "No ideas selected" };
         }
+        await requireNovelAccess(novelId);
         const accepted = await db
             .update(ideas)
             .set({ isDetected: false, updatedAt: new Date() })
@@ -316,6 +345,7 @@ export async function deleteMultipleIdeas(ideaIds: string[], novelId: string) {
         if (!ideaIds || ideaIds.length === 0) {
             return { success: false, error: "No ideas selected" };
         }
+        await requireNovelAccess(novelId);
         const deletedIdeas = await db
             .delete(ideas)
             .where(
@@ -346,6 +376,15 @@ export async function updateIdeaPositions(
     updates: Array<{ id: string; canvasX: number; canvasY: number }>
 ) {
     try {
+        // verify เจ้าของของ novel ที่ ideas เหล่านี้สังกัด (ไม่มี novelId ส่งมาตรง ๆ)
+        const ids = updates.map((u) => u.id);
+        const rows: { novelId: string }[] = ids.length
+            ? await db.select({ novelId: ideas.novelId }).from(ideas).where(inArray(ideas.id, ids))
+            : [];
+        for (const nid of new Set<string>(rows.map((r) => r.novelId))) {
+            await requireNovelAccess(nid);
+        }
+
         const results = await Promise.all(
             updates.map(({ id, canvasX, canvasY }) =>
                 db
@@ -380,6 +419,7 @@ export async function createIdeaConnection(data: {
     label?: string;
 }) {
     try {
+        await requireNovelAccess(data.novelId);
         const [connection] = await db
             .insert(ideaConnections)
             .values({
@@ -410,6 +450,7 @@ export async function createIdeaConnection(data: {
 
 export async function getIdeaConnectionsByNovelId(novelId: string) {
     try {
+        await requireNovelAccess(novelId);
         const connections = await db
             .select()
             .from(ideaConnections)
@@ -426,6 +467,9 @@ export async function getIdeaConnectionsByNovelId(novelId: string) {
 // "ไอเดียนี้เกิดจากอะไร?"
 export async function getAncestorIdeas(ideaId: string) {
     try {
+        const [owner] = await db.select({ novelId: ideas.novelId }).from(ideas).where(eq(ideas.id, ideaId)).limit(1);
+        if (!owner) return { success: false, error: "Idea not found" };
+        await requireNovelAccess(owner.novelId);
         const connections = await db
             .select({
                 connectionId: ideaConnections.id,
@@ -473,6 +517,9 @@ export async function getAncestorIdeas(ideaId: string) {
 // "ไอเดียนี้ส่งผลให้เกิดอะไรบ้าง?"
 export async function getDescendantIdeas(ideaId: string) {
     try {
+        const [owner] = await db.select({ novelId: ideas.novelId }).from(ideas).where(eq(ideas.id, ideaId)).limit(1);
+        if (!owner) return { success: false, error: "Idea not found" };
+        await requireNovelAccess(owner.novelId);
         const connections = await db
             .select({
                 connectionId: ideaConnections.id,
@@ -517,6 +564,7 @@ export async function getDescendantIdeas(ideaId: string) {
 // Get all ancestor-type connections for a novel (for canvas visualization)
 export async function getAncestorConnectionsByNovelId(novelId: string) {
     try {
+        await requireNovelAccess(novelId);
         const connections = await db
             .select()
             .from(ideaConnections)
@@ -536,6 +584,16 @@ export async function getAncestorConnectionsByNovelId(novelId: string) {
 
 export async function deleteIdeaConnection(connectionId: string) {
     try {
+        const [existing] = await db
+            .select({ novelId: ideaConnections.novelId })
+            .from(ideaConnections)
+            .where(eq(ideaConnections.id, connectionId))
+            .limit(1);
+        if (!existing) {
+            return { success: false, error: "Connection not found" };
+        }
+        await requireNovelAccess(existing.novelId);
+
         const [deleted] = await db
             .delete(ideaConnections)
             .where(eq(ideaConnections.id, connectionId))

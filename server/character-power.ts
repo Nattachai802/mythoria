@@ -1,10 +1,11 @@
 'use server';
 
 import { db } from "@/db/drizzle";
-import { characterPowers, powers, powerLevels, CharacterPower } from "@/db/schema";
+import { characterPowers, powers, powerLevels, characters, CharacterPower } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { addReference, removeReferenceEdge } from "./references"; // Context Fabric dual-write (P4)
+import { requireNovelAccess } from "@/lib/authz";
 
 // ============================================
 // CHARACTER POWER CRUD
@@ -21,6 +22,11 @@ export async function assignPowerToCharacter(data: {
     endChapterId?: string;
 }) {
     try {
+        // เช็คสิทธิ์ผ่าน novel เจ้าของของ power
+        const [pwOwner] = await db.select({ novelId: powers.novelId }).from(powers).where(eq(powers.id, data.powerId)).limit(1);
+        if (!pwOwner) return { success: false, error: "Power not found" };
+        await requireNovelAccess(pwOwner.novelId);
+
         // Check if character already has this power
         const existing = await db
             .select()
@@ -72,6 +78,17 @@ export async function assignPowerToCharacter(data: {
 
 export async function removePowerFromCharacter(characterPowerId: string) {
     try {
+        const [owner] = await db
+            .select({ novelId: powers.novelId })
+            .from(characterPowers)
+            .innerJoin(powers, eq(powers.id, characterPowers.powerId))
+            .where(eq(characterPowers.id, characterPowerId))
+            .limit(1);
+        if (!owner) {
+            return { success: false, error: "Character power not found" };
+        }
+        await requireNovelAccess(owner.novelId);
+
         const [deleted] = await db
             .delete(characterPowers)
             .where(eq(characterPowers.id, characterPowerId))
@@ -106,6 +123,17 @@ export async function updateCharacterPower(
     }>
 ) {
     try {
+        const [owner] = await db
+            .select({ novelId: powers.novelId })
+            .from(characterPowers)
+            .innerJoin(powers, eq(powers.id, characterPowers.powerId))
+            .where(eq(characterPowers.id, characterPowerId))
+            .limit(1);
+        if (!owner) {
+            return { success: false, error: "Character power not found" };
+        }
+        await requireNovelAccess(owner.novelId);
+
         const [updated] = await db
             .update(characterPowers)
             .set({ ...data, updatedAt: new Date() })
@@ -125,6 +153,10 @@ export async function updateCharacterPower(
 
 export async function getCharacterPowers(characterId: string) {
     try {
+        const [owner] = await db.select({ novelId: characters.novelId }).from(characters).where(eq(characters.id, characterId)).limit(1);
+        if (!owner) return { success: false, error: "Character not found" };
+        await requireNovelAccess(owner.novelId);
+
         const charPowers = await db.query.characterPowers.findMany({
             where: eq(characterPowers.characterId, characterId),
             with: {
@@ -151,6 +183,7 @@ export async function getCharacterPowers(characterId: string) {
 
 export async function checkPossibleCombinations(characterId: string, novelId: string) {
     try {
+        await requireNovelAccess(novelId);
         // Get character's current powers with levels
         const charPowers = await db.query.characterPowers.findMany({
             where: eq(characterPowers.characterId, characterId),

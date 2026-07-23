@@ -3,6 +3,7 @@
 import { db } from "@/db/drizzle";
 import { notes, noteStylometry } from "@/db/schema";
 import { eq, asc } from "drizzle-orm";
+import { pyFetch } from "@/lib/python-service";
 
 export async function getNovelStylometry(novelId: string) {
     try {
@@ -41,7 +42,7 @@ export async function getNovelStylometry(novelId: string) {
                     character_dialogue_vibes: d.characterDialogueVibes,
                 }));
 
-                const response = await fetch("http://localhost:8000/analyze-fingerprint-bulk", {
+                const response = await pyFetch("/analyze-fingerprint-bulk", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ items: snakeCaseItems })

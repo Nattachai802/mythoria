@@ -3,13 +3,15 @@
 import { db } from "@/db/drizzle"
 import { worldSystems } from "@/db/schema"
 import type { WorldSystem, WorldSystemEntry } from "@/db/schema"
-import { eq } from "drizzle-orm"
+import { eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+import { requireNovelAccess } from "@/lib/authz"
 
 const wbPath = (novelId: string) => `/dashboard/project/${novelId}/worldbuilding`
 
 export async function getWorldSystemsByNovelId(novelId: string): Promise<{ success: boolean; data: WorldSystem[] }> {
     try {
+        await requireNovelAccess(novelId)
         const rows = await db
             .select()
             .from(worldSystems)
@@ -32,6 +34,7 @@ export async function createWorldSystem(data: {
     entries?: WorldSystemEntry[]
 }) {
     try {
+        await requireNovelAccess(data.novelId)
         const existing = await db.select().from(worldSystems).where(eq(worldSystems.novelId, data.novelId))
         const [row] = await db
             .insert(worldSystems)
@@ -67,10 +70,11 @@ export async function updateWorldSystem(
     }>
 ) {
     try {
+        await requireNovelAccess(novelId)
         const [row] = await db
             .update(worldSystems)
             .set(patch)
-            .where(eq(worldSystems.id, id))
+            .where(and(eq(worldSystems.id, id), eq(worldSystems.novelId, novelId)))
             .returning()
         revalidatePath(wbPath(novelId))
         return { success: true, data: row }
@@ -82,7 +86,8 @@ export async function updateWorldSystem(
 
 export async function deleteWorldSystem(id: string, novelId: string) {
     try {
-        await db.delete(worldSystems).where(eq(worldSystems.id, id))
+        await requireNovelAccess(novelId)
+        await db.delete(worldSystems).where(and(eq(worldSystems.id, id), eq(worldSystems.novelId, novelId)))
         revalidatePath(wbPath(novelId))
         return { success: true }
     } catch (error) {

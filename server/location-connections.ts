@@ -5,6 +5,7 @@ import { locationConnections, locations } from "@/db/schema";
 import { eq, and, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { addReference, removeReferenceEdge } from "./references"; // Context Fabric dual-write (P4)
+import { requireNovelAccess } from "@/lib/authz";
 
 export async function createLocationConnection(data: {
     sourceLocationId: string;
@@ -15,6 +16,7 @@ export async function createLocationConnection(data: {
     novelId: string;
 }) {
     try {
+        await requireNovelAccess(data.novelId);
         // Check if connection already exists
         const existing = await db.query.locationConnections.findFirst({
             where: or(
@@ -60,6 +62,7 @@ export async function createLocationConnection(data: {
 
 export async function getLocationConnections(novelId: string) {
     try {
+        await requireNovelAccess(novelId);
         const connections = await db.query.locationConnections.findMany({
             where: eq(locationConnections.novelId, novelId),
             with: {
@@ -77,9 +80,10 @@ export async function getLocationConnections(novelId: string) {
 
 export async function deleteLocationConnection(connectionId: string, novelId: string) {
     try {
+        await requireNovelAccess(novelId);
         const [deleted] = await db
             .delete(locationConnections)
-            .where(eq(locationConnections.id, connectionId))
+            .where(and(eq(locationConnections.id, connectionId), eq(locationConnections.novelId, novelId)))
             .returning();
 
         if (!deleted) {
@@ -115,10 +119,11 @@ export async function updateLocationConnection(
     novelId: string
 ) {
     try {
+        await requireNovelAccess(novelId);
         const [updated] = await db
             .update(locationConnections)
             .set(data)
-            .where(eq(locationConnections.id, connectionId))
+            .where(and(eq(locationConnections.id, connectionId), eq(locationConnections.novelId, novelId)))
             .returning();
 
         if (!updated) {

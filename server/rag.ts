@@ -2,6 +2,7 @@
 
 import { getContextBundle, type ResolvedReference } from "./references";
 import { isEntityType, type EntityType } from "./registry/entity-registry";
+import { pyFetch } from "@/lib/python-service";
 
 /**
  * Context Fabric — Graph RAG retrieval
@@ -11,8 +12,6 @@ import { isEntityType, type EntityType } from "./registry/entity-registry";
  *
  * ของเดิม ai-review/plot-hole เรียก /search ตรงๆ (flat). ตัวนี้คือ Graph RAG รุ่นอัปเกรด
  */
-
-const PYTHON = process.env.PYTHON_SERVICE_URL || "http://localhost:8000";
 
 interface SearchHit {
     id: string;
@@ -41,7 +40,7 @@ async function vectorSearch(novelId: string, query: string, limit: number): Prom
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), 10000);
     try {
-        const res = await fetch(`${PYTHON}/search`, {
+        const res = await pyFetch(`/search`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ query, novel_id: novelId, limit }),

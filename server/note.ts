@@ -9,9 +9,11 @@ import { queueNoteForStateExtraction } from "./character-state-extractor";
 import { revalidateTag, revalidatePath, unstable_cache } from "next/cache";
 import { CACHE_TAGS, CACHE_DURATION } from "@/lib/cache-config";
 import { NoteStatus } from "@/lib/note-constants";
+import { requireNovelAccess } from "@/lib/authz";
 
 export const createNote = async (data: InsertNote) => {
     try {
+        await requireNovelAccess(data.novelId);
         const [newNote] = await db.insert(notes).values(data).returning();
 
         // Clear cache (Next.js 16 requires 2 args: tag, profile)
@@ -65,6 +67,8 @@ const _getNotes = async (novelId: string, type?: string) => {
 
 // Cached version - getNotes with 30s cache (shorter because notes change more frequently)
 export const getNotes = async (novelId: string, type?: string) => {
+    // เช็คสิทธิ์นอก unstable_cache เสมอ
+    await requireNovelAccess(novelId);
     const cachedFn = unstable_cache(
         () => _getNotes(novelId, type),
         [`notes-${novelId}-${type || 'all'}`],
@@ -90,6 +94,7 @@ export const getNote = async (noteId: string) => {
         if (!note) {
             return { success: false, message: "Note not found" };
         }
+        await requireNovelAccess(note.novelId);
 
         return { success: true, note };
     } catch (error) {
@@ -100,6 +105,7 @@ export const getNote = async (noteId: string) => {
 
 export const searchNotes = async (novelId: string, query: string) => {
     try {
+        await requireNovelAccess(novelId);
         const searchResults = await db.query.notes.findMany({
             where: and(
                 eq(notes.novelId, novelId),
@@ -119,6 +125,16 @@ export const searchNotes = async (novelId: string, query: string) => {
 
 export const updateNote = async (noteId: string, data: Partial<InsertNote>) => {
     try {
+        const [owner] = await db
+            .select({ novelId: notes.novelId })
+            .from(notes)
+            .where(eq(notes.id, noteId))
+            .limit(1);
+        if (!owner) {
+            return { success: false, message: "Note not found" };
+        }
+        await requireNovelAccess(owner.novelId);
+
         const [updatedNote] = await db.update(notes)
             .set({
                 ...data,
@@ -165,6 +181,7 @@ export const deleteNote = async (noteId: string) => {
         }
 
         const novelId = note.novelId;
+        await requireNovelAccess(novelId);
 
         // Delete the note
         await db.delete(notes).where(eq(notes.id, noteId));
@@ -186,6 +203,16 @@ export const deleteNote = async (noteId: string) => {
 
 export const updateNoteStatus = async (noteId: string, status: NoteStatus) => {
     try {
+        const [owner] = await db
+            .select({ novelId: notes.novelId })
+            .from(notes)
+            .where(eq(notes.id, noteId))
+            .limit(1);
+        if (!owner) {
+            return { success: false, message: "Note not found" };
+        }
+        await requireNovelAccess(owner.novelId);
+
         const [updatedNote] = await db.update(notes)
             .set({
                 status,
@@ -216,6 +243,7 @@ export const getOrCreateNextNote = async (
 ): Promise<{ success: boolean; message?: string; redirectUrl?: string }> => {
     console.log("[getOrCreateNextNote] Called with:", { currentNoteId, novelId, linkedToChapterId });
     try {
+        await requireNovelAccess(novelId);
         // 1. ดึง note ปัจจุบันเพื่อเอา createdAt
         const currentNote = await db.query.notes.findFirst({
             where: eq(notes.id, currentNoteId),
@@ -292,6 +320,7 @@ export const getPreviousNote = async (
     linkedToChapterId: string | null
 ): Promise<{ success: boolean; message?: string; redirectUrl?: string }> => {
     try {
+        await requireNovelAccess(novelId);
         const currentNote = await db.query.notes.findFirst({
             where: eq(notes.id, currentNoteId),
             columns: { id: true, createdAt: true },

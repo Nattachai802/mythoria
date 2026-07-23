@@ -1,14 +1,18 @@
 'use server';
 
 import { db } from "@/db/drizzle";
-import { chapterCharacters } from "@/db/schema";
+import { chapterCharacters, chapters } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { addReference, removeReferenceEdge } from "./references"; // Context Fabric dual-write (P4)
+import { requireNovelAccess } from "@/lib/authz";
 
 // Get all characters that appear in a specific chapter
 export async function getCharactersInChapter(chapterId: string) {
     try {
+        const [owner] = await db.select({ novelId: chapters.novelId }).from(chapters).where(eq(chapters.id, chapterId)).limit(1);
+        if (!owner) return { success: false, error: "Chapter not found" };
+        await requireNovelAccess(owner.novelId);
         const results = await db.query.chapterCharacters.findMany({
             where: (cc, { eq }) => eq(cc.chapterId, chapterId),
             with: {
@@ -31,6 +35,7 @@ export async function addCharacterToChapter(data: {
     novelId: string; // Needed for revalidation
 }) {
     try {
+        await requireNovelAccess(data.novelId);
         // Check if already exists
         const existing = await db.query.chapterCharacters.findFirst({
             where: (cc, { eq, and }) => and(
@@ -69,12 +74,15 @@ export async function addCharacterToChapter(data: {
 // Remove a character from a chapter
 export async function removeCharacterFromChapter(id: string, novelId: string, chapterId: string) {
     try {
-        // ดึง characterId ก่อนลบ เพื่อลบ reference edge ให้ตรง
+        await requireNovelAccess(novelId);
+        // ดึง characterId ก่อนลบ + ยืนยันว่า row สังกัด chapter ของ novel นี้
         const [row] = await db
             .select({ characterId: chapterCharacters.characterId, chapterId: chapterCharacters.chapterId })
             .from(chapterCharacters)
-            .where(eq(chapterCharacters.id, id))
+            .innerJoin(chapters, eq(chapters.id, chapterCharacters.chapterId))
+            .where(and(eq(chapterCharacters.id, id), eq(chapters.novelId, novelId)))
             .limit(1);
+        if (!row) return { success: false, error: "Not found" };
         await db.delete(chapterCharacters).where(eq(chapterCharacters.id, id));
         if (row) {
             await removeReferenceEdge({
@@ -94,6 +102,15 @@ export async function removeCharacterFromChapter(id: string, novelId: string, ch
 // Update character details in a chapter (e.g. role, notes)
 export async function updateCharacterInChapter(id: string, data: { role?: string, notes?: string }, novelId: string, chapterId: string) {
     try {
+        await requireNovelAccess(novelId);
+        // ยืนยัน row สังกัด chapter ของ novel นี้ก่อนแก้
+        const [owned] = await db
+            .select({ id: chapterCharacters.id })
+            .from(chapterCharacters)
+            .innerJoin(chapters, eq(chapters.id, chapterCharacters.chapterId))
+            .where(and(eq(chapterCharacters.id, id), eq(chapters.novelId, novelId)))
+            .limit(1);
+        if (!owned) return { success: false, error: "Not found" };
         await db.update(chapterCharacters)
             .set(data)
             .where(eq(chapterCharacters.id, id));

@@ -33,7 +33,7 @@ export function PlotHoleJobButton({ novelId }: PlotHoleJobButtonProps) {
     try {
       // Start SSE connection for real-time updates
       const eventSource = new EventSource(
-        `http://localhost:8000/check-all-notes-stream/${novelId}`
+        `/api/py/check-all-notes-stream/${novelId}`
       );
 
       eventSource.onmessage = (event) => {
@@ -74,7 +74,7 @@ export function PlotHoleJobButton({ novelId }: PlotHoleJobButtonProps) {
 
   const fallbackCheck = async () => {
     try {
-      const response = await fetch(`http://localhost:8000/check-all-notes/${novelId}`, {
+      const response = await fetch(`/api/py/check-all-notes/${novelId}`, {
         method: "POST",
       });
       const data = await response.json();

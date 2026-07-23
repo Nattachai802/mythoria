@@ -29,22 +29,22 @@
 
 เป้าหมาย: ป้องกันคนนอกอ่าน/แก้ข้อมูลคนอื่น หรือทำให้ค่าใช้จ่าย AI พุ่ง
 
-### 2.1 Data isolation — เริ่มแล้ว
+### 2.1 Data isolation — ✅ เสร็จแล้ว
 Audit พบว่า **เกือบทั้ง `server/` directory (~50 ไฟล์) ไม่มีการเช็คสิทธิ์เจ้าของเลย** —
 ใครก็ตามที่รู้ `novelId`/entity id (เดา, สุ่ม, เปิด network tab) อ่านหรือแก้ข้อมูลนิยายคนอื่นได้
+ตอนนี้ปิดครบทุกไฟล์ที่มีข้อมูล scope ด้วย novelId แล้ว
 
 - [x] `lib/authz.ts` — helper กลาง: `requireNovelAccess(novelId)`, `requireUser()`,
   `authErrorMessage(error, fallback)`
-- [x] `server/factions.ts` — ใช้ครบ (createFaction, updateFaction, deleteFaction)
-- [x] `server/novel.ts` — ใช้ครบทุกฟังก์ชัน (รวมจุดที่ต้องระวังเรื่อง `unstable_cache`:
-  เช็คสิทธิ์ต้องอยู่ *นอก* cached function เสมอ ไม่งั้น cache hit จะข้ามการเช็คไปเลย)
-- [ ] ไฟล์ที่เหลือ — ดูลิสต์เต็มใน [`phase2-data-isolation-plan.md`](./phase2-data-isolation-plan.md)
-  (chapter.ts, idea.ts, character.ts, lore.ts, timeline.ts, power.ts, note.ts, graph.ts,
-  version-history.ts, plot-threads.ts, story-arcs.ts, world-systems.ts, locations.ts,
-  items.ts, life-events.ts, eras.ts, location-connections.ts, note-character.ts,
-  chapter-characters.ts, character-power.ts + ฟังก์ชันที่เหลือใน factions.ts เอง)
+- [x] `server/novel.ts` + `server/factions.ts` — ครบ
+- [x] ไฟล์ที่เหลือทั้งหมด (~20 ไฟล์): chapter, idea, character, discord-sync, lore, note,
+  power, items, locations, eras, timeline, life-events, plot-threads, story-arcs,
+  world-systems, version-history, graph, location-connections, chapter-characters,
+  note-character, character-power — ดูสรุปเต็มใน
+  [`phase2-data-isolation-plan.md`](./phase2-data-isolation-plan.md)
+- Verified: normalized `tsc` error set เท่ากับ HEAD เป๊ะ (0 error ใหม่)
 
-**รูปแบบการแก้ (สรุปจาก 2 ไฟล์ที่ทำแล้ว)**:
+**รูปแบบการแก้ (สรุปจาก 2 ไฟล์แรก)**:
 1. Client ส่ง `novelId` ตรง ๆ → `await requireNovelAccess(novelId)` บรรทัดแรกใน `try`
 2. Client ส่งแค่ entity id (factionId, chapterId, ...) → query หา `novelId` เจ้าของก่อน
    แล้วค่อย `requireNovelAccess` แล้วค่อยทำงานจริง — และตัด field `novelId`/`userId`
@@ -52,9 +52,24 @@ Audit พบว่า **เกือบทั้ง `server/` directory (~50 ไ
 3. Query ที่รับ `userId` เป็น parameter (list ของ user เอง) → เรียก `requireUser()`
    แล้วใช้ userId ที่ยืนยันแล้วแทนค่าที่ client ส่งมา ไม่เชื่อ parameter ตรง ๆ
 
-### 2.2 Python service auth — ยังไม่เริ่ม
-- Frontend เรียก `http://localhost:8000` ตรง ๆ (เช่น `plot-hole-checker.tsx`) — ต้องมี
-  internal API key ระหว่าง Next.js ↔ Python และห้ามเปิด endpoint สู่เน็ตสาธารณะตรง ๆ
+### 2.2 Python service auth — ✅ เสร็จแล้ว
+เดิม: ~28 endpoint ของ FastAPI ไม่มี auth เลย และหลายจุด **เบราว์เซอร์เรียก `localhost:8000`
+ตรง ๆ** (client component + EventSource) — deploy จริง = ใครก็ยิงได้โดยไม่ต้องล็อกอิน
+
+แก้แล้ว (2 ชั้น ทำคู่กันเพราะฝัง secret ในเบราว์เซอร์ไม่ได้):
+- [x] **Python**: middleware บังคับ header `X-Internal-Key` == `INTERNAL_API_KEY` ทุก endpoint
+  (ยกเว้น `/health` + preflight), fail-closed ถ้าลืมตั้ง key ([`pythonservice/main.py`](../pythonservice/main.py))
+- [x] **Next proxy** [`app/api/py/[...path]/route.ts`](../app/api/py/[...path]/route.ts) — same-origin,
+  เช็ค session → forward พร้อม key → stream กลับ (รองรับ fetch + EventSource; cookie ไหลมาเอง)
+- [x] **Server helper** [`lib/python-service.ts`](../lib/python-service.ts) `pyFetch()` แนบ key
+  ให้ server callers (rag.ts, stylometry.ts, 4 route handlers)
+- [x] Client callers ทั้งหมดชี้มา `/api/py/...` แทน `localhost:8000`
+  (plot-hole-checker, vector-sync, librarian-panel, plot-hole-job SSE, spell-check-api)
+- [x] `INTERNAL_API_KEY` (openssl rand -hex 32) ใส่ทั้ง `.env` และ `pythonservice/.env` (ทั้งคู่ gitignore)
+
+**ceiling ที่จงใจเว้น** (`ponytail:` ใน route.ts): proxy เช็คแค่ "ล็อกอินแล้ว" ยังไม่เช็ค
+ownership ราย novelId บน path ของ Python — endpoint พก novelId คนละที่ (path/body) ถ้าต้องแน่นกว่านี้ค่อยเพิ่ม per-route
+- [ ] **ยังต้องทำ manual**: หลัง deploy ห้ามเปิด port 8000 สู่เน็ตสาธารณะ (ให้เข้าถึงได้เฉพาะจาก Next.js), rotate key ที่ generate ให้
 
 ### 2.3 Rate limiting — ยังไม่เริ่ม
 - มีแค่ 4 ไฟล์ที่ทำไว้ (bible-import, chapter-summary, character-state-ai, note-summary)

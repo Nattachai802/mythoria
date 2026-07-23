@@ -2,13 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/drizzle";
 import { notes, characters, locations } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { pyFetch } from "@/lib/python-service";
 
 type Props = {
     params: Promise<{ novelId: string; noteId: string }>;
 };
 
-const PYTHON_SERVICE_URL =
-    process.env.NEXT_PUBLIC_PYTHON_SERVICE_URL || "http://localhost:8000";
 
 // POST — trigger background spell check (server-side) สำหรับ note นี้
 export async function POST(request: NextRequest, { params }: Props) {
@@ -43,7 +42,7 @@ export async function POST(request: NextRequest, { params }: Props) {
         ].filter(Boolean);
 
         // 2. ยิงไป Python — ไม่รอผล (Python ใช้ BackgroundTasks return ทันที)
-        fetch(`${PYTHON_SERVICE_URL}/spell-check-note`, {
+        pyFetch(`/spell-check-note`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ noteId, novelId, text, customWords }),

@@ -2,9 +2,11 @@
 
 import { cloudDb, DiscordIdea } from '@/lib/neon';
 import { createIdeaWithoutRevalidate } from '@/server/idea';
+import { requireNovelAccess } from '@/lib/authz';
 
 export async function syncDiscordIdeas(novelId: string) {
     try {
+        await requireNovelAccess(novelId);
         // 1. Fetch unsynced ideas from Neon
         const unsyncedIdeas = await cloudDb`
             SELECT * FROM discord_ideas 
@@ -60,6 +62,7 @@ export async function syncDiscordIdeas(novelId: string) {
  */
 export async function getUnsyncedCount(novelId: string) {
     try {
+        await requireNovelAccess(novelId);
         const result = await cloudDb`
             SELECT COUNT(*) as count FROM discord_ideas 
             WHERE novel_id = ${novelId} AND is_synced = FALSE

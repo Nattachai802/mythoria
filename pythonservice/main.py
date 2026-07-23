@@ -3,7 +3,8 @@ FastAPI Vector Search Service
 Provides REST API for all content vector sync and search
 """
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import httpx
@@ -43,6 +44,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- Internal auth: ทุก request ต้องแนบ X-Internal-Key ตรงกับ env (ยกเว้น /health และ preflight) ---
+# กันคนนอกยิง endpoint ตรง ๆ เมื่อ deploy จริง — Next.js เป็นตัวเดียวที่ถือ key นี้
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY")
+
+
+@app.middleware("http")
+async def require_internal_key(request: Request, call_next):
+    if request.method == "OPTIONS" or request.url.path == "/health":
+        return await call_next(request)
+    if not INTERNAL_API_KEY:
+        # ตั้ง fail-closed: ถ้าลืมตั้ง key ฝั่ง service ให้ปฏิเสธ ดีกว่าเปิดโล่งเงียบ ๆ
+        return JSONResponse(status_code=503, content={"detail": "INTERNAL_API_KEY not configured"})
+    if request.headers.get("x-internal-key") != INTERNAL_API_KEY:
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+    return await call_next(request)
 
 
 class SearchRequest(BaseModel):

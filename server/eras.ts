@@ -4,6 +4,7 @@ import { db } from "@/db/drizzle";
 import { eras, loreEntries } from "@/db/schema";
 import { eq, asc, and } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { requireNovelAccess } from "@/lib/authz";
 
 export async function createEra(data: {
     name: string;
@@ -13,6 +14,7 @@ export async function createEra(data: {
     novelId: string;
 }) {
     try {
+        await requireNovelAccess(data.novelId);
         // Get max orderIndex
         const existingEras = await db.query.eras.findMany({
             where: eq(eras.novelId, data.novelId),
@@ -38,6 +40,7 @@ export async function createEra(data: {
 
 export async function getErasByNovelId(novelId: string) {
     try {
+        await requireNovelAccess(novelId);
         const allEras = await db.query.eras.findMany({
             where: eq(eras.novelId, novelId),
             orderBy: [asc(eras.orderIndex)],
@@ -75,6 +78,7 @@ export async function getEraById(eraId: string) {
         if (!era) {
             return { success: false, error: "Era not found" };
         }
+        await requireNovelAccess(era.novelId);
 
         return { success: true, data: era };
     } catch (error) {
@@ -94,6 +98,12 @@ export async function updateEra(
     }>
 ) {
     try {
+        const [owner] = await db.select({ novelId: eras.novelId }).from(eras).where(eq(eras.id, eraId)).limit(1);
+        if (!owner) {
+            return { success: false, error: "Era not found" };
+        }
+        await requireNovelAccess(owner.novelId);
+
         const [updatedEra] = await db
             .update(eras)
             .set({ ...data, updatedAt: new Date() })
@@ -115,6 +125,12 @@ export async function updateEra(
 
 export async function deleteEra(eraId: string) {
     try {
+        const [owner] = await db.select({ novelId: eras.novelId }).from(eras).where(eq(eras.id, eraId)).limit(1);
+        if (!owner) {
+            return { success: false, error: "Era not found" };
+        }
+        await requireNovelAccess(owner.novelId);
+
         const [deletedEra] = await db
             .delete(eras)
             .where(eq(eras.id, eraId))
@@ -136,11 +152,12 @@ export async function deleteEra(eraId: string) {
 // Reorder eras
 export async function reorderEras(novelId: string, orderedIds: string[]) {
     try {
+        await requireNovelAccess(novelId);
         const updates = orderedIds.map((id, index) =>
             db
                 .update(eras)
                 .set({ orderIndex: index, updatedAt: new Date() })
-                .where(eq(eras.id, id))
+                .where(and(eq(eras.id, id), eq(eras.novelId, novelId)))
         );
 
         await Promise.all(updates);
@@ -157,6 +174,7 @@ export async function reorderEras(novelId: string, orderedIds: string[]) {
 // Migrate old text-based era to new Era records
 export async function migrateTextEras(novelId: string) {
     try {
+        await requireNovelAccess(novelId);
         // Get all lore entries with text era but no eraId
         const loresWithTextEra = await db.query.loreEntries.findMany({
             where: and(
