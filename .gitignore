@@ -19,6 +19,7 @@ pythonservice/spell_cache.pkl
 
 # Python
 venv/
+.venv/
 __pycache__/
 *.pyc
 .env
