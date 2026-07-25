@@ -1,5 +1,5 @@
 "use client"
-//33.50
+
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
@@ -7,13 +7,6 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import {
   Field,
   FieldDescription,
@@ -23,22 +16,23 @@ import {
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormMessage,
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
+import { PasswordInput } from "@/components/ui/password-input"
 import Link from "next/link"
 import { authClient } from "@/lib/auth-client"
 
 const formSchema = z.object({
-  email: z.string().email({ message: "Please enter a valid email." }),
+  email: z.string().email({ message: "รูปแบบอีเมลไม่ถูกต้อง" }),
   password: z
     .string()
-    .min(6, { message: "Password must be at least 6 characters." })
+    .min(6, { message: "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร" })
     .max(50),
 })
+
 export function LoginForm({
   className,
   ...props
@@ -52,9 +46,8 @@ export function LoginForm({
     },
   })
 
-  // 2. Define a submit handler.
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    const toastId = toast.loading("Signing you in...")
+    const toastId = toast.loading("กำลังเข้าสู่ระบบ...")
     try {
       const response = await fetch("/api/auth/sign-in/email", {
         method: "POST",
@@ -70,7 +63,7 @@ export function LoginForm({
       if (!response.ok) {
         const errorBody = await response.json().catch(() => null)
         const message =
-          errorBody?.error?.message || "Invalid email or password."
+          errorBody?.error?.message || "อีเมลหรือรหัสผ่านไม่ถูกต้อง"
         toast.error(message, { id: toastId })
         return
       }
@@ -78,118 +71,123 @@ export function LoginForm({
       const data = await response.json().catch(() => null)
 
       if (data?.redirect && data?.url) {
-        toast.success("Redirecting...", { id: toastId })
+        toast.success("กำลังพาไปหน้าถัดไป...", { id: toastId })
         router.push(data.url)
         return
       }
 
-      toast.success("Logged in successfully.", { id: toastId })
+      toast.success("เข้าสู่ระบบสำเร็จ", { id: toastId })
       router.push("/dashboard")
       form.reset()
     } catch (error) {
-      toast.error("Something went wrong while logging in.", { id: toastId })
+      toast.error("เกิดข้อผิดพลาดระหว่างเข้าสู่ระบบ", { id: toastId })
       console.log(error)
     }
   }
+
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Form {...form}>
-        <Card>
-          <CardHeader>
-            <CardTitle>Login to your account</CardTitle>
-            <CardDescription>
-              Enter your email below to login to your account
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-              <FieldGroup>
-                <Field>
-                  <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FieldLabel htmlFor="email">Email</FieldLabel>
-                        <FormControl>
-                          <Input
-                            id="email"
-                            type="email"
-                            placeholder="m@example.com"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          We&apos;ll use this to contact you about your account.
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </Field>
-                <Field>
-                  <FormField
-                    control={form.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <div className="flex items-center">
-                          <FieldLabel htmlFor="password">Password</FieldLabel>
-                          <Link
-                            href="/forgot-password"
-                            className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
-                          >
-                            Forgot your password?
-                          </Link>
-                        </div>
-                        <FormControl>
-                          <Input
-                            id="password"
-                            type="password"
-                            placeholder="••••••••"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </Field>
-                <Field>
-                  <div className="flex flex-col gap-2">
-                    <Button type="submit">Login</Button>
-                    <Button 
-                      variant="outline" 
-                      type="button"
-                      onClick={async () => {
-                        const toastId = toast.loading("Redirecting to Google...");
-                        try {
-                          await authClient.signIn.social({
-                            provider: "google",
-                            callbackURL: "/dashboard"
-                          });
-                        } catch (err) {
-                          toast.error("Google sign-in failed", { id: toastId });
-                        }
-                      }}
-                    >
-                      Login with Google
-                    </Button>
-                  </div>
-                  <FieldDescription className="text-center">
-                    Don&apos;t have an account?{" "}
-                    <Link
-                      href="/signup"
-                      className="underline underline-offset-4"
-                    >
-                      Sign up
-                    </Link>
-                  </FieldDescription>
-                </Field>
-              </FieldGroup>
-            </form>
-          </CardContent>
-        </Card>
+        <form onSubmit={form.handleSubmit(onSubmit)}>
+          <FieldGroup>
+            <Field>
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FieldLabel htmlFor="email">อีเมล</FieldLabel>
+                    <FormControl>
+                      <Input
+                        id="email"
+                        type="email"
+                        autoComplete="email"
+                        placeholder="you@example.com"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </Field>
+            <Field>
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <div className="flex items-center">
+                      <FieldLabel htmlFor="password">รหัสผ่าน</FieldLabel>
+                      <Link
+                        href="/forgot-password"
+                        className="ml-auto inline-block text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                      >
+                        ลืมรหัสผ่าน?
+                      </Link>
+                    </div>
+                    <FormControl>
+                      <PasswordInput
+                        id="password"
+                        autoComplete="current-password"
+                        placeholder="••••••••"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </Field>
+            <Field>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={form.formState.isSubmitting}
+              >
+                เข้าสู่ระบบ
+              </Button>
+
+              <div className="my-4 flex items-center gap-3">
+                <span className="h-px flex-1 bg-border" />
+                <span className="font-technical text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                  หรือ
+                </span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
+
+              <Button
+                variant="outline"
+                type="button"
+                className="w-full"
+                disabled={form.formState.isSubmitting}
+                onClick={async () => {
+                  const toastId = toast.loading("กำลังพาไปหน้า Google...")
+                  try {
+                    await authClient.signIn.social({
+                      provider: "google",
+                      callbackURL: "/dashboard",
+                    })
+                  } catch (err) {
+                    toast.error("เข้าสู่ระบบด้วย Google ไม่สำเร็จ", { id: toastId })
+                  }
+                }}
+              >
+                เข้าสู่ระบบด้วย Google
+              </Button>
+
+              <FieldDescription className="mt-6 text-center">
+                ยังไม่มีบัญชี?{" "}
+                <Link
+                  href="/signup"
+                  className="font-medium text-foreground underline underline-offset-4"
+                >
+                  สมัครใช้งาน
+                </Link>
+              </FieldDescription>
+            </Field>
+          </FieldGroup>
+        </form>
       </Form>
     </div>
   )

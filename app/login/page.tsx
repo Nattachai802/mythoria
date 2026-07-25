@@ -1,11 +1,13 @@
 import { LoginForm } from "@/components/forms/login-form"
+import { AuthShell } from "@/components/auth/auth-shell"
 
 export default function Page() {
   return (
-    <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
-      <div className="w-full max-w-sm">
-        <LoginForm />
-      </div>
-    </div>
+    <AuthShell
+      title="เข้าสู่ระบบ"
+      description="ยินดีต้อนรับกลับ กรอกอีเมลและรหัสผ่านเพื่อเข้าใช้งาน"
+    >
+      <LoginForm />
+    </AuthShell>
   )
 }

@@ -1,11 +1,13 @@
 import { ForgotPasswordForm } from "@/components/forms/forgot-password-form"
+import { AuthShell } from "@/components/auth/auth-shell"
 
 export default function Page() {
   return (
-    <div className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">
-      <div className="w-full max-w-sm">
-        <ForgotPasswordForm />
-      </div>
-    </div>
+    <AuthShell
+      title="ลืมรหัสผ่าน"
+      description="กรอกอีเมลที่ใช้สมัคร แล้วเราจะส่งลิงก์สำหรับตั้งรหัสใหม่ไปให้"
+    >
+      <ForgotPasswordForm />
+    </AuthShell>
   )
 }
