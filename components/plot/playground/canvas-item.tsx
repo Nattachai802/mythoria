@@ -619,6 +619,16 @@ export function CanvasItem({
         </PopoverContent>
       </Popover>
       <div className="flex items-center gap-1">
+        {editingNoteId && onDeleteNote && (
+          <Button
+            type="button" size="sm" variant="ghost"
+            className="h-6 text-xs px-2 text-destructive hover:text-destructive"
+            disabled={deletingNote}
+            onClick={deleteEditingNote}
+          >
+            {deletingNote ? <Loader2 className="w-3 h-3 animate-spin" /> : "ลบ"}
+          </Button>
+        )}
         <div className="flex justify-end gap-1 ml-auto">
           <Button type="button" size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={closeQuickNote}>
             ยกเลิก

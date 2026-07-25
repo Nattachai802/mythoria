@@ -57,3 +57,6 @@ next-env.d.ts
 # DB dumps — อย่า commit (มี secret)
 backup.sql
 backup/
+
+# impeccable local cache (เก็บ path ในเครื่อง ไม่ควรแชร์)
+.impeccable/hook.cache.json
