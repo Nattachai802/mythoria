@@ -84,6 +84,7 @@ export const novels = pgTable("novels", {
   targetWordCount: integer("target_word_count"),
   // Writing Goal & Deadline Tracker
   targetDeadline: timestamp("target_deadline"),            // วันสิ้นสุดเป้าหมาย
+  timelineEpoch: timestamp("timeline_epoch"),               // วันที่จริงของ "Day 1" บนเส้นเวลาในเรื่อง (P3 Phase A) — null = ยังไม่ตั้ง แสดงเป็น Day N แทน
   dailyTargetMode: text("daily_target_mode").default("dynamic"), // dynamic | static
   dailyTargetWordCount: integer("daily_target_word_count").default(1000), // เป้าหมายคำ/วัน (โหมด static)
   lastSyncedAt: timestamp("last_synced_at"),                // ซิงค์ฐานข้อมูล AI ล่าสุด (cross-device)
@@ -303,6 +304,9 @@ export const timelineEvents = pgTable("timeline_events", {
   valueShift: integer("value_shift"),        // ทิศ/ความเข้มของการเปลี่ยนค่า −5…+5 (ป้อน tension curve A2)
   povCharacterId: text("pov_character_id").references(() => characters.id, { onDelete: "set null" }), // ฉากนี้เล่าผ่านสายตาใคร (P1)
   storyTimeIndex: integer("story_time_index"), // ลำดับเวลาจริงในโลกเรื่อง (P3) — null = ยังไม่จัด; eventDate เป็นแค่ป้ายแสดง
+  storyDate: integer("story_date"), // วันที่ N นับจาก novels.timelineEpoch (P3 Phase A) — ใช้คำนวณ gap/timeskip ได้
+  storyDuration: integer("story_duration"), // ความยาวฉากเป็นชั่วโมง (P3 Phase A) — optional
+  eraId: text("era_id").references(() => eras.id, { onDelete: "set null" }), // ยุคที่ฉากนี้เกิดขึ้น (P3 Phase A)
   // Causal chain (P2) — Therefore/But: ฉากนี้เกิดขึ้นเพราะ/ทั้งที่ฉากไหน
   causeEventId: text("cause_event_id").references((): AnyPgColumn => timelineEvents.id, { onDelete: "set null" }),
   causeKind: text("cause_kind"),   // "therefore" (ดังนั้น) | "but" (แต่ว่า) — null = "แล้วก็" (and then, จุดอ่อนพล็อต)
@@ -1951,6 +1955,7 @@ export type InsertDriveCredentials = typeof driveCredentials.$inferInsert;
 // World Building Types
 export type Item = typeof items.$inferSelect;
 export type LoreEntry = typeof loreEntries.$inferSelect;
+export type Era = typeof eras.$inferSelect;
 export type Entity = typeof entities.$inferSelect;
 export type LocationEntity = typeof locationEntities.$inferSelect;
 export type InsertItem = typeof items.$inferInsert;

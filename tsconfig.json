@@ -35,6 +35,7 @@
     "pythonservice",
     "react-email-starter",
     "migrations",
-    "scripts"
+    "scripts",
+    "**/*.check.ts"
   ]
 }

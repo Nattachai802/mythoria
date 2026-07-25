@@ -20,7 +20,7 @@ import {
     verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
 import Link from "next/link"
-import { Chapter, TimelineEvent, Character, Location } from "@/db/schema"
+import { Chapter, TimelineEvent, Character, Location, Era, LoreEntry } from "@/db/schema"
 import { ChapterColumn } from "./chapter-column"
 import { EventCard } from "./event-card"
 import { Clock, CheckCircle2, FolderOpen, SlidersHorizontal, Eye, X, Activity, AlertTriangle, Route, Loader2, BookPlus } from "lucide-react"
@@ -106,6 +106,8 @@ interface TimelineBoardProps {
     locations?: Location[]
     threads?: ThreadWithBeats[]
     arcs?: StoryArc[]
+    eras?: (Era & { loreEntries: LoreEntry[] })[]
+    timelineEpoch?: Date | null
 }
 
 export function TimelineBoard({
@@ -116,8 +118,11 @@ export function TimelineBoard({
     locations = [],
     threads = [],
     arcs = [],
+    eras = [],
+    timelineEpoch = null,
 }: TimelineBoardProps) {
     const [events, setEvents] = useState<TimelineEvent[]>(initialEvents)
+    const [epoch, setEpoch] = useState<Date | null>(timelineEpoch)
     const [activeId, setActiveId] = useState<string | null>(null)
 
     // ── Filter / lens state ──
@@ -512,6 +517,9 @@ export function TimelineBoard({
                             events={events}
                             chapters={sortedChapters}
                             onEventPatched={(id, patch) => setEvents(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e))}
+                            eras={eras}
+                            timelineEpoch={epoch}
+                            onEpochChange={setEpoch}
                         />
 
                         {/* มุมมอง — เลเยอร์ที่ทาบบนกระดาน */}

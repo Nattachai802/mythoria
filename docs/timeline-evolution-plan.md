@@ -26,11 +26,23 @@
 
 ### Schema (`db/schema.ts` — `timelineEvents`)
 เพิ่ม field (ทั้งหมด nullable เพื่อ backward-compatible):
-- `storyDate` — text หรือ int (วันในโลกเรื่อง; เก็บเป็น "day number" จากจุดอ้างอิงเพื่อคำนวณ diff ได้ง่าย)
+- `storyDate` — int (วันในโลกเรื่อง เก็บเป็น "day number" นับจาก epoch ของนิยาย เพื่อคำนวณ diff/gap ได้ง่าย)
 - `storyDuration` — int (ความยาวฉากเป็นหน่วยเวลา เช่นชั่วโมง) — optional
 - ผูก `eraId` (มี `eras` table อยู่แล้ว) เพื่อวางฉากในยุค
 
-> ponytail: เก็บ storyDate เป็น int "day number" ก่อน ไม่ทำปฏิทินเต็ม (เดือน/ปีแบบ custom calendar) จนกว่าจะมีคนขอ — day number พอคำนวณ gap/ลำดับ/conflict ได้ครบ
+เพิ่ม field ที่ `novels` table (ตั้งครั้งเดียวต่อเรื่อง, nullable = ยังไม่ตั้ง):
+- `timelineEpoch` — date จริง (เช่น `2568-03-15`) = วันที่ storyDate = 0/1 เทียบเท่า "วันจริง" วันไหน — ให้ผู้เขียนตั้งได้ ไม่บังคับ
+
+### แสดงผลเป็น พ.ศ.
+ไม่ต้องทำปฏิทินเอง — ใช้ `Intl.DateTimeFormat("th-TH-u-ca-buddhist", { day, month, year })` (native, มีในทุก browser/Node) แปลง `timelineEpoch + storyDate วัน` เป็นวันที่ พ.ศ. ตรงๆ:
+```ts
+new Intl.DateTimeFormat("th-TH-u-ca-buddhist", { day: "numeric", month: "short", year: "numeric" })
+  .format(addDays(epoch, storyDate))
+// → "15 มี.ค. 2568"
+```
+ถ้า `timelineEpoch` ไม่ได้ตั้ง → fallback แสดง "Day N" แบบเดิม (ไม่บังคับผู้เขียนต้องผูกปฏิทินจริงตั้งแต่แรก)
+
+> ponytail: ยังไม่ทำ custom calendar (เดือน/ปีที่ผู้เขียนตั้งเอง สำหรับโลกแฟนตาซี) จนกว่าจะมีคนขอ — เรื่องที่อิงโลกจริง/ไทยร่วมสมัยใช้ `Intl` + พ.ศ. ได้เลยโดยไม่ต้องเขียนโค้ดปฏิทินเอง ส่วน storyDate ยังเป็น int ล้วนเหมือนเดิม แค่เพิ่มชั้นแปลงผล (epoch + Intl) ไว้ด้านบน ไม่กระทบการคำนวณ gap/conflict ที่ทำงานกับ int อยู่แล้ว
 
 ### Migration
 - `npm run db:push` (หรือ drizzle generate + migrate ตามที่โปรเจกต์ใช้) — เพิ่ม column แบบ nullable ไม่กระทบข้อมูลเดิม
@@ -48,7 +60,7 @@
 - ตรวจ: ตัวละครอยู่ 2 ที่พร้อมกัน, event หลังตาย, เวลาถอยหลังโดยไม่ตั้งใจ (flashback ที่ไม่ได้ mark)
 
 ## Decision ที่ค้าง (ต้องถามผู้ใช้ก่อนลงมือ Phase A)
-1. รูปแบบวันที่ในโลกเรื่อง: **day number ล้วน** vs **custom calendar** (เดือน/ปีที่ผู้เขียนตั้งเอง)?
+1. ~~รูปแบบวันที่ในโลกเรื่อง: day number ล้วน vs custom calendar~~ → **ตัดสินใจแล้ว**: เก็บ `storyDate` เป็น int (day number) เหมือนเดิม + เพิ่ม `novels.timelineEpoch` (วันที่จริง, optional) แปลงแสดงผลเป็น พ.ศ. ด้วย `Intl.DateTimeFormat(..., { calendar: "buddhist" })` — ไม่ต้องสร้าง custom calendar engine
 2. เส้นเวลาควรยังเป็น Sheet บน `/plot` หรือย้ายเป็นหน้าแยก `/plot/timeline` เมื่อ Phase A เพิ่ม UI หนักขึ้น?
    - ข้อเสนอ: refactor เนื้อ sheet เป็นคอมโพเนนต์ที่ render ได้ทั้ง sheet และหน้าเต็ม → ค่อยเพิ่ม route ทีหลังแทบไม่เขียนเพิ่ม
 

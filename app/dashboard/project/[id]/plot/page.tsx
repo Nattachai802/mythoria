@@ -5,6 +5,7 @@ import { getCharactersByNovelId } from "@/server/character"
 import { getLocationsByNovelId } from "@/server/locations"
 import { getThreadsByNovelId } from "@/server/plot-threads"
 import { getArcsByNovelId } from "@/server/story-arcs"
+import { getErasByNovelId } from "@/server/eras"
 import { TimelineBoard } from "@/components/project/timeline/timeline-board"
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb"
 
@@ -15,13 +16,14 @@ type Props = {
 export default async function PlotPage({ params }: Props) {
     const { id } = await params
 
-    const [novelResult, eventsResult, charactersResult, locationsResult, threadsResult, arcsResult] = await Promise.all([
+    const [novelResult, eventsResult, charactersResult, locationsResult, threadsResult, arcsResult, erasResult] = await Promise.all([
         getNovelById(id),
         getTimeLineEvents(id),
         getCharactersByNovelId(id),
         getLocationsByNovelId(id),
         getThreadsByNovelId(id),
         getArcsByNovelId(id),
+        getErasByNovelId(id),
     ])
 
     if (!novelResult.success || !novelResult.novel) {
@@ -34,6 +36,7 @@ export default async function PlotPage({ params }: Props) {
     const locations = locationsResult.data || []
     const threads = threadsResult.data || []
     const arcs = arcsResult.data || []
+    const eras = erasResult.success ? erasResult.data : []
 
     return (
         <div className="flex flex-col h-[calc(100vh-4rem)]">
@@ -60,6 +63,8 @@ export default async function PlotPage({ params }: Props) {
                     locations={locations}
                     threads={threads}
                     arcs={arcs}
+                    eras={eras}
+                    timelineEpoch={novel.timelineEpoch}
                 />
             </div>
         </div>
