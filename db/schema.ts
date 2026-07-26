@@ -65,6 +65,21 @@ export const verification = pgTable("verification", {
     .notNull(),
 });
 
+// รหัสเชิญ — Mythoria เป็นระบบปิด ต้องมีรหัสที่ยังใช้ได้จึงจะสร้างบัญชีได้
+// ด่านตรวจอยู่ที่ databaseHooks.user.create.before ใน lib/auth.ts จุดเดียว
+// ครอบทั้งการสมัครด้วยอีเมลและด้วย Google
+export const invitations = pgTable("invitations", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(),
+  note: text("note"),                                        // จดไว้ว่าแจกให้ใคร
+  maxUses: integer("max_uses").notNull().default(1),          // 1 = ใช้ได้ครั้งเดียว
+  usedCount: integer("used_count").notNull().default(0),
+  expiresAt: timestamp("expires_at"),                         // null = ไม่มีวันหมดอายุ
+  revokedAt: timestamp("revoked_at"),                         // ใส่วันที่เพื่อเพิกถอนทันที
+  lastUsedAt: timestamp("last_used_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // ============================================
 // NOVEL WRITING TABLES
 // ============================================
@@ -1956,6 +1971,8 @@ export type InsertDriveCredentials = typeof driveCredentials.$inferInsert;
 export type Item = typeof items.$inferSelect;
 export type LoreEntry = typeof loreEntries.$inferSelect;
 export type Era = typeof eras.$inferSelect;
+export type Invitation = typeof invitations.$inferSelect;
+export type InsertInvitation = typeof invitations.$inferInsert;
 export type Entity = typeof entities.$inferSelect;
 export type LocationEntity = typeof locationEntities.$inferSelect;
 export type InsertItem = typeof items.$inferInsert;

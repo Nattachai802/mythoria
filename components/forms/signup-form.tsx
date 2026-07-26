@@ -58,9 +58,22 @@ export function SignupForm({
     },
   })
 
+  // ฝากรหัสเชิญไว้ใน cookie ก่อนเริ่มสมัคร — ด่านใน lib/auth.ts อ่านจากที่นี่ที่เดียว
+  // ไม่ว่าจะสมัครทางอีเมลหรือทาง Google (ทาง Google เบราว์เซอร์เด้งออกไปแล้วกลับมา
+  // ไม่มีอะไรติดตัวไปด้วยนอกจาก cookie)
+  async function stashInviteCode(code: string) {
+    await fetch("/api/invite/stash", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    })
+  }
+
   async function onSubmit(values: z.infer<typeof formSchema>) {
     const toastId = toast.loading("กำลังสร้างบัญชี...")
     try {
+      await stashInviteCode(values.inviteCode)
+
       const response = await fetch("/api/auth/sign-up/email", {
         method: "POST",
         headers: {
@@ -70,7 +83,6 @@ export function SignupForm({
           email: values.email,
           password: values.password,
           name: values.name,
-          inviteCode: values.inviteCode,
         }),
       })
 
@@ -235,8 +247,18 @@ export function SignupForm({
                 className="w-full"
                 disabled={form.formState.isSubmitting}
                 onClick={async () => {
+                  // เช็ครหัสก่อนเด้งออกไป — ถ้าปล่อยไปทั้งที่ยังไม่กรอก ผู้ใช้จะเสียเวลา
+                  // ยืนยันตัวตนกับ Google จนจบแล้วค่อยโดนปฏิเสธตอนกลับมา
+                  const code = form.getValues("inviteCode").trim()
+                  if (!code) {
+                    form.setError("inviteCode", { message: "กรอกรหัสเชิญก่อนสมัครด้วย Google" })
+                    form.setFocus("inviteCode")
+                    return
+                  }
+
                   const toastId = toast.loading("กำลังพาไปหน้า Google...")
                   try {
+                    await stashInviteCode(code)
                     await authClient.signIn.social({
                       provider: "google",
                       callbackURL: "/dashboard",
