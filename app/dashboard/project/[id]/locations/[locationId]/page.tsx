@@ -1,5 +1,5 @@
 import { getLocationById } from "@/server/locations";
-import { getNovelById } from "@/server/novel";
+import { getNovelByIdSimple } from "@/server/novel";
 import { getIdeasByNovelId } from "@/server/idea";
 import { notFound } from "next/navigation";
 import { LocationDetailContent } from "@/components/project/location/location-detail-content";
@@ -19,7 +19,7 @@ export default async function LocationDetailPage({
 
     const [result, novelResult, ideasResult] = await Promise.all([
         getLocationById(locationId),
-        getNovelById(novelId),
+        getNovelByIdSimple(novelId),
         getIdeasByNovelId(novelId),
     ]);
 

@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation"
 import { getNote } from "@/server/note"
-import { getNovelById } from "@/server/novel"
+import { getNovelByIdSimple } from "@/server/novel"
 import { RewriteWorkspace } from "@/components/project/rewrite-workspace"
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb"
 
@@ -16,7 +16,7 @@ export default async function RewritePage({ params }: Props) {
 
     const [noteRes, novelRes] = await Promise.all([
         getNote(noteId),
-        getNovelById(id)
+        getNovelByIdSimple(id)
     ]);
 
     if (!noteRes.success || !noteRes.note) {

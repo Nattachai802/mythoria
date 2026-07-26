@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getNovelById } from "@/server/novel";
+import { getNovelByIdSimple } from "@/server/novel";
 import { getAllFactionsWithMembers, getFactionRelationships, getFactionStatusPresets } from "@/server/factions";
 import { getCharactersByNovelId } from "@/server/character";
 import { getIdeasByNovelId } from "@/server/idea";
@@ -13,7 +13,7 @@ export default async function FactionsPage({ params }: Props) {
     const { id } = await params;
 
     const [novelResult, factionsResult, relsResult, charactersResult, presetsResult, ideasResult, systemsResult] = await Promise.all([
-        getNovelById(id),
+        getNovelByIdSimple(id),
         getAllFactionsWithMembers(id),
         getFactionRelationships(id),
         getCharactersByNovelId(id),

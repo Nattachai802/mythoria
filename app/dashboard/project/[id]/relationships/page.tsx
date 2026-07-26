@@ -1,6 +1,6 @@
 import { getCharactersByNovelId, getAllCharacterRelationships } from "@/server/character";
 import { getAllFactionsWithMembers } from "@/server/factions";
-import { getNovelById } from "@/server/novel";
+import { getNovelByIdSimple } from "@/server/novel";
 import { RelationshipView } from "@/components/project/relationships/relationship-view";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
 
@@ -15,7 +15,7 @@ export default async function RelationshipsPage({ params }: RelationshipsPagePro
         getCharactersByNovelId(novelId),
         getAllCharacterRelationships(novelId),
         getAllFactionsWithMembers(novelId),
-        getNovelById(novelId)
+        getNovelByIdSimple(novelId)
     ]);
 
     if (!charactersResult.success || !relationshipsResult.success) {

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation"
-import { getNovelById } from "@/server/novel"
+import { getNovelByIdSimple } from "@/server/novel"
 import { BibleImportView } from "@/components/project/bible-import/bible-import-view"
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb"
 
@@ -7,7 +7,7 @@ type Props = { params: Promise<{ id: string }> }
 
 export default async function ImportBiblePage({ params }: Props) {
     const { id } = await params
-    const novelResult = await getNovelById(id)
+    const novelResult = await getNovelByIdSimple(id)
     if (!novelResult.success || !novelResult.novel) notFound()
     const novel = novelResult.novel
 

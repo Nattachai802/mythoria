@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation"
-import { getNovelById } from "@/server/novel"
+import { getNovelForPlot } from "@/server/novel"
 import { getTimeLineEvents } from "@/server/timeline"
 import { getCharactersByNovelId } from "@/server/character"
 import { getLocationsByNovelId } from "@/server/locations"
@@ -17,7 +17,7 @@ export default async function PlotPage({ params }: Props) {
     const { id } = await params
 
     const [novelResult, eventsResult, charactersResult, locationsResult, threadsResult, arcsResult, erasResult] = await Promise.all([
-        getNovelById(id),
+        getNovelForPlot(id),
         getTimeLineEvents(id),
         getCharactersByNovelId(id),
         getLocationsByNovelId(id),

@@ -1,8 +1,8 @@
 "use server";
 
 import { db } from "@/db/drizzle";
-import { novels, InsertNovel } from "@/db/schema";
-import { eq, desc, and, or, like } from "drizzle-orm";
+import { novels, InsertNovel, chapters, characters, locations } from "@/db/schema";
+import { eq, asc, desc, and, or, like } from "drizzle-orm";
 import { unstable_cache, revalidateTag } from "next/cache";
 import { CACHE_TAGS, CACHE_DURATION } from "@/lib/cache-config";
 import { requireNovelAccess, requireUser, authErrorMessage } from "@/lib/authz";
@@ -47,45 +47,9 @@ export const getNovelsByUserId = async (userId: string) => {
     }
 };
 
-// ดึง novel ตาม id พร้อมข้อมูลเต็ม (ใช้เฉพาะหน้าที่ต้องการทุกอย่างจริงๆ)
-export const getNovelById = async (id: string) => {
-    try {
-        await requireNovelAccess(id);
-        const novel = await db.query.novels.findFirst({
-            where: eq(novels.id, id),
-            with: {
-                user: true,
-                chapters: {
-                    orderBy: (chapters, { asc }) => [asc(chapters.orderIndex)]
-                },
-                characters: {
-                    orderBy: (characters, { desc }) => [desc(characters.createdAt)]
-                },
-                locations: {
-                    orderBy: (locations, { desc }) => [desc(locations.createdAt)]
-                },
-                timelineEvents: {
-                    orderBy: (timelineEvents, { asc }) => [asc(timelineEvents.orderIndex)]
-                },
-                notes: {
-                    orderBy: (notes, { desc }) => [desc(notes.updatedAt)]
-                },
-                tags: {
-                    orderBy: (tags, { desc }) => [desc(tags.createdAt)]
-                }
-            }
-        });
-
-        if (!novel) {
-            return { success: false, message: "Novel not found" };
-        }
-
-        return { success: true, novel };
-    } catch (error) {
-        console.error("Get novel error:", error);
-        return { success: false, message: authErrorMessage(error, "Failed to get novel") };
-    }
-};
+// getNovelById ถูกลบออกแล้ว — มันดึง 7 relation พร้อมกัน (รวม notes 1.5 MB) ให้ทุกหน้า
+// ทั้งที่ 13 จาก 15 จุดที่เรียกใช้แค่ novel.title
+// ใช้ getNovelByIdSimple / getNovelForPlot / getNovelForWorldbuilding แทนตามที่หน้านั้นต้องการจริง
 
 // Internal function - actual database query
 const _getNovelByIdLight = async (id: string) => {
@@ -153,6 +117,60 @@ export const getNovelByIdLight = async (id: string) => {
         }
     );
     return cachedFn();
+};
+
+/**
+ * ดึงเฉพาะที่กระดานพล็อตใช้ — novel + รายชื่อบท
+ *
+ * จำกัด column ของ chapters ไว้ด้วย เพราะ chapters.content คือต้นฉบับนิยายทั้งเรื่อง
+ * กระดานพล็อตใช้แค่ id/title/orderIndex/novelId ไม่เคยแตะเนื้อบทเลย
+ */
+export const getNovelForPlot = async (id: string) => {
+    try {
+        await requireNovelAccess(id);
+        const novel = await db.query.novels.findFirst({
+            where: eq(novels.id, id),
+            with: {
+                chapters: {
+                    orderBy: [asc(chapters.orderIndex)],
+                    columns: { id: true, title: true, orderIndex: true, novelId: true, status: true },
+                },
+            },
+        });
+
+        if (!novel) return { success: false as const, message: "Novel not found" };
+        return { success: true as const, novel };
+    } catch (error) {
+        console.error("Get novel for plot error:", error);
+        return { success: false as const, message: authErrorMessage(error, "Failed to get novel") };
+    }
+};
+
+/**
+ * ดึงเฉพาะที่หน้าสร้างโลกใช้ — novel + ตัวละคร + สถานที่
+ * (locations ส่งต่อให้ LocationsView ซึ่งใช้ field เต็ม จึงไม่จำกัด column)
+ */
+export const getNovelForWorldbuilding = async (id: string) => {
+    try {
+        await requireNovelAccess(id);
+        const novel = await db.query.novels.findFirst({
+            where: eq(novels.id, id),
+            with: {
+                characters: {
+                    orderBy: [desc(characters.createdAt)],
+                },
+                locations: {
+                    orderBy: [desc(locations.createdAt)],
+                },
+            },
+        });
+
+        if (!novel) return { success: false as const, message: "Novel not found" };
+        return { success: true as const, novel };
+    } catch (error) {
+        console.error("Get novel for worldbuilding error:", error);
+        return { success: false as const, message: authErrorMessage(error, "Failed to get novel") };
+    }
 };
 
 // ดึง novel แบบง่าย (ไม่มี relations)

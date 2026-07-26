@@ -1,5 +1,5 @@
 import { getCharactersByNovelId } from "@/server/character";
-import { getNovelById } from "@/server/novel";
+import { getNovelByIdSimple } from "@/server/novel";
 import { CreateCharacterButton } from "@/components/project/character/create-character-button";
 import { CharacterList } from "@/components/project/character/character-list";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
@@ -20,7 +20,7 @@ export default async function CharactersPage({ params }: CharactersPageProps) {
   const { id: novelId } = await params;
   const [result, novelResult] = await Promise.all([
     getCharactersByNovelId(novelId),
-    getNovelById(novelId)
+    getNovelByIdSimple(novelId)
   ]);
 
   if (!result.success) {

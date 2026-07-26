@@ -3,7 +3,7 @@ import { getCharactersByNovelId } from "@/server/character";
 import { getLocationsByNovelId } from "@/server/locations";
 import { getIdeasByNovelId } from "@/server/idea";
 import { getChapters } from "@/server/chapter";
-import { getNovelById } from "@/server/novel";
+import { getNovelByIdSimple } from "@/server/novel";
 import { getThreadsByNovelId } from "@/server/plot-threads";
 import { getFactionsByNovelId } from "@/server/factions";
 import { PlaygroundBoard } from "@/components/plot/playground/playground-board";
@@ -32,7 +32,7 @@ export default async function PlotPlaygroundPage({
     getIdeasByNovelId(novelId),
     getTimeLineEvents(novelId),
     getChapters(novelId),
-    getNovelById(novelId),
+    getNovelByIdSimple(novelId),
     getThreadsByNovelId(novelId),
     getFactionsByNovelId(novelId),
   ]);

@@ -1,4 +1,4 @@
-import { getNovelById } from "@/server/novel";
+import { getNovelByIdSimple } from "@/server/novel";
 import { GraphWorkspace } from "@/components/project/graph-workspace";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
 
@@ -8,7 +8,7 @@ interface WorldGraphPageProps {
 
 export default async function WorldGraphPage({ params }: WorldGraphPageProps) {
     const { id: novelId } = await params;
-    const novelResult = await getNovelById(novelId);
+    const novelResult = await getNovelByIdSimple(novelId);
     const novelTitle = novelResult.novel?.title || "Project";
 
     return (

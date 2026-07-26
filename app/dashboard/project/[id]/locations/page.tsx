@@ -1,6 +1,6 @@
 import { getLocationsByNovelId } from "@/server/locations";
 import { getLocationConnections } from "@/server/location-connections";
-import { getNovelById } from "@/server/novel";
+import { getNovelByIdSimple } from "@/server/novel";
 import { CreateLocationDialog } from "@/components/project/location/create-location-dialog";
 import { LocationsView } from "@/components/project/location/locations-view";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
@@ -17,7 +17,7 @@ export default async function LocationsPage({ params }: LocationsPageProps) {
     const [locationsResult, connectionsResult, novelResult] = await Promise.all([
         getLocationsByNovelId(novelId),
         getLocationConnections(novelId),
-        getNovelById(novelId),
+        getNovelByIdSimple(novelId),
     ]);
 
     if (!locationsResult.success) {

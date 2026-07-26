@@ -1,5 +1,5 @@
 import { getPowerById } from "@/server/power";
-import { getNovelById } from "@/server/novel";
+import { getNovelByIdSimple } from "@/server/novel";
 import { getIdeasByNovelId } from "@/server/idea";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
 import { PowerDetailView } from "@/components/project/power/power-detail-view";
@@ -17,7 +17,7 @@ export default async function PowerDetailPage({ params }: PowerDetailPageProps) 
 
     const [powerResult, novelResult, ideasResult] = await Promise.all([
         getPowerById(powerId),
-        getNovelById(novelId),
+        getNovelByIdSimple(novelId),
         getIdeasByNovelId(novelId),
     ]);
 

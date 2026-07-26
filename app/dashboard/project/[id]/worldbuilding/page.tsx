@@ -5,7 +5,7 @@ import { getErasByNovelId } from "@/server/eras";
 import { getEntitiesByNovelId } from "@/server/entities";
 import { getLocationConnections } from "@/server/location-connections";
 import { getWorldSystemsByNovelId } from "@/server/world-systems";
-import { getNovelById } from "@/server/novel";
+import { getNovelForWorldbuilding } from "@/server/novel";
 import { WorldBuildingContent } from "@/components/project/worldbuilding/worldbuilding-content";
 import { notFound } from "next/navigation";
 
@@ -16,7 +16,7 @@ export default async function WorldBuildingPage({
 }) {
     const { id } = await params;
 
-    const novelResult = await getNovelById(id);
+    const novelResult = await getNovelForWorldbuilding(id);
     if (!novelResult.success || !novelResult.novel) {
         notFound();
     }

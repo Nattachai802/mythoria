@@ -1,5 +1,5 @@
 import { getCharacterById } from "@/server/character";
-import { getNovelById } from "@/server/novel";
+import { getNovelByIdSimple } from "@/server/novel";
 import { getIdeasByNovelId } from "@/server/idea";
 import { getCharacterPowers } from "@/server/character-power";
 import { notFound } from "next/navigation";
@@ -20,7 +20,7 @@ export default async function CharacterDetailPage({
 
     const [result, novelResult, ideasResult, powersResult] = await Promise.all([
         getCharacterById(characterId),
-        getNovelById(novelId),
+        getNovelByIdSimple(novelId),
         getIdeasByNovelId(novelId),
         getCharacterPowers(characterId),
     ]);

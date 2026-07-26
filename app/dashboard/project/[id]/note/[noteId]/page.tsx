@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation"
 import { getNote } from "@/server/note"
-import { getNovelById } from "@/server/novel"
+import { getNovelByIdSimple } from "@/server/novel"
 import { NoteEditor } from "@/components/project/note-editor"
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb"
 
@@ -16,7 +16,7 @@ export default async function NotePage({ params }: Props) {
 
     const [result, novelResult] = await Promise.all([
         getNote(noteId),
-        getNovelById(id)
+        getNovelByIdSimple(id)
     ]);
 
     if (!result.success || !result.note) {

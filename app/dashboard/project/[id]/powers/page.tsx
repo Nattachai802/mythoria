@@ -1,5 +1,5 @@
 import { getPowersByNovelId } from "@/server/power";
-import { getNovelById } from "@/server/novel";
+import { getNovelByIdSimple } from "@/server/novel";
 import { CreatePowerDialog } from "@/components/project/power/create-power-dialog";
 import { PowersView } from "@/components/project/power/powers-view";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
@@ -15,7 +15,7 @@ export default async function PowersPage({ params }: PowersPageProps) {
 
     const [powersResult, novelResult] = await Promise.all([
         getPowersByNovelId(novelId),
-        getNovelById(novelId),
+        getNovelByIdSimple(novelId),
     ]);
 
     if (!powersResult.success) {
