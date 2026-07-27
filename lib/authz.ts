@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { db } from "@/db/drizzle";
 import { novels } from "@/db/schema";
 import { auth } from "@/lib/auth";
@@ -7,8 +8,9 @@ import { eq } from "drizzle-orm";
 /**
  * เช็คว่า user ที่ล็อกอินอยู่เป็นเจ้าของ novel นี้จริง — ต้องเรียกก่อนอ่าน/แก้ข้อมูลที่ scope ด้วย novelId ทุกครั้ง
  * คืน userId ถ้าผ่าน, throw ถ้าไม่ผ่าน (ให้ caller ห่อ try/catch ตาม pattern { success, error } ที่ใช้อยู่ทั้ง repo)
+ * ห่อด้วย React cache() → dedupe ต่อ request เดียว: หน้าเดียวโหลดหลาย action ที่ novelId เดียวกัน query จริงแค่รอบเดียว
  */
-export async function requireNovelAccess(novelId: string): Promise<string> {
+export const requireNovelAccess = cache(async (novelId: string): Promise<string> => {
     const session = await auth.api.getSession({ headers: await headers() });
     if (!session?.user?.id) throw new Error("Unauthorized");
 
@@ -22,7 +24,7 @@ export async function requireNovelAccess(novelId: string): Promise<string> {
     if (novel.userId !== session.user.id) throw new Error("Forbidden");
 
     return session.user.id;
-}
+});
 
 /** เช็คแค่ session โดยไม่ต้องมี novelId (เช่น list novels ของ user เอง) — คืน userId */
 export async function requireUser(): Promise<string> {

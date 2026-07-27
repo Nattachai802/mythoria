@@ -333,7 +333,9 @@ export const timelineEvents = pgTable("timeline_events", {
     .notNull(),
   relatedChapterId: text("related_chapter_id").references(() => chapters.id, { onDelete: "set null" }),
   canvasData: jsonb("canvas_data"),
-});
+}, (table) => ({
+  novelIdIdx: index("timeline_events_novel_id_idx").on(table.novelId),
+}));
 
 export const notes = pgTable("notes", {
   id: text("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -680,7 +682,9 @@ export const plotThreads = pgTable("plot_threads", {
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("plot_threads_novel_id_idx").on(table.novelId),
+}));
 
 // จุดสัมผัสของปมกับฉาก (หลายจุดต่อปม): หว่าน / ย้ำ / เฉลย
 export const plotThreadBeats = pgTable("plot_thread_beats", {
@@ -697,7 +701,9 @@ export const plotThreadBeats = pgTable("plot_thread_beats", {
   note: text("note"),
   orderIndex: integer("order_index").default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  threadIdIdx: index("plot_thread_beats_thread_id_idx").on(table.threadId),
+}));
 
 export const plotThreadRelations = relations(plotThreads, ({ one, many }) => ({
   novel: one(novels, { fields: [plotThreads.novelId], references: [novels.id] }),
@@ -725,7 +731,9 @@ export const storyArcs = pgTable("story_arcs", {
     endChapterId: text("end_chapter_id").references(() => chapters.id, { onDelete: "set null" }),
     orderIndex: integer("order_index").notNull().default(0),
     createdAt: timestamp("created_at").defaultNow().notNull(),
-})
+}, (table) => ({
+    novelIdIdx: index("story_arcs_novel_id_idx").on(table.novelId),
+}))
 
 export const storyArcRelations = relations(storyArcs, ({ one }) => ({
     novel: one(novels, { fields: [storyArcs.novelId], references: [novels.id] }),
@@ -902,7 +910,9 @@ export const eras = pgTable("eras", {
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("eras_novel_id_idx").on(table.novelId),
+}));
 
 // Lore/History - ประวัติศาสตร์โลก
 export const loreEntries = pgTable("lore_entries", {
@@ -952,7 +962,10 @@ export const loreEntries = pgTable("lore_entries", {
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("lore_entries_novel_id_idx").on(table.novelId),
+  eraIdIdx: index("lore_entries_era_id_idx").on(table.eraId),
+}));
 
 // Lore Groups - กลุ่มของ Lore
 export const loreGroups = pgTable("lore_groups", {
