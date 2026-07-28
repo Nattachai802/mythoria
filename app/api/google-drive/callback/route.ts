@@ -16,7 +16,8 @@ export async function GET(req: Request) {
   const stateB64 = searchParams.get("state");
   const error = searchParams.get("error");
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  // ต้องตรงกับที่ /api/google-drive/auth ส่งไปตอนขอ code ไม่งั้นแลก token ไม่ผ่าน
+  const appUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
   const settingsUrl = `${appUrl}/dashboard/settings`;
 
   // User ยกเลิก consent screen

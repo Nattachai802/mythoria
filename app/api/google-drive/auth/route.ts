@@ -16,7 +16,9 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  // ต้องตรงกับ redirect URI ที่ลงทะเบียนไว้ใน Google Cloud Console
+  // ถ้าไม่ตั้งค่านี้บน production จะกลายเป็น localhost แล้ว Google ปฏิเสธทันที
+  const appUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
 
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
