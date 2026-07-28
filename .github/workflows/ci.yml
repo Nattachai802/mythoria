@@ -30,6 +30,7 @@ jobs:
           BETTER_AUTH_SECRET: ci-dummy-secret-min-32-characters-long
           BETTER_AUTH_URL: http://localhost:3000
           DATABASE_URL: postgresql://user:pass@localhost:5432/db
+          NEON_DATABASE_URL: postgresql://user:pass@localhost:5432/db
           GEMINI_API_KEY: dummy
           TYPHOON_API_KEY: dummy
           GROQ_API_KEY: dummy
