@@ -22,6 +22,11 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # เช็คตัวเองใน lib/*.check.ts — logic ที่พังเงียบได้ (วันที่/timezone, รหัสเชิญ, ทิศทางเดินทาง)
+      # ตั้ง TZ ไว้ใน script เพราะบั๊กวันเพี้ยนโผล่เฉพาะเขตเวลาที่ไม่ใช่ UTC
+      - name: Self-checks
+        run: npm run check
+
       - name: Build
         run: npm run build
         env:
