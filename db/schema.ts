@@ -205,7 +205,9 @@ export const relationshipHistory = pgTable("relationship_history", {
   sentiment: text("sentiment"),
   reason: text("reason"), // เหตุผลที่เปลี่ยน เช่น "ช่วยชีวิต", "ทรยศ"
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("relationship_history_novel_id_idx").on(table.novelId),
+}));
 
 // Character Life Events - เหตุการณ์สำคัญในชีวิตตัวละคร
 export const characterLifeEvents = pgTable("character_life_events", {
@@ -595,7 +597,9 @@ export const characterStates = pgTable("character_states", {
   rawExtraction: jsonb("raw_extraction"),
   isManuallyEdited: boolean("is_manually_edited").default(false),
   extractedAt: timestamp("extracted_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("character_states_novel_id_idx").on(table.novelId),
+}));
 
 // State Extraction Queue - Queue สำหรับ background job
 export const stateExtractionQueue = pgTable("state_extraction_queue", {
@@ -669,7 +673,9 @@ export const ideaConnections = pgTable("idea_connections", {
     .notNull()
     .references(() => novels.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("idea_connections_novel_id_idx").on(table.novelId),
+}));
 
 // ============================================
 // PLOT THREADS — Setup → Payoff / Promise Ledger
@@ -775,7 +781,9 @@ export const powers = pgTable("powers", {
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("powers_novel_id_idx").on(table.novelId),
+}));
 
 // Power Levels - ระดับของพลัง (พร้อมข้อดี/ข้อเสีย)
 export const powerLevels = pgTable("power_levels", {
@@ -822,7 +830,9 @@ export const powerCombinations = pgTable("power_combinations", {
 
   description: text("description"), // How the combination works narratively
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("power_combinations_novel_id_idx").on(table.novelId),
+}));
 
 // Character Powers - ตัวละครมีพลังอะไรบ้าง
 export const characterPowers = pgTable("character_powers", {
@@ -869,7 +879,9 @@ export const characterDesignElements = pgTable("character_design_elements", {
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("character_design_elements_novel_id_idx").on(table.novelId),
+}));
 
 // ============================================
 // WORLD BUILDING TABLES
@@ -901,7 +913,9 @@ export const items = pgTable("items", {
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("items_novel_id_idx").on(table.novelId),
+}));
 
 // Eras - ยุคสมัยสำหรับ Timeline
 export const eras = pgTable("eras", {
@@ -992,7 +1006,9 @@ export const loreGroups = pgTable("lore_groups", {
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("lore_groups_novel_id_idx").on(table.novelId),
+}));
 
 // Entities - สิ่งมีชีวิต มอนสเตอร์
 export const entities = pgTable("entities", {
@@ -1023,7 +1039,9 @@ export const entities = pgTable("entities", {
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("entities_novel_id_idx").on(table.novelId),
+}));
 
 // Location Entities - สิ่งมีชีวิตในสถานที่
 export const locationEntities = pgTable("location_entities", {
@@ -1063,7 +1081,9 @@ export const worldSystems = pgTable("world_systems", {
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("world_systems_novel_id_idx").on(table.novelId),
+}));
 
 export const worldSystemRelations = relations(worldSystems, ({ one }) => ({
   novel: one(novels, { fields: [worldSystems.novelId], references: [novels.id] }),
@@ -1182,7 +1202,9 @@ export const aiSuggestions = pgTable("ai_suggestions", {
   reviewedAt: timestamp("reviewed_at"),
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("ai_suggestions_novel_id_idx").on(table.novelId),
+}));
 
 export const driveSettings = pgTable("drive_settings", {
   id: text("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -1219,7 +1241,9 @@ export const driveSync = pgTable("drive_sync", {
   conflictData: jsonb("conflict_data"),
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("drive_sync_novel_id_idx").on(table.novelId),
+}));
 
 // ============================================
 // GOOGLE DRIVE OAUTH CREDENTIALS
@@ -1262,7 +1286,9 @@ export const noteStylometry = pgTable("note_stylometry", {
   fingerprintAnalysis: jsonb("fingerprint_analysis"), // { similarity_score, status, alerts, is_anomaly }
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("note_stylometry_novel_id_idx").on(table.novelId),
+}));
 
 // AI Reviews Table
 export const aiChapterReviews = pgTable("ai_chapter_reviews", {
@@ -1277,7 +1303,9 @@ export const aiChapterReviews = pgTable("ai_chapter_reviews", {
   personaName: text("persona_name").notNull(), // e.g. "🥰 แฟนคลับเบอร์หนึ่ง"
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("ai_chapter_reviews_novel_id_idx").on(table.novelId),
+}));
 
 // ============================================
 // STYLOMETRY ANALYTICS MAPPING
@@ -1305,7 +1333,9 @@ export const chapterStylometry = pgTable("chapter_stylometry", {
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("chapter_stylometry_novel_id_idx").on(table.novelId),
+}));
 
 export const noteAuditIssues = pgTable("note_audit_issues", {
   id: text("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -1333,7 +1363,9 @@ export const noteAuditIssues = pgTable("note_audit_issues", {
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("note_audit_issues_novel_id_idx").on(table.novelId),
+}));
 
 export const noteAuditIssuesRelations = relations(noteAuditIssues, ({ one }) => ({
   novel: one(novels, {
