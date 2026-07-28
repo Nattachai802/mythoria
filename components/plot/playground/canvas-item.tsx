@@ -213,8 +213,7 @@ export function DraggableCanvasItem({
 // Sticky Note (The Visual)
 // ----------------------------------------------------------------------
 function StickyNoteItem({ item, onRemove, isDragging, isOverlay }: { item: any; onRemove?: () => void; isDragging?: boolean; isOverlay?: boolean }) {
-  console.log('[DEBUG] StickyNoteItem rendering:', item.id, item); // DEBUG
-  const [isExpanded, setIsExpanded] = useState(true); // DEBUG: Start expanded
+  const [isExpanded, setIsExpanded] = useState(true)
   const [content, setContent] = useState(item.content || "");
 
   const toggleExpand = (e: React.MouseEvent) => {
@@ -304,7 +303,7 @@ function StickyNoteItem({ item, onRemove, isDragging, isOverlay }: { item: any; 
       {/* Content Area */}
       <div className="flex-1 p-3 cursor-default" onMouseDown={(e) => e.stopPropagation()}>
         <textarea
-          className="w-full h-full bg-transparent resize-none border-none focus:ring-0 text-sm text-slate-700 placeholder:text-purple-300 font-serif leading-relaxed p-0 selection:bg-purple-200"
+          className="w-full h-full bg-transparent resize-none border-none focus:ring-0 text-sm text-purple-900 placeholder:text-purple-300 font-serif leading-relaxed p-0 selection:bg-purple-200"
           placeholder="Type your note here..."
           value={content}
           onChange={handleContentChange}
@@ -388,7 +387,6 @@ export function CanvasItem({
 }) {
   // If use Sticky Note
   if (item.type === 'sticky-note') {
-    console.log('[DEBUG] CanvasItem detected sticky-note:', item.id); // DEBUG
     return <StickyNoteItem item={item} onRemove={onRemove} isDragging={isDragging} isOverlay={isOverlay} />;
   }
 
