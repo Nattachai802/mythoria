@@ -24,8 +24,8 @@ export const createChapter = async (novelId: string, title: string) => {
         }).returning();
 
         // Invalidate cache to show new chapter in UI immediately
-        revalidateTag(CACHE_TAGS.chapters(novelId));
-        revalidateTag(CACHE_TAGS.novel(novelId));
+        revalidateTag(CACHE_TAGS.chapters(novelId), "default");
+        revalidateTag(CACHE_TAGS.novel(novelId), "default");
 
         return { success: true, message: "Chapter created successfully", chapter };
     } catch (error) {

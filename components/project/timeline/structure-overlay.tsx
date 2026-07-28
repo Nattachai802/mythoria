@@ -1,5 +1,6 @@
 "use client"
 
+import type { ChapterForBoard } from "./types"
 import { useMemo } from "react"
 import { Chapter } from "@/db/schema"
 import { STORY_STRUCTURES, type StoryStructure } from "@/lib/story-structures"
@@ -9,7 +10,7 @@ const MIN_LABEL_GAP = 64 // px — ใกล้กว่านี้สลับ
 
 interface Props {
     structureId: string
-    chapters: Chapter[]
+    chapters: ChapterForBoard[]
 }
 
 export function StructureOverlay({ structureId, chapters }: Props) {

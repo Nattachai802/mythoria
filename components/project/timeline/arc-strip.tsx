@@ -1,5 +1,6 @@
 "use client"
 
+import type { ChapterForBoard } from "./types"
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Chapter } from "@/db/schema"
@@ -33,7 +34,7 @@ const ARC_COLORS = [
 
 interface ArcStripProps {
     novelId: string
-    chapters: Chapter[]
+    chapters: ChapterForBoard[]
     arcs: StoryArc[]
 }
 
@@ -186,7 +187,7 @@ export function ArcStrip({ novelId, chapters, arcs }: ArcStripProps) {
 function ArcBand({ arc, novelId, chapters, left, width, onChanged }: {
     arc: StoryArc
     novelId: string
-    chapters: Chapter[]
+    chapters: ChapterForBoard[]
     left: number
     width: number
     onChanged: () => void

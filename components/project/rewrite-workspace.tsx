@@ -1517,7 +1517,7 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                             ref={quillRef}
                             theme="snow"
                             value={content}
-                            onChange={(val) => {
+                            onChange={(val: string) => {
                                 setContent(val);
                                 if (val !== lastSavedContent.current) setSaveStatus("unsaved");
                             }}

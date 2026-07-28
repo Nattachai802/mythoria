@@ -25,7 +25,7 @@ export default async function ChapterOverviewPage({ params }: { params: Promise<
         );
     }
 
-    const events = overviewData.success ? overviewData.events : [];
+    const events = (overviewData.success ? overviewData.events : []) ?? [];
     const threads = threadsData.success ? threadsData.data : [];
 
     return (

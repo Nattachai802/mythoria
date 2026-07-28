@@ -157,9 +157,10 @@ export async function createLoreEntry(data: {
     parentLoreId?: string | null; // for sub-lore
     groupId?: string | null; // for lore grouping
     orderIndex?: number;
-    relatedCharacterIds?: string[];
-    relatedLocationIds?: string[];
-    relatedItemIds?: string[];
+    // null = ล้างความสัมพันธ์ทิ้ง (เขียนทับคอลัมน์ jsonb ด้วย null), undefined = ไม่แตะ
+    relatedCharacterIds?: string[] | null;
+    relatedLocationIds?: string[] | null;
+    relatedItemIds?: string[] | null;
     icon?: string;
     color?: string;
     importance?: number;
@@ -274,9 +275,9 @@ export async function updateLoreEntry(
         parentLoreId: string | null;
         groupId: string | null;
         orderIndex: number;
-        relatedCharacterIds: string[];
-        relatedLocationIds: string[];
-        relatedItemIds: string[];
+        relatedCharacterIds: string[] | null;
+        relatedLocationIds: string[] | null;
+        relatedItemIds: string[] | null;
         icon: string;
         color: string;
         importance: number;

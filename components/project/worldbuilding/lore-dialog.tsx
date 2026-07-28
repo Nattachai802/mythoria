@@ -51,6 +51,10 @@ interface LoreDialogProps {
         icon?: string | null;
         color?: string | null;
         importance?: number | null;
+        // เก็บเป็น jsonb ใน loreEntries — โค้ดข้างล่าง cast เป็น string[] ก่อนใช้
+        relatedCharacterIds?: unknown;
+        relatedLocationIds?: unknown;
+        relatedItemIds?: unknown;
     } | null;
     defaultLocationId?: string | null;
     defaultParentLoreId?: string | null;
@@ -104,7 +108,8 @@ export function LoreDialog({
     const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
     const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
     const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
-    const [detectedIdeas, setDetectedIdeas] = useState<{ id: string; title: string; category: string }[]>([]);
+    // linkedLoreIds เก็บเป็น jsonb — ตอน unlink/link ด้านล่างอ่านค่านี้ออกมา cast เป็น string[]
+    const [detectedIdeas, setDetectedIdeas] = useState<{ id: string; title: string; category: string; linkedLoreIds?: unknown }[]>([]);
     const [selectedIdeaIds, setSelectedIdeaIds] = useState<string[]>([]);
     const [allIdeas, setAllIdeas] = useState<any[]>([]);
 

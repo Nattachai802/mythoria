@@ -20,7 +20,8 @@ import {
     verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
 import Link from "next/link"
-import { Chapter, TimelineEvent, Character, Location, Era, LoreEntry } from "@/db/schema"
+import { TimelineEvent, Character, Location, Era, LoreEntry } from "@/db/schema"
+import type { ChapterForBoard } from "./types"
 import { ChapterColumn } from "./chapter-column"
 import { EventCard } from "./event-card"
 import { Clock, CheckCircle2, FolderOpen, SlidersHorizontal, Eye, X, Activity, AlertTriangle, Route, Loader2, BookPlus } from "lucide-react"
@@ -100,7 +101,7 @@ function FilterRow({ label, children }: { label: string; children: React.ReactNo
 
 interface TimelineBoardProps {
     novelId: string
-    chapters: Chapter[]
+    chapters: ChapterForBoard[]
     initialEvents: TimelineEvent[]
     characters?: Character[]
     locations?: Location[]

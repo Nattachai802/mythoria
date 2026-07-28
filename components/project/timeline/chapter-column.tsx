@@ -1,5 +1,6 @@
 "use client"
 
+import type { ChapterForBoard } from "./types"
 import { useDroppable } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { useRouter } from "next/navigation"
@@ -16,7 +17,7 @@ import { Button } from "@/components/ui/button"
 type ThreadDot = { color: string; title: string }
 
 interface ChapterColumnProps {
-    chapter: Chapter
+    chapter: ChapterForBoard
     events: TimelineEvent[]
     characters?: Character[]
     locations?: Location[]

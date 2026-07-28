@@ -1,5 +1,6 @@
 "use client"
 
+import type { ChapterForBoard } from "./types"
 import { useState, useMemo, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { TimelineEvent, Chapter } from "@/db/schema"
@@ -48,7 +49,7 @@ interface Props {
     novelId: string
     threads: ThreadWithBeats[]
     events: TimelineEvent[]
-    chapters: Chapter[]
+    chapters: ChapterForBoard[]
 }
 
 export function PlotThreadLedger({ novelId, threads, events, chapters }: Props) {

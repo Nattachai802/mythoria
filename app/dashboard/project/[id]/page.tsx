@@ -474,7 +474,7 @@ export default async function ProjectOverviewPage({ params }: Props) {
                                                             <span>แก้ไขล่าสุด: {updatedDate}</span>
                                                             <span>•</span>
                                                             <span>{wordCount.toLocaleString()} คำ</span>
-                                                            {noteItem.plotHoleCount > 0 && (
+                                                            {(noteItem.plotHoleCount ?? 0) > 0 && (
                                                                 <>
                                                                     <span>•</span>
                                                                     <span className="text-amber-500 font-medium">พบ {noteItem.plotHoleCount} plot holes</span>

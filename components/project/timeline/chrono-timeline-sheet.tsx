@@ -1,5 +1,6 @@
 "use client"
 
+import type { ChapterForBoard } from "./types"
 import { Fragment, useMemo, useState, useTransition } from "react"
 import { Chapter, TimelineEvent, Era, LoreEntry } from "@/db/schema"
 import { updateTimelineEvent } from "@/server/timeline"
@@ -23,7 +24,7 @@ type EraWithLore = Era & { loreEntries: LoreEntry[] }
 interface Props {
     novelId: string
     events: TimelineEvent[]
-    chapters: Chapter[] // sorted
+    chapters: ChapterForBoard[] // sorted
     onEventPatched: (id: string, patch: Partial<TimelineEvent>) => void
     eras?: EraWithLore[]
     timelineEpoch?: Date | null

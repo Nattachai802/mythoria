@@ -1,5 +1,6 @@
 "use client"
 
+import type { ChapterForBoard } from "./types"
 import { useMemo } from "react"
 import { Chapter, TimelineEvent } from "@/db/schema"
 import { type ThreadWithBeats } from "@/server/plot-threads"
@@ -17,7 +18,7 @@ const ROLE_COLOR: Record<string, string> = {
 
 interface ThreadRibbonProps {
     threads: ThreadWithBeats[]
-    chapters: Chapter[] // sorted
+    chapters: ChapterForBoard[] // sorted
     events: TimelineEvent[]
 }
 

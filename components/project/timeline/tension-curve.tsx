@@ -1,5 +1,6 @@
 "use client"
 
+import type { ChapterForBoard } from "./types"
 import { useMemo } from "react"
 import { Chapter, TimelineEvent } from "@/db/schema"
 
@@ -8,7 +9,7 @@ const HEIGHT = 96
 const PAD_Y = 16
 
 interface TensionCurveProps {
-    chapters: Chapter[] // sorted
+    chapters: ChapterForBoard[] // sorted
     events: TimelineEvent[]
 }
 

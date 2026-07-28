@@ -10,9 +10,12 @@ import { requireNovelAccess } from "@/lib/authz";
 
 const ideaRelation = (t?: string): "derived_from" | "linked_to" => (t === "ancestor" ? "derived_from" : "linked_to");
 
+// คืนแถวเต็ม ไม่ใช่แค่ id/title — createIdea ใช้ผลนี้เป็น data ตอนเจอชื่อซ้ำ
+// ถ้า select แคบกว่านี้ ผู้เรียกที่อ่าน field อื่น (เช่น content บนกระดาน playground)
+// จะได้ undefined เงียบๆ ทั้งที่ไอเดียนั้นมีเนื้อหาอยู่จริง
 async function findIdeaByTitle(novelId: string, title: string) {
     const [existing] = await db
-        .select({ id: ideas.id, title: ideas.title })
+        .select()
         .from(ideas)
         .where(and(eq(ideas.novelId, novelId), ilike(ideas.title, title.trim())))
         .limit(1);

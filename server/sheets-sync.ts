@@ -170,7 +170,7 @@ export async function syncWorldBuilding(
                 },
             });
 
-            spreadsheetId = response.data.spreadsheetId;
+            spreadsheetId = response.data.spreadsheetId ?? null;
             isNewSpreadsheet = true;
 
             if (!spreadsheetId) {

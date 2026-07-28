@@ -45,7 +45,9 @@ const CATEGORY_META: Record<string, { label: string; icon: LucideIcon }> = {
 const ideaSchema = z.object({
   title: z.string().min(1, "ใส่หัวข้อไอเดียก่อนนะครับ"),
   content: z.string().min(1, "ใส่รายละเอียดไอเดียก่อนนะครับ"),
-  category: z.string().default("general"),
+  // ไม่ใช้ .default() เพราะมันทำให้ type ขาเข้า (category?) ไม่ตรงกับขาออก (category)
+  // แล้วชนกับ generic ของ react-hook-form — ค่าเริ่มต้นกำหนดที่ defaultValues ด้านล่างอยู่แล้ว
+  category: z.string(),
 });
 
 type IdeaFormData = z.infer<typeof ideaSchema>;

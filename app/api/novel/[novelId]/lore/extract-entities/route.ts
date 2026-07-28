@@ -182,7 +182,8 @@ Lore Content:
             }));
 
         const insertedIdeaIds: string[] = [];
-        let inserted: { id: string; title: string; category: string }[] = [];
+        // category เป็น nullable ใน schema — ค่านี้ถูก spread ลง JSON response ตรงๆ null จึงไม่มีปัญหา
+        let inserted: { id: string; title: string; category: string | null }[] = [];
         if (ideasToInsert.length > 0) {
             inserted = await db.insert(ideas).values(ideasToInsert).returning({ id: ideas.id, title: ideas.title, category: ideas.category });
             inserted.forEach(i => insertedIdeaIds.push(i.id));

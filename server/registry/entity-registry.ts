@@ -447,7 +447,8 @@ export async function createEntityRow(
   if ("error" in cleaned) return { success: false, error: cleaned.error };
   const adapter = REGISTRY[type];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [row] = await db.insert(adapter.table as any).values({ ...cleaned.values, novelId }).returning();
+  // adapter.table เป็น union ของหลายตาราง เลย cast as any — ผลลัพธ์ returning() จึงต้อง cast กลับด้วย
+  const [row] = (await db.insert(adapter.table as any).values({ ...cleaned.values, novelId }).returning()) as Record<string, unknown>[];
   if (!row) return { success: false, error: "สร้างไม่สำเร็จ" };
   revalidatePath(`/dashboard/project/${novelId}`, "layout");
   const r = row as Record<string, unknown>;
