@@ -335,6 +335,7 @@ export const timelineEvents = pgTable("timeline_events", {
   canvasData: jsonb("canvas_data"),
 }, (table) => ({
   novelIdIdx: index("timeline_events_novel_id_idx").on(table.novelId),
+  eraIdIdx: index("timeline_events_era_id_idx").on(table.eraId),
 }));
 
 export const notes = pgTable("notes", {
@@ -364,7 +365,9 @@ export const notes = pgTable("notes", {
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("notes_novel_id_idx").on(table.novelId),
+}));
 
 // Note Versions - เก็บ history ของ notes (จำกัด 3 versions ล่าสุดต่อ note)
 export const noteVersions = pgTable("note_versions", {
@@ -393,7 +396,9 @@ export const tags = pgTable("tags", {
     .notNull()
     .references(() => novels.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("tags_novel_id_idx").on(table.novelId),
+}));
 
 export const chapterTags = pgTable("chapter_tags", {
   chapterId: text("chapter_id")
@@ -435,7 +440,9 @@ export const factions = pgTable("factions", {
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("factions_novel_id_idx").on(table.novelId),
+}));
 
 // Faction ↔ Faction relationships — พันธมิตร/ศัตรู/ขึ้นตรง/แตกออกมา (ขนานกับ characterRelationships)
 export const factionRelationships = pgTable("faction_relationships", {
@@ -642,7 +649,9 @@ export const ideas = pgTable("ideas", {
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("ideas_novel_id_idx").on(table.novelId),
+}));
 
 // Idea Connections - สำหรับเชื่อม ideas กันบน canvas
 // connectionType: "related" = Red String (plot flow), "ancestor" = Motivation/Reasoning chain
@@ -1108,7 +1117,9 @@ export const sceneElementDetails = pgTable("scene_element_details", {
     .defaultNow()
     .$onUpdate(() => new Date())
     .notNull(),
-});
+}, (table) => ({
+  novelIdIdx: index("scene_element_details_novel_id_idx").on(table.novelId),
+}));
 
 // ============================================
 // AI ANALYSIS TABLES
