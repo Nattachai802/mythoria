@@ -43,6 +43,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ยกเว้นเทมเพลต — มีแต่ค่าตัวอย่าง ไม่มีความลับ และคนที่ clone ต้องใช้ตั้งค่า
+!.env.example
 
 # vercel
 .vercel
