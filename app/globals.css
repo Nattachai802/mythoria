@@ -397,11 +397,6 @@
 }
 
 /* Technical Decorations */
-.tech-border-left {
-  border-left: 3px solid var(--forge-gold);
-  padding-left: 1rem;
-}
-
 .tech-corner::before {
   content: "+";
   position: absolute;

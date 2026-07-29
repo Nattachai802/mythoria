@@ -12,7 +12,8 @@
 
 ของที่มีอยู่แล้ว (ครึ่งหนึ่งของ MCP):
 - RAG backbone: LanceDB (`content` table, multi `content_type`) + Gemini embeddings (768d) + `vector-sync-button`
-- Agent + tools: `pythonservice/tool_definitions.py` (เช่น `check_timeline_conflict`)
+- Agent + tools: `pythonservice/ai_agent.py` (ส่วน `tool_definitions.py` ที่นิยาม schema ของ
+  `check_timeline_conflict` ถูกลบแล้วเพราะไม่มีไฟล์ไหน import — กู้จาก git history ได้ถ้าจะใช้เป็นต้นแบบ)
 - Graph: `server/graph.ts` — แต่เชื่อมแค่ character↔character
 - ❌ ยังไม่มี mention layer / reference กลาง
 
@@ -215,7 +216,7 @@ extractor เดิมรู้อยู่แล้วว่า entity ไห�
 A (wiring เร็ว ได้ข้อมูล ai refs ทันที) → C1 (coverage) → B (@-mention) → C2 (incremental)
 
 ### skipped (ยกไป Phase 6)
-agent tools query references, graph rewrite — `ai_agent.py`/`tool_definitions.py` เป็น seed อยู่แล้ว
+agent tools query references, graph rewrite — `ai_agent.py` เป็น seed อยู่แล้ว
 
 ---
 

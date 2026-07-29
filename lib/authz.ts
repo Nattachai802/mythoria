@@ -26,12 +26,16 @@ export const requireNovelAccess = cache(async (novelId: string): Promise<string>
     return session.user.id;
 });
 
-/** เช็คแค่ session โดยไม่ต้องมี novelId (เช่น list novels ของ user เอง) — คืน userId */
-export async function requireUser(): Promise<string> {
+/**
+ * เช็คแค่ session โดยไม่ต้องมี novelId (เช่น list novels ของ user เอง) — คืน userId
+ * ห่อด้วย React cache() เหมือน requireNovelAccess: หน้าเดียวที่โหลดหลาย action พร้อมกัน
+ * จะดึง session จริงแค่รอบเดียว
+ */
+export const requireUser = cache(async (): Promise<string> => {
     const session = await auth.api.getSession({ headers: await headers() });
     if (!session?.user?.id) throw new Error("Unauthorized");
     return session.user.id;
-}
+});
 
 const AUTHZ_MESSAGES = ["Unauthorized", "Forbidden", "Novel not found"];
 
