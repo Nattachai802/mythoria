@@ -2,9 +2,10 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { WorldGraph } from "./world-graph";
+import { StoryCodex } from "./story-codex";
 import { LibrarianPanel } from "./librarian-panel";
 import { Button } from "@/components/ui/button";
-import { BookMarked, PanelRightClose } from "lucide-react";
+import { BookMarked, PanelRightClose, Network, List } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { LibrarianSource } from "@/server/librarian";
 
@@ -16,8 +17,15 @@ interface GraphWorkspaceProps {
 const keysOf = (sources: LibrarianSource[], via: LibrarianSource["via"]) =>
     sources.filter((s) => s.via === via).map((s) => `${s.type}:${s.id}`);
 
+type View = "graph" | "list";
+const VIEWS = [
+    { key: "graph" as const, label: "กราฟ", icon: Network },
+    { key: "list" as const, label: "รายการ", icon: List },
+];
+
 export function GraphWorkspace({ novelId, height = 680 }: GraphWorkspaceProps) {
     const [panelOpen, setPanelOpen] = useState(true);
+    const [view, setView] = useState<View>("graph");
     // node key (`type:id`) ที่บรรณารักษ์ใช้ตอบ → ส่งให้ WorldGraph ไฮไลต์ traversal
     const [highlight, setHighlight] = useState<{ search: string[]; graph: string[] }>({
         search: [],
@@ -41,10 +49,29 @@ export function GraphWorkspace({ novelId, height = 680 }: GraphWorkspaceProps) {
     }, []);
 
     return (
-        <div className="relative flex gap-3 items-stretch">
+        <div className="space-y-3">
+            {/* สลับมุมมอง — ข้อมูลชุดเดียวกัน (getNovelGraph) แค่คนละวิธีอ่าน */}
+            <div className="flex gap-1">
+                {VIEWS.map(({ key, label, icon: Icon }) => (
+                    <Button
+                        key={key}
+                        variant={view === key ? "secondary" : "ghost"}
+                        size="sm"
+                        onClick={() => setView(key)}
+                    >
+                        <Icon className="w-3.5 h-3.5" /> {label}
+                    </Button>
+                ))}
+            </div>
+
+            <div className="relative flex gap-3 items-stretch">
             {/* Graph (เต็มความกว้างบนจอแคบ — panel ลอยทับ) */}
             <div className="flex-1 min-w-0">
-                <WorldGraph novelId={novelId} height={height} highlight={highlight} />
+                {view === "graph" ? (
+                    <WorldGraph novelId={novelId} height={height} highlight={highlight} />
+                ) : (
+                    <StoryCodex novelId={novelId} />
+                )}
             </div>
 
             {/* backdrop เฉพาะจอแคบตอนเปิด panel */}
@@ -84,6 +111,7 @@ export function GraphWorkspace({ novelId, height = 680 }: GraphWorkspaceProps) {
                     <BookMarked className="w-4 h-4 text-[var(--forge-gold,#e0a13c)]" />
                 )}
             </Button>
+            </div>
         </div>
     );
 }

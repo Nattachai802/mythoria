@@ -31,14 +31,14 @@ export function DeleteAllIdeasButton({ novelId, ideaCount }: DeleteAllIdeasButto
             const result = await deleteAllIdeas(novelId);
 
             if (result.success) {
-                toast.success(`Deleted ${result.count} ideas`);
+                toast.success(`ลบไอเดียทั้งหมด ${result.count} อันแล้ว`);
                 window.location.reload();
             } else {
-                toast.error(result.error || "Failed to delete ideas");
+                toast.error(result.error || "ลบไม่สำเร็จ ลองใหม่อีกครั้ง");
             }
         } catch (error) {
             console.error("Delete error:", error);
-            toast.error("Failed to delete ideas");
+            toast.error("ลบไม่สำเร็จ ลองใหม่อีกครั้ง");
         } finally {
             setIsDeleting(false);
         }
@@ -55,28 +55,27 @@ export function DeleteAllIdeasButton({ novelId, ideaCount }: DeleteAllIdeasButto
                     className="gap-2 text-destructive hover:text-destructive"
                 >
                     <Trash2 className="w-4 h-4" />
-                    Delete All
+                    ลบทั้งหมด
                 </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
                 <AlertDialogHeader>
                     <AlertDialogTitle className="flex items-center gap-2">
                         <AlertTriangle className="w-5 h-5 text-destructive" />
-                        Delete All Ideas?
+                        ลบไอเดียทั้งหมด?
                     </AlertDialogTitle>
                     <AlertDialogDescription>
-                        This will permanently delete <strong>{ideaCount} ideas</strong> from this project.
-                        This action cannot be undone.
+                        จะลบไอเดียทั้งหมด <strong>{ideaCount} อัน</strong> ของนิยายเรื่องนี้อย่างถาวร — รวมทั้งที่ใช้ไปแล้วและที่ AI ตรวจพบ กู้คืนไม่ได้
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
                     <AlertDialogAction
                         onClick={handleDelete}
                         disabled={isDeleting}
                         className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                     >
-                        {isDeleting ? "Deleting..." : `Delete ${ideaCount} Ideas`}
+                        {isDeleting ? "กำลังลบ..." : `ลบทั้ง ${ideaCount} อัน`}
                     </AlertDialogAction>
                 </AlertDialogFooter>
             </AlertDialogContent>

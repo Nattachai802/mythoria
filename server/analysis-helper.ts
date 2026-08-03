@@ -11,9 +11,10 @@ export async function syncChapterCharactersFromNotes(chapterId: string, novelId:
     try {
         // 1. ดึง Note ทั้งหมดที่เชื่อมกับ Chapter นี้
         const linkedNotes = await db.query.notes.findMany({
-            where: (n, { eq, and }) => and(
+            where: (n, { eq, and, isNull }) => and(
                 eq(n.linkedToChapterId, chapterId),
-                eq(n.novelId, novelId)
+                eq(n.novelId, novelId),
+                isNull(n.deletedAt)
             ),
             with: {
                 characters: {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { guardNovel } from "@/lib/authz";
 import { db } from "@/db/drizzle";
 import { locationConnections, locations } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -10,6 +11,7 @@ interface Props {
 export async function GET(request: NextRequest, { params }: Props) {
     try {
         const { novelId } = await params;
+        const denied = await guardNovel(novelId); if (denied) return denied;
 
         // Fetch connections and location names in parallel
         const [connections, locationsList] = await Promise.all([

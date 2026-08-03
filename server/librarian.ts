@@ -5,6 +5,7 @@ import { librarianMessages } from "@/db/schema";
 import { eq, asc } from "drizzle-orm";
 import { retrieveContext } from "./rag";
 import { resolveMany, isEntityType, type EntityType } from "./registry/entity-registry";
+import { isGuest, GUEST_AI_MESSAGE } from "@/lib/guest";
 
 /**
  * บรรณารักษ์ — ถาม-ตอบเกี่ยวกับนิยายด้วย Graph RAG
@@ -106,6 +107,7 @@ export async function askLibrarian(
     novelId: string,
     question: string,
 ): Promise<AskLibrarianResult> {
+    if (await isGuest()) return { success: false, error: GUEST_AI_MESSAGE };
     const q = question.trim();
     if (!q) {
         return { success: false, error: "กรุณาพิมพ์คำถาม" };
@@ -164,7 +166,7 @@ export async function retrieveLibrarianSources(
     question: string,
 ): Promise<{ sources: LibrarianSource[] }> {
     const q = question.trim();
-    if (!q) return { sources: [] };
+    if (!q || (await isGuest())) return { sources: [] };
     try {
         const { items } = await retrieveContext(novelId, q);
         return { sources: await buildSources(items) };

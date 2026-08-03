@@ -103,6 +103,7 @@ export const novels = pgTable("novels", {
   dailyTargetMode: text("daily_target_mode").default("dynamic"), // dynamic | static
   dailyTargetWordCount: integer("daily_target_word_count").default(1000), // เป้าหมายคำ/วัน (โหมด static)
   lastSyncedAt: timestamp("last_synced_at"),                // ซิงค์ฐานข้อมูล AI ล่าสุด (cross-device)
+  deletedAt: timestamp("deleted_at"),                       // ถังขยะ: null = ปกติ, มีค่า = ลบแล้ว รอกู้คืนได้ 7 วัน
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()
@@ -123,6 +124,7 @@ export const chapters = pgTable("chapters", {
   wordCount: integer("word_count").notNull().default(0),
   status: text("status").notNull().default("draft"), // draft, published
   publishedAt: timestamp("published_at"),
+  deletedAt: timestamp("deleted_at"),                // ถังขยะ — ดู novels.deletedAt
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()
@@ -362,6 +364,7 @@ export const notes = pgTable("notes", {
   plotHoleIssues: jsonb("plot_hole_issues"), // รายละเอียดปัญหา [{type, description}]
   // Active Plots
   activePlotIds: jsonb("active_plot_ids"), // array of marked plot/idea IDs for this note
+  deletedAt: timestamp("deleted_at"), // ถังขยะ — ดู novels.deletedAt
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()

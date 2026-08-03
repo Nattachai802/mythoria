@@ -31,22 +31,31 @@ export function CreateNoteDialog({ novelId, chapterId, trigger }: CreateNoteDial
             })
 
             if (result.success && result.note) {
-                toast.success("Note created successfully")
+                toast.success("สร้างตอนใหม่แล้ว กำลังเปิด...")
                 // Navigate ไปหน้า note ใหม่เลย (SPA navigation ไม่ต้อง reload)
+                //
+                // ไม่ setLoading(false) ตรงนี้ — router.push() แค่สั่งให้เริ่มเปลี่ยนหน้า ไม่ได้รอจนโหลดเสร็จ
+                // ถ้าปลด loading ทันทีปุ่มจะกลับเป็นปกติทั้งที่หน้ายังไม่ขยับ ผู้ใช้อ่านว่า "กดแล้วไม่มีอะไรเกิดขึ้น"
+                // ปล่อยให้ค้างสถานะไว้จน component ถูก unmount ตอนเปลี่ยนหน้าสำเร็จ
                 router.push(`/dashboard/project/${novelId}/note/${result.note.id}`)
-            } else {
-                toast.error(result.message)
+                return
             }
+
+            toast.error(result.message)
         } catch (error) {
             toast.error("Something went wrong")
-        } finally {
-            setLoading(false)
         }
+
+        setLoading(false)
     }
 
     if (trigger) {
         return (
-            <div onClick={handleCreate} className="cursor-pointer">
+            <div
+                onClick={handleCreate}
+                aria-busy={loading}
+                className={loading ? "cursor-wait opacity-60 pointer-events-none" : "cursor-pointer"}
+            >
                 {trigger}
             </div>
         )

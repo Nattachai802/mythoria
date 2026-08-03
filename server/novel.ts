@@ -1,8 +1,8 @@
 "use server";
 
 import { db } from "@/db/drizzle";
-import { novels, InsertNovel, chapters, characters, locations } from "@/db/schema";
-import { eq, asc, desc, and, or, like } from "drizzle-orm";
+import { novels, InsertNovel, chapters, characters, locations, notes } from "@/db/schema";
+import { eq, asc, desc, and, or, like, isNull } from "drizzle-orm";
 import { unstable_cache, revalidateTag } from "next/cache";
 import { CACHE_TAGS, CACHE_DURATION } from "@/lib/cache-config";
 import { requireNovelAccess, requireUser, authErrorMessage } from "@/lib/authz";
@@ -32,10 +32,11 @@ export const getNovelsByUserId = async (userId: string) => {
         // เพิกเฉยค่า userId ที่ส่งเข้ามา ใช้ userId ของ session ที่ยืนยันแล้วเสมอ กัน caller ผิดพลาดในอนาคต
         const verifiedUserId = await requireUser();
         const novelsList = await db.query.novels.findMany({
-            where: eq(novels.userId, verifiedUserId),
+            where: and(eq(novels.userId, verifiedUserId), isNull(novels.deletedAt)),
             orderBy: [desc(novels.updatedAt)],
             with: {
                 chapters: {
+                    where: (chapters, { isNull }) => isNull(chapters.deletedAt),
                     orderBy: (chapters, { asc }) => [asc(chapters.orderIndex)]
                 }
             }
@@ -55,9 +56,10 @@ export const getNovelsByUserId = async (userId: string) => {
 const _getNovelByIdLight = async (id: string) => {
     try {
         const novel = await db.query.novels.findFirst({
-            where: eq(novels.id, id),
+            where: and(eq(novels.id, id), isNull(novels.deletedAt)),
             with: {
                 chapters: {
+                    where: (chapters, { isNull }) => isNull(chapters.deletedAt),
                     orderBy: (chapters, { asc }) => [asc(chapters.orderIndex)],
                     columns: {
                         id: true,
@@ -129,9 +131,10 @@ export const getNovelForPlot = async (id: string) => {
     try {
         await requireNovelAccess(id);
         const novel = await db.query.novels.findFirst({
-            where: eq(novels.id, id),
+            where: and(eq(novels.id, id), isNull(novels.deletedAt)),
             with: {
                 chapters: {
+                    where: isNull(chapters.deletedAt),
                     orderBy: [asc(chapters.orderIndex)],
                     columns: { id: true, title: true, orderIndex: true, novelId: true, status: true },
                 },
@@ -154,7 +157,7 @@ export const getNovelForWorldbuilding = async (id: string) => {
     try {
         await requireNovelAccess(id);
         const novel = await db.query.novels.findFirst({
-            where: eq(novels.id, id),
+            where: and(eq(novels.id, id), isNull(novels.deletedAt)),
             with: {
                 characters: {
                     orderBy: [desc(characters.createdAt)],
@@ -178,7 +181,7 @@ export const getNovelByIdSimple = async (id: string) => {
     try {
         await requireNovelAccess(id);
         const novel = await db.query.novels.findFirst({
-            where: eq(novels.id, id)
+            where: and(eq(novels.id, id), isNull(novels.deletedAt))
         });
 
         if (!novel) {
@@ -199,6 +202,7 @@ export const searchNovels = async (userId: string, searchTerm: string) => {
         const novelsList = await db.query.novels.findMany({
             where: and(
                 eq(novels.userId, verifiedUserId),
+                isNull(novels.deletedAt),
                 or(
                     like(novels.title, `%${searchTerm}%`),
                     like(novels.description, `%${searchTerm}%`)
@@ -220,7 +224,8 @@ export const getNovelsByStatus = async (userId: string, status: string) => {
         const novelsList = await db.query.novels.findMany({
             where: and(
                 eq(novels.userId, verifiedUserId),
-                eq(novels.status, status)
+                eq(novels.status, status),
+                isNull(novels.deletedAt)
             ),
             orderBy: [desc(novels.updatedAt)]
         });
@@ -238,7 +243,8 @@ export const getNovelsByGenre = async (userId: string, genre: string) => {
         const novelsList = await db.query.novels.findMany({
             where: and(
                 eq(novels.userId, verifiedUserId),
-                eq(novels.genre, genre)
+                eq(novels.genre, genre),
+                isNull(novels.deletedAt)
             ),
             orderBy: [desc(novels.updatedAt)]
         });
@@ -260,7 +266,7 @@ export const updateNovel = async (id: string, values: Partial<InsertNovel>) => {
         const [updatedNovel] = await db
             .update(novels)
             .set({ ...safeValues, updatedAt: new Date() })
-            .where(eq(novels.id, id))
+            .where(and(eq(novels.id, id), isNull(novels.deletedAt)))
             .returning();
 
         if (!updatedNovel) {
@@ -281,7 +287,7 @@ export const updateNovelWordCount = async (novelId: string, totalWordCount: numb
         await db
             .update(novels)
             .set({ wordCount: totalWordCount, updatedAt: new Date() })
-            .where(eq(novels.id, novelId));
+            .where(and(eq(novels.id, novelId), isNull(novels.deletedAt)));
 
         return { success: true, message: "Word count updated successfully" };
     } catch (error) {
@@ -297,7 +303,7 @@ export const updateNovelStatus = async (id: string, status: string) => {
         const [updatedNovel] = await db
             .update(novels)
             .set({ status, updatedAt: new Date() })
-            .where(eq(novels.id, id))
+            .where(and(eq(novels.id, id), isNull(novels.deletedAt)))
             .returning();
 
         if (!updatedNovel) {
@@ -318,7 +324,7 @@ export const updateNovelVisibility = async (id: string, visibility: string) => {
         const [updatedNovel] = await db
             .update(novels)
             .set({ visibility, updatedAt: new Date() })
-            .where(eq(novels.id, id))
+            .where(and(eq(novels.id, id), isNull(novels.deletedAt)))
             .returning();
 
         if (!updatedNovel) {
@@ -338,9 +344,11 @@ export const updateNovelVisibility = async (id: string, visibility: string) => {
 export const deleteNovel = async (id: string) => {
     try {
         await requireNovelAccess(id);
+        // ถังขยะ: ติดป้ายว่าลบ ไม่ได้ลบจริง — กู้คืนได้ 7 วัน (ดู server/trash.ts)
         const [deletedNovel] = await db
-            .delete(novels)
-            .where(eq(novels.id, id))
+            .update(novels)
+            .set({ deletedAt: new Date() })
+            .where(and(eq(novels.id, id), isNull(novels.deletedAt)))
             .returning();
 
         if (!deletedNovel) {
@@ -363,12 +371,12 @@ export const getNovelStats = async (id: string) => {
     try {
         await requireNovelAccess(id);
         const novel = await db.query.novels.findFirst({
-            where: eq(novels.id, id),
+            where: and(eq(novels.id, id), isNull(novels.deletedAt)),
             with: {
-                chapters: true,
+                chapters: { where: isNull(chapters.deletedAt) },
                 characters: true,
                 locations: true,
-                notes: true
+                notes: { where: isNull(notes.deletedAt) }
             }
         });
 

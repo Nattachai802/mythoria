@@ -3,6 +3,7 @@ import { google } from "googleapis";
 import { db } from "@/db/drizzle";
 import { driveCredentials } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { verifyState } from "@/lib/oauth-state";
 
 /**
  * GET /api/google-drive/callback
@@ -31,8 +32,8 @@ export async function GET(req: Request) {
   }
 
   try {
-    // ถอด userId จาก state
-    const { userId } = JSON.parse(Buffer.from(stateB64, "base64url").toString());
+    // ถอด userId จาก state — ผ่านเฉพาะ state ที่เราเซ็นเองและยังไม่หมดอายุ
+    const userId = verifyState<{ userId: string }>(stateB64)?.userId;
 
     if (!userId) {
       return NextResponse.redirect(`${settingsUrl}?drive_status=error&reason=invalid_state`);

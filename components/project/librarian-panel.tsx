@@ -32,6 +32,8 @@ import {
     type LibrarianSource,
 } from "@/server/librarian";
 import type { LibrarianMessage } from "@/db/schema";
+import { usePyHealth } from "@/hooks/use-py-health";
+import { PyStatusNotice } from "@/components/project/py-status-notice";
 
 interface ChatMessage {
     role: "user" | "assistant";
@@ -47,6 +49,7 @@ interface LibrarianPanelProps {
 }
 
 export function LibrarianPanel({ novelId, onSources, className }: LibrarianPanelProps) {
+    const pyHealth = usePyHealth();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState("");
     const [isAsking, setIsAsking] = useState(false);
@@ -180,6 +183,7 @@ export function LibrarianPanel({ novelId, onSources, className }: LibrarianPanel
 
             {/* Input */}
             <div className="border-t p-3 shrink-0">
+                {pyHealth !== "up" && <PyStatusNotice health={pyHealth} full className="mb-2" />}
                 <div className="relative">
                     <Textarea
                         value={input}
@@ -190,6 +194,7 @@ export function LibrarianPanel({ novelId, onSources, className }: LibrarianPanel
                                 handleAsk();
                             }
                         }}
+                        disabled={pyHealth !== "up"}
                         placeholder="ถามเกี่ยวกับนิยายของคุณ..."
                         className="min-h-[44px] max-h-[120px] resize-none pr-11 text-sm"
                         rows={1}
@@ -197,7 +202,7 @@ export function LibrarianPanel({ novelId, onSources, className }: LibrarianPanel
                     <Button
                         size="icon"
                         className="absolute right-1.5 bottom-1.5 h-8 w-8"
-                        disabled={!input.trim() || isAsking}
+                        disabled={!input.trim() || isAsking || pyHealth !== "up"}
                         onClick={handleAsk}
                     >
                         {isAsking ? (
@@ -223,6 +228,7 @@ const PYTHON_URL = "/api/py";
  *  - เวลาซิงค์ล่าสุด: localStorage (best-effort ต่ออุปกรณ์)
  */
 function SyncBar({ novelId }: { novelId: string }) {
+    const pyHealth = usePyHealth();
     const lsKey = `librarian-sync-${novelId}`;
     const [count, setCount] = useState<number | null>(null);
     const [state, setState] = useState<"loading" | "ok" | "down">("loading");
@@ -272,11 +278,8 @@ function SyncBar({ novelId }: { novelId: string }) {
 
     return (
         <div className="flex items-center gap-2 px-4 py-1.5 border-b bg-muted/20 text-[11px] text-muted-foreground">
-            {state === "down" ? (
-                <>
-                    <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />
-                    <span className="text-amber-600 dark:text-amber-400">เชื่อม AI service ไม่ได้</span>
-                </>
+            {pyHealth !== "up" || state === "down" ? (
+                <PyStatusNotice health={pyHealth === "up" ? "down" : pyHealth} />
             ) : (
                 <>
                     <Database className="w-3 h-3 shrink-0" />
@@ -290,6 +293,7 @@ function SyncBar({ novelId }: { novelId: string }) {
                     </span>
                 </>
             )}
+            {pyHealth === "up" && (
             <Button
                 variant="ghost"
                 size="sm"
@@ -300,6 +304,7 @@ function SyncBar({ novelId }: { novelId: string }) {
                 <RefreshCw className={cn("w-3 h-3", syncing && "animate-spin")} />
                 {syncing ? "ซิงค์..." : "ซิงค์"}
             </Button>
+            )}
         </div>
     );
 }

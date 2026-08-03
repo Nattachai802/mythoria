@@ -12,8 +12,9 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import {
-    Users, User, Trash2, Plus, Check, Shield, Loader2, Route, UserCheck, Copy, ChevronLeft,
+    Users, User, Trash2, Plus, Check, Shield, Loader2, Route, UserCheck, UsersRound, ChevronLeft,
 } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { upsertSceneElementDetail, deleteSceneElementDetail } from "@/server/scene-element-details"
@@ -133,6 +134,47 @@ export function SceneParticipantsPanel({
             setDummyName("")
             setSelectedEntityId("")
             setAction("")
+        })
+    }
+
+    /** ยกชื่อชั่วคราวจากฉากอื่นมาหลายชื่อในครั้งเดียว — ใช้บทบาทที่เลือกไว้ในฟอร์ม, ยังไม่ใส่ action */
+    const handleAddMany = (titles: string[]) => {
+        const existing = new Set(participants.map((p: any) => p.title))
+        const fresh = titles.filter(t => !existing.has(t))
+        if (fresh.length === 0) {
+            toast.error("ชื่อที่เลือกอยู่ในไอเดียนี้แล้ว")
+            return
+        }
+
+        startTransition(async () => {
+            let saved = 0
+            for (const title of fresh) {
+                const child = {
+                    id: crypto.randomUUID(),
+                    type: partType,
+                    referenceId: null,
+                    title,
+                    content: "",
+                    role,
+                }
+                onAddChild(ideaItem.id, child)
+
+                const res = await upsertSceneElementDetail({
+                    sceneId,
+                    elementType: partType,
+                    elementId: child.id,
+                    canvasItemId: ideaItem.id,
+                    role,
+                    novelId,
+                })
+                if (res.success && res.data) {
+                    onDetailSaved(res.data)
+                    saved++
+                }
+            }
+
+            if (saved === fresh.length) toast.success(`เพิ่ม ${saved} รายชื่อแล้ว`)
+            else toast.warning(`เพิ่มได้ ${saved} จาก ${fresh.length} รายชื่อ`)
         })
     }
 
@@ -280,7 +322,8 @@ export function SceneParticipantsPanel({
                                         scenes={dummyScenes}
                                         partType={partType}
                                         currentSceneId={sceneId}
-                                        onPick={(title) => setDummyName(title)}
+                                        existingTitles={new Set(participants.map((p: any) => p.title))}
+                                        onAddMany={handleAddMany}
                                     />
                                 </div>
                             )}
@@ -447,43 +490,81 @@ export function SceneParticipantsPanel({
 }
 
 // ยก dummy จากฉากอื่น: เลือกฉากก่อน → โชว์ dummy ในฉากนั้น → คลิกเพื่อใส่ชื่อ (UI ของเราเอง)
-function ReuseDummyPicker({ scenes, partType, currentSceneId, onPick }: {
+function ReuseDummyPicker({ scenes, partType, currentSceneId, existingTitles, onAddMany }: {
     scenes: SceneDummies[]
     partType: string
     currentSceneId: string
-    onPick: (title: string) => void
+    existingTitles: Set<string>
+    onAddMany: (titles: string[]) => void
 }) {
     const [open, setOpen] = useState(false)
     const [sceneId, setSceneId] = useState<string | null>(null)
-
-    // ฉากอื่นที่มี dummy ชนิดเดียวกับที่กำลังเพิ่ม
-    const usableScenes = scenes
-        .filter(s => s.sceneId !== currentSceneId && s.dummies.some(d => d.type === partType))
-    const selected = usableScenes.find(s => s.sceneId === sceneId)
-    const dummies = selected ? selected.dummies.filter(d => d.type === partType) : []
+    const [picked, setPicked] = useState<Set<string>>(new Set())
     const label = partType === "dummy_faction" ? "กลุ่มฝ่าย" : "ตัวละคร"
 
+    // ฉากอื่นที่มีชื่อชั่วคราวชนิดเดียวกับที่กำลังเพิ่ม
+    const usableScenes = scenes.filter(s => s.sceneId !== currentSceneId && s.dummies.some(d => d.type === partType))
+    const selected = usableScenes.find(s => s.sceneId === sceneId)
+    const dummies = selected ? selected.dummies.filter(d => d.type === partType) : []
+    const selectable = dummies.filter(d => !existingTitles.has(d.title))
+
+    const reset = () => { setSceneId(null); setPicked(new Set()) }
+
+    const toggle = (title: string) => {
+        setPicked(prev => {
+            const next = new Set(prev)
+            if (next.has(title)) next.delete(title)
+            else next.add(title)
+            return next
+        })
+    }
+
+    const confirm = () => {
+        onAddMany(Array.from(picked))
+        reset()
+        setOpen(false)
+    }
+
     return (
-        <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSceneId(null) }}>
+        <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset() }}>
             <PopoverTrigger asChild>
-                <Button type="button" variant="outline" size="icon" className="h-7 w-7 shrink-0" title="ยกจากฉากอื่น">
-                    <Copy className="w-3.5 h-3.5" />
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-7 w-7 shrink-0"
+                    title={"ยก" + label + "ชั่วคราวที่เคยใช้ในฉากอื่นมาใช้ซ้ำ"}
+                    aria-label={"ยก" + label + "ชั่วคราวจากฉากอื่น"}
+                >
+                    <UsersRound className="w-3.5 h-3.5" />
                 </Button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-64 p-0 overflow-hidden" onClick={e => e.stopPropagation()}>
-                <div className="px-3 py-2 border-b bg-muted/40 flex items-center gap-2">
+            <PopoverContent align="end" className="w-72 p-0 overflow-hidden" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2">
                     {selected && (
-                        <button onClick={() => setSceneId(null)} className="text-muted-foreground hover:text-foreground" title="กลับ">
-                            <ChevronLeft className="w-4 h-4" />
+                        <button
+                            onClick={reset}
+                            className="text-muted-foreground hover:text-foreground"
+                            title="กลับไปเลือกฉาก"
+                            aria-label="กลับไปเลือกฉาก"
+                        >
+                            <ChevronLeft className="h-4 w-4" />
                         </button>
                     )}
-                    <span className="text-xs font-medium truncate">
-                        {selected ? selected.sceneTitle : `ยก${label}ชั่วคราวจากฉากอื่น`}
-                    </span>
+                    <div className="min-w-0">
+                        <p className="truncate text-xs font-medium">
+                            {selected ? selected.sceneTitle : "ยก" + label + "ชั่วคราวจากฉากอื่น"}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                            {selected ? "เลือกได้หลายชื่อพร้อมกัน" : "เลือกฉากที่จะยกมาก่อน"}
+                        </p>
+                    </div>
                 </div>
 
                 {usableScenes.length === 0 ? (
-                    <p className="text-[11px] text-muted-foreground text-center py-6 px-3">ยังไม่มี{label}ชั่วคราวในฉากอื่น</p>
+                    <p className="px-3 py-6 text-center text-[11px] text-muted-foreground">
+                        ยังไม่มี{label}ชั่วคราวในฉากอื่น
+                    </p>
                 ) : !selected ? (
                     // ขั้น 1: เลือกฉาก
                     <div className="max-h-[240px] overflow-y-auto py-1">
@@ -493,30 +574,63 @@ function ReuseDummyPicker({ scenes, partType, currentSceneId, onPick }: {
                                 <button
                                     key={s.sceneId}
                                     onClick={() => setSceneId(s.sceneId)}
-                                    className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-xs hover:bg-muted transition-colors"
+                                    className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-muted"
                                 >
                                     <span className="truncate">{s.sceneTitle}</span>
-                                    <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">{n}</span>
+                                    <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">{n}</span>
                                 </button>
                             )
                         })}
                     </div>
                 ) : (
-                    // ขั้น 2: เลือก dummy ในฉากนั้น
-                    <div className="max-h-[240px] overflow-y-auto py-1">
-                        {dummies.map(d => (
-                            <button
-                                key={d.title}
-                                onClick={() => { onPick(d.title); setOpen(false); setSceneId(null) }}
-                                className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs hover:bg-muted transition-colors"
-                            >
-                                {partType === "dummy_faction"
-                                    ? <Shield className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                                    : <User className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
-                                <span className="truncate">{d.title}</span>
-                            </button>
-                        ))}
-                    </div>
+                    // ขั้น 2: ติ๊กชื่อในฉากนั้น — หลายชื่อพร้อมกันได้
+                    <>
+                        <div className="max-h-[240px] overflow-y-auto py-1">
+                            {dummies.map(d => {
+                                const already = existingTitles.has(d.title)
+                                return (
+                                    <label
+                                        key={d.title}
+                                        className={cn(
+                                            "flex w-full items-center gap-2 px-3 py-2 text-xs transition-colors",
+                                            already ? "opacity-50" : "cursor-pointer hover:bg-muted",
+                                        )}
+                                        title={already ? "อยู่ในไอเดียนี้แล้ว" : undefined}
+                                    >
+                                        <Checkbox
+                                            checked={picked.has(d.title)}
+                                            disabled={already}
+                                            onCheckedChange={() => toggle(d.title)}
+                                            className="shrink-0"
+                                        />
+                                        {partType === "dummy_faction"
+                                            ? <Shield className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                            : <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                                        <span className="truncate">{d.title}</span>
+                                        {already && (
+                                            <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">เพิ่มแล้ว</span>
+                                        )}
+                                    </label>
+                                )
+                            })}
+                        </div>
+
+                        <div className="flex items-center gap-2 border-t p-2">
+                            {selectable.length > 1 && (
+                                <button
+                                    onClick={() => setPicked(
+                                        picked.size === selectable.length ? new Set() : new Set(selectable.map(d => d.title))
+                                    )}
+                                    className="shrink-0 text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                                >
+                                    {picked.size === selectable.length ? "ล้าง" : "ทั้งฉาก"}
+                                </button>
+                            )}
+                            <Button size="sm" className="h-7 flex-1 text-xs" disabled={picked.size === 0} onClick={confirm}>
+                                {picked.size === 0 ? "เลือกชื่อที่จะยกมา" : "เพิ่ม " + picked.size + " ชื่อเข้าไอเดีย"}
+                            </Button>
+                        </div>
+                    </>
                 )}
             </PopoverContent>
         </Popover>

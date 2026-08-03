@@ -2,7 +2,7 @@
 
 import { db } from "@/db/drizzle";
 import { novels, notes, driveSettings, driveSync, driveCredentials } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { setCredentials, createDriveFolder, createDoc, getDocMetadata, getDocContent, updateDocContent } from "@/lib/google-drive";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
@@ -62,7 +62,7 @@ export async function initializeDriveSync(novelId: string) {
 
     // 1. เช็คว่าเปิดใช้งานเรื่องนี้หรือยัง
     const novel = await db.query.novels.findFirst({
-        where: eq(novels.id, novelId)
+        where: and(eq(novels.id, novelId), isNull(novels.deletedAt))
     });
 
     if (!novel) throw new Error("Novel not found");
@@ -105,7 +105,7 @@ export async function syncNoteToDrive(noteId: string, forceContent?: string) {
     await setupGoogleAuth();
 
     const note = await db.query.notes.findFirst({
-        where: eq(notes.id, noteId)
+        where: and(eq(notes.id, noteId), isNull(notes.deletedAt))
     });
 
     if (!note) throw new Error("Note not found");
@@ -280,7 +280,7 @@ export async function syncNoteToDrive(noteId: string, forceContent?: string) {
 
             await db.update(notes)
                 .set({ content: mergedDbContent, updatedAt: now })
-                .where(eq(notes.id, noteId));
+                .where(and(eq(notes.id, noteId), isNull(notes.deletedAt)));
 
             await db.update(driveSync)
                 .set({
@@ -308,7 +308,7 @@ export async function syncNoteToDrive(noteId: string, forceContent?: string) {
 
             await db.update(notes)
                 .set({ content: pulledDbContent, updatedAt: now })
-                .where(eq(notes.id, noteId));
+                .where(and(eq(notes.id, noteId), isNull(notes.deletedAt)));
 
             // Pull ไม่ต้อง push กลับ → remoteModifiedAt ยังถูกต้องอยู่
             await db.update(driveSync)

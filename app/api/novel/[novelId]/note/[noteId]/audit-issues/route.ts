@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { guardNovel } from "@/lib/authz";
 import { db } from "@/db/drizzle";
 import { noteAuditIssues } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
@@ -13,6 +14,7 @@ type Props = {
 export async function GET(request: NextRequest, { params }: Props) {
     try {
         const { novelId, noteId } = await params;
+        const denied = await guardNovel(novelId); if (denied) return denied;
         const issues = await db.query.noteAuditIssues.findMany({
             where: and(
                 eq(noteAuditIssues.novelId, novelId),
@@ -29,6 +31,7 @@ export async function GET(request: NextRequest, { params }: Props) {
 export async function POST(request: NextRequest, { params }: Props) {
     try {
         const { novelId, noteId } = await params;
+        const denied = await guardNovel(novelId); if (denied) return denied;
         const body = await request.json();
         const { level, category, startIndex, endIndex, flaggedText, issueDescription, suggestedText, suggestionNotes } = body;
 
@@ -61,6 +64,7 @@ export async function POST(request: NextRequest, { params }: Props) {
 export async function DELETE(request: NextRequest, { params }: Props) {
     try {
         const { novelId, noteId } = await params;
+        const denied = await guardNovel(novelId); if (denied) return denied;
         const category = request.nextUrl.searchParams.get("category");
 
         const conditions = [

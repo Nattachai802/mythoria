@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { initializeDriveSync } from "@/server/drive-sync";
+import { guardNovel } from "@/lib/authz";
 
 export async function POST(req: Request) {
   try {
@@ -8,6 +9,9 @@ export async function POST(req: Request) {
     if (!novelId) {
       return NextResponse.json({ error: "Missing novelId" }, { status: 400 });
     }
+
+    const denied = await guardNovel(novelId);
+    if (denied) return denied;
 
     const result = await initializeDriveSync(novelId);
     return NextResponse.json(result);

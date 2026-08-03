@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { guardNovel } from "@/lib/authz";
 import { db } from "@/db/drizzle";
 import { notes } from "@/db/schema";
 import { eq, isNull, and, lt, or } from "drizzle-orm";
@@ -11,6 +12,7 @@ interface Props {
 export async function GET(request: NextRequest, { params }: Props) {
     try {
         const { novelId } = await params;
+        const denied = await guardNovel(novelId); if (denied) return denied;
         const { searchParams } = new URL(request.url);
         const uncheckedOnly = searchParams.get("uncheckedOnly") === "true";
 
@@ -33,6 +35,7 @@ export async function GET(request: NextRequest, { params }: Props) {
                 .where(
                     and(
                         eq(notes.novelId, novelId),
+                        isNull(notes.deletedAt),
                         or(
                             isNull(notes.plotHoleCheckedAt),
                             lt(notes.plotHoleCheckedAt, notes.updatedAt) // Recheck if updated after last check
@@ -52,7 +55,7 @@ export async function GET(request: NextRequest, { params }: Props) {
                     updatedAt: notes.updatedAt,
                 })
                 .from(notes)
-                .where(eq(notes.novelId, novelId));
+                .where(and(eq(notes.novelId, novelId), isNull(notes.deletedAt)));
         }
 
         const result = await query;
@@ -74,6 +77,7 @@ export async function GET(request: NextRequest, { params }: Props) {
 export async function POST(request: NextRequest, { params }: Props) {
     try {
         const { novelId } = await params;
+        const denied = await guardNovel(novelId); if (denied) return denied;
         const body = await request.json();
         const { noteId, plotHoleCount, plotHoleIssues } = body;
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { guardNovel } from "@/lib/authz";
 import { getEmbeddableContent } from "@/server/registry/entity-registry";
 
 interface Props {
@@ -10,6 +11,7 @@ interface Props {
 export async function GET(_request: NextRequest, { params }: Props) {
     try {
         const { novelId } = await params;
+        const denied = await guardNovel(novelId); if (denied) return denied;
         const records = await getEmbeddableContent(novelId);
         return NextResponse.json({ success: true, records });
     } catch (error) {

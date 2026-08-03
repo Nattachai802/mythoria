@@ -2,7 +2,7 @@
 
 import { db } from "@/db/drizzle";
 import { notes, novels, chapters } from "@/db/schema";
-import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { eq, and, gte, lte, desc, isNull } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import { CACHE_TAGS, CACHE_DURATION } from "@/lib/cache-config";
 import { getNovelsByUserId } from "./novel";
@@ -28,7 +28,8 @@ async function _getWritingActivity(novelId: string, days: number = 90) {
         const allNotes = await db.query.notes.findMany({
             where: and(
                 eq(notes.novelId, novelId),
-                gte(notes.updatedAt, startDate)
+                gte(notes.updatedAt, startDate),
+                isNull(notes.deletedAt)
             ),
             columns: {
                 id: true,
@@ -108,7 +109,8 @@ export async function getWordsPerDay(novelId: string, days: number = 7) {
                 where: and(
                     eq(notes.novelId, novelId),
                     gte(notes.updatedAt, startOfDay),
-                    lte(notes.updatedAt, endOfDay)
+                    lte(notes.updatedAt, endOfDay),
+                    isNull(notes.deletedAt)
                 ),
                 columns: {
                     content: true,
@@ -131,7 +133,7 @@ async function _getWritingStreak(novelId: string) {
     try {
         // Get all notes ordered by date
         const allNotes = await db.query.notes.findMany({
-            where: eq(notes.novelId, novelId),
+            where: and(eq(notes.novelId, novelId), isNull(notes.deletedAt)),
             columns: {
                 updatedAt: true,
             },
@@ -219,7 +221,7 @@ export async function getWritingStreak(novelId: string) {
 async function _getAnalyticsSummary(novelId: string) {
     try {
         const novel = await db.query.novels.findFirst({
-            where: eq(novels.id, novelId),
+            where: and(eq(novels.id, novelId), isNull(novels.deletedAt)),
             columns: {
                 wordCount: true,
                 targetWordCount: true,
@@ -231,7 +233,7 @@ async function _getAnalyticsSummary(novelId: string) {
         });
 
         const allNotes = await db.query.notes.findMany({
-            where: eq(notes.novelId, novelId),
+            where: and(eq(notes.novelId, novelId), isNull(notes.deletedAt)),
             columns: {
                 content: true,
                 createdAt: true,
@@ -240,7 +242,7 @@ async function _getAnalyticsSummary(novelId: string) {
         });
 
         const allChapters = await db.query.chapters.findMany({
-            where: eq(chapters.novelId, novelId),
+            where: and(eq(chapters.novelId, novelId), isNull(chapters.deletedAt)),
             columns: {
                 id: true,
                 status: true,

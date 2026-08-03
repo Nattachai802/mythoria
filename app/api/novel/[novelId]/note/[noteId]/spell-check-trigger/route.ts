@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { guardNovel } from "@/lib/authz";
 import { db } from "@/db/drizzle";
 import { notes, characters, locations } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { pyFetch } from "@/lib/python-service";
 
 type Props = {
@@ -13,9 +14,10 @@ type Props = {
 export async function POST(request: NextRequest, { params }: Props) {
     try {
         const { novelId, noteId } = await params;
+        const denied = await guardNovel(novelId); if (denied) return denied;
 
         // 1. ดึง note content + custom words จาก DB
-        const [note] = await db.select().from(notes).where(eq(notes.id, noteId));
+        const [note] = await db.select().from(notes).where(and(eq(notes.id, noteId), isNull(notes.deletedAt)));
         if (!note) {
             return NextResponse.json({ success: false, error: "Note not found" }, { status: 404 });
         }

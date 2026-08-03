@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { guardNovel } from "@/lib/authz";
 import { db } from "@/db/drizzle";
 import { aiChapterReviews, notes } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { retrieveContext } from "@/server/rag";
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
@@ -120,7 +121,8 @@ async function fetchBatchReviews(provider: "groq" | "typhoon", personas: any[], 
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ novelId: string; noteId: string }> }) {
   try {
-    const { noteId } = await params;
+    const { novelId, noteId } = await params;
+    const denied = await guardNovel(novelId); if (denied) return denied;
     const reviews = await db.select().from(aiChapterReviews)
       .where(eq(aiChapterReviews.noteId, noteId));
     return NextResponse.json({ success: true, reviews });
@@ -132,8 +134,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ nove
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ novelId: string; noteId: string }> }) {
   try {
-    const { noteId, novelId } = await params;
-    const note = await db.query.notes.findFirst({ where: eq(notes.id, noteId) });
+    const { novelId, noteId } = await params;
+    const denied = await guardNovel(novelId); if (denied) return denied;
+    const note = await db.query.notes.findFirst({ where: and(eq(notes.id, noteId), isNull(notes.deletedAt)) });
     if (!note) return NextResponse.json({ success: false, error: "Note not found" }, { status: 404 });
 
     const rawHtml = (note.content as any)?.text ?? "";

@@ -76,10 +76,9 @@ export function IdeaCard({
     return (
         <>
             <Card
-                className={`group hover:shadow-lg transition-all cursor-pointer relative ${idea.isUsed
-                        ? 'opacity-60 bg-muted/50 border-dashed'
-                        : ''
-                    } ${isSelected ? 'ring-2 ring-primary border-primary bg-primary/5' : ''}`}
+                // ไอเดียที่ถูกใช้ในฉากแล้วไม่ใช่ของหมดอายุ — ยังเป็นไอเดียที่อยู่ที่นี่
+                // เดิมทำให้จาง + เส้นประเหมือนของที่ขีดฆ่าทิ้ง เหลือแค่ป้ายบอกสถานะพอ
+                className={`group hover:shadow-lg transition-all cursor-pointer relative ${isSelected ? 'ring-2 ring-primary border-primary bg-primary/5' : ''}`}
                 onClick={(e) => {
                     if (isSelectMode && onToggleSelect) {
                         e.stopPropagation();
@@ -107,13 +106,13 @@ export function IdeaCard({
                             )}
                             <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
-                                    <h3 className={`font-semibold text-lg truncate ${idea.isUsed ? 'text-muted-foreground' : ''}`}>
+                                    <h3 className="font-semibold text-lg truncate">
                                         {idea.title}
                                     </h3>
                                     {idea.isUsed && (
                                         <Badge variant="secondary" className="text-xs bg-green-100 text-green-700 border-green-200 shrink-0">
                                             <CheckCircle2 className="w-3 h-3 mr-1" />
-                                            ใช้แล้ว
+                                            อยู่ในฉากแล้ว
                                         </Badge>
                                     )}
                                 </div>

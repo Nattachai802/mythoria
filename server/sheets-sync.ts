@@ -13,7 +13,7 @@ import {
     driveSettings,
     characters
 } from "@/db/schema";
-import { eq, and, asc, desc, inArray } from "drizzle-orm";
+import { eq, and, asc, desc, inArray, isNull } from "drizzle-orm";
 import { oauth2Client } from "@/lib/google-drive";
 import { setupGoogleAuth, initializeDriveSync } from "./drive-sync";
 import { revalidatePath, revalidateTag } from "next/cache";
@@ -76,7 +76,7 @@ export async function syncWorldBuilding(
         await setupGoogleAuth();
 
         const novel = await db.query.novels.findFirst({
-            where: eq(novels.id, novelId),
+            where: and(eq(novels.id, novelId), isNull(novels.deletedAt)),
             with: {
                 characters: true,
                 locations: true,

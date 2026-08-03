@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { guardNovel } from "@/lib/authz";
 import { db } from "@/db/drizzle";
 import { chapters, characters, notes } from "@/db/schema";
-import { eq, asc, isNotNull } from "drizzle-orm";
+import { eq, asc, isNotNull, and, isNull } from "drizzle-orm";
 
 type Props = {
     params: Promise<{ novelId: string }>;
@@ -89,10 +90,11 @@ function extractPlainText(content: unknown): string {
 export async function GET(request: NextRequest, { params }: Props) {
     try {
         const { novelId } = await params;
+        const denied = await guardNovel(novelId); if (denied) return denied;
 
         // Get all chapters
         const allChapters = await db.query.chapters.findMany({
-            where: eq(chapters.novelId, novelId),
+            where: and(eq(chapters.novelId, novelId), isNull(chapters.deletedAt)),
             columns: {
                 id: true,
                 title: true,
@@ -103,7 +105,7 @@ export async function GET(request: NextRequest, { params }: Props) {
 
         // Get all notes linked to chapters with chapter info
         const linkedNotes = await db.query.notes.findMany({
-            where: eq(notes.novelId, novelId),
+            where: and(eq(notes.novelId, novelId), isNull(notes.deletedAt)),
             columns: {
                 id: true,
                 title: true,

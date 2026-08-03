@@ -8,6 +8,7 @@ import {
 import { applyProposal, type Proposal, type ProposalDetail } from "./assistant";
 import { createWorldSystem } from "./world-systems";
 import type { WorldSystemEntry } from "@/db/schema";
+import { isGuest, GUEST_AI_MESSAGE } from "@/lib/guest";
 
 /**
  * Story Bible Import — Phase 1 engine
@@ -174,6 +175,7 @@ export interface ExtractResult {
 
 /** Phase 1: สกัดทั้งเอกสาร → Proposal[] (dedupe ตามชนิด+ชื่อ) */
 export async function extractBible(markdown: string): Promise<ExtractResult> {
+    if (await isGuest()) return { success: false, error: GUEST_AI_MESSAGE };
     if (!GROQ_API_KEY) return { success: false, error: "ยังไม่ได้ตั้งค่า GROQ_API_KEY" };
     if (!markdown.trim()) return { success: false, error: "เอกสารว่างเปล่า" };
 

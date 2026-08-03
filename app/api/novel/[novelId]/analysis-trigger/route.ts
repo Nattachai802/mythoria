@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { guardNovel } from "@/lib/authz";
 import { db } from "@/db/drizzle";
 import { characterAnalysisQueue, chapters } from "@/db/schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, isNull } from "drizzle-orm";
 import { pyFetch } from "@/lib/python-service";
 
 
@@ -12,12 +13,13 @@ type Props = {
 export async function POST(request: NextRequest, { params }: Props) {
     try {
         const { novelId } = await params;
+        const denied = await guardNovel(novelId); if (denied) return denied;
         const body = await request.json().catch(() => ({}));
         const { characterId, analysisType = "all", reanalyzeAll = false } = body;
 
         // 1. ดึง Chapters ทั้งหมดของนิยายนี้
         const novelChapters = await db.query.chapters.findMany({
-            where: eq(chapters.novelId, novelId),
+            where: and(eq(chapters.novelId, novelId), isNull(chapters.deletedAt)),
             columns: { id: true },
         });
 

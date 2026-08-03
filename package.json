@@ -22,10 +22,12 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "check": "cross-env TZ=Asia/Bangkok node --experimental-strip-types lib/story-date.check.ts && node --experimental-strip-types lib/invite-rules.check.ts && node --experimental-strip-types lib/travel-map.check.ts",
+    "check": "cross-env TZ=Asia/Bangkok node --experimental-strip-types lib/story-date.check.ts && node --experimental-strip-types lib/invite-rules.check.ts && node --experimental-strip-types lib/travel-map.check.ts && node --experimental-strip-types lib/oauth-state.check.ts && node --experimental-strip-types lib/trash.check.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
+    "db:sql": "node --experimental-strip-types scripts/run-sql.ts",
+    "seed:demo": "node --experimental-strip-types scripts/seed-demo.ts",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {

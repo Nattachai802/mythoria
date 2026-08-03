@@ -2,9 +2,10 @@
 
 import { db } from "@/db/drizzle";
 import { notes } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { GoogleGenAI } from "@google/genai";
 import { revalidatePath } from "next/cache";
+import { isGuest, GUEST_AI_MESSAGE } from "@/lib/guest";
 
 // API Configuration - reuse from environment
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
@@ -73,9 +74,11 @@ export async function generateNoteSummary(
     error?: string;
 }> {
     try {
+        if (await isGuest()) return { success: false, error: GUEST_AI_MESSAGE };
+
         // 1. Get note
         const note = await db.query.notes.findFirst({
-            where: eq(notes.id, noteId),
+            where: and(eq(notes.id, noteId), isNull(notes.deletedAt)),
         });
 
         if (!note) {
@@ -136,7 +139,7 @@ export async function generateNoteSummary(
         await db
             .update(notes)
             .set({ summary })
-            .where(eq(notes.id, noteId));
+            .where(and(eq(notes.id, noteId), isNull(notes.deletedAt)));
 
         console.log(`[NoteSummary] Generated and saved summary for note ${noteId}`);
 
@@ -174,7 +177,7 @@ export async function saveNoteSummary(
         await db
             .update(notes)
             .set({ summary })
-            .where(eq(notes.id, noteId));
+            .where(and(eq(notes.id, noteId), isNull(notes.deletedAt)));
 
         if (novelId) {
             revalidatePath(`/dashboard/project/${novelId}`);
@@ -201,7 +204,7 @@ export async function clearNoteSummary(
         await db
             .update(notes)
             .set({ summary: null })
-            .where(eq(notes.id, noteId));
+            .where(and(eq(notes.id, noteId), isNull(notes.deletedAt)));
 
         return { success: true };
     } catch (error) {

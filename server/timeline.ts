@@ -183,6 +183,54 @@ export async function getNovelDummyParticipants(novelId: string) {
     }
 }
 
+export type BoardChapter = {
+    id: string
+    name: string
+    startBeat: number
+    endBeat: number
+    sceneId: string
+    sceneTitle: string
+    sceneOrder: number
+}
+
+/**
+ * "ตอน" ที่แบ่งไว้บนกระดานพล็อตทุกบอร์ดของนิยายนี้
+ *
+ * ตอนไม่ได้อยู่ในตารางของตัวเอง — เก็บเป็น node ชนิด "chapter" ปนอยู่ใน timeline_events.canvasData
+ * เรียงตามลำดับฉาก แล้วตามจังหวะเริ่มในฉากนั้น = ลำดับเรื่องจริง ตัวท้ายสุดคือตอนล่าสุด
+ */
+export async function getNovelBoardChapters(novelId: string) {
+    try {
+        await requireNovelAccess(novelId);
+        const events = await db.query.timelineEvents.findMany({
+            where: eq(timelineEvents.novelId, novelId),
+            columns: { id: true, title: true, canvasData: true, orderIndex: true },
+            orderBy: [asc(timelineEvents.orderIndex)],
+        });
+
+        const chapters: BoardChapter[] = [];
+        for (const ev of events) {
+            const nodes = ((ev.canvasData as any[]) || []).filter(n => n?.type === "chapter");
+            nodes.sort((a, b) => (a.startBeat ?? 0) - (b.startBeat ?? 0));
+            for (const n of nodes) {
+                chapters.push({
+                    id: n.id,
+                    name: n.name || "ตอน",
+                    startBeat: n.startBeat ?? 0,
+                    endBeat: n.endBeat ?? n.startBeat ?? 0,
+                    sceneId: ev.id,
+                    sceneTitle: ev.title || "(ไม่มีชื่อ)",
+                    sceneOrder: ev.orderIndex ?? 0,
+                });
+            }
+        }
+        return { success: true, data: chapters };
+    } catch (error) {
+        console.error("getNovelBoardChapters error:", error);
+        return { success: false, data: [] as BoardChapter[] };
+    }
+}
+
 export async function updateTimelineCanvas(id: string, canvasData: any) {
     try {
         const [owner] = await db.select({ novelId: timelineEvents.novelId }).from(timelineEvents).where(eq(timelineEvents.id, id)).limit(1);
@@ -202,4 +250,4 @@ export async function updateTimelineCanvas(id: string, canvasData: any) {
         console.error("Error updating canvas:", error);
         return { success: false, error: "Failed to update canvas" };
     }
-}
+}

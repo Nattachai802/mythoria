@@ -5,6 +5,7 @@ import { characters, locations } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
+import { isGuest, GUEST_AI_MESSAGE } from "@/lib/guest";
 
 // API Configuration
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -392,6 +393,8 @@ export async function extractCharacterStatesWithVoting(
     error?: string;
 }> {
     try {
+        if (await isGuest()) return { success: false, states: [], confidence: 0, error: GUEST_AI_MESSAGE };
+
         // 1. Get all characters for this novel
         const novelCharacters = await db.query.characters.findMany({
             where: eq(characters.novelId, novelId),

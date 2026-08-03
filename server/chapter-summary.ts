@@ -2,9 +2,10 @@
 
 import { db } from "@/db/drizzle";
 import { chapters } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { GoogleGenAI } from "@google/genai";
 import { revalidatePath } from "next/cache";
+import { isGuest, GUEST_AI_MESSAGE } from "@/lib/guest";
 
 // API Configuration - reuse from environment
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
@@ -43,9 +44,11 @@ export async function generateChapterSummary(
     error?: string;
 }> {
     try {
+        if (await isGuest()) return { success: false, error: GUEST_AI_MESSAGE };
+
         // 1. Get chapter
         const chapter = await db.query.chapters.findFirst({
-            where: eq(chapters.id, chapterId),
+            where: and(eq(chapters.id, chapterId), isNull(chapters.deletedAt)),
         });
 
         if (!chapter) {
@@ -127,7 +130,7 @@ export async function generateChapterSummary(
         await db
             .update(chapters)
             .set({ summary })
-            .where(eq(chapters.id, chapterId));
+            .where(and(eq(chapters.id, chapterId), isNull(chapters.deletedAt)));
 
         console.log(`[ChapterSummary] Generated and saved summary for chapter ${chapterId}`);
 
@@ -165,7 +168,7 @@ export async function saveChapterSummary(
         await db
             .update(chapters)
             .set({ summary })
-            .where(eq(chapters.id, chapterId));
+            .where(and(eq(chapters.id, chapterId), isNull(chapters.deletedAt)));
 
         if (novelId) {
             revalidatePath(`/dashboard/project/${novelId}`);
@@ -192,7 +195,7 @@ export async function clearChapterSummary(
         await db
             .update(chapters)
             .set({ summary: null })
-            .where(eq(chapters.id, chapterId));
+            .where(and(eq(chapters.id, chapterId), isNull(chapters.deletedAt)));
 
         return { success: true };
     } catch (error) {

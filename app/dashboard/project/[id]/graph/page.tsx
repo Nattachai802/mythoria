@@ -27,7 +27,7 @@ export default async function WorldGraphPage({ params }: WorldGraphPageProps) {
                     </h1>
                     <p className="text-sm text-muted-foreground max-w-2xl">
                         แผนที่ความเชื่อมโยงทั้งเรื่อง — ตัวละคร สถานที่ ตำนาน และปม
-                        ถักทอกันผ่าน Context Fabric · <span className="text-foreground/70">ชี้โหนดเพื่อไฮไลต์เพื่อนบ้าน คลิกเพื่อเปิดหน้านั้น</span>
+                        ถักทอกันผ่าน Context Fabric · <span className="text-foreground/70">สลับเป็นมุมมองรายการเพื่อค้นหาและไล่อ่านความเชื่อมโยงทีละรายการ</span>
                     </p>
                 </div>
             </div>

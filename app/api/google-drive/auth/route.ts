@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { google } from "googleapis";
+import { signState } from "@/lib/oauth-state";
 
 /**
  * GET /api/google-drive/auth
@@ -26,8 +27,8 @@ export async function GET() {
     `${appUrl}/api/google-drive/callback`
   );
 
-  // เก็บ userId ใน state เพื่อใช้ตอน callback (ไม่ต้องการ session อีก)
-  const state = Buffer.from(JSON.stringify({ userId: session.user.id })).toString("base64url");
+  // เก็บ userId ใน state เพื่อใช้ตอน callback (ไม่ต้องการ session อีก) — เซ็นกัน state ปลอม
+  const state = signState({ userId: session.user.id });
 
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: "offline",

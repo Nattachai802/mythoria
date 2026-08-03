@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { guardNovel } from "@/lib/authz";
 import { db } from "@/db/drizzle";
 import { noteAuditIssues } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
@@ -14,6 +15,7 @@ type Props = {
 export async function PATCH(request: NextRequest, { params }: Props) {
     try {
         const { novelId, noteId, issueId } = await params;
+        const denied = await guardNovel(novelId); if (denied) return denied;
         const body = await request.json();
         const { startIndex, endIndex, status, suggestedText, suggestionNotes, issueDescription } = body;
 
@@ -50,6 +52,7 @@ export async function PATCH(request: NextRequest, { params }: Props) {
 export async function DELETE(request: NextRequest, { params }: Props) {
     try {
         const { novelId, noteId, issueId } = await params;
+        const denied = await guardNovel(novelId); if (denied) return denied;
         const [deletedIssue] = await db
             .delete(noteAuditIssues)
             .where(

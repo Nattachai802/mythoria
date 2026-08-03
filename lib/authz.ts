@@ -1,9 +1,10 @@
 import { cache } from "react";
+import { NextResponse } from "next/server";
 import { db } from "@/db/drizzle";
 import { novels } from "@/db/schema";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
-import { eq } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 
 /**
  * เช็คว่า user ที่ล็อกอินอยู่เป็นเจ้าของ novel นี้จริง — ต้องเรียกก่อนอ่าน/แก้ข้อมูลที่ scope ด้วย novelId ทุกครั้ง
@@ -17,7 +18,7 @@ export const requireNovelAccess = cache(async (novelId: string): Promise<string>
     const [novel] = await db
         .select({ userId: novels.userId })
         .from(novels)
-        .where(eq(novels.id, novelId))
+        .where(and(eq(novels.id, novelId), isNull(novels.deletedAt)))
         .limit(1);
 
     if (!novel) throw new Error("Novel not found");
@@ -36,6 +37,31 @@ export const requireUser = cache(async (): Promise<string> => {
     if (!session?.user?.id) throw new Error("Unauthorized");
     return session.user.id;
 });
+
+/**
+ * เวอร์ชันสำหรับ API route: คืน NextResponse ถ้าไม่ผ่าน, คืน null ถ้าผ่าน — ไม่ throw
+ * ใช้บรรทัดเดียวบนสุดของ handler: `const denied = await guardNovel(novelId); if (denied) return denied;`
+ * (route ส่วนใหญ่ห่อ try/catch ที่คืน 500 อยู่แล้ว ถ้าปล่อยให้ throw จะได้ 500 แทน 401/403)
+ */
+export async function guardNovel(novelId: string): Promise<NextResponse | null> {
+    try {
+        await requireNovelAccess(novelId);
+        return null;
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Unauthorized";
+        const status = message === "Unauthorized" ? 401 : message === "Novel not found" ? 404 : 403;
+        return NextResponse.json({ success: false, error: message }, { status });
+    }
+}
+
+/** เหมือน guardNovel แต่เช็คแค่ว่าล็อกอินอยู่ — คืน userId เมื่อผ่าน */
+export async function guardUser(): Promise<{ denied: NextResponse } | { userId: string }> {
+    try {
+        return { userId: await requireUser() };
+    } catch {
+        return { denied: NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 }) };
+    }
+}
 
 const AUTHZ_MESSAGES = ["Unauthorized", "Forbidden", "Novel not found"];
 

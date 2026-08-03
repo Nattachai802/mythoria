@@ -27,6 +27,20 @@
 - Phase 5: @-mention ใน editor → Phase 6: graph/agent อ่าน references → Phase 7: drop junction เก่า
 - รายละเอียด: [`context-fabric-plan.md`](./context-fabric-plan.md)
 
+### ย้าย vector store: LanceDB → pgvector บน Neon
+**ทำตอนย้าย VPS จริง** (ตอนนั้นต้องแตะ deploy ของ Python อยู่แล้ว ทำทีเดียวจบ) ไม่ต้องรีบก่อนหน้านั้น
+
+ปัญหาปัจจุบัน: เวกเตอร์อยู่ใน `vector-db/*.lance` (ไฟล์บนดิสก์ของเครื่องที่รัน Python) ส่วนข้อมูลจริงอยู่ Neon
+- Vercel เขียนไฟล์ไม่ได้ + หายทุก deploy → Python ต้อง deploy แยกตลอดไป
+- ไม่มีอะไรบังคับให้สองที่ sync กัน — ลบโน้ตแล้ว embedding ค้าง เลยต้องมีปุ่ม "ซิงค์ฐานข้อมูล AI" ให้กดเอง
+- backup 2 ที่
+
+ถ้าย้าย: `CREATE EXTENSION vector` บน Neon → embedding เป็นคอลัมน์ในตาราง → ลบโน้ตแล้ว embedding หายตาม FK cascade,
+GraphRAG join กับ `references` ได้ใน query เดียวไม่ต้องข้ามเน็ต, ตัด endpoint `/search` `/sync` `/status` ทิ้ง
+
+**Python ยังอยู่** — อีก ~20 endpoint (stylometry, spell check, plot hole) ต้องใช้ตัดคำไทย (pythainlp/attacut) อยู่ดี
+**Effort: 1-2 วัน** (เขียน embedding pipeline ฝั่ง Node + backfill ข้อมูลเดิม)
+
 ---
 
 ## นอก scope (ยึดตาม vision)

@@ -15,7 +15,7 @@ import {
 } from "@dnd-kit/core";
 import { ResourceSidebar } from "./resource-sidebar";
 import { CanvasItem, DraggableCanvasItem } from "./canvas-item";
-import { updateTimelineCanvas, getNovelDummyParticipants } from "@/server/timeline";
+import { type BoardChapter, updateTimelineCanvas, getNovelDummyParticipants } from "@/server/timeline";
 import { updateIdea, createIdea } from "@/server/idea"; // updateIdea: auto-reset isUsed flag
 import { getSceneElementDetails, getIdeaNotesForIdeas, promoteDummy, promoteDummyAllScenes } from "@/server/scene-element-details";
 import { addBeat, createThread, deleteBeat } from "@/server/plot-threads";
@@ -28,7 +28,8 @@ import { Input } from "@/components/ui/input";
 import { Plus, Save, Link2, X, Check, Download, List, Navigation, SkipBack, SkipForward, StickyNote, GitBranchPlus, Lightbulb, Loader2, Sprout, LayoutGrid, Rows3, PanelLeftClose, PanelLeftOpen, Repeat, Target, FileText } from "lucide-react";
 import { CreateIdeaDialog } from "@/components/project/idea/create-idea-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { createPortal } from "react-dom";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 
@@ -42,6 +43,7 @@ interface PlaygroundBoardProps {
     ideas: any[];
     threads?: ThreadWithBeats[];
     factions?: any[];
+    boardChapters?: BoardChapter[]; // ตอนที่แบ่งไว้บนกระดานอื่นของนิยายเดียวกัน — ใช้อ้างอิงตอนตั้งชื่อ
 }
 
 interface Lane {
@@ -541,14 +543,17 @@ function BeatCell({ laneId, beatIndex, laneIndex, isTrailing, laneColor, isDraft
 }
 
 // Popup เล็กๆ กำหนดตอน (ชื่อ + จังหวะเริ่ม/จบ) — ใช้ทั้งเพิ่มใหม่และแก้ของเดิม
-function ChapterPopover({ trigger, initial, beatCount, onSave, onDelete }: {
+function ChapterPopover({ trigger, initial, beatCount, onSave, onDelete, recentChapters = [] }: {
     trigger: React.ReactNode;
     initial: { name: string; startBeat: number; endBeat: number };
     beatCount: number;
+    recentChapters?: BoardChapter[];
     onSave: (v: { name: string; startBeat: number; endBeat: number }) => void;
     onDelete?: () => void;
 }) {
     const [open, setOpen] = useState(false);
+    // ponytail: anchor จุดเดียวที่เมาส์ portal ไป body เอง เลยไม่โดน zoom ของกริดกวนพิกัด
+    const [pos, setPos] = useState({ x: 0, y: 0 });
     const [name, setName] = useState(initial.name);
     const [start, setStart] = useState(initial.startBeat);
     const [end, setEnd] = useState(initial.endBeat);
@@ -565,8 +570,14 @@ function ChapterPopover({ trigger, initial, beatCount, onSave, onDelete }: {
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-            <PopoverContent align="start" className="w-64 p-3 space-y-2.5" onClick={(e) => e.stopPropagation()}>
+            <span onPointerDown={(e) => setPos({ x: e.clientX, y: e.clientY })} className="contents">
+                <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+            </span>
+            {open && createPortal(
+                <PopoverAnchor style={{ position: 'fixed', left: pos.x, top: pos.y, width: 0, height: 0 }} />,
+                document.body
+            )}
+            <PopoverContent align="start" sideOffset={8} collisionPadding={12} className="w-64 p-3 space-y-2.5" onClick={(e) => e.stopPropagation()}>
                 <Input
                     autoFocus
                     value={name}
@@ -575,6 +586,24 @@ function ChapterPopover({ trigger, initial, beatCount, onSave, onDelete }: {
                     placeholder="ชื่อตอน เช่น ตอนที่ 1"
                     className="h-8 text-sm"
                 />
+                {recentChapters.length > 0 && (
+                    <div className="space-y-1">
+                        <p className="text-[10px] text-muted-foreground">ตอนล่าสุดในนิยาย — กดเพื่อใช้ชื่อนี้</p>
+                        <div className="flex flex-wrap gap-1">
+                            {recentChapters.map(c => (
+                                <button
+                                    key={c.id}
+                                    type="button"
+                                    onClick={() => setName(c.name)}
+                                    title={`${c.sceneTitle} · จังหวะ ${c.startBeat + 1}–${c.endBeat + 1}`}
+                                    className="max-w-full truncate rounded border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-[var(--forge-amber)]/50 hover:text-foreground"
+                                >
+                                    {c.name}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
                 <div className="space-y-1.5 pt-1">
                     <div className="flex items-center justify-between text-[10px] text-muted-foreground">
                         <span>จังหวะ {String(start + 1).padStart(2, '0')} – {String(end + 1).padStart(2, '0')}</span>
@@ -742,11 +771,33 @@ export function PlaygroundBoard({
     ideas,
     threads = [],
     factions = [],
+    boardChapters = [],
 }: PlaygroundBoardProps) {
     const [{ lanes, items: initialCardItems, chapters: initialChapters }] = useState(() => buildBoardState(initialItems));
     const [lanes_, setLanes] = useState<Lane[]>(lanes);
     const [chapters, setChapters] = useState<Chapter[]>(initialChapters);
     const [items, setItems] = useState<any[]>(initialCardItems);
+
+    /**
+     * ตอนทั้งนิยายเรียงตามลำดับเรื่อง = ตอนของบอร์ดอื่น (จาก DB ตอนโหลดหน้า) + ตอนของบอร์ดนี้ (state สด)
+     * ต้องรวม state สดด้วย ไม่งั้นตอนที่เพิ่งแบ่งจะไม่โผล่จนกว่าจะรีเฟรช
+     */
+    const allChapters = useMemo(() => {
+        const others = boardChapters.filter(c => c.sceneId !== eventId);
+        const mine: BoardChapter[] = chapters.map(c => ({
+            ...c,
+            sceneId: eventId,
+            sceneTitle: event?.title || "บอร์ดนี้",
+            sceneOrder: event?.orderIndex ?? 0,
+        }));
+        return [...others, ...mine].sort((a, b) => a.sceneOrder - b.sceneOrder || a.startBeat - b.startBeat);
+    }, [boardChapters, chapters, eventId, event?.title, event?.orderIndex]);
+
+    // เลขตอนถัดไป นับจากทั้งนิยาย ไม่ใช่แค่บอร์ดนี้
+    const nextChapterNumber = allChapters.reduce((max, c) => {
+        const n = parseInt(c.name.match(/[0-9]+/)?.[0] ?? "", 10);
+        return Number.isFinite(n) && n > max ? n : max;
+    }, 0) + 1;
     const [activeDragItem, setActiveDragItem] = useState<any>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -1551,7 +1602,8 @@ export function PlaygroundBoard({
     const handleSave = async () => {
         setIsSaving(true);
         const laneNodes = lanes_.map(l => ({ id: l.id, type: 'lane', name: l.name, orderIndex: l.orderIndex, color: l.color }));
-        const chapterNodes = chapters.map(c => ({ id: c.id, type: 'chapter', name: c.name, startBeat: c.startBeat }));
+        // ต้องมี endBeat ด้วย — ตอนอ่านกลับมี fallback `endBeat ?? startBeat` ถ้าลืมส่ง ตอนที่คร่อมหลายจังหวะจะยุบเหลือจังหวะเดียวเงียบ ๆ
+        const chapterNodes = chapters.map(c => ({ id: c.id, type: 'chapter', name: c.name, startBeat: c.startBeat, endBeat: c.endBeat }));
         const result = await updateTimelineCanvas(eventId, [...items, ...laneNodes, ...chapterNodes]);
         if (result.success) {
             setLastSaved(new Date());
@@ -2177,8 +2229,9 @@ export function PlaygroundBoard({
                                 className="sticky left-0 z-30 bg-background border-r border-b border-border/60 flex items-center px-2"
                             >
                                 <ChapterPopover
+                                    recentChapters={allChapters.slice(-3).reverse()}
                                     beatCount={beatCount}
-                                    initial={{ name: `ตอนที่ ${chapters.length + 1}`, startBeat: 0, endBeat: Math.max(0, beatCount - 1) }}
+                                    initial={{ name: `ตอนที่ ${nextChapterNumber}`, startBeat: 0, endBeat: Math.max(0, beatCount - 1) }}
                                     onSave={addChapter}
                                     trigger={
                                         <button
@@ -2197,6 +2250,7 @@ export function PlaygroundBoard({
                                     className="border-b border-border/60 px-1 flex items-center"
                                 >
                                     <ChapterPopover
+                                        recentChapters={allChapters.filter(x => x.id !== c.id).slice(-3).reverse()}
                                         beatCount={beatCount}
                                         initial={{ name: c.name, startBeat: c.startBeat, endBeat: c.endBeat }}
                                         onSave={(v) => updateChapter(c.id, v)}

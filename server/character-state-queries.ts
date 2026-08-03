@@ -280,7 +280,7 @@ export async function getCharacterJourney(characterId: string): Promise<{
         const chapterInfoMap = new Map<string, { title: string; orderIndex: number }>();
         if (chapterIds.length > 0) {
             const chapterRows = await db.query.chapters.findMany({
-                where: (table, { inArray }) => inArray(table.id, chapterIds),
+                where: (table, { inArray, and, isNull }) => and(inArray(table.id, chapterIds), isNull(table.deletedAt)),
                 columns: { id: true, title: true, orderIndex: true },
             });
             for (const ch of chapterRows) {
@@ -409,7 +409,7 @@ export async function getCharacterStateAtChapter(
     try {
         // Get chapter info first
         const chapter = await db.query.chapters.findFirst({
-            where: (chapters, { eq }) => eq(chapters.id, chapterId),
+            where: (chapters, { eq, and, isNull }) => and(eq(chapters.id, chapterId), isNull(chapters.deletedAt)),
         });
 
         if (!chapter) {
@@ -418,7 +418,7 @@ export async function getCharacterStateAtChapter(
 
         // Get all notes linked to this chapter
         const notesInChapter = await db.query.notes.findMany({
-            where: (notes, { eq }) => eq(notes.linkedToChapterId, chapterId),
+            where: (notes, { eq, and, isNull }) => and(eq(notes.linkedToChapterId, chapterId), isNull(notes.deletedAt)),
         });
 
         if (notesInChapter.length === 0) {
@@ -489,7 +489,7 @@ export async function getCharacterStateTimeline(
     try {
         // Get all chapters for this novel, ordered
         const chapters = await db.query.chapters.findMany({
-            where: (ch, { eq }) => eq(ch.novelId, novelId),
+            where: (ch, { eq, and, isNull }) => and(eq(ch.novelId, novelId), isNull(ch.deletedAt)),
             orderBy: (ch, { asc }) => [asc(ch.orderIndex)],
         });
 

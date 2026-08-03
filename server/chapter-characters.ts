@@ -2,7 +2,7 @@
 
 import { db } from "@/db/drizzle";
 import { chapterCharacters, chapters } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { addReference, removeReferenceEdge } from "./references"; // Context Fabric dual-write (P4)
 import { requireNovelAccess } from "@/lib/authz";
@@ -10,7 +10,7 @@ import { requireNovelAccess } from "@/lib/authz";
 // Get all characters that appear in a specific chapter
 export async function getCharactersInChapter(chapterId: string) {
     try {
-        const [owner] = await db.select({ novelId: chapters.novelId }).from(chapters).where(eq(chapters.id, chapterId)).limit(1);
+        const [owner] = await db.select({ novelId: chapters.novelId }).from(chapters).where(and(eq(chapters.id, chapterId), isNull(chapters.deletedAt))).limit(1);
         if (!owner) return { success: false, error: "Chapter not found" };
         await requireNovelAccess(owner.novelId);
         const results = await db.query.chapterCharacters.findMany({

@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Loader2, RefreshCw, Maximize2, Users, Sparkles, Network } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getNovelGraph, WorldGraphData } from "@/server/graph";
+import { TYPE_META, metaFor } from "@/lib/graph-meta";
 
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
     ssr: false,
@@ -18,24 +19,6 @@ const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
         </div>
     ),
 });
-
-// สี + ชื่อไทย ต่อชนิด entity
-const TYPE_META: Record<string, { color: string; label: string }> = {
-    character: { color: "#5b9bd5", label: "ตัวละคร" },
-    location: { color: "#3fa796", label: "สถานที่" },
-    lore: { color: "#9b6dd6", label: "ตำนาน" },
-    power: { color: "#e0a13c", label: "พลัง" },
-    faction: { color: "#d9534f", label: "ก๊ก" },
-    item: { color: "#2e9e9e", label: "ไอเทม" },
-    era: { color: "#7e6bd0", label: "ยุค" },
-    entity: { color: "#e07b39", label: "สิ่งมีชีวิต" },
-    note: { color: "#6b7689", label: "บันทึก" },
-    chapter: { color: "#4a90c2", label: "บท" },
-    timelineEvent: { color: "#d56aa0", label: "ฉาก" },
-    idea: { color: "#cbb53e", label: "ไอเดีย" },
-    plotThread: { color: "#56b56b", label: "ปม" },
-};
-const metaFor = (t: string) => TYPE_META[t] ?? { color: "#71717a", label: t };
 
 type Filter = "all" | "user" | "ai";
 const FILTERS: { key: Filter; label: string; icon: typeof Users | null }[] = [

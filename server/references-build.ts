@@ -1,5 +1,5 @@
 import { db } from "@/db/drizzle";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, and, isNull } from "drizzle-orm";
 import {
     notes,
     chapters,
@@ -43,8 +43,8 @@ export async function buildDerivedReferences(novelId: string): Promise<AddRefere
     // parent id ของนิยายนี้ (สำหรับ junction ที่ไม่มี novelId ของตัวเอง)
     const [charRows, noteRows, chapterRows, locRows, threadRows] = await Promise.all([
         db.select({ id: characters.id }).from(characters).where(eq(characters.novelId, novelId)),
-        db.select({ id: notes.id }).from(notes).where(eq(notes.novelId, novelId)),
-        db.select({ id: chapters.id }).from(chapters).where(eq(chapters.novelId, novelId)),
+        db.select({ id: notes.id }).from(notes).where(and(eq(notes.novelId, novelId), isNull(notes.deletedAt))),
+        db.select({ id: chapters.id }).from(chapters).where(and(eq(chapters.novelId, novelId), isNull(chapters.deletedAt))),
         db.select({ id: locations.id }).from(locations).where(eq(locations.novelId, novelId)),
         db.select({ id: plotThreads.id }).from(plotThreads).where(eq(plotThreads.novelId, novelId)),
     ]);

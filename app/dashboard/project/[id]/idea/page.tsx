@@ -38,7 +38,9 @@ export default async function IdeasPage({ params }: IdeasPageProps) {
   }
 
   const ideas = ideasResult.data || [];
-  const activeIdeasCount = ideas.filter(idea => !idea.isDetected).length;
+  // deleteAllIdeas() ลบทุกแถวของนิยายนี้ รวมที่ใช้ไปแล้วและที่ AI ตรวจพบ
+  // เดิมส่งเฉพาะจำนวนที่ยังไม่ถูกตรวจพบ → กล่องยืนยันบอกตัวเลขน้อยกว่าที่ลบจริง
+  const totalIdeasCount = ideas.length;
   const chapters = chaptersResult.success
     ? (chaptersResult.chapters || []).map(ch => ({ id: ch.id, title: ch.title }))
     : [];
@@ -56,11 +58,11 @@ export default async function IdeasPage({ params }: IdeasPageProps) {
         <div>
           <h1 className="text-3xl font-bold">Ideas</h1>
           <p className="text-muted-foreground mt-1">
-            Your creative idea vault
+            กองวัตถุดิบที่ยังไม่ได้ใช้ — เก็บไอเดียไว้ที่นี่ก่อน แล้วหยิบไปวางในฉากตอนวางพล็อต
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <DeleteAllIdeasButton novelId={novelId} ideaCount={activeIdeasCount} />
+          <DeleteAllIdeasButton novelId={novelId} ideaCount={totalIdeasCount} />
           <DiscordSyncButton novelId={novelId} />
           <CreateIdeaDialog novelId={novelId} />
         </div>

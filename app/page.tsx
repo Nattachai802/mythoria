@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ModeToggle } from "@/components/mode-toggle";
+import { HeroGraph } from "@/components/landing/hero-graph";
 import {
   BookOpen,
   Users,
@@ -48,10 +49,10 @@ export default function Home() {
               <Link href="/login">Sign In</Link>
             </Button>
             <Button asChild className="bg-forge-gold text-background hover:bg-forge-amber font-medium transition-colors forge-btn-hover chamfered-sm">
-              <Link href="/dashboard">
-                Start Writing
+              <a href="/api/guest">
+                ลองเล่นเลย
                 <ArrowRight className="w-4 h-4 ml-2" />
-              </Link>
+              </a>
             </Button>
           </div>
         </nav>
@@ -63,7 +64,6 @@ export default function Home() {
         <div className="absolute inset-0 -z-10">
           <div className="absolute top-0 left-1/4 w-96 h-96 bg-forge-gold/5 rounded-full blur-3xl" />
           <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-forge-amber/5 rounded-full blur-3xl" />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-gradient-to-br from-forge-gold/5 to-forge-amber/5 rounded-full blur-3xl" />
         </div>
 
         <div className="max-w-6xl mx-auto px-6 text-center">
@@ -77,31 +77,37 @@ export default function Home() {
 
           {/* Main heading */}
           <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold font-display tracking-tight mb-6">
-            <span className="block">Craft Your Story</span>
+            <span className="block">Your Story,</span>
             <span className="block text-forge-gold text-glow-gold">
-              Like Never Before
+              Connected
             </span>
           </h1>
 
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-10 leading-relaxed">
-            The ultimate platform for plotting, character building, and writing your next masterpiece.
-            Visualize your story with AI-powered tools.
+            ตัวละคร สถานที่ ตำนาน และปม ไม่ได้อยู่กันคนละที่อีกต่อไป —
+            Mythoria ถักทุกอย่างเข้าเป็นโครงเดียว แล้วบอกคุณเองเมื่อมันเริ่มขัดกัน
           </p>
 
           {/* CTA buttons */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-4">
             <Button size="lg" asChild className="h-12 px-8 text-base bg-forge-gold text-background hover:bg-forge-amber font-semibold shadow-lg shadow-forge-gold/15 transition-all forge-btn-hover chamfered">
-              <Link href="/dashboard">
-                Start Writing Free
+              {/* ไป /api/guest ตรง ๆ — ปุ่มเดิมชี้ /dashboard ซึ่งเด้งกลับ /login ทันทีสำหรับคนที่ยังไม่มีบัญชี */}
+              <a href="/api/guest">
+                ลองเล่นเลย ไม่ต้องสมัคร
                 <ArrowRight className="w-4 h-4 ml-2" />
-              </Link>
+              </a>
             </Button>
             <Button size="lg" variant="outline" asChild className="h-12 px-8 text-base border-steel-600 hover:bg-muted/50 chamfered">
-              <Link href="#features">
-                Explore Features
+              <Link href="/login">
+                เข้าสู่ระบบ
               </Link>
             </Button>
           </div>
+          <p className="text-xs text-muted-foreground mb-14">
+            เข้าดูนิยายตัวอย่างที่มีข้อมูลครบได้ทันที · การสมัครใช้งานจริงต้องมีรหัสเชิญ
+          </p>
+
+          <HeroGraph />
         </div>
       </section>
 
@@ -115,57 +121,39 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <FeatureCard
-              icon={<Brain className="w-5 h-5" />}
-              title="Author Fingerprint & Stylometry"
-              description="AI analyzes your vocabulary richness, sentence length, and pacing to ensure your unique writing style never drifts off course."
-            />
-            <FeatureCard
-              icon={<GitBranch className="w-5 h-5" />}
-              title="Two-Way Google Drive Sync"
-              description="Automatically sync your chapters to Google Docs. Edit anywhere—our smart 3-way merge engine handles conflicts seamlessly."
-            />
-            <FeatureCard
-              icon={<Layers className="w-5 h-5" />}
-              title="Immersive Writing Studio"
-              description="Write without distractions using Zen Mode and Typewriter Mode. Track every change with detailed version history."
-            />
-            <FeatureCard
-              icon={<Map className="w-5 h-5" />}
-              title="Deep World Building"
-              description="Create rich Characters, Locations, Items, and Powers. Keep all your lore interconnected and accessible instantly."
-            />
-            <FeatureCard
-              icon={<Lightbulb className="w-5 h-5" />}
-              title="Interactive Ideas Board"
-              description="A visual kanban board for your creative sparks. Attach entities, tag storylines, and link ideas directly to your chapters."
-            />
-            <FeatureCard
-              icon={<PenTool className="w-5 h-5" />}
-              title="Drag & Drop Organization"
-              description="Restructure your entire novel effortlessly. Drag and drop chapters, reorder folders, and keep your narrative flowing perfectly."
-            />
+          {/* สามใบที่เป็นตัวตนจริง ๆ — ที่เหลือยุบเป็นลิสต์ข้างล่าง ไม่ให้ทุกอย่างน้ำหนักเท่ากันจนไม่มีอะไรเด่น */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <FeatureCard
               icon={<Network className="w-5 h-5" />}
               title="World Graph"
-              description="Visualize how every character, location, and power connects in an interactive relationship graph—spot gaps in your world at a glance."
+              description="ทุกตัวละคร สถานที่ ตำนาน และปม อยู่บนกราฟเดียวกัน — เห็นทั้งเรื่องในภาพเดียว และเห็นว่าตรงไหนยังไม่เชื่อมกับอะไรเลย สลับเป็นมุมมองรายการเพื่อไล่อ่านทีละตัวก็ได้"
             />
             <FeatureCard
-              icon={<BookMarked className="w-5 h-5" />}
-              title="Story Codex"
-              description="A living, auto-linked wiki of your universe. Every mention of a character or place links straight to its full entry."
+              icon={<Brain className="w-5 h-5" />}
+              title="ลายมือเขียนของคุณ (Stylometry)"
+              description="วัดความหลากหลายของคำ จังหวะประโยค และโทนอารมณ์ด้วยสถิติล้วน ไม่ใช่ LLM — บอกได้ว่าบทไหนสำนวนเริ่มเพี้ยนไปจากที่คุณเขียนปกติ"
             />
             <FeatureCard
               icon={<ShieldCheck className="w-5 h-5" />}
               title="Consistency Guardian"
-              description="AI flags plot holes and worldbuilding contradictions as you write, so timeline slips and lore mismatches never make it to print."
+              description="ตรวจความขัดแย้งจากข้อมูลจริงในเรื่อง เช่น ตัวละครที่ตายไปแล้วกลับมาปรากฏในบทถัดมา — deterministic ไม่เดา ไม่หลอน"
             />
-            <FeatureCard
-              icon={<Waypoints className="w-5 h-5" />}
-              title="Plot Playground"
-              description="Map out plot events on a visual timeline, rearrange story beats, and see your narrative structure take shape before you draft."
-            />
+          </div>
+
+          <div className="mt-10 grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-3 max-w-4xl mx-auto">
+            {[
+              [<Layers key="i" className="w-4 h-4" />, "Writing Studio + Version History"],
+              [<Map key="i" className="w-4 h-4" />, "สร้างโลก: ตัวละคร สถานที่ ไอเทม พลัง"],
+              [<Waypoints key="i" className="w-4 h-4" />, "Plot Playground วางไทม์ไลน์"],
+              [<Lightbulb key="i" className="w-4 h-4" />, "Ideas Board แบบ canvas"],
+              [<GitBranch key="i" className="w-4 h-4" />, "ซิงค์ Google Drive"],
+              [<BookMarked key="i" className="w-4 h-4" />, "บรรณารักษ์ถาม-ตอบจาก canon"],
+            ].map(([icon, label]) => (
+              <div key={label as string} className="flex items-center gap-2.5 text-sm text-muted-foreground">
+                <span className="text-forge-gold/70 shrink-0">{icon}</span>
+                {label}
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -210,15 +198,15 @@ export default function Home() {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-forge-gold text-background mb-6 glow-gold chamfered-lg">
             <PenTool className="w-8 h-8 text-black" />
           </div>
-          <h2 className="text-3xl sm:text-4xl font-bold font-display mb-4">Ready to Write Your Masterpiece?</h2>
+          <h2 className="text-3xl sm:text-4xl font-bold font-display mb-4">เปิดดูก่อนก็ได้</h2>
           <p className="text-lg text-muted-foreground mb-8 max-w-xl mx-auto">
-            Join thousands of writers who trust Mythoria to bring their stories to life.
+            มีนิยายตัวอย่างที่ใส่ข้อมูลไว้ครบรออยู่แล้ว กดเข้าไปกดดูได้ทุกหน้า ไม่ต้องกรอกอะไรสักช่อง
           </p>
           <Button size="lg" asChild className="h-12 px-8 text-base bg-forge-gold text-background hover:bg-forge-amber font-semibold shadow-lg shadow-forge-gold/15 transition-all forge-btn-hover chamfered">
-            <Link href="/dashboard">
-              Get Started for Free
+            <a href="/api/guest">
+              ลองเล่นเลย ไม่ต้องสมัคร
               <ArrowRight className="w-4 h-4 ml-2" />
-            </Link>
+            </a>
           </Button>
         </div>
       </section>

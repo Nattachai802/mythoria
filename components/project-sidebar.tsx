@@ -18,7 +18,6 @@ import {
     BarChart3,
     Share2,
     Keyboard,
-    BookText,
     Shield,
     FileInput,
 } from "lucide-react"
@@ -80,7 +79,6 @@ export function ProjectSidebar({ projectId, projectTitle, chapters = [], hasCont
                 { title: "World Building", href: `/dashboard/project/${projectId}/worldbuilding`, icon: Globe },
                 { title: "Powers", href: `/dashboard/project/${projectId}/powers`, icon: Zap },
                 { title: "World Graph", href: `/dashboard/project/${projectId}/graph`, icon: Share2 },
-                { title: "Story Codex", href: `/dashboard/project/${projectId}/codex`, icon: BookText },
                 { title: "นำเข้าไบเบิล", href: `/dashboard/project/${projectId}/import-bible`, icon: FileInput },
             ],
         },

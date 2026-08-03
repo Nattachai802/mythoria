@@ -2,7 +2,7 @@
 
 import { db } from "@/db/drizzle";
 import { chapters, novels } from "@/db/schema";
-import { eq, desc, and, or, like, asc, sql } from "drizzle-orm";
+import { eq, desc, and, or, like, asc, sql, isNull } from "drizzle-orm";
 import { revalidateTag } from "next/cache";
 import { CACHE_TAGS } from "@/lib/cache-config";
 import { requireNovelAccess, authErrorMessage } from "@/lib/authz";
@@ -11,7 +11,7 @@ export const createChapter = async (novelId: string, title: string) => {
     try {
         await requireNovelAccess(novelId);
         const lastChapter = await db.query.chapters.findFirst({
-            where: eq(chapters.novelId, novelId),
+            where: and(eq(chapters.novelId, novelId), isNull(chapters.deletedAt)),
             orderBy: [desc(chapters.orderIndex)],
         });
         const newOrderIndex = (lastChapter?.orderIndex || 0) + 1;
@@ -37,7 +37,7 @@ export const createChapter = async (novelId: string, title: string) => {
 export const getChapter = async (chapterId: string) => {
     try {
         const chapter = await db.query.chapters.findFirst({
-            where: eq(chapters.id, chapterId),
+            where: and(eq(chapters.id, chapterId), isNull(chapters.deletedAt)),
         });
 
         if (!chapter) {
@@ -55,7 +55,7 @@ export const getChapters = async (novelId: string) => {
     try {
         await requireNovelAccess(novelId);
         const allChapters = await db.query.chapters.findMany({
-            where: eq(chapters.novelId, novelId),
+            where: and(eq(chapters.novelId, novelId), isNull(chapters.deletedAt)),
             orderBy: [asc(chapters.orderIndex)],
         });
 
@@ -77,7 +77,7 @@ export const recalculateNovelWordCount = async (novelId: string) => {
         const result = await db
             .select({ total: sql<number>`COALESCE(SUM(${chapters.wordCount}), 0)` })
             .from(chapters)
-            .where(eq(chapters.novelId, novelId));
+            .where(and(eq(chapters.novelId, novelId), isNull(chapters.deletedAt)));
 
         const totalWordCount = Number(result[0]?.total) || 0;
 
@@ -85,7 +85,7 @@ export const recalculateNovelWordCount = async (novelId: string) => {
         await db
             .update(novels)
             .set({ wordCount: totalWordCount, updatedAt: new Date() })
-            .where(eq(novels.id, novelId));
+            .where(and(eq(novels.id, novelId), isNull(novels.deletedAt)));
 
         console.log(`[WordCount] Novel ${novelId}: ${totalWordCount} words`);
         return { success: true, totalWordCount };
@@ -108,7 +108,7 @@ export const updateChapter = async (
     try {
         // หา novelId เจ้าของ chapter ก่อน แล้วเช็คสิทธิ์ ก่อนยอมให้แก้
         const existing = await db.query.chapters.findFirst({
-            where: eq(chapters.id, chapterId),
+            where: and(eq(chapters.id, chapterId), isNull(chapters.deletedAt)),
         });
         if (!existing) {
             return { success: false, message: "Chapter not found" };
@@ -121,7 +121,7 @@ export const updateChapter = async (
                 updatedAt: new Date(),
                 ...(data.status === "published" ? { publishedAt: new Date() } : {}) // ถ้าเปลี่ยนเป็น published ให้ใส่วันที่
             })
-            .where(eq(chapters.id, chapterId))
+            .where(and(eq(chapters.id, chapterId), isNull(chapters.deletedAt)))
             .returning();
 
         // Recalculate novel word count if chapter word count was updated
@@ -140,7 +140,7 @@ export const deleteChapter = async (chapterId: string) => {
     try {
         // Get the chapter first to know novelId
         const chapter = await db.query.chapters.findFirst({
-            where: eq(chapters.id, chapterId),
+            where: and(eq(chapters.id, chapterId), isNull(chapters.deletedAt)),
         });
 
         if (!chapter) {
@@ -150,8 +150,8 @@ export const deleteChapter = async (chapterId: string) => {
         const novelId = chapter.novelId;
         await requireNovelAccess(novelId);
 
-        // Delete the chapter
-        await db.delete(chapters).where(eq(chapters.id, chapterId));
+        // ถังขยะ: ติดป้ายว่าลบ ไม่ได้ลบจริง — กู้คืนได้ 7 วัน (ดู server/trash.ts)
+        await db.update(chapters).set({ deletedAt: new Date() }).where(and(eq(chapters.id, chapterId), isNull(chapters.deletedAt)));
 
         // Recalculate novel word count after deletion
         await recalculateNovelWordCount(novelId);

@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { usePyHealth } from "@/hooks/use-py-health";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { th } from "date-fns/locale";
 import { rebuildNovelReferences } from "@/server/references";
+import { PyStatusNotice } from "@/components/project/py-status-notice";
 
 interface VectorSyncButtonProps {
     novelId: string;
@@ -83,6 +85,7 @@ function NodeNetwork() {
 }
 
 export function VectorSyncButton({ novelId, lastSyncedAt }: VectorSyncButtonProps) {
+    const pyHealth = usePyHealth();
     const [isLoading, setIsLoading] = useState(false);
     const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
     const [lastSync, setLastSync] = useState<string | null>(
@@ -119,13 +122,14 @@ export function VectorSyncButton({ novelId, lastSyncedAt }: VectorSyncButtonProp
         <div className="flex items-center gap-2.5 px-3 py-2">
             <NodeNetwork />
             <div className="flex-1 min-w-0">
-                <div className="text-xs font-medium">ซิงค์ฐานข้อมูล AI</div>
+                <div className="text-xs font-medium truncate">ซิงค์ฐานข้อมูล AI</div>
                 <div className="text-[10px] text-muted-foreground truncate">
                     {lastSync
                         ? `ซิงค์ล่าสุด ${formatDistanceToNow(new Date(lastSync), { addSuffix: true, locale: th })}`
                         : "ยังไม่เคยซิงค์"}
                 </div>
             </div>
+            {pyHealth !== "up" ? <PyStatusNotice health={pyHealth} /> : (
             <Button
                 variant="ghost"
                 size="sm"
@@ -138,6 +142,7 @@ export function VectorSyncButton({ novelId, lastSyncedAt }: VectorSyncButtonProp
                  status === "error" ? <XCircle className="h-3 w-3 text-destructive" /> : null}
                 {isLoading ? "กำลังซิงค์..." : status === "success" ? "สำเร็จ" : status === "error" ? "ลองใหม่" : "ซิงค์ →"}
             </Button>
+            )}
         </div>
     );
 }

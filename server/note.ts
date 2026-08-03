@@ -2,7 +2,7 @@
 
 import { db } from "@/db/drizzle";
 import { notes, InsertNote } from "@/db/schema";
-import { eq, desc, and, or, like, gt, lt, ne, asc } from "drizzle-orm";
+import { eq, desc, and, or, like, gt, lt, ne, asc, isNull } from "drizzle-orm";
 import { syncChapterCharactersFromNotes } from "./analysis-helper";
 import { recalculateNovelWordCountFromNotes } from "./word-count";
 import { queueNoteForStateExtraction } from "./character-state-extractor";
@@ -44,7 +44,7 @@ export const createNote = async (data: InsertNote) => {
 // Internal function
 const _getNotes = async (novelId: string, type?: string) => {
     try {
-        const conditions = [eq(notes.novelId, novelId)];
+        const conditions = [eq(notes.novelId, novelId), isNull(notes.deletedAt)];
         if (type && type !== "all") {
             conditions.push(eq(notes.type, type));
         }
@@ -83,7 +83,7 @@ export const getNotes = async (novelId: string, type?: string) => {
 export const getNote = async (noteId: string) => {
     try {
         const note = await db.query.notes.findFirst({
-            where: eq(notes.id, noteId),
+            where: and(eq(notes.id, noteId), isNull(notes.deletedAt)),
             with: {
                 linkedChapter: true,
                 linkedCharacter: true,
@@ -109,6 +109,7 @@ export const searchNotes = async (novelId: string, query: string) => {
         const searchResults = await db.query.notes.findMany({
             where: and(
                 eq(notes.novelId, novelId),
+                isNull(notes.deletedAt),
                 or(
                     like(notes.title, `%${query}%`),
                 )
@@ -128,7 +129,7 @@ export const updateNote = async (noteId: string, data: Partial<InsertNote>) => {
         const [owner] = await db
             .select({ novelId: notes.novelId })
             .from(notes)
-            .where(eq(notes.id, noteId))
+            .where(and(eq(notes.id, noteId), isNull(notes.deletedAt)))
             .limit(1);
         if (!owner) {
             return { success: false, message: "Note not found" };
@@ -140,7 +141,7 @@ export const updateNote = async (noteId: string, data: Partial<InsertNote>) => {
                 ...data,
                 updatedAt: new Date() // อัปเดตเวลาแก้ไขเสมอ
             })
-            .where(eq(notes.id, noteId))
+            .where(and(eq(notes.id, noteId), isNull(notes.deletedAt)))
             .returning();
 
         // Clear cache
@@ -173,7 +174,7 @@ export const deleteNote = async (noteId: string) => {
     try {
         // Get note first to know novelId
         const note = await db.query.notes.findFirst({
-            where: eq(notes.id, noteId),
+            where: and(eq(notes.id, noteId), isNull(notes.deletedAt)),
         });
 
         if (!note) {
@@ -183,8 +184,8 @@ export const deleteNote = async (noteId: string) => {
         const novelId = note.novelId;
         await requireNovelAccess(novelId);
 
-        // Delete the note
-        await db.delete(notes).where(eq(notes.id, noteId));
+        // ถังขยะ: ติดป้ายว่าลบ ไม่ได้ลบจริง — กู้คืนได้ 7 วัน (ดู server/trash.ts)
+        await db.update(notes).set({ deletedAt: new Date() }).where(and(eq(notes.id, noteId), isNull(notes.deletedAt)));
 
         // Clear cache
         revalidateTag(CACHE_TAGS.notes(novelId), "default");
@@ -206,7 +207,7 @@ export const updateNoteStatus = async (noteId: string, status: NoteStatus) => {
         const [owner] = await db
             .select({ novelId: notes.novelId })
             .from(notes)
-            .where(eq(notes.id, noteId))
+            .where(and(eq(notes.id, noteId), isNull(notes.deletedAt)))
             .limit(1);
         if (!owner) {
             return { success: false, message: "Note not found" };
@@ -218,7 +219,7 @@ export const updateNoteStatus = async (noteId: string, status: NoteStatus) => {
                 status,
                 updatedAt: new Date()
             })
-            .where(eq(notes.id, noteId))
+            .where(and(eq(notes.id, noteId), isNull(notes.deletedAt)))
             .returning();
 
         return { success: true, message: "Status updated successfully", note: updatedNote };
@@ -246,7 +247,7 @@ export const getOrCreateNextNote = async (
         await requireNovelAccess(novelId);
         // 1. ดึง note ปัจจุบันเพื่อเอา createdAt
         const currentNote = await db.query.notes.findFirst({
-            where: eq(notes.id, currentNoteId),
+            where: and(eq(notes.id, currentNoteId), isNull(notes.deletedAt)),
             columns: { id: true, createdAt: true },
         });
 
@@ -264,7 +265,8 @@ export const getOrCreateNextNote = async (
                     eq(notes.novelId, novelId),
                     eq(notes.linkedToChapterId, linkedToChapterId),
                     gt(notes.createdAt, currentNote.createdAt),
-                    ne(notes.id, currentNoteId) // ป้องกัน timestamp precision ทำให้เจอ note ตัวเอง
+                    ne(notes.id, currentNoteId), // ป้องกัน timestamp precision ทำให้เจอ note ตัวเอง
+                    isNull(notes.deletedAt)
                 ),
                 orderBy: [asc(notes.createdAt)],
                 columns: { id: true },
@@ -322,7 +324,7 @@ export const getPreviousNote = async (
     try {
         await requireNovelAccess(novelId);
         const currentNote = await db.query.notes.findFirst({
-            where: eq(notes.id, currentNoteId),
+            where: and(eq(notes.id, currentNoteId), isNull(notes.deletedAt)),
             columns: { id: true, createdAt: true },
         });
 
@@ -336,7 +338,8 @@ export const getPreviousNote = async (
                     eq(notes.novelId, novelId),
                     eq(notes.linkedToChapterId, linkedToChapterId),
                     lt(notes.createdAt, currentNote.createdAt),
-                    ne(notes.id, currentNoteId)
+                    ne(notes.id, currentNoteId),
+                    isNull(notes.deletedAt)
                 ),
                 orderBy: [desc(notes.createdAt)],
                 columns: { id: true },

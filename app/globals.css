@@ -707,3 +707,39 @@
   scrollbar-width: none;
   /* Firefox */
 }
+/* Hero graph (หน้าแรก) — โหนดโผล่ทีละตัวแล้วลอยเบา ๆ, เส้นวาดตามทีหลัง */
+.hero-node {
+  opacity: 0;
+  animation: hero-pop 0.5s ease-out forwards, hero-float 7s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.hero-edge {
+  stroke-dasharray: 320;
+  stroke-dashoffset: 320;
+  animation: hero-draw 1s ease-out forwards;
+  animation-delay: inherit;
+}
+
+@keyframes hero-pop {
+  from { opacity: 0; transform: scale(0.7); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes hero-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes hero-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-node, .hero-edge {
+    animation: none;
+    opacity: 1;
+    stroke-dashoffset: 0;
+  }
+}

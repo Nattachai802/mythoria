@@ -176,6 +176,10 @@ export function LoginForm({
                 เข้าสู่ระบบด้วย Google
               </Button>
 
+              <Button variant="ghost" type="button" className="w-full" asChild>
+                <a href="/api/guest">ลองใช้งานแบบผู้เยี่ยมชม</a>
+              </Button>
+
               <FieldDescription className="mt-6 text-center">
                 ยังไม่มีบัญชี?{" "}
                 <Link

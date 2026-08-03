@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { guardNovel } from "@/lib/authz";
 import { db } from "@/db/drizzle";
 import { chapters, characters, chapterStylometry, notes } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { pyFetch } from "@/lib/python-service";
 
 export async function POST(
@@ -10,10 +11,11 @@ export async function POST(
 ) {
   try {
     const { novelId, chapterId } = await params;
+    const denied = await guardNovel(novelId); if (denied) return denied;
     
     // 1. Fetch chapter content from linked notes
     const chapterNotes = await db.query.notes.findMany({
-      where: eq(notes.linkedToChapterId, chapterId),
+      where: and(eq(notes.linkedToChapterId, chapterId), isNull(notes.deletedAt)),
       orderBy: (notes, { asc }) => [asc(notes.createdAt)],
     });
 
@@ -29,7 +31,7 @@ export async function POST(
     } else {
         // Fallback to chapter table if no notes are linked yet
         const chapter = await db.query.chapters.findFirst({
-            where: eq(chapters.id, chapterId),
+            where: and(eq(chapters.id, chapterId), isNull(chapters.deletedAt)),
         });
         if (chapter) {
             plainText = chapter.plainText || "";
@@ -115,7 +117,8 @@ export async function GET(
     { params }: { params: Promise<{ novelId: string; chapterId: string }> }
 ) {
     try {
-        const { chapterId } = await params;
+        const { novelId, chapterId } = await params;
+        const denied = await guardNovel(novelId); if (denied) return denied;
         const data = await db.query.chapterStylometry.findFirst({
             where: eq(chapterStylometry.chapterId, chapterId)
         });

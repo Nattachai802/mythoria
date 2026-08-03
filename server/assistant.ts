@@ -10,6 +10,7 @@ import {
     search,
     type EntityType,
 } from "./registry/entity-registry";
+import { isGuest, GUEST_AI_MESSAGE } from "@/lib/guest";
 
 /**
  * ผู้ช่วยจัดการข้อมูล (Command Executor)
@@ -196,6 +197,7 @@ export async function runAssistant(
     message: string,
     history: ChatTurn[] = [],
 ): Promise<AssistantResult> {
+    if (await isGuest()) return { kind: "error", error: GUEST_AI_MESSAGE };
     const msg = message.trim();
     if (!msg) return { kind: "error", error: "กรุณาพิมพ์คำสั่ง" };
     if (!GROQ_API_KEY) return { kind: "error", error: "ยังไม่ได้ตั้งค่า GROQ_API_KEY" };

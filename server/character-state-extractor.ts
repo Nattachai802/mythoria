@@ -8,7 +8,7 @@ import {
     characters,
     InsertCharacterState,
 } from "@/db/schema";
-import { eq, and, inArray, asc, sql, notInArray } from "drizzle-orm";
+import { eq, and, inArray, asc, sql, notInArray, isNull } from "drizzle-orm";
 import {
     extractCharacterStatesWithVoting,
     matchLocationId,
@@ -163,7 +163,7 @@ async function processQueueItem(item: {
 
         // Get note content
         const note = await db.query.notes.findFirst({
-            where: eq(notes.id, item.noteId),
+            where: and(eq(notes.id, item.noteId), isNull(notes.deletedAt)),
         });
 
         if (!note) {
@@ -414,7 +414,7 @@ export async function reprocessNoteStates(noteId: string): Promise<{
     try {
         // Get note to find novelId
         const note = await db.query.notes.findFirst({
-            where: eq(notes.id, noteId),
+            where: and(eq(notes.id, noteId), isNull(notes.deletedAt)),
         });
 
         if (!note) {
@@ -473,22 +473,12 @@ export async function scanAndQueueUnprocessedNotes(
         const excludeNoteIds = [...new Set([...processedNoteIds, ...queuedNoteIds])];
 
         // Step 4: Find notes that need processing
-        let query = db.select().from(notes);
+        // เงื่อนไขสะสมแล้วค่อยต่อ .where() ครั้งเดียว — เดิมเป็น if/else ซ้อนที่ลืม filter ได้ง่าย
+        const conditions = [isNull(notes.deletedAt)];
+        if (novelId) conditions.push(eq(notes.novelId, novelId));
+        if (excludeNoteIds.length > 0) conditions.push(notInArray(notes.id, excludeNoteIds));
 
-        if (novelId) {
-            if (excludeNoteIds.length > 0) {
-                query = query.where(
-                    and(
-                        eq(notes.novelId, novelId),
-                        notInArray(notes.id, excludeNoteIds)
-                    )
-                ) as typeof query;
-            } else {
-                query = query.where(eq(notes.novelId, novelId)) as typeof query;
-            }
-        } else if (excludeNoteIds.length > 0) {
-            query = query.where(notInArray(notes.id, excludeNoteIds)) as typeof query;
-        }
+        const query = db.select().from(notes).where(and(...conditions));
 
         const unprocessedNotes = await query.limit(limit);
 
@@ -535,8 +525,8 @@ export async function getProcessingStats(novelId?: string): Promise<{
     try {
         // Total notes
         const totalNotesQuery = novelId
-            ? db.select({ count: sql<number>`count(*)` }).from(notes).where(eq(notes.novelId, novelId))
-            : db.select({ count: sql<number>`count(*)` }).from(notes);
+            ? db.select({ count: sql<number>`count(*)` }).from(notes).where(and(eq(notes.novelId, novelId), isNull(notes.deletedAt)))
+            : db.select({ count: sql<number>`count(*)` }).from(notes).where(isNull(notes.deletedAt));
         const [{ count: totalNotes }] = await totalNotesQuery;
 
         // Notes with states

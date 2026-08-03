@@ -9,6 +9,7 @@ import {
   BarChart3,
   LogOut,
   ChevronsUpDown,
+  Trash2,
 } from "lucide-react"
 
 import {
@@ -39,6 +40,7 @@ import {
 const navItems = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { title: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
+  { title: "ถังขยะ", href: "/dashboard/trash", icon: Trash2 },
   { title: "Settings", href: "/dashboard/settings", icon: Settings },
 ]
 

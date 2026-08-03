@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { guardNovel } from "@/lib/authz";
 import { db } from "@/db/drizzle";
 import { notes } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -10,7 +11,8 @@ type Props = {
 // PATCH — set note status (ใช้โดย Python background worker หลัง spell check เสร็จ)
 export async function PATCH(request: NextRequest, { params }: Props) {
     try {
-        const { noteId } = await params;
+        const { novelId, noteId } = await params;
+        const denied = await guardNovel(novelId); if (denied) return denied;
         const { status } = await request.json();
 
         if (!status) {

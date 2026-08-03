@@ -2,6 +2,7 @@ import { ReactNode } from "react"
 import { redirect } from "next/navigation"
 import { headers } from "next/headers"
 import { auth } from "@/lib/auth"
+import { GuestBanner } from "@/components/guest-banner"
 
 /**
  * ด่านเดียวคุมทุกหน้าใต้ /dashboard — คนที่ยังไม่ล็อกอินจะถูกพาไปหน้า login
@@ -19,5 +20,10 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         redirect("/login")
     }
 
-    return <>{children}</>
+    return (
+        <>
+            <GuestBanner />
+            {children}
+        </>
+    )
 }

@@ -26,43 +26,15 @@ import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 
-// Event type configuration - minimal colors
+// ชนิดฉาก — ไอคอนคือตัวแยก ไม่ใช่สี (สีสงวนไว้ให้สิ่งที่ต้องการสายตาจริง ๆ)
 const EVENT_TYPES = {
-    scene: {
-        label: "Scene",
-        icon: Film,
-        color: "text-slate-400",
-    },
-    action: {
-        label: "Action",
-        icon: Swords,
-        color: "text-red-400",
-    },
-    dialogue: {
-        label: "Dialogue",
-        icon: MessageSquare,
-        color: "text-blue-400",
-    },
-    flashback: {
-        label: "Flashback",
-        icon: History,
-        color: "text-amber-400",
-    },
-    revelation: {
-        label: "Revelation",
-        icon: Lightbulb,
-        color: "text-purple-400",
-    },
-    emotional: {
-        label: "Emotional",
-        icon: Heart,
-        color: "text-pink-400",
-    },
-    transition: {
-        label: "Transition",
-        icon: ArrowRight,
-        color: "text-emerald-400",
-    },
+    scene: { label: "Scene", icon: Film },
+    action: { label: "Action", icon: Swords },
+    dialogue: { label: "Dialogue", icon: MessageSquare },
+    flashback: { label: "Flashback", icon: History },
+    revelation: { label: "Revelation", icon: Lightbulb },
+    emotional: { label: "Emotional", icon: Heart },
+    transition: { label: "Transition", icon: ArrowRight },
 } as const
 
 type EventType = keyof typeof EVENT_TYPES
@@ -114,7 +86,7 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
     // Handle scene participants from canvas children and their elementDetails (per Idea level)
     const elementDetails = (event as any).elementDetails || []
     const canvasItems = (event.canvasData as any[]) || []
-    
+
     const uniqueCharsMap = new Map<string, any>()
     const uniqueFactionsMap = new Map<string, any>()
 
@@ -138,7 +110,7 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
                     const key = `character-${identity}`;
                     const existing = uniqueCharsMap.get(key);
                     const actionText = detail?.action ? `${detail.action}` : '';
-                    
+
                     if (existing) {
                         if (actionText && !existing.actions.includes(actionText)) {
                             existing.actions.push(actionText);
@@ -158,7 +130,7 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
                     const key = `faction-${identity}`;
                     const existing = uniqueFactionsMap.get(key);
                     const actionText = detail?.action ? `${detail.action}` : '';
-                    
+
                     if (existing) {
                         if (actionText && !existing.actions.includes(actionText)) {
                             existing.actions.push(actionText);
@@ -187,7 +159,7 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
 
     let displayedAvatars: any[] = []
     let remainingAvatarsCount = 0
-    let factionParts: any[] = factionsList
+    const factionParts: any[] = factionsList
 
     if (charactersList.length > 0) {
         displayedAvatars = charactersList.slice(0, 3)
@@ -206,6 +178,18 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
         remainingAvatarsCount = relatedCharacters.length - 3
     }
 
+    // คำเชื่อมเหตุ-ผลกับฉากก่อนหน้า — "แล้วก็" คือจุดอ่อนของพล็อต จึงเป็นอันเดียวในแถวนี้ที่ได้สี
+    const causal: { label: string; hint: string; weak: boolean } | null =
+        event.causeKind === "therefore"
+            ? { label: "ดังนั้น", hint: event.causeNote || "ผลต่อเนื่องจากเรื่องก่อนหน้า", weak: false }
+            : event.causeKind === "but"
+                ? { label: "แต่ว่า", hint: event.causeNote || "หักเหจากเรื่องก่อนหน้า", weak: false }
+                : !isFirstScene
+                    ? { label: "แล้วก็…", hint: 'ยังไม่ระบุเหตุ-ผลกับเรื่องก่อนหน้า — พล็อตแบบ "แล้วก็" ตั้งได้ในโครงฉากดราม่า', weak: true }
+                    : null
+
+    const hasThreads = !!threadDots && threadDots.length > 0
+
     // Handle completion toggle — state lives in TimelineBoard (optimistic)
     const handleToggleComplete = (e: React.MouseEvent) => {
         e.stopPropagation()
@@ -223,271 +207,211 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
             ref={setNodeRef}
             style={style}
             className={cn(
-                "relative w-full py-2 transition-all duration-300",
-                // Fade-in animation on mount
-                "animate-in fade-in slide-in-from-bottom-4 duration-500",
+                "relative w-full py-1.5",
                 // Lens: de-emphasize cards that don't match the active filter
-                isDimmed && "opacity-25 grayscale hover:opacity-60",
+                isDimmed && "opacity-30 transition-opacity duration-200 hover:opacity-70 motion-reduce:transition-none",
             )}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
         >
-            {/* Film Frame Card */}
             <div
                 className={cn(
-                    "relative overflow-hidden cursor-pointer chamfered-sm",
-                    "transition-all duration-300 ease-out",
-                    "bg-[#f5f5f0] dark:bg-card border border-zinc-200/60 dark:border-border",
-                    // Hover state
-                    isHovered && !isDragging && [
-                        "bg-[#eeede8] dark:bg-accent",
-                        "shadow-md shadow-primary/10",
-                        "scale-[1.01]",
-                    ],
-                    // Drag state
-                    isDragging && "shadow-2xl ring-2 ring-primary/30 scale-105"
+                    "relative cursor-pointer chamfered-sm border bg-card",
+                    "transition-colors duration-150 ease-out motion-reduce:transition-none",
+                    isHovered && !isDragging ? "border-[var(--forge-amber)]/50 bg-accent/40" : "border-border",
+                    // เสร็จแล้ว = ถอยไปเป็นพื้นหลัง ไม่ต้องมีแถบสีเรืองแสงมาป่าวประกาศ
+                    event.isCompleted && !isHovered && "border-border/60 bg-muted/40",
+                    isDragging && "ring-1 ring-[var(--forge-amber)]/50",
                 )}
                 onClick={handleClick}
             >
-                {/* Status Indicator Strip (Left Edge) */}
-                <div
-                    className={cn(
-                        "absolute left-0 top-0 bottom-0 transition-all duration-300",
-                        isHovered ? "w-1" : "w-0.5",
-                        event.isCompleted
-                            ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]"
-                            : "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.3)]"
-                    )}
-                />
-
-                {/* Content */}
-                <div className="pl-3 pr-2 py-3">
-                    {/* Title Row */}
-                    <div className="flex items-start justify-between gap-2 mb-2">
+                <div className="px-3 py-2.5">
+                    {/* Title */}
+                    <div className="flex items-start justify-between gap-2">
                         <h4
                             className={cn(
-                                "font-display font-semibold text-sm leading-snug tracking-tight",
-                                "text-zinc-800 dark:text-foreground transition-all duration-200",
-                                isHovered && !event.isCompleted && "text-primary",
-                                event.isCompleted && "text-zinc-400 dark:text-muted-foreground line-through"
+                                "text-sm font-medium leading-snug text-foreground",
+                                event.isCompleted && "text-muted-foreground line-through decoration-1",
                             )}
                         >
                             {event.title}
                         </h4>
 
-                        {/* Actions */}
-                        <div className="flex items-center gap-0.5">
-                            {/* Status Toggle — always visible so it's easy to find */}
+                        <div className="flex shrink-0 items-center gap-0.5">
                             <button
                                 onClick={handleToggleComplete}
                                 className={cn(
-                                    "p-1 rounded hover:bg-zinc-200/60 dark:hover:bg-muted transition-colors",
+                                    "rounded p-1 transition-colors hover:bg-muted motion-reduce:transition-none",
                                     event.isCompleted
-                                        ? "text-emerald-500"
-                                        : "text-amber-500/70 hover:text-amber-500"
+                                        ? "text-emerald-600 dark:text-emerald-500"
+                                        : "text-muted-foreground/60 hover:text-foreground",
                                 )}
                                 title={event.isCompleted ? "ทำเครื่องหมายเป็นฉบับร่าง" : "ทำเครื่องหมายว่าเสร็จ"}
                             >
-                                {event.isCompleted ? (
-                                    <CheckCircle2 className="w-4 h-4" />
-                                ) : (
-                                    <Circle className="w-4 h-4" />
-                                )}
+                                {event.isCompleted ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
                             </button>
 
-                            {/* Drag Handle (fade in on hover) */}
                             <div
                                 {...attributes}
                                 {...listeners}
                                 className={cn(
-                                    "p-1 rounded hover:bg-zinc-200/60 dark:hover:bg-muted cursor-grab active:cursor-grabbing text-zinc-500 dark:text-muted-foreground transition-opacity duration-200",
-                                    isHovered ? "opacity-100" : "opacity-0"
+                                    "cursor-grab rounded p-1 text-muted-foreground/60 transition-opacity duration-150 hover:bg-muted active:cursor-grabbing motion-reduce:transition-none",
+                                    isHovered ? "opacity-100" : "opacity-0",
                                 )}
                                 onPointerDown={(e) => {
                                     e.stopPropagation()
                                     listeners?.onPointerDown?.(e)
                                 }}
                             >
-                                <GripVertical className="w-3.5 h-3.5" />
+                                <GripVertical className="h-3.5 w-3.5" />
                             </div>
                         </div>
                     </div>
 
                     {/* Description */}
                     {event.description && (
-                        <p className="text-[11px] text-zinc-500 dark:text-muted-foreground line-clamp-2 mb-2 leading-relaxed px-0.5">
+                        <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
                             {event.description}
                         </p>
                     )}
 
-                    {/* Thread dots — colored edge marks แบบฟิล์มตัดต่อ */}
-                    {threadDots && threadDots.length > 0 && (
-                        <div className="flex items-center gap-1 mb-2">
-                            {threadDots.slice(0, 5).map((dot, i) => (
-                                <TooltipProvider key={i} delayDuration={100}>
-                                    <Tooltip>
-                                        <TooltipTrigger asChild>
-                                            <span
-                                                role="img"
-                                                aria-label={`ปม: ${dot.title}`}
-                                                className="h-2 w-2 chamfered-sm shrink-0 cursor-default transition-transform hover:scale-110 motion-reduce:transition-none"
-                                                style={{
-                                                    background: dot.color,
-                                                    boxShadow: `0 0 5px ${dot.color}66`,
-                                                }}
-                                            />
-                                        </TooltipTrigger>
-                                        <TooltipContent side="top">
-                                            <span className="font-technical text-[9px] uppercase tracking-wide">{dot.title}</span>
-                                        </TooltipContent>
-                                    </Tooltip>
-                                </TooltipProvider>
-                            ))}
-                            {threadDots.length > 5 && (
-                                <span className="text-[9px] font-medium text-muted-foreground tabular-nums" aria-label={`และอีก ${threadDots.length - 5} ปม`}>
-                                    +{threadDots.length - 5}
-                                </span>
-                            )}
-                        </div>
-                    )}
+                    {/* ข้อมูลฉาก — บรรทัดเดียว สีกลางทั้งแถว */}
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+                            <TypeIcon className="h-3 w-3 shrink-0" />
+                            <span className="shrink-0 font-technical text-[10px] uppercase tracking-wide">
+                                {typeConfig.label}
+                            </span>
 
-                    {/* Metadata Footer */}
-                    <div className="flex items-center justify-between text-[10px] mt-1 pt-1.5 border-t border-zinc-100/10">
-                        {/* Left: Type & Location */}
-                        <div className="flex items-center gap-1.5 text-zinc-600 dark:text-muted-foreground flex-wrap">
-                            {/* POV (P1) */}
-                            {povCharacter && (
-                                <>
-                                    <div className="flex items-center gap-1 text-violet-400 max-w-[90px]">
-                                        <Eye className="w-3 h-3 shrink-0" />
-                                        <span className="truncate text-[9px] uppercase tracking-wide font-medium">
-                                            {povCharacter.name}
-                                        </span>
-                                    </div>
-                                    <span className="text-zinc-400">·</span>
-                                </>
-                            )}
-                            {/* Causal chain badge (P2) — ดังนั้น/แต่ว่า, ไม่มี = "แล้วก็" (จุดอ่อน) */}
-                            {event.causeKind === "therefore" ? (
-                                <>
-                                    <span className="text-[9px] uppercase tracking-wide font-medium text-emerald-500" title={event.causeNote || "ผลต่อเนื่องจากเรื่องก่อนหน้า"}>
-                                        ดังนั้น
-                                    </span>
-                                    <span className="text-zinc-400">·</span>
-                                </>
-                            ) : event.causeKind === "but" ? (
-                                <>
-                                    <span className="text-[9px] uppercase tracking-wide font-medium text-red-500" title={event.causeNote || "หักเหจากเรื่องก่อนหน้า"}>
-                                        แต่ว่า
-                                    </span>
-                                    <span className="text-zinc-400">·</span>
-                                </>
-                            ) : !isFirstScene ? (
-                                <>
-                                    <span className="text-[9px] uppercase tracking-wide font-medium text-zinc-500/70 border-b border-dashed border-zinc-500/40" title={'ยังไม่ระบุเหตุ-ผลกับเรื่องก่อนหน้า — พล็อตแบบ "แล้วก็" ตั้งได้ในโครงฉากดราม่า'}>
-                                        แล้วก็…
-                                    </span>
-                                    <span className="text-zinc-400">·</span>
-                                </>
-                            ) : null}
-                            {/* Event Type */}
-                            <div className={cn("flex items-center gap-1 transition-colors", typeConfig.color)}>
-                                <TypeIcon className="w-3 h-3" />
-                                <span className="text-[9px] uppercase tracking-wide font-medium">
-                                    {typeConfig.label}
-                                </span>
-                            </div>
-
-                            {/* Location */}
                             {relatedLocation && (
                                 <>
-                                    <span className="text-zinc-400">·</span>
-                                    <div className="flex items-center gap-1 max-w-[80px]">
-                                        <MapPin className="w-3 h-3 shrink-0" />
-                                        <span className="truncate text-[9px]">
-                                            {relatedLocation.name}
-                                        </span>
-                                    </div>
+                                    <MetaDot />
+                                    <MapPin className="h-3 w-3 shrink-0" />
+                                    <span className="truncate">{relatedLocation.name}</span>
                                 </>
                             )}
 
-                            {/* Faction Participants */}
+                            {povCharacter && (
+                                <>
+                                    <MetaDot />
+                                    <Eye className="h-3 w-3 shrink-0" />
+                                    <span className="truncate">{povCharacter.name}</span>
+                                </>
+                            )}
+
                             {factionParts.length > 0 && (
                                 <>
-                                    <span className="text-zinc-400">·</span>
-                                    <div className="flex items-center gap-1 text-emerald-500">
-                                        <Shield className="w-3 h-3 shrink-0" />
-                                        <span className="text-[9px] uppercase tracking-wide font-medium">
-                                            {factionParts.length} ฝ่าย
-                                        </span>
-                                    </div>
+                                    <MetaDot />
+                                    <Shield className="h-3 w-3 shrink-0" />
+                                    <span className="shrink-0 tabular-nums">{factionParts.length}</span>
                                 </>
                             )}
 
-                            {/* Value-shift badge (D1) */}
+                            {/* ค่าที่ขึ้น/ลง — ข้อมูลสองขั้วจริง สีจึงมีความหมาย ไม่ใช่ของตกแต่ง */}
                             {typeof event.valueShift === "number" && event.valueShift !== 0 && (
                                 <>
-                                    <span className="text-zinc-400">·</span>
-                                    <div className={cn(
-                                        "flex items-center gap-0.5",
-                                        event.valueShift > 0 ? "text-emerald-500" : "text-red-500"
-                                    )}>
-                                        {event.valueShift > 0
-                                            ? <TrendingUp className="w-3 h-3" />
-                                            : <TrendingDown className="w-3 h-3" />}
-                                        <span className="text-[9px] tabular-nums font-medium">
-                                            {event.valueShift > 0 ? `+${event.valueShift}` : event.valueShift}
-                                        </span>
-                                    </div>
+                                    <MetaDot />
+                                    <span
+                                        className={cn(
+                                            "flex shrink-0 items-center gap-0.5 tabular-nums",
+                                            event.valueShift > 0
+                                                ? "text-emerald-700 dark:text-emerald-500"
+                                                : "text-red-700 dark:text-red-400",
+                                        )}
+                                        title={`ค่าเปลี่ยนแปลง${event.valueShift > 0 ? "ขึ้น" : "ลง"} ${Math.abs(event.valueShift)}`}
+                                    >
+                                        {event.valueShift > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                                        {event.valueShift > 0 ? `+${event.valueShift}` : event.valueShift}
+                                    </span>
                                 </>
                             )}
                         </div>
 
-                        {/* Right: Character Avatars */}
                         {displayedAvatars.length > 0 && (
-                            <div className="flex -space-x-1.5">
+                            <div className="flex shrink-0 -space-x-1.5">
                                 {displayedAvatars.map((char, i) => (
                                     <TooltipProvider key={char.id || i} delayDuration={100}>
                                         <Tooltip>
                                             <TooltipTrigger asChild>
-                                                <Avatar className={cn(
-                                                    "h-5 w-5 border-2 border-[#f5f5f0] dark:border-zinc-900 ring-1 ring-zinc-300/40",
-                                                    "transition-transform duration-200",
-                                                    isHovered && "scale-110",
-                                                    char.isDummy && "border-dashed"
-                                                )}>
-                                                    {char.image ? (
-                                                        <AvatarImage src={char.image} alt={char.name} />
-                                                    ) : null}
-                                                    <AvatarFallback className={cn("text-[8px]", char.isDummy ? "bg-zinc-800 text-zinc-400" : "bg-primary/20 text-primary")}>
+                                                <Avatar className={cn("h-5 w-5 border-2 border-card", char.isDummy && "border-dashed")}>
+                                                    {char.image ? <AvatarImage src={char.image} alt={char.name} /> : null}
+                                                    <AvatarFallback className={cn("text-[8px]", char.isDummy ? "bg-muted text-muted-foreground" : "bg-primary/20 text-primary")}>
                                                         {char.name.slice(0, 1).toUpperCase()}
                                                     </AvatarFallback>
                                                 </Avatar>
                                             </TooltipTrigger>
-                                            <TooltipContent side="bottom" className="text-xs max-w-xs p-2 space-y-1">
+                                            <TooltipContent side="bottom" className="max-w-xs space-y-1 p-2 text-xs">
                                                 <p className="font-semibold">{char.name} {char.isDummy && "(ชั่วคราว)"}</p>
                                                 {char.action && (
-                                                    <p className="text-[10px] text-zinc-400 leading-normal"><span className="text-[var(--forge-amber)] font-medium">Action:</span> {char.action}</p>
+                                                    <p className="text-[11px] leading-normal text-muted-foreground">
+                                                        <span className="font-medium text-foreground">ทำอะไร:</span> {char.action}
+                                                    </p>
                                                 )}
                                             </TooltipContent>
                                         </Tooltip>
                                     </TooltipProvider>
                                 ))}
                                 {remainingAvatarsCount > 0 && (
-                                    <div className={cn(
-                                        "h-5 w-5 rounded-full bg-zinc-300 dark:bg-zinc-800 border-2 border-[#f5f5f0] dark:border-zinc-900",
-                                        "flex items-center justify-center text-[8px] text-zinc-600 dark:text-zinc-400 font-semibold",
-                                        "transition-transform duration-200",
-                                        isHovered && "scale-110"
-                                    )}>
+                                    <div className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-card bg-muted text-[9px] font-medium text-muted-foreground">
                                         +{remainingAvatarsCount}
                                     </div>
                                 )}
                             </div>
                         )}
                     </div>
+
+                    {/* โครงเรื่อง: คำเชื่อมเหตุ-ผล + ปมที่ฉากนี้แตะ — คนละเรื่องกับข้อมูลฉาก จึงแยกบรรทัด */}
+                    {(hasThreads || causal) && (
+                        <div className="mt-2 flex items-center gap-2 border-t border-border/60 pt-2">
+                            {causal && (
+                                <span
+                                    className={cn(
+                                        "shrink-0 text-[11px]",
+                                        causal.weak
+                                            ? "text-[var(--forge-amber)] underline decoration-dashed underline-offset-2"
+                                            : "text-muted-foreground",
+                                    )}
+                                    title={causal.hint}
+                                >
+                                    {causal.label}
+                                </span>
+                            )}
+
+                            {hasThreads && (
+                                <div className="flex items-center gap-1">
+                                    {threadDots!.slice(0, 4).map((dot, i) => (
+                                        <TooltipProvider key={i} delayDuration={100}>
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <span
+                                                        role="img"
+                                                        aria-label={`ปม: ${dot.title}`}
+                                                        className="h-1.5 w-4 shrink-0 rounded-full"
+                                                        style={{ background: dot.color }}
+                                                    />
+                                                </TooltipTrigger>
+                                                <TooltipContent side="top">
+                                                    <span className="text-xs">{dot.title}</span>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                        </TooltipProvider>
+                                    ))}
+                                    {threadDots!.length > 4 && (
+                                        <span className="text-[11px] tabular-nums text-muted-foreground" aria-label={`และอีก ${threadDots!.length - 4} ปม`}>
+                                            +{threadDots!.length - 4}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
     )
+}
+
+/** ตัวคั่นข้อมูล — จางกว่าข้อความที่มันคั่นเสมอ */
+function MetaDot() {
+    return <span aria-hidden className="shrink-0 text-border">·</span>
 }

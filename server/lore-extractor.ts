@@ -8,6 +8,7 @@ import OpenAI from "openai";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { CACHE_TAGS } from "@/lib/cache-config";
 import { addReferences, removeOutgoingReferences, type AddReferenceInput } from "./references";
+import { isGuest, GUEST_AI_MESSAGE } from "@/lib/guest";
 
 // Initialize AI clients
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
@@ -18,6 +19,7 @@ export async function extractLoreEntitiesInBackground(
     content: string
 ): Promise<void> {
     try {
+        if (await isGuest()) return;
         console.log(`[Background Extraction] Starting for Lore Entry: ${loreId}, Novel: ${novelId}`);
 
         // Set status to processing

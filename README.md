@@ -4,7 +4,7 @@
 
 **Mythoria** คือแพลตฟอร์มเขียนนิยายยุคใหม่ที่รวมพลัง Project Management + AI อัจฉริยะ + World Building เข้าไว้ในที่เดียว ออกแบบมาสำหรับนักเขียนที่ต้องการเครื่องมือจริงจัง ไม่ใช่แค่ Text Editor ทั่วไป
 
-> **Current Version: `v2.2`** — Consistency Guardian, Stylometry Deepening (MTLD + rhythm) & UX upgrade (Cmd+K palette, nav grouping, first-run)
+> **Current Version: `v2.3`** — Launch readiness: invite-only signup, guest demo mode, data isolation ครบทุก server action, Python service auth · Story Codex ยุบรวมเข้า World Graph · Stylometry #5 (POS n-gram + emotional arc)
 
 ---
 
@@ -215,6 +215,7 @@ Canvas ที่ทรงพลังที่สุดสำหรับวา�
 - **@-mention**: พิมพ์ `@` ในตอนเพื่อเชื่อมตัวละคร/สถานที่/ตำนาน/ปม ได้ทุกที่ (สร้าง reference อัตโนมัติ)
 - **AI Auto-link**: extractor วิเคราะห์เนื้อหาแล้วสร้างเส้นเชื่อมให้เอง — แยก `ผู้เขียนเชื่อมเอง` vs `AI เดา`
 - **World Graph**: หน้ากราฟทั้งโลก เห็นความเชื่อมโยงของทุก entity ในแวบเดียว · ชี้โหนดไฮไลต์เพื่อนบ้าน คลิกเปิดหน้า · กรองตามที่มา (ผู้เขียน/AI) · มี **บรรณารักษ์ (Librarian)** ถาม-ตอบเกี่ยวกับนิยายในตัว
+  - **สองมุมมองในหน้าเดียว** (v2.3): สลับ **กราฟ** ↔ **รายการ** (เดิมคือหน้า Story Codex แยก) — ข้อมูลชุดเดียวกัน ต่างแค่วิธีอ่าน: กราฟดูภาพรวม/คลัสเตอร์ · รายการค้นหาและไล่อ่านความเชื่อมโยงทีละ entity
 - **Backlink**: ถามได้ทันทีว่า "ตัวละครนี้โผล่ในตอนไหนบ้าง" โดยไม่ต้อง query แยกตาราง
 
 ### ⚡ Power System (ใหม่ใน v1.5)
@@ -262,6 +263,15 @@ Canvas ที่ทรงพลังที่สุดสำหรับวา�
 
 - **Discord Sync**: โพสต์ Update นิยายเข้า Discord Channel อัตโนมัติ
 
+### 🔐 บัญชีและการเข้าใช้งาน (ใหม่ใน v2.3)
+
+- **Invite-only Signup**: สมัครได้ต่อเมื่อมีรหัสเชิญ — ดักที่ `databaseHooks.user.create` ซึ่งเป็นคอขวดที่ทั้งทางอีเมลและทาง Google ต้องผ่าน (ไม่ใช่การเทียบ path ใน route handler ที่ดักได้ทางเดียว)
+- **Guest Demo Mode**: ปุ่ม "ลองใช้งานแบบผู้เยี่ยมชม" ในหน้า login → เข้าบัญชีเดโมที่มีนิยายตัวอย่างพร้อมข้อมูล ลองกด ลองแก้ได้จริง
+  - ข้อมูลรีเซ็ตเป็นรอบด้วย `npm run seed:demo` (ตั้ง cron รายคืน)
+  - **ฟีเจอร์ AI ปิดสำหรับผู้เยี่ยมชม** — กันคนนอกเผาโควตา API ของเจ้าของแอป (`lib/guest.ts` เช็คจากอีเมลใน session ไม่ใช่ cookie ฝั่ง client)
+- **Data Isolation**: ทุก server action ที่แตะข้อมูล scope ด้วย `novelId` ผ่าน `requireNovelAccess()` / `requireUser()` ใน `lib/authz.ts`
+- **Python Service Auth**: FastAPI บังคับ header `X-Internal-Key` ทุก endpoint · เบราว์เซอร์เรียกผ่าน proxy same-origin `/api/py/...` ไม่ยิง `localhost:8000` ตรง
+
 ---
 
 ## 🤖 ระบบ AI
@@ -295,8 +305,9 @@ Agent อัจฉริยะที่ใช้ Tool Calling ตรวจสอ
 - **Bulk Analyze**: วิเคราะห์ทุก Note ในนิยายพร้อมกัน
 - statistical NLP ล้วน (PyThaiNLP) — ไม่ใช้ LLM: pacing/mood, author voice, character vibes, lexical richness + author fingerprint (z-score drift)
 
-> 🔭 **Patch 2.5 — Stylometry Deepening**: ยกระดับจาก "รูปนิ่ง 1 ใบ/ตอน" → "วิดีโอ + ลายนิ้วมือ"
-> — ✅ **MTLD/MATTR** (แทน TTR) + **sentence-rhythm curve** (จังหวะประโยค + burstiness) ลงแล้ว · ถัดไป: function-word profile + Burrows's Delta, rolling-window จับจุดเพี้ยนระดับย่อหน้า · [`docs/stylometry-deepening-plan.md`](./docs/stylometry-deepening-plan.md)
+> 🔭 **Stylometry Deepening**: ยกระดับจาก "รูปนิ่ง 1 ใบ/ตอน" → "วิดีโอ + ลายนิ้วมือ"
+> — ✅ ลงครบแล้ว #1-#5: MTLD/MATTR (แทน TTR) · sentence-rhythm curve + burstiness · function-word profile + Burrows's Δ · rolling-window drift · POS n-gram + emotional arc
+> · ถัดไป: Thai readability score, แยกจังหวะบทพูด vs บรรยาย · [`docs/stylometry-deepening-plan.md`](./docs/stylometry-deepening-plan.md)
 
 ### 5. Consistency Guardian (ใหม่)
 
@@ -304,7 +315,7 @@ Agent อัจฉริยะที่ใช้ Tool Calling ตรวจสอ
 
 - ✅ **"ตายแล้วยังปรากฏ"** — เทียบ character state (`dead`) กับการปรากฏในบทถัดมาด้วย `orderIndex` (รู้จักการชุบชีวิต)
 - หลักการ: ใส่เฉพาะ check ที่มาจากข้อมูล structured จริง (enum/FK) เป็น error — เลี่ยง false positive ที่ทำให้ผู้ใช้เลิกเชื่อ
-- panel กดตรวจเองบนหน้า Analytics · ต่อยอด Context Fabric · [`docs/consistency-guardian-plan.md`](./docs/consistency-guardian-plan.md)
+- panel กดตรวจเองบนหน้า Analytics · ต่อยอด Context Fabric
 
 ### 6. AI Summary (Note & Chapter)
 
@@ -322,19 +333,14 @@ Agent อัจฉริยะที่ใช้ Tool Calling ตรวจสอ
 - ผู้ช่วย AI ช่วยวางแผนการ Publish นิยาย
 - วิเคราะห์ความพร้อมของเนื้อหา, แนะนำกลยุทธ์การ Publish
 
-### 9. Word Checker
+### 9. Graph RAG (Python Microservice + Context Fabric)
 
-- ตรวจสอบคำที่ใช้บ่อย/น้อยเกินไป
-- ช่วยหาคำที่ใช้ซ้ำซาก และแนะนำทางเลือก
-
-### 10. Graph RAG (Python Microservice + Context Fabric)
-
-- **LanceDB**: เก็บ Embeddings ครอบ **13 entity types** (ตัวละคร/สถานที่/ตำนาน/พลัง/ปม...) ผ่าน embeddable provider
+- **LanceDB**: เก็บ Embeddings ครอบทุก entity type ใน registry (**14 ชนิด**) — 12 ชนิดผ่าน embeddable provider ฝั่ง Next ส่วน note/chapter (Tiptap ยาว) ฝั่ง Python จัดการเอง
 - **FastAPI**: Service ที่ให้ Next.js ดึง Context ก่อนส่งให้ AI
 - **Graph RAG**: vector search หา "จุดเริ่ม" → เดิน reference graph 1 hop → ได้ context ทั้ง **เชิงความหมาย (similar) + เชิงโครงสร้าง (connected)** ก่อนป้อน LLM
 - Sync เป็น **manual** by design — กด **Vector Sync** ครั้งเดียว rebuild ทั้ง vector embeddings + reference graph index ให้สดพร้อมกัน (ผู้เขียนคุมว่าจะให้ AI เห็นอะไรเมื่อไหร่)
 
-### 11. บรรณารักษ์ (Librarian Q&A) — ใหม่ใน v2.1
+### 10. บรรณารักษ์ (Librarian Q&A) — ใหม่ใน v2.1
 
 ผู้ช่วยถาม-ตอบเกี่ยวกับนิยายของคุณ อยู่บนหน้า **World Graph**:
 
@@ -359,7 +365,7 @@ Agent อัจฉริยะที่ใช้ Tool Calling ตรวจสอ
 | **@dnd-kit** | Drag & Drop interactions |
 | **Quill.js / react-quill-new** | Rich Text Editor |
 | **diff-match-patch** | Word-level diff ใน Rewrite Workspace |
-| **Framer Motion** | Animations & Paragraph transitions |
+| **Motion** (เดิม Framer Motion) | Animations & Paragraph transitions |
 | **Lucide React** | Icon system |
 | **Sonner** | Toast notifications |
 | **Better Auth** | Authentication (Email, OAuth) |
@@ -383,20 +389,21 @@ Agent อัจฉริยะที่ใช้ Tool Calling ตรวจสอ
 
 ## 🗄️ โครงสร้างฐานข้อมูล
 
-ระบบมี **48+ tables** ครอบคลุมทุกมิติของการเขียนนิยาย:
+ระบบมี **56 tables** ครอบคลุมทุกมิติของการเขียนนิยาย:
 
 | กลุ่ม | Tables |
 |---|---|
-| **Core** | `novels`, `chapters`, `notes` |
-| **Characters** | `characters`, `relationships`, `relationship_history`, `life_events`, `character_states` |
-| **World** | `locations`, `location_connections`, `items`, `factions`, `eras` |
-| **Lore** | `lore`, `lore_groups`, `entities` |
+| **Core** | `novels`, `chapters`, `notes`, `note_versions`, `tags`, `chapter_tags` |
+| **Characters** | `characters`, `character_relationships`, `relationship_history`, `character_life_events`, `character_states`, `character_design_elements`, `character_factions`, `chapter_characters`, `note_characters` |
+| **World** | `locations`, `location_connections`, `location_entities`, `items`, `factions`, `faction_relationships`, `faction_status_presets`, `eras`, `world_systems` |
+| **Lore** | `lore_entries`, `lore_groups`, `entities` |
 | **Powers** | `powers`, `character_powers`, `power_levels`, `power_combinations` |
-| **Plotting** | `ideas`, `timeline_events`, `scene_element_details`, `connections`, `plot_threads`, `plot_thread_beats` |
-| **AI** | `analysis_queue`, `suggestions`, `note_summaries`, `chapter_summaries`, `audit_issues`, `librarian_messages` |
+| **Plotting** | `ideas`, `idea_connections`, `timeline_events`, `scene_element_details`, `plot_threads`, `plot_thread_beats`, `story_arcs` |
+| **AI** | `ai_suggestions`, `ai_chapter_reviews`, `character_analysis_queue`, `state_extraction_queue`, `note_audit_issues`, `librarian_messages`, `alias_cache` |
+| **Stylometry** | `chapter_stylometry`, `note_stylometry` |
 | **Context Fabric** | `references` (ดัชนี derive จาก junction) |
-| **Sync** | `version_history`, `drive_sync_states` |
-| **Auth** | `users`, `sessions`, `accounts`, `verifications` |
+| **Sync** | `drive_credentials`, `drive_settings`, `drive_sync` |
+| **Auth** | `user`, `session`, `account`, `verification`, `invitations` |
 
 ---
 
@@ -407,9 +414,9 @@ Agent อัจฉริยะที่ใช้ Tool Calling ตรวจสอ
 ```
 L4  Graph RAG — vector search + เดิน reference graph 1 hop → context เชิงความหมาย + โครงสร้าง
 L3  Knowledge Graph — getNovelGraph() ครอบทุก entity + World Graph UI
-L2  RAG / Vector — LanceDB ครอบ 13 entity types (Gemini 768d)
+L2  RAG / Vector — LanceDB ครอบ 14 entity types (Gemini 768d)
 L1  Reference Layer — ตาราง `references` (ดัชนี derive จาก junction · rebuild ตอน Vector Sync · มีทิศทาง + meta + createdBy)
-L0  Entity Registry — abstraction เหนือ 48 ตาราง (resolve / search / embeddable)
+L0  Entity Registry — abstraction เหนือ 56 ตาราง (resolve / search / embeddable)
 ```
 
 | Phase | ทำอะไร | สถานะ |
@@ -427,10 +434,10 @@ L0  Entity Registry — abstraction เหนือ 48 ตาราง (resolve 
 
 ### 🔭 ฟีเจอร์ถัดไป
 
-- ✅ **Consistency Guardian** (เริ่มแล้ว — check "ตายแล้วยังปรากฏ") · 🚧 **UX upgrade** (nav grouping, first-run, Cmd+K palette ลงแล้ว; ลด modal กำลังทยอย)
-- ⬜ ถัดไป — Promise Ledger อัตโนมัติ, Story Codex, Echo detector, Character Voice Distance, Pacing Heatmap
+- ✅ ลงแล้ว — Consistency Guardian, Story Codex (ยุบเข้า World Graph), Echo detector, Character Voice Distance, Pacing Heatmap, Global Librarian
+- ⬜ ถัดไป — Thai readability score, dialogue vs narration rhythm, Context Fabric Phase 5-7, ย้าย vector store LanceDB → pgvector (ทำตอนย้าย VPS)
 
-รวมไว้ที่ [`docs/roadmap.md`](./docs/roadmap.md) · [`docs/ux-improvement-plan.md`](./docs/ux-improvement-plan.md)
+รวมไว้ที่ [`docs/roadmap.md`](./docs/roadmap.md) · แผนก่อนเปิดใช้งานจริงที่ [`docs/launch-readiness-plan.md`](./docs/launch-readiness-plan.md)
 
 ---
 
@@ -510,6 +517,13 @@ DISCORD_BOT_TOKEN="..."
 
 # Error tracking (Optional) — ทำงานเฉพาะ production, ว่างไว้ตอน dev ก็ได้
 NEXT_PUBLIC_SENTRY_DSN=""
+
+# Python service auth — ต้องตรงกับใน pythonservice/.env (openssl rand -hex 32)
+INTERNAL_API_KEY="..."
+
+# บัญชีเดโมสำหรับโหมดผู้เยี่ยมชม (Optional — ไม่ตั้ง = ปุ่มผู้เยี่ยมชมตอบ 503)
+DEMO_EMAIL="demo@mythoria.app"
+DEMO_PASSWORD="..."
 ```
 
 > ดู `.env.example` สำหรับรายการตัวแปรทั้งหมด — copy เป็นจุดเริ่มต้นได้เลย: `cp .env.example .env`
@@ -525,6 +539,12 @@ DATABASE_URL="postgresql://..."
 
 ```bash
 npm run db:push
+```
+
+สร้างบัญชีเดโมสำหรับโหมดผู้เยี่ยมชม (ต้องตั้ง `DEMO_EMAIL` / `DEMO_PASSWORD` ใน `.env` ก่อน — รันซ้ำได้ ข้อมูลเดโมจะถูกรีเซ็ต):
+
+```bash
+npm run seed:demo
 ```
 
 #### 5. รันโปรแกรม
@@ -549,7 +569,8 @@ npm run typecheck   # tsc --noEmit
 npm run build        # next build
 ```
 
-> โปรเจกต์นี้มี TS error เก่าอยู่ในบาง route/server action (ส่วนใหญ่เป็น implicit-any) ที่ยังไม่ได้ไล่แก้ — ถ้าเจอ error ในไฟล์ที่คุณไม่ได้แตะ ไม่ต้องตกใจ ไม่ใช่ของที่คุณทำพัง แต่ก็อย่าเพิ่มเข้าไปอีกในไฟล์ที่แก้ใหม่
+> TS error เก่า ~130 จุดที่เคยทำให้ CI แดงถาวรถูกไล่แก้หมดแล้ว — ตอนนี้ `typecheck` ควรได้ 0 error ถ้าเจอ error ให้ถือว่าเป็นของใหม่ที่เพิ่งทำพัง
+> (ถ้าเจอ error ใต้ `.next/dev/types/` ระหว่าง dev server รันอยู่ อันนั้นเป็นไฟล์ที่ Next generate ค้างไว้ ไม่ใช่โค้ดเรา)
 
 #### หมายเหตุ: `pythonservice/discord_bot/`
 

@@ -18,6 +18,8 @@ import {
 } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { usePyHealth } from "@/hooks/use-py-health";
+import { PyStatusNotice } from "@/components/project/py-status-notice";
 
 interface PlotHoleCheckerProps {
     novelId: string;
@@ -43,6 +45,7 @@ export function PlotHoleChecker({
     content,
     characterIds = []
 }: PlotHoleCheckerProps) {
+    const pyHealth = usePyHealth();
     const [isLoading, setIsLoading] = useState(false);
     const [result, setResult] = useState<AnalysisResult | null>(null);
     const [isOpen, setIsOpen] = useState(false);
@@ -107,6 +110,7 @@ export function PlotHoleChecker({
     return (
         <Collapsible open={isOpen} onOpenChange={setIsOpen}>
             <div className="flex items-center gap-2">
+                {pyHealth !== "up" ? <PyStatusNotice health={pyHealth} /> : (
                 <Button
                     variant="ghost"
                     size="sm"
@@ -125,6 +129,7 @@ export function PlotHoleChecker({
                     )}
                     {isLoading ? "กำลังตรวจ..." : "Check Plot Hole"}
                 </Button>
+                )}
 
                 {result && (
                     <CollapsibleTrigger asChild>

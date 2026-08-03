@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db/drizzle";
 import { chapters, notes, characters, locations } from "@/db/schema";
-import { ilike, or, sql } from "drizzle-orm";
+import { ilike, or, sql, and, isNull } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
                 novelId: chapters.novelId,
             })
             .from(chapters)
-            .where(ilike(chapters.title, searchPattern))
+            .where(and(ilike(chapters.title, searchPattern), isNull(chapters.deletedAt)))
             .limit(5);
 
         // Search notes
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
                 novelId: notes.novelId,
             })
             .from(notes)
-            .where(ilike(notes.title, searchPattern))
+            .where(and(ilike(notes.title, searchPattern), isNull(notes.deletedAt)))
             .limit(5);
 
         // Search characters

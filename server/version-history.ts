@@ -2,7 +2,7 @@
 
 import { db } from "@/db/drizzle";
 import { noteVersions, notes } from "@/db/schema";
-import { eq, desc, asc } from "drizzle-orm";
+import { eq, desc, asc, and, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireNovelAccess } from "@/lib/authz";
 
@@ -25,7 +25,7 @@ export async function createNoteVersion(
 ) {
     try {
         // ยืนยันเจ้าของ note ก่อน (noteId → notes.novelId)
-        const [note] = await db.select({ novelId: notes.novelId }).from(notes).where(eq(notes.id, noteId)).limit(1);
+        const [note] = await db.select({ novelId: notes.novelId }).from(notes).where(and(eq(notes.id, noteId), isNull(notes.deletedAt))).limit(1);
         if (!note) return { success: false, error: "Note not found" };
         await requireNovelAccess(note.novelId);
 
@@ -81,7 +81,7 @@ export async function createNoteVersion(
  */
 export async function getNoteVersions(noteId: string) {
     try {
-        const [note] = await db.select({ novelId: notes.novelId }).from(notes).where(eq(notes.id, noteId)).limit(1);
+        const [note] = await db.select({ novelId: notes.novelId }).from(notes).where(and(eq(notes.id, noteId), isNull(notes.deletedAt))).limit(1);
         if (!note) return { success: false, versions: [], error: "Note not found" };
         await requireNovelAccess(note.novelId);
 
@@ -122,7 +122,7 @@ export async function restoreNoteVersion(versionId: string, novelId: string) {
         const [currentNote] = await db
             .select()
             .from(notes)
-            .where(eq(notes.id, version.noteId));
+            .where(and(eq(notes.id, version.noteId), isNull(notes.deletedAt)));
 
         if (!currentNote) {
             return { success: false, error: "Note not found" };
@@ -149,7 +149,7 @@ export async function restoreNoteVersion(versionId: string, novelId: string) {
                 title: version.title,
                 content: version.content,
             })
-            .where(eq(notes.id, version.noteId));
+            .where(and(eq(notes.id, version.noteId), isNull(notes.deletedAt)));
 
         revalidatePath(`/dashboard/project/${novelId}/note/${version.noteId}`);
 
@@ -185,7 +185,7 @@ export async function getVersionsForCompare(version1Id: string, version2Id: stri
 
         // เช็คสิทธิ์ผ่าน note เจ้าของของแต่ละ version
         for (const noteId of new Set([v1.noteId, v2.noteId])) {
-            const [note] = await db.select({ novelId: notes.novelId }).from(notes).where(eq(notes.id, noteId)).limit(1);
+            const [note] = await db.select({ novelId: notes.novelId }).from(notes).where(and(eq(notes.id, noteId), isNull(notes.deletedAt))).limit(1);
             if (!note) return { success: false, error: "Note not found" };
             await requireNovelAccess(note.novelId);
         }

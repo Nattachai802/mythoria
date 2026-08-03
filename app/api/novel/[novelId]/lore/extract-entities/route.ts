@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { guardNovel } from "@/lib/authz";
 import { GoogleGenAI } from "@google/genai";
 import { db } from "@/db/drizzle";
 import { characters, locations, items, ideas } from "@/db/schema";
@@ -13,6 +14,7 @@ export async function POST(
 ) {
     try {
         const { novelId } = await context.params;
+        const denied = await guardNovel(novelId); if (denied) return denied;
         const body = await req.json();
         const { content } = body;
 

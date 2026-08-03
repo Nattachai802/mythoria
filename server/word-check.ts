@@ -2,7 +2,7 @@
 
 import { db } from "@/db/drizzle";
 import { notes, chapters } from "@/db/schema";
-import { eq, ne, and } from "drizzle-orm";
+import { eq, ne, and, isNull } from "drizzle-orm";
 
 const DEFAULT_MIN_WORDS = 2000;
 
@@ -69,14 +69,15 @@ export async function checkWordCountSufficiency(
             const otherChapters = await db.query.chapters.findMany({
                 where: and(
                     eq(chapters.novelId, novelId),
-                    ne(chapters.id, currentChapterId)
+                    ne(chapters.id, currentChapterId),
+                    isNull(chapters.deletedAt)
                 ),
                 columns: { id: true }
             });
             otherChapterIds = otherChapters.map(c => c.id);
         } else {
             const allChapters = await db.query.chapters.findMany({
-                where: eq(chapters.novelId, novelId),
+                where: and(eq(chapters.novelId, novelId), isNull(chapters.deletedAt)),
                 columns: { id: true }
             });
             otherChapterIds = allChapters.map(c => c.id);
@@ -88,7 +89,7 @@ export async function checkWordCountSufficiency(
         if (otherChapterIds.length > 0) {
             // Get all notes for other chapters
             const otherNotes = await db.query.notes.findMany({
-                where: eq(notes.novelId, novelId),
+                where: and(eq(notes.novelId, novelId), isNull(notes.deletedAt)),
             });
 
             // Group notes by chapter and calculate word count
@@ -117,7 +118,7 @@ export async function checkWordCountSufficiency(
         let currentChapterTotal = currentWordCount;
         if (currentChapterId) {
             const currentChapterNotes = await db.query.notes.findMany({
-                where: and(eq(notes.novelId, novelId), eq(notes.linkedToChapterId, currentChapterId)),
+                where: and(eq(notes.novelId, novelId), eq(notes.linkedToChapterId, currentChapterId), isNull(notes.deletedAt)),
                 columns: { content: true },
             });
             currentChapterTotal = currentChapterNotes.reduce((sum: number, n: { content: unknown }) => {
@@ -171,11 +172,11 @@ export async function getNovelAverageWordCount(novelId: string): Promise<{
 }> {
     try {
         const allNotes = await db.query.notes.findMany({
-            where: eq(notes.novelId, novelId),
+            where: and(eq(notes.novelId, novelId), isNull(notes.deletedAt)),
         });
 
         const allChapters = await db.query.chapters.findMany({
-            where: eq(chapters.novelId, novelId),
+            where: and(eq(chapters.novelId, novelId), isNull(chapters.deletedAt)),
             columns: { id: true }
         });
 

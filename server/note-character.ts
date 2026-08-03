@@ -2,14 +2,14 @@
 
 import { db } from "@/db/drizzle";
 import { noteCharacters, notes, InsertNoteCharacter } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { syncChapterCharactersFromNotes } from "./analysis-helper";
 import { addReference, removeReferenceEdge } from "./references";
 import { requireNovelAccess } from "@/lib/authz";
 
 // เช็คสิทธิ์เจ้าของผ่าน noteId (junction ไม่มี novelId ตรง ๆ) — คืน note ถ้าผ่าน, null ถ้าไม่พบ
 async function noteAccessOrNull(noteId: string) {
-    const note = await db.query.notes.findFirst({ where: eq(notes.id, noteId) });
+    const note = await db.query.notes.findFirst({ where: and(eq(notes.id, noteId), isNull(notes.deletedAt)) });
     if (!note) return null;
     await requireNovelAccess(note.novelId);
     return note;

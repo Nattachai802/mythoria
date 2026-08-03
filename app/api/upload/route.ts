@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v2 as cloudinary } from "cloudinary";
+import { guardUser } from "@/lib/authz";
 
 // Configure Cloudinary
 cloudinary.config({ 
@@ -13,6 +14,9 @@ const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB
 
 export async function POST(request: NextRequest) {
+    const auth = await guardUser();
+    if ("denied" in auth) return auth.denied;
+
     try {
         const formData = await request.formData();
         const file = formData.get("file") as File | null;

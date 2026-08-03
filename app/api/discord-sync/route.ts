@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cloudDb, DiscordIdea } from "@/lib/neon";
 import { createIdea } from "@/server/idea";
+import { guardNovel } from "@/lib/authz";
 
 export async function POST(request: NextRequest) {
     try {
@@ -13,6 +14,9 @@ export async function POST(request: NextRequest) {
                 { status: 400 }
             );
         }
+
+        const denied = await guardNovel(novelId);
+        if (denied) return denied;
 
         // 1. Fetch unsynced ideas from Neon
         const unsyncedIdeas = await cloudDb`

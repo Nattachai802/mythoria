@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { usePyHealth } from "@/hooks/use-py-health";
+import { PyStatusNotice } from "@/components/project/py-status-notice";
 
 interface PlotHoleJobButtonProps {
   novelId: string;
@@ -18,6 +20,7 @@ interface CheckProgress {
 }
 
 export function PlotHoleJobButton({ novelId }: PlotHoleJobButtonProps) {
+  const pyHealth = usePyHealth();
   const [progress, setProgress] = useState<CheckProgress>({
     currentNote: "",
     checked: 0,
@@ -129,7 +132,8 @@ export function PlotHoleJobButton({ novelId }: PlotHoleJobButtonProps) {
       ) : (
         <div className="flex items-center gap-2.5 px-3 py-2">
           <ClosedBook />
-          <span className="flex-1 text-xs font-medium">ตรวจสอบ Plot Holes</span>
+          <span className="flex-1 min-w-0 truncate text-xs font-medium">ตรวจสอบ Plot Holes</span>
+          {pyHealth !== "up" ? <PyStatusNotice health={pyHealth} /> : (
           <Button
             variant="ghost"
             size="sm"
@@ -141,6 +145,7 @@ export function PlotHoleJobButton({ novelId }: PlotHoleJobButtonProps) {
             ) : null}
             {result?.success ? "ตรวจแล้ว" : "ตรวจ →"}
           </Button>
+          )}
         </div>
       )}
 

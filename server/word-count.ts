@@ -2,7 +2,7 @@
 
 import { db } from "@/db/drizzle";
 import { notes, novels } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 
 /**
  * Count words in text, supporting Thai language using server-side logic
@@ -51,7 +51,7 @@ export async function recalculateNovelWordCountFromNotes(novelId: string) {
         const allNotes = await db
             .select({ content: notes.content })
             .from(notes)
-            .where(eq(notes.novelId, novelId));
+            .where(and(eq(notes.novelId, novelId), isNull(notes.deletedAt)));
 
         // Calculate total word count from all notes
         let totalWordCount = 0;
@@ -66,7 +66,7 @@ export async function recalculateNovelWordCountFromNotes(novelId: string) {
         await db
             .update(novels)
             .set({ wordCount: totalWordCount, updatedAt: new Date() })
-            .where(eq(novels.id, novelId));
+            .where(and(eq(novels.id, novelId), isNull(novels.deletedAt)));
 
         console.log(`[WordCount] Novel ${novelId}: ${totalWordCount} words (from ${allNotes.length} notes)`);
         return { success: true, totalWordCount };

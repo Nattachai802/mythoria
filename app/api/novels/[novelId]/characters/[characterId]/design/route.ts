@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { guardNovel } from "@/lib/authz";
 import { db } from "@/db/drizzle";
 import { characterDesignElements } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
@@ -10,6 +11,7 @@ export async function GET(
 ) {
   try {
     const resolvedParams = await params;
+    const denied = await guardNovel(resolvedParams.novelId); if (denied) return denied;
     const { characterId } = resolvedParams;
 
     const elements = await db
@@ -31,6 +33,7 @@ export async function POST(
 ) {
   try {
     const resolvedParams = await params;
+    const denied = await guardNovel(resolvedParams.novelId); if (denied) return denied;
     const { novelId, characterId } = resolvedParams;
     const body = await req.json();
     const { type, value, name, notes } = body;
@@ -67,6 +70,7 @@ export async function DELETE(
 ) {
   try {
     const resolvedParams = await params;
+    const denied = await guardNovel(resolvedParams.novelId); if (denied) return denied;
     const { characterId } = resolvedParams;
     const { searchParams } = new URL(req.url);
     const elementId = searchParams.get("elementId");

@@ -2,7 +2,7 @@
 
 import { db } from "@/db/drizzle";
 import { chapters, notes, characterStates, chapterCharacters, characters } from "@/db/schema";
-import { and, eq, ne, inArray } from "drizzle-orm";
+import { and, eq, ne, inArray, isNull } from "drizzle-orm";
 
 /**
  * Consistency Guardian — ตรวจความขัดแย้งเชิงโครงสร้างทั้งเล่ม (deterministic, ไม่ใช้ LLM)
@@ -33,7 +33,7 @@ export async function getConsistencyIssues(
         const chs = (await db
             .select({ id: chapters.id, title: chapters.title, orderIndex: chapters.orderIndex })
             .from(chapters)
-            .where(eq(chapters.novelId, novelId))) as ChRow[];
+            .where(and(eq(chapters.novelId, novelId), isNull(chapters.deletedAt)))) as ChRow[];
         if (chs.length === 0) return { success: true, issues: [] };
 
         const chapterById = new Map<string, ChRow>(chs.map((c) => [c.id, c]));
@@ -43,7 +43,7 @@ export async function getConsistencyIssues(
         const nts = (await db
             .select({ id: notes.id, linkedToChapterId: notes.linkedToChapterId })
             .from(notes)
-            .where(eq(notes.novelId, novelId))) as { id: string; linkedToChapterId: string | null }[];
+            .where(and(eq(notes.novelId, novelId), isNull(notes.deletedAt)))) as { id: string; linkedToChapterId: string | null }[];
         const noteChapter = new Map<string, string | null>(nts.map((n) => [n.id, n.linkedToChapterId]));
 
         // 3. state ที่ตาย

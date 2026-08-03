@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { guardNovel } from "@/lib/authz";
 import { db } from "@/db/drizzle";
 import { notes, characters, noteStylometry } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { pyFetch } from "@/lib/python-service";
 
 export async function POST(
@@ -10,10 +11,11 @@ export async function POST(
 ) {
   try {
     const { novelId, noteId } = await params;
+    const denied = await guardNovel(novelId); if (denied) return denied;
     
     // 1. Fetch note content
     const note = await db.query.notes.findFirst({
-      where: eq(notes.id, noteId),
+      where: and(eq(notes.id, noteId), isNull(notes.deletedAt)),
     });
     
     if (!note) {
