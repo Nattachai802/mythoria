@@ -27,8 +27,9 @@
 - Phase 5: @-mention ใน editor → Phase 6: graph/agent อ่าน references → Phase 7: drop junction เก่า
 - รายละเอียด: [`context-fabric-plan.md`](./context-fabric-plan.md)
 
-### ย้าย vector store: LanceDB → pgvector บน Neon
-**ทำตอนย้าย VPS จริง** (ตอนนั้นต้องแตะ deploy ของ Python อยู่แล้ว ทำทีเดียวจบ) ไม่ต้องรีบก่อนหน้านั้น
+### ย้าย vector store: LanceDB → Upstash Vector
+**แผนเต็มอยู่ที่ [`task.md`](../task.md)** — VPS ถูกตัดออกแล้ว ทิศทางคือทำให้ Python ไม่มี state บนดิสก์เลย
+จะได้ deploy ขึ้นฟรีเทียร์ (Render) ด้วย git push เหมือนฝั่ง Next.js ไม่ต้องมี persistent volume ให้ต้องจ่าย
 
 ปัญหาปัจจุบัน: เวกเตอร์อยู่ใน `vector-db/*.lance` (ไฟล์บนดิสก์ของเครื่องที่รัน Python) ส่วนข้อมูลจริงอยู่ Neon
 - Vercel เขียนไฟล์ไม่ได้ + หายทุก deploy → Python ต้อง deploy แยกตลอดไป

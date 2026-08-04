@@ -58,6 +58,36 @@ Confirmed via Upstash docs (see conversation for citations):
    already covers every real lookup. Removes ~112 lines, the pkl disk
    dependency, the 11.3-hour build, and the RAM held by a 62k-entry dict.
 
+   **Verified in a later pass:** the two endpoints being deleted have no
+   callers anywhere in `lib/`, `components/`, or `app/` — nothing in the UI
+   breaks. The deletion cannot change spell-check output either: because the
+   cache never hits, 100% of today's lookups already take the lazy path.
+   (The 11.3-hour figure is inherited from the session that wrote this file
+   and was not re-measured — but nothing here depends on it. A cache with a
+   0% hit rate should be deleted whether the build takes 11 hours or 10
+   seconds.)
+
+0b. **Widen the custom-word whitelist (do this with step 0)**
+
+   `spell-check-trigger/route.ts:33-44` already feeds Python a `custom_words`
+   whitelist built from `characters` (name + aliases) and `locations`. Words
+   on that list are skipped before any suggestion lookup happens, so they
+   cost nothing and need no cache.
+
+   But the novel's other invented vocabulary is missing from it: `items`,
+   `factions`, `powers`, `entities`, `lore_entries`, and `world_systems` all
+   hold made-up proper nouns that PyThaiNLP will never know. Adding them to
+   the same query (a few lines, one round trip) does two things at once:
+
+   - **Fixes a real annoyance**: item and faction names are currently
+     underlined as misspellings.
+   - **Shrinks the problem step 2 of the caching discussion was trying to
+     solve**: the expensive `spell()` calls are mostly on exactly these
+     words. Whitelist them and there is much less left worth caching.
+
+   Do this before deciding whether any persistent suggestion cache is needed
+   at all.
+
 1. **Provision Upstash Vector**
    - Sign up at upstash.com, create a Vector index: dimension 768, metric cosine.
    - Grab `UPSTASH_VECTOR_REST_URL` and `UPSTASH_VECTOR_REST_TOKEN`.
@@ -133,6 +163,35 @@ Confirmed via Upstash docs (see conversation for citations):
    - Import `Nattachai802/mythoria` in Vercel dashboard → push to `main` =
      production deploy, PRs = preview deploys. (Separate from Python service
      deploy, already close to ready: `vercel.json` + CI checks exist.)
+
+## Decision: where a persistent suggestion cache would live (if we add one)
+
+The lazy `_SUGGESTION_CACHE` in `spell_checker.py:219` is the one that
+actually gets hits (repeated typos, novel-specific words that slip past the
+whitelist). It lives in process RAM, so on Render — which sleeps after 15
+minutes — it is empty on nearly every request burst. Persisting it was
+considered. Three options, ranked:
+
+1. **Widen the whitelist first (step 0b) and persist nothing.** Preferred.
+   Removes most of the demand instead of serving it. Cost: the first lookup
+   of a genuinely unknown word after a cold start pays ~0.66 s. For a
+   single-user personal deployment that may never be noticeable.
+
+2. **A small table in the existing Neon Postgres**
+   (`word`, `pythainlp_version`, `suggestions`). If persistence turns out to
+   be worth it, this is the way: `psycopg2-binary` and `DATABASE_URL` are
+   already in `pythonservice/`, Neon is already in `sin1`, and — the point
+   that decides it — **the data does not leave anywhere it isn't already**.
+
+3. **Upstash Redis — rejected.** The words that would be cached are by
+   definition the words *absent* from the Thai dictionary: character names,
+   place names, invented terminology. Spell check is currently 100% local
+   (PyThaiNLP, in-process). Routing those words to Upstash would be the
+   first time fragments of an unpublished manuscript leave the system, and
+   it would happen in a background job the writer never explicitly invoked —
+   which cuts against the project's "AI is opt-in, the writer decides what
+   leaves" principle. The AI features that do call Groq/Gemini are all
+   user-triggered; this one would not be. Not worth it to save 0.66 s.
 
 ## Explicitly out of scope
 - No change to `embeddings.py` (Gemini embedding generation stays as-is).

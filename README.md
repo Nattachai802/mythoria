@@ -435,7 +435,7 @@ L0  Entity Registry — abstraction เหนือ 56 ตาราง (resolve 
 ### 🔭 ฟีเจอร์ถัดไป
 
 - ✅ ลงแล้ว — Consistency Guardian, Story Codex (ยุบเข้า World Graph), Echo detector, Character Voice Distance, Pacing Heatmap, Global Librarian
-- ⬜ ถัดไป — Thai readability score, dialogue vs narration rhythm, Context Fabric Phase 5-7, ย้าย vector store LanceDB → pgvector (ทำตอนย้าย VPS)
+- ⬜ ถัดไป — ย้าย vector store LanceDB → Upstash Vector แล้ว deploy Python ขึ้น Render (ดู [`task.md`](./task.md)), Thai readability score, dialogue vs narration rhythm, Context Fabric Phase 5-7
 
 รวมไว้ที่ [`docs/roadmap.md`](./docs/roadmap.md) · แผนก่อนเปิดใช้งานจริงที่ [`docs/launch-readiness-plan.md`](./docs/launch-readiness-plan.md)
 
