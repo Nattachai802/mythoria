@@ -1,0 +1,41 @@
+# Render Blueprint — Python service (FastAPI)
+#
+# CI/CD: Render ผูกกับ GitHub เอง push เข้า main แล้ว build+deploy ให้อัตโนมัติ
+# ไม่ต้องเขียน GitHub Actions เพิ่ม (ci.yml ที่มีอยู่ยังตรวจฝั่ง Next.js ต่อไปตามเดิม)
+#
+# วิธีใช้ครั้งแรก: Render Dashboard -> New -> Blueprint -> เลือก repo นี้
+# แล้วค่อยกรอกค่า env ที่ตั้ง sync: false ไว้ (Render จะถามให้ทีละตัว)
+#
+# ฝั่ง Next.js ไม่ได้อยู่ในไฟล์นี้ — อยู่บน Vercel
+
+services:
+  - type: web
+    name: mythoria-python
+    runtime: python
+    plan: free
+    region: singapore # ให้อยู่โซนเดียวกับ Vercel (sin1) และ Neon (ap-southeast-1)
+    rootDir: pythonservice
+    autoDeploy: true # push main -> deploy
+
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+
+    # /health ไม่ต้องมี X-Internal-Key (ดู middleware ใน main.py) Render จึงเรียกได้
+    healthCheckPath: /health
+
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.12" # ให้ตรงกับ venv ที่พัฒนาอยู่
+
+      # ค่าลับ — sync: false แปลว่าไม่เก็บใน git ต้องกรอกใน Dashboard เอง
+      - key: INTERNAL_API_KEY # ต้องตรงกับฝั่ง Vercel เป๊ะ ไม่งั้นโดน 401 ทุก request
+        sync: false
+      - key: GEMINI_API_KEY # embeddings.py
+        sync: false
+      - key: TYPHOON_API_KEY # ai_agent.py, character_analyzer.py
+        sync: false
+      - key: NEXT_PUBLIC_BASE_URL # Python เรียก API ของ Next.js กลับ ต้องเป็น URL จริงบน Vercel
+        sync: false
+
+      # REDIS_URL ไม่ได้ใส่ไว้ — character_analyzer.py ใช้แค่ cache ผล LLM
+      # ไม่มีก็ทำงานได้ปกติ ถ้าอยากได้ค่อยเพิ่มทีหลัง
