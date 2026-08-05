@@ -1,0 +1,6 @@
+# ไฟล์ที่ไม่ต้องอัปขึ้น Vercel — Vercel build แค่ next build ไม่ได้แตะของพวกนี้เลย
+
+# Python service รันแยกคนละ host (ดู task.md) ตอนนี้ยังไม่ได้ deploy
+# ไม่ได้ตัดเพราะมันหนัก (17 ไฟล์) แต่ตัดให้ชัดว่า Vercel ไม่เกี่ยวกับฝั่ง Python
+# เผื่อวันหลังมี requirements.txt โผล่มาที่ root แล้ว Vercel ไปเดาว่าให้ build Python ด้วย
+pythonservice/
