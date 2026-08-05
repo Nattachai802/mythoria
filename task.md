@@ -24,12 +24,73 @@ and it also delivers FK-cascade cleanup and single-query graph joins (see
 `docs/roadmap.md`).
 
 ### Still worth doing now (small, independent of the AI rewrite)
-- **Step 0** — delete the dead precomputed spell cache. 0% hit rate, and
-  removing it is a pure deletion with no behavior change.
-- **Step 0b** — widen the custom-word whitelist. Fixes item/faction names being
-  underlined as typos, which is a real annoyance during writing today.
 
-Neither depends on where vectors end up.
+Priority order — all of these touch `spell_checker.py` and none depend on where
+vectors end up:
+
+| # | Task | Why now | RAM |
+|---|------|---------|-----|
+| **P0** | Fix the `custom_dict` trie bug (step 0c) | Latent correctness bug; blocks P1 | — |
+| **P1** | Drop `attacut`, `pandas`, `discord.py` (step 0d) | Biggest win; tokenizing gets *better* | −295 MB |
+| **P2** | Delete the dead precomputed spell cache (step 0) | Pure deletion, 0% hit rate | small |
+| **P3** | Widen the custom-word whitelist (step 0b) | Fixes names underlined as typos | — |
+
+P0 must land before P1 — removing `attacut` activates the `newmm` fallback,
+which is the path the bug lives on. P3 makes the trie richer, so it compounds
+with P0. P2 is independent and can go in any order.
+
+0c. **Fix the custom-dict trie (P0)**
+
+   `spell_checker.py:146` builds the tokenizer dictionary as
+   `dict_trie(self.custom_whitelist)`. In PyThaiNLP, `custom_dict` **replaces**
+   the dictionary rather than extending it, so the tokenizer currently runs
+   with only `BUILTIN_WHITELIST` (~50 words) plus the novel's proper nouns.
+   Measured effect on the fallback path:
+
+   ```
+   ถูกทิ้งร้างมานานนับศตวรรษ     ← glued into a single token
+   ```
+
+   Fix: `dict_trie(set(thai_words()) | self.custom_whitelist)`.
+
+   This is invisible today only because `attacut` takes priority in
+   `_tokenize` (`spell_checker.py:299-311`) and the `newmm` branch never runs.
+
+0d. **Drop attacut, pandas, discord.py (P1)**
+
+   Measured with the project venv (baseline Python = 14 MB resident):
+
+   | package | RAM | verdict |
+   |---------|----:|---------|
+   | `attacut` | 184 MB | pulls in **torch 2.12** for tokenizing |
+   | `lancedb` | 123 MB | goes away with the vector migration |
+   | `pandas` | 77 MB | **no import anywhere in the repo** |
+   | `discord.py` | 34 MB | belongs to the `Mythoria_bot` repo |
+   | `pythainlp` | 10 MB | keep — it is cheap |
+   | `frozenset(thai_words())`, 62,101 words | 10 MB | keep — also cheap |
+
+   Removing `attacut` **improves** tokenization rather than trading it away,
+   because the attacut branch never consults the whitelist. Compared on
+   fantasy prose, `newmm` + the merged dictionary from 0c wins every sentence:
+
+   ```
+   attacut : เอริส|เดิน|เข้า|ไป|ใน|หอ|คอย|เวทมนตร์      ← หอคอย, เข้าไป split
+   newmm+  : เอริส|เดิน|เข้าไป|ใน|หอคอย|เวทมนตร์
+
+   attacut : ไร|กะ|สูด|หายใจ                            ← splits a character name
+   newmm+  : ไรกะ|สูด|หายใจ
+
+   attacut : กอง|ทัพจักรวรรดิ|...|เทือก|เขา|ทาง|เหนือ
+   newmm+  : กองทัพ|จักรวรรดิ|...|เทือกเขา|ทางเหนือ
+   ```
+
+   The neural tokenizer cannot know invented vocabulary; the dictionary-based
+   one can, because the whitelist feeds it. `_get_tokenizer()` already falls
+   back to `newmm` when attacut is absent, so removal needs no new branch —
+   but do 0c first or the fallback is the broken one.
+
+   Total with `lancedb` still in place: **−295 MB**, leaving roughly 215 MB on
+   Render's 512 MB tier.
 
 ### Vercel deploy checklist (the part being done now)
 - `vercel.json` already sets `regions: ["sin1"]` and `maxDuration: 300`.
