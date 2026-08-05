@@ -18,7 +18,7 @@
     "dev:all:windows": "concurrently --restart-tries -1 \"npm run dev:full:windows\" \"npm run dev:python:windows\"",
     "db:start": "pg_ctl start",
     "db:stop": "pg_ctl stop",
-    "build": "next build",
+    "build": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
