@@ -6,13 +6,20 @@ pythainlp
 attacut
 google-generativeai
 python-dotenv
-pandas
 openai
 fastapi
 uvicorn
 httpx
 
-discord.py>=2.3.0
 psycopg2-binary>=2.9.0
 redis>=5.0.0
 
+# วัด RAM ด้วย venv ของโปรเจกต์เอง (baseline python = 14 MB):
+#
+#   attacut  184 MB — หนักสุด เพราะลาก torch มา แต่ "ห้ามถอด" ลองแล้ว: ถ้าเหลือแต่
+#            newmm คำสะกดผิดจะถูกแตกเป็นคำที่มีในพจนานุกรม ("อนุญาติ" -> "อนุ|ญาติ")
+#            แล้วหลุดหมด วัดได้ 0/4 คำ — 184 MB นี้ซื้อฟังก์ชันหลักของ spell checker
+#
+# ถอดออกแล้ว:
+#   pandas       77 MB — ไม่มี import ที่ไหนเลยใน repo นี้
+#   discord.py   34 MB — เป็นของ Mythoria_bot ที่ deploy แยกอยู่แล้ว

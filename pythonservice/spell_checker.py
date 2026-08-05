@@ -54,6 +54,11 @@ def ensure_cache_built():
 
 
 # attacut tokenizer — lazy load (โมเดล neural โหลดตอนใช้ครั้งแรก ไม่ใช่ตอน import)
+#
+# หนัก 184 MB เพราะลาก torch มาด้วย เคยลองถอดออกให้เหลือ newmm อย่างเดียวแล้ว "ห้ามทำ":
+# newmm เป็น dictionary-based มันจะแตกคำที่สะกดผิดให้กลายเป็นคำที่มีในพจนานุกรมเสมอ
+# ("สวัสดร" -> "ส|วัส|ดร", "อนุญาติ" -> "อนุ|ญาติ") คำผิดเลยหลุดหมด วัดแล้วจับได้ 0/4
+# ส่วน attacut เก็บคำผิดไว้เป็น token เดียว จึงตรวจเจอ — 184 MB นี้ซื้อฟังก์ชันหลักของโมดูล
 _ATTACUT = None
 _ATTACUT_TRIED = False
 def _get_tokenizer():
@@ -143,7 +148,10 @@ class NovelSpellChecker:
                             self.custom_whitelist.add(part)
 
         # สร้าง custom trie สำหรับ tokenizer
-        self._custom_trie = dict_trie(self.custom_whitelist) if self.custom_whitelist else None
+        # ต้อง union กับ thai_words() ด้วย — custom_dict ของ PyThaiNLP "แทนที่" พจนานุกรม
+        # ไม่ใช่ "เพิ่มเข้าไป" ถ้าส่งแค่ whitelist ตัวตัดคำจะรู้จักแค่ ~50 คำ แล้วเชื่อม
+        # ช่วงที่ไม่รู้จักเป็นก้อนเดียว ("ถูกทิ้งร้างมานานนับศตวรรษ" กลายเป็น token เดียว)
+        self._custom_trie = dict_trie(set(thai_words()) | self.custom_whitelist)
 
         # ชี้ไปที่ global suggestion cache
         self._suggestion_cache = _SUGGESTION_CACHE
@@ -296,7 +304,7 @@ class NovelSpellChecker:
         return text
 
     def _tokenize(self, text: str) -> List[str]:
-        """Tokenize — ใช้ attacut ถ้ามี, fallback newmm"""
+        """Tokenize — ใช้ attacut ถ้ามี, fallback newmm (จับคำผิดได้น้อยกว่ามาก ดูหมายเหตุด้านบน)"""
         tok = _get_tokenizer()
         if tok:
             try:
@@ -307,9 +315,7 @@ class NovelSpellChecker:
                 return list(tokens)
             except Exception:
                 pass  # fallback newmm
-        if self._custom_trie:
-            return word_tokenize(text, engine="newmm", custom_dict=self._custom_trie)
-        return word_tokenize(text, engine="newmm")
+        return word_tokenize(text, engine="newmm", custom_dict=self._custom_trie)
 
     def _is_real_word(self, token: str) -> bool:
         """กรองเฉพาะ token ที่เป็นคำจริงๆ (มีตัวอักษรไทย)"""
