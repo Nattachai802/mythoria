@@ -14,30 +14,60 @@ disk costs nothing during development — it only hurts when deploying Python, s
 both wait together.
 
 **When it is time to decide, the default is pgvector on Neon — not Upstash
-Vector.** `main.py:197` sends `content: text[:500]`, i.e. the first 500
-characters of every chapter, into the vector store. Putting that on Upstash
-means fragments of an unpublished manuscript live on a third party's servers —
-which contradicts the reasoning already recorded below for rejecting Upstash
-Redis, where the data at stake was only *character names*. Neon already holds
-the manuscript, so "the data does not leave anywhere it isn't already" holds,
-and it also delivers FK-cascade cleanup and single-query graph joins (see
-`docs/roadmap.md`).
+Vector.** The reason is architectural, and it holds even if you trust every
+vendor involved completely:
+
+| | Upstash Vector | pgvector on Neon |
+|---|---|---|
+| delete a note → its embedding goes too | no, still a manual sync button | yes, FK cascade |
+| join embeddings with `references` | separate service, network hop | one query |
+| stores holding the same data | 2 | 1 |
+| `/search` `/sync` `/status` endpoints | still needed | deleted |
+
+Upstash Vector was checked against its docs and passes on every technical
+point — 768-dim vectors we generate ourselves, cosine, metadata filters,
+per-novel namespaces, an ample free tier, a Python SDK. It loses on
+architecture: it moves the vectors from a disk to a cloud without fixing the
+thing `docs/roadmap.md` names as the actual problem, which is that the
+embeddings and the content they describe live in two places nothing keeps in
+step.
+
+> **Correction — the privacy argument that used to sit here was wrong.**
+> It claimed that sending `main.py:197`'s `content: text[:500]` to Upstash
+> would be "the first time fragments of an unpublished manuscript leave the
+> system." That is not true and never was. Neon holds the entire manuscript,
+> Vercel processes every request containing it, and Gemini/Groq/Typhoon
+> receive chapter text on every AI call. The manuscript has always lived on
+> third-party servers.
+>
+> What survives is narrower and much weaker: putting vectors in Neon adds
+> **zero** new companies holding the text, while Upstash adds **one** — one
+> more ToS to trust, one more breach surface, one more jurisdiction. That is
+> a real consideration but a matter of degree, not the bright line it was
+> written as. Decide vendor questions on that honest basis; the architecture
+> table above is what actually settles this one.
 
 ### Still worth doing now (small, independent of the AI rewrite)
 
 Priority order — all of these touch `spell_checker.py` and none depend on where
 vectors end up:
 
-| # | Task | Why now | RAM |
-|---|------|---------|-----|
-| **P0** | Fix the `custom_dict` trie bug (step 0c) | Latent correctness bug; blocks P1 | — |
-| **P1** | Drop `attacut`, `pandas`, `discord.py` (step 0d) | Biggest win; tokenizing gets *better* | −295 MB |
-| **P2** | Delete the dead precomputed spell cache (step 0) | Pure deletion, 0% hit rate | small |
-| **P3** | Widen the custom-word whitelist (step 0b) | Fixes names underlined as typos | — |
+| # | Task | Status | RAM |
+|---|------|--------|-----|
+| **P0** | Fix the `custom_dict` trie bug (step 0c) | **done** | — |
+| **P1** | Drop `pandas`, `discord.py` (step 0d) | **done** | −111 MB |
+| — | Drop `attacut` | **rejected — see 0d** | (would be −184 MB) |
+| **P2** | Delete the precomputed spell cache (step 0) | **done**, via Hunspell | small |
+| **P3** | Widen the custom-word whitelist (step 0b) | not done | — |
 
-P0 must land before P1 — removing `attacut` activates the `newmm` fallback,
-which is the path the bug lives on. P3 makes the trie richer, so it compounds
-with P0. P2 is independent and can go in any order.
+Also landed, not originally planned: suggestions now come from hunspell-th via
+`spylls` instead of `pythainlp.spell()` — 56 ms/word warm against 0.66 s, which
+is what made deleting the cache possible. Costs +34 MB.
+
+P3 is worth less than it looks. `attacut` splits compound proper nouns
+(`สภาผู้อาวุโส` → `สภาผู้|อาวุโส`), so a whitelist entry can fail to match no
+matter how complete the list is. Fixing that needs the tokenizer to consult the
+whitelist, which the attacut branch never does.
 
 0c. **Fix the custom-dict trie (P0)**
 
@@ -69,28 +99,36 @@ with P0. P2 is independent and can go in any order.
    | `pythainlp` | 10 MB | keep — it is cheap |
    | `frozenset(thai_words())`, 62,101 words | 10 MB | keep — also cheap |
 
-   Removing `attacut` **improves** tokenization rather than trading it away,
-   because the attacut branch never consults the whitelist. Compared on
-   fantasy prose, `newmm` + the merged dictionary from 0c wins every sentence:
+   `pandas` and `discord.py` are gone. **`attacut` stays** — it was removed,
+   measured, and put back.
+
+   The case for removing it looked strong: on prose that is spelled correctly,
+   `newmm` with the merged dictionary from 0c tokenizes *better*, because the
+   attacut branch never consults the whitelist and splits the novel's own
+   names:
 
    ```
    attacut : เอริส|เดิน|เข้า|ไป|ใน|หอ|คอย|เวทมนตร์      ← หอคอย, เข้าไป split
    newmm+  : เอริส|เดิน|เข้าไป|ใน|หอคอย|เวทมนตร์
-
    attacut : ไร|กะ|สูด|หายใจ                            ← splits a character name
    newmm+  : ไรกะ|สูด|หายใจ
-
-   attacut : กอง|ทัพจักรวรรดิ|...|เทือก|เขา|ทาง|เหนือ
-   newmm+  : กองทัพ|จักรวรรดิ|...|เทือกเขา|ทางเหนือ
    ```
 
-   The neural tokenizer cannot know invented vocabulary; the dictionary-based
-   one can, because the whitelist feeds it. `_get_tokenizer()` already falls
-   back to `newmm` when attacut is absent, so removal needs no new branch —
-   but do 0c first or the fallback is the broken one.
+   That test measured the wrong thing. This module's job is finding
+   *misspellings*, and dictionary-based tokenizers resolve a misspelling into
+   whatever real words it can, which hides it:
 
-   Total with `lancedb` still in place: **−295 MB**, leaving roughly 215 MB on
-   Render's 512 MB tier.
+   ```
+   สวัสดร   → ส|วัส|ดร     (all three are dictionary words → no error reported)
+   อนุญาติ  → อนุ|ญาติ     (both are words → no error reported)
+   ```
+
+   With `newmm` alone the checker caught **0 of 4** planted typos. attacut
+   keeps the misspelled span intact, so it caught **4 of 4**, with no false
+   positives on whitelisted names. The 184 MB buys the module's core function.
+
+   Total actually saved: **−111 MB**, plus +34 MB for Hunspell. `lancedb`'s
+   123 MB is still on the table via the vector migration.
 
 ### Vercel deploy checklist (the part being done now)
 - `vercel.json` already sets `regions: ["sin1"]` and `maxDuration: 300`.
@@ -116,18 +154,18 @@ with P0. P2 is independent and can go in any order.
 > dependency. `spell_cache.pkl` is a second one, and a worse blocker.
 > See step 0 — it must be handled or the service cannot run on Render at all.
 
-> **Correction (later pass):** the Upstash Vector direction below is superseded
-> by the Status section above. Kept for the verified API/limit details, which
-> stay useful if Upstash is ever reconsidered.
-
 ## Why
 `pythonservice/lance_client.py` stores vectors on local disk (`vector-db/`), which
 blocks deploying the Python service to any serverless host (no persistent disk).
-Moving to Upstash Vector (serverless, REST-based, free tier separate from Neon)
-makes the service fully stateless so it can deploy via git push like the Next.js
-app on Vercel.
+Moving them into the Neon Postgres that already holds the manuscript makes the
+service fully stateless, so it deploys via git push like the Next.js app.
 
-Confirmed via Upstash docs (see conversation for citations):
+Nothing to migrate: `vector-db/` does not exist on disk anywhere (checked).
+Vectors are a derived cache, rebuildable via `/sync/{novel_id}`.
+
+### Upstash Vector — evaluated and not chosen
+Kept because the numbers were verified and stay useful if it is ever
+reconsidered. It failed on architecture, not capability (see Status above):
 - Accepts pre-computed vectors (`vector: [...]` field) — keeps existing Gemini
   `text-embedding-004` (768 dim) embeddings as-is, no change to `embeddings.py`.
 - Cosine similarity supported (default).
@@ -136,8 +174,6 @@ Confirmed via Upstash docs (see conversation for citations):
   and enables whole-novel deletion via `delete_namespace`).
 - Python SDK `upstash-vector` on PyPI, matches current usage pattern.
 - Free tier: 10 indexes, up to 1536 dim, 1GB storage — ample for personal use.
-- No data migration needed: `vector-db/` does not exist on disk anywhere
-  (checked) — vectors are a derived cache, rebuildable via `/sync/{novel_id}`.
 
 ## Steps
 
@@ -204,35 +240,36 @@ Confirmed via Upstash docs (see conversation for citations):
    Do this before deciding whether any persistent suggestion cache is needed
    at all.
 
-1. **Provision Upstash Vector**
-   - Sign up at upstash.com, create a Vector index: dimension 768, metric cosine.
-   - Grab `UPSTASH_VECTOR_REST_URL` and `UPSTASH_VECTOR_REST_TOKEN`.
+1. **Enable pgvector on Neon**
+   - `CREATE EXTENSION IF NOT EXISTS vector;` — available on Neon's free plan,
+     HNSW supported, index dimension limit 2,000 so 768 is fine.
 
 2. **Rewrite `pythonservice/lance_client.py`**
-   - Replace LanceDB client with `upstash-vector` SDK.
+   - Replace the LanceDB client with `psycopg2` against `NEON_DATABASE_URL`
+     (already a dependency, and the pooled `-pooler` host is already in `.env`).
    - Keep function signatures identical so `main.py` needs no changes:
      `upsert_content(records)`, `delete_by_novel_id(novel_id)`,
      `search_similar(query_vector, novel_id, limit, content_type)`,
      `count_by_novel_id(novel_id)`.
-   - Use `novel_id` as the Upstash namespace; filter `content_type` within it.
-   - `search_similar` must keep returning `_distance` (or equivalent) since
-     `main.py:288` does `score = 1 - r.get("_distance", 0)`.
-   - `delete_by_novel_id` → `index.delete_namespace(novel_id)`.
-   - `count_by_novel_id` → query/range within namespace, bucket by `content_type`.
+   - `search_similar` must keep returning `_distance`, since `main.py:288`
+     does `score = 1 - r.get("_distance", 0)`. Cosine distance is `<=>`.
+   - Table: `content_vectors(id pk, novel_id, content_type, title, content,
+     metadata, vector vector(768))`, indexed on `novel_id`.
+   - Later, once the schema settles: make `novel_id` a real FK so deleting a
+     novel drops its embeddings, which is the point of moving here at all.
 
 3. **Update `pythonservice/requirements.txt`**
-   - Remove `lancedb`.
-   - Add `upstash-vector`.
+   - Remove `lancedb` (−123 MB resident).
+   - `psycopg2-binary` is already there.
 
 4. **Update env**
-   - Add `UPSTASH_VECTOR_REST_URL`, `UPSTASH_VECTOR_REST_TOKEN` to
-     `pythonservice/.env` (local) and `.env.example` (repo docs).
+   - Nothing new. `NEON_DATABASE_URL` / `DATABASE_URL` already exist in
+     `pythonservice/.env`.
 
 5. **Self-check**
-   - Add a small `__main__`/`assert`-based check in `lance_client.py` (or a
-     `test_lance_client.py`) that upserts a throwaway vector to a test
-     namespace, queries it back, deletes the namespace — confirms wiring
-     without needing the full FastAPI app.
+   - Add a small `__main__`/`assert`-based check in `lance_client.py` that
+     upserts a throwaway vector under a test `novel_id`, queries it back, then
+     deletes it — confirms wiring without booting the FastAPI app.
 
 6. **Deploy Python service to a serverless/free host**
    - **Host: Render** (Web Service, free tier). Chosen over Railway/Fly/Koyeb/
@@ -245,8 +282,9 @@ Confirmed via Upstash docs (see conversation for citations):
      sustainably — Railway's 1GB is a 30-day trial only, then drops below
      Render. So the fix for RAM headroom is on the code side, not platform
      shopping (see 6b below).
-   - Set env vars on that host: `GEMINI_API_KEY`, `UPSTASH_VECTOR_REST_URL`,
-     `UPSTASH_VECTOR_REST_TOKEN`, `INTERNAL_API_KEY`, others per `.env.example`.
+   - Set env vars on that host per `render.yaml`: `INTERNAL_API_KEY`,
+     `GEMINI_API_KEY`, `TYPHOON_API_KEY`, `NEXT_PUBLIC_BASE_URL`, and
+     `NEON_DATABASE_URL` once vectors live in Postgres.
 
 6b. **RAM optimization (before/alongside deploy, to fit Render's 512MB)**
    - Remove `pandas` and `discord.py` from `requirements.txt` — grepped the
@@ -272,7 +310,7 @@ Confirmed via Upstash docs (see conversation for citations):
    - Update `PYTHON_SERVICE_URL` in Vercel project env vars.
 
 8. **Re-sync vectors**
-   - Call `/sync/{novel_id}` for each novel to rebuild the Upstash index
+   - Call `/sync/{novel_id}` for each novel to rebuild `content_vectors`
      (nothing to migrate — old LanceDB data doesn't exist on disk).
 
 9. **Connect Next.js repo to Vercel Git integration**
@@ -280,34 +318,32 @@ Confirmed via Upstash docs (see conversation for citations):
      production deploy, PRs = preview deploys. (Separate from Python service
      deploy, already close to ready: `vercel.json` + CI checks exist.)
 
-## Decision: where a persistent suggestion cache would live (if we add one)
+## Resolved: the suggestion cache is gone
 
-The lazy `_SUGGESTION_CACHE` in `spell_checker.py:219` is the one that
-actually gets hits (repeated typos, novel-specific words that slip past the
-whitelist). It lives in process RAM, so on Render — which sleeps after 15
-minutes — it is empty on nearly every request burst. Persisting it was
-considered. Three options, ranked:
+This section used to weigh three homes for a persistent suggestion cache. The
+question no longer exists. `pythainlp.spell()` was the reason one was ever
+wanted — 0.66 s per word, spiking to 929 ms — and hunspell-th via `spylls`
+answers in 56 ms warm. Nothing is worth caching at that speed, so the pkl, the
+background build, the startup hook and the two management endpoints are all
+deleted.
 
-1. **Widen the whitelist first (step 0b) and persist nothing.** Preferred.
-   Removes most of the demand instead of serving it. Cost: the first lookup
-   of a genuinely unknown word after a cold start pays ~0.66 s. For a
-   single-user personal deployment that may never be noticeable.
+Two things recorded here were wrong and are worth keeping visible, because the
+same reasoning was applied elsewhere:
 
-2. **A small table in the existing Neon Postgres**
-   (`word`, `pythainlp_version`, `suggestions`). If persistence turns out to
-   be worth it, this is the way: `psycopg2-binary` and `DATABASE_URL` are
-   already in `pythonservice/`, Neon is already in `sin1`, and — the point
-   that decides it — **the data does not leave anywhere it isn't already**.
+- **"Spell check is a background job the writer never explicitly invoked."**
+  It is not. `chapter-row.tsx:128` fires it when the writer moves a chapter to
+  *รอพิสูจน์อักษร*. It is as user-triggered as the Groq/Gemini calls.
+- **"Routing those words to Upstash would be the first time fragments of an
+  unpublished manuscript leave the system."** They never stayed in it. Neon
+  holds the manuscript, Vercel processes it, and the AI providers receive
+  chapter text on every call. The honest version of this argument is only
+  *one more vendor holding a copy*, which is a question of degree.
 
-3. **Upstash Redis — rejected.** The words that would be cached are by
-   definition the words *absent* from the Thai dictionary: character names,
-   place names, invented terminology. Spell check is currently 100% local
-   (PyThaiNLP, in-process). Routing those words to Upstash would be the
-   first time fragments of an unpublished manuscript leave the system, and
-   it would happen in a background job the writer never explicitly invoked —
-   which cuts against the project's "AI is opt-in, the writer decides what
-   leaves" principle. The AI features that do call Groq/Gemini are all
-   user-triggered; this one would not be. Not worth it to save 0.66 s.
+If a hosted spell checker is ever revisited (Longdo's API was measured: 4/4
+typos caught, **fewer** false positives than the local pipeline, ~116 ms per
+sentence against 114 ms local, and it would drop `attacut` + `spylls` for
+−218 MB), decide it on that honest footing — vendor count, network dependency,
+and RAM — not on a privacy line that was never true.
 
 ## Explicitly out of scope
 - No change to `embeddings.py` (Gemini embedding generation stays as-is).
