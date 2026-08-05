@@ -4,6 +4,7 @@ langchain-openai
 pydantic
 pythainlp
 attacut
+spylls
 google-generativeai
 python-dotenv
 openai

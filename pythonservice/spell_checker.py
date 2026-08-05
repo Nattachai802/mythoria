@@ -4,15 +4,57 @@ Thai Novel Spell Checker
 รองรับชื่อตัวละคร / สถานที่ / คำศัพท์เฉพาะของเรื่อง เพื่อไม่ให้ถูกตีว่าผิด
 """
 
+import os
 import re
-import threading
 from typing import List, Optional
 from dataclasses import dataclass, field
 from pythainlp.spell import spell, correct
 from pythainlp.tokenize import word_tokenize, sent_tokenize
 from pythainlp.util import normalize, dict_trie
 from pythainlp.corpus.common import thai_words
-from build_spell_cache import load_cache, build_cache, save_cache, CACHE_FILE
+
+# ตัวแนะนำคำ: Hunspell (spylls = Hunspell เขียนใหม่ด้วย Python ล้วน ไม่ต้องลง lib ระบบ)
+#
+# ใช้แทน pythainlp.spell() เฉพาะขั้น "แนะนำคำที่น่าจะถูก" เท่านั้น ส่วนขั้น "คำนี้ผิดไหม"
+# ยังใช้ thai_words() ของ PyThaiNLP อยู่ เพราะพจนานุกรม Hunspell มี 38,722 คำ น้อยกว่า
+# 62,101 คำของ PyThaiNLP และตกคำที่นิยายแฟนตาซีใช้ประจำ (เช่น "เวทมนตร์") ถ้าเอามาตัดสิน
+# ว่าผิด/ถูกจะขีดแดงมั่ว
+#
+# ที่เปลี่ยนเพราะ pythainlp.spell() วัดได้ 0.66 วิ/คำ และแกว่งถึง 929 ms ส่วน Hunspell
+# อยู่ที่ 6-70 ms คงเส้นคงวา แถมคุณภาพดีกว่า ("ประเทษไทย" -> pythainlp คืนคำผิดกลับมาเฉย ๆ
+# ส่วน Hunspell คืน "ประเทศไทย") พอเร็วขนาดนี้แล้ว suggestion cache ก็ไม่ต้องมีอีกต่อไป
+_HUNSPELL = None
+_HUNSPELL_TRIED = False
+_DICT_PATH = os.path.join(os.path.dirname(__file__), "dictionaries", "th_TH")
+
+
+def _get_hunspell():
+    global _HUNSPELL, _HUNSPELL_TRIED
+    if not _HUNSPELL_TRIED:
+        _HUNSPELL_TRIED = True
+        try:
+            from spylls.hunspell import Dictionary
+            _HUNSPELL = Dictionary.from_files(_DICT_PATH)
+            print("[SpellChecker] suggester: hunspell-th (spylls)")
+        except Exception as e:
+            _HUNSPELL = None
+            print(f"[SpellChecker] suggester: pythainlp.spell (hunspell ใช้ไม่ได้: {e})")
+    return _HUNSPELL
+
+
+def _suggest(word: str, limit: int = 5) -> List[str]:
+    """คำที่น่าจะถูกสำหรับ word — เรียงคำที่ใกล้ที่สุดก่อน"""
+    hs = _get_hunspell()
+    if hs is not None:
+        try:
+            return [c for c in hs.suggest(word) if c != word][:limit]
+        except Exception:
+            pass  # fallback pythainlp
+    return sorted(
+        [c for c in spell(word) if c != word],
+        key=lambda c: NovelSpellChecker._edit_distance(word, c),
+    )[:limit]
+
 
 # Thai dictionary — lazy load ครั้งแรกที่ใช้ (กัน RAM ค้างตอน service ไม่ได้ spell-check)
 _THAI_DICT_CACHE = None
@@ -21,37 +63,6 @@ def _get_thai_dict() -> frozenset:
     if _THAI_DICT_CACHE is None:
         _THAI_DICT_CACHE = frozenset(thai_words())
     return _THAI_DICT_CACHE
-
-# โหลด suggestion cache จาก .pkl (ถ้ามี)
-_SUGGESTION_CACHE: dict = load_cache() or {}
-_CACHE_BUILDING = False  # flag บอกว่ากำลัง build อยู่
-
-
-def _background_build():
-    """Build spell cache ใน background thread — ไม่บล็อก service"""
-    global _SUGGESTION_CACHE, _CACHE_BUILDING
-    _CACHE_BUILDING = True
-    print("[SpellChecker] background build เริ่มต้น...")
-    try:
-        cache = build_cache(verbose=True)
-        save_cache(cache, CACHE_FILE)
-        _SUGGESTION_CACHE.update(cache)
-        print(f"[SpellChecker] background build เสร็จ — {len(cache)} คำ")
-    except Exception as e:
-        print(f"[SpellChecker] background build ล้มเหลว: {e}")
-    finally:
-        _CACHE_BUILDING = False
-
-
-def ensure_cache_built():
-    """เรียกตอน startup — ถ้าไม่มี cache ให้ build ใน background"""
-    if not _SUGGESTION_CACHE and not _CACHE_BUILDING:
-        print("[SpellChecker] ไม่มี cache — เริ่ม background build (service ยังรับ request ได้ปกติ)")
-        t = threading.Thread(target=_background_build, daemon=True)
-        t.start()
-    elif _SUGGESTION_CACHE:
-        print(f"[SpellChecker] cache พร้อม — {len(_SUGGESTION_CACHE)} คำ โหลดจาก pkl")
-
 
 # attacut tokenizer — lazy load (โมเดล neural โหลดตอนใช้ครั้งแรก ไม่ใช่ตอน import)
 #
@@ -153,8 +164,6 @@ class NovelSpellChecker:
         # ช่วงที่ไม่รู้จักเป็นก้อนเดียว ("ถูกทิ้งร้างมานานนับศตวรรษ" กลายเป็น token เดียว)
         self._custom_trie = dict_trie(set(thai_words()) | self.custom_whitelist)
 
-        # ชี้ไปที่ global suggestion cache
-        self._suggestion_cache = _SUGGESTION_CACHE
 
     def _should_skip(self, word: str) -> bool:
         """คืน True ถ้าคำนี้ไม่ต้องตรวจ"""
@@ -191,7 +200,6 @@ class NovelSpellChecker:
         print(f"[SpellChecker] sentences        : {len(sentences)}")
         print(f"[SpellChecker] whitelist size   : {len(self.custom_whitelist)}")
         print(f"[SpellChecker] thai dict size   : {len(_get_thai_dict())} words")
-        print(f"[SpellChecker] suggestion cache : {len(_SUGGESTION_CACHE)} words cached")
 
         errors: List[SpellError] = []
         total_words = 0
@@ -223,14 +231,8 @@ class NovelSpellChecker:
                 in_dict = (word in _get_thai_dict()) or (word in self.custom_whitelist)
 
                 if not in_dict:
-                    # หา suggestions เฉพาะคำที่ผิด โดยใช้ cache
-                    if word not in self._suggestion_cache:
-                        candidates = spell(word)
-                        self._suggestion_cache[word] = sorted(
-                            [c for c in candidates if c != word],
-                            key=lambda c: self._edit_distance(word, c)
-                        )[:5]
-                    suggestions = self._suggestion_cache[word]
+                    # หา suggestions เฉพาะคำที่ผิด — เร็วพอจนไม่ต้อง cache (ดูหมายเหตุบนสุด)
+                    suggestions = _suggest(word)
 
                     offset = self._get_char_offset(sentence, tokens, tok_idx)
 
@@ -250,7 +252,6 @@ class NovelSpellChecker:
 
         elapsed = time.time() - t0
         print(f"[SpellChecker] done -- {total_words} words, {len(errors)} errors, {elapsed:.2f}s")
-        print(f"[SpellChecker] suggestion cache : {len(_SUGGESTION_CACHE)} words (after)")
 
         return SpellCheckResult(
             original_text=text,
@@ -269,17 +270,10 @@ class NovelSpellChecker:
         if is_correct:
             return {"word": word, "correct": True, "suggestions": []}
 
-        if word not in self._suggestion_cache:
-            candidates = spell(word)
-            self._suggestion_cache[word] = sorted(
-                [c for c in candidates if c != word],
-                key=lambda c: self._edit_distance(word, c)
-            )[:5]
-
         return {
             "word": word,
             "correct": False,
-            "suggestions": self._suggestion_cache[word],
+            "suggestions": _suggest(word),
         }
 
     def add_custom_words(self, words: List[str]):

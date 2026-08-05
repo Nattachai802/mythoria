@@ -1,7 +1,6 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # Python spell cache (generated at runtime)
-pythonservice/spell_cache.pkl
 
 # dependencies
 /node_modules

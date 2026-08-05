@@ -24,17 +24,7 @@ from stylometry import analyze_single_chapter_style
 
 load_dotenv()
 
-from contextlib import asynccontextmanager
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
-    from spell_checker import ensure_cache_built
-    ensure_cache_built()
-    yield
-    # Shutdown (ไม่ต้องทำอะไร)
-
-app = FastAPI(title="Mythoria Vector Service", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Mythoria Vector Service", version="1.0.0")
 
 # CORS for Next.js
 app.add_middleware(
@@ -1088,35 +1078,6 @@ async def spell_check_word_endpoint(request: WordCheckRequest):
     """ตรวจคำเดียว — สำหรับ inline real-time check"""
     checker = NovelSpellChecker(custom_words=request.custom_words or None)
     return checker.check_word(request.word)
-
-
-@app.get("/spell-check/cache/status")
-async def spell_cache_status():
-    """ดูสถานะ spell cache"""
-    from spell_checker import _SUGGESTION_CACHE, _CACHE_BUILDING
-    import os
-    from build_spell_cache import CACHE_FILE, get_current_version
-    return {
-        "cached_words": len(_SUGGESTION_CACHE),
-        "building": _CACHE_BUILDING,
-        "cache_file_exists": os.path.exists(CACHE_FILE),
-        "cache_file_size_mb": round(os.path.getsize(CACHE_FILE) / 1024 / 1024, 1) if os.path.exists(CACHE_FILE) else 0,
-        "pythainlp_version": get_current_version(),
-    }
-
-
-@app.delete("/spell-check/cache")
-async def flush_spell_cache():
-    """Flush spell cache ทั้งหมด (ใช้เมื่อ PyThaiNLP update)"""
-    from spell_checker import _SUGGESTION_CACHE, ensure_cache_built
-    import os
-    from build_spell_cache import CACHE_FILE
-    count = len(_SUGGESTION_CACHE)
-    _SUGGESTION_CACHE.clear()
-    if os.path.exists(CACHE_FILE):
-        os.remove(CACHE_FILE)
-    ensure_cache_built()  # trigger rebuild ใน background
-    return {"flushed_words": count, "rebuilding": True}
 
 
 # ============================================
