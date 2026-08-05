@@ -1,8 +1,63 @@
-# Migrate pythonservice vector store: LanceDB → Upstash Vector
+# Deploy plan — Next.js now, Python service later
+
+## Status (current decision)
+
+**Ship Next.js to Vercel first. Everything below about the Python service and
+the vector store is ON HOLD.**
+
+A large rewrite of the story-analysis AI algorithm is coming, and the vector
+store choice is *downstream* of it: chunk size and strategy, embedding model
+(is 768 dim still right?), one-vector-per-entity vs many, and whether retrieval
+has to join the graph/`references` table are all open. Migrating now means
+deciding without the requirements, and likely migrating twice. LanceDB on local
+disk costs nothing during development — it only hurts when deploying Python, so
+both wait together.
+
+**When it is time to decide, the default is pgvector on Neon — not Upstash
+Vector.** `main.py:197` sends `content: text[:500]`, i.e. the first 500
+characters of every chapter, into the vector store. Putting that on Upstash
+means fragments of an unpublished manuscript live on a third party's servers —
+which contradicts the reasoning already recorded below for rejecting Upstash
+Redis, where the data at stake was only *character names*. Neon already holds
+the manuscript, so "the data does not leave anywhere it isn't already" holds,
+and it also delivers FK-cascade cleanup and single-query graph joins (see
+`docs/roadmap.md`).
+
+### Still worth doing now (small, independent of the AI rewrite)
+- **Step 0** — delete the dead precomputed spell cache. 0% hit rate, and
+  removing it is a pure deletion with no behavior change.
+- **Step 0b** — widen the custom-word whitelist. Fixes item/faction names being
+  underlined as typos, which is a real annoyance during writing today.
+
+Neither depends on where vectors end up.
+
+### Vercel deploy checklist (the part being done now)
+- `vercel.json` already sets `regions: ["sin1"]` and `maxDuration: 300`.
+- `.github/workflows/ci.yml` already runs typecheck, self-checks, and build.
+- Import `Nattachai802/mythoria` in the Vercel dashboard → push to `main`
+  deploys production, PRs get preview URLs.
+- Set the real env vars in Vercel (the list in `ci.yml` uses dummies):
+  `DATABASE_URL`, `NEON_DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`,
+  `NEXT_PUBLIC_BASE_URL`, `GEMINI_API_KEY`, `TYPHOON_API_KEY`, `GROQ_API_KEY`,
+  `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `CLOUDINARY_*`, `RESEND_*`,
+  `REGISTRATION_CODE`, `NEXT_PUBLIC_SENTRY_DSN`.
+- **Leave `PYTHON_SERVICE_URL` unset for now.** Five API routes call Python
+  (spell-check, stylometry for chapters and notes, analysis-trigger, and the
+  `/api/py/[...path]` passthrough). With no Python host they return errors;
+  everything else — writing, chapters, characters, world graph, auth — works.
+  The build does not depend on it.
+
+---
+
+# (On hold) Migrate pythonservice vector store off local disk
 
 > **Correction (verification pass):** LanceDB was NOT the only disk-state
 > dependency. `spell_cache.pkl` is a second one, and a worse blocker.
 > See step 0 — it must be handled or the service cannot run on Render at all.
+
+> **Correction (later pass):** the Upstash Vector direction below is superseded
+> by the Status section above. Kept for the verified API/limit details, which
+> stay useful if Upstash is ever reconsidered.
 
 ## Why
 `pythonservice/lance_client.py` stores vectors on local disk (`vector-db/`), which

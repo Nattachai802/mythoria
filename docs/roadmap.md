@@ -27,9 +27,21 @@
 - Phase 5: @-mention ใน editor → Phase 6: graph/agent อ่าน references → Phase 7: drop junction เก่า
 - รายละเอียด: [`context-fabric-plan.md`](./context-fabric-plan.md)
 
-### ย้าย vector store: LanceDB → Upstash Vector
-**แผนเต็มอยู่ที่ [`task.md`](../task.md)** — VPS ถูกตัดออกแล้ว ทิศทางคือทำให้ Python ไม่มี state บนดิสก์เลย
-จะได้ deploy ขึ้นฟรีเทียร์ (Render) ด้วย git push เหมือนฝั่ง Next.js ไม่ต้องมี persistent volume ให้ต้องจ่าย
+### ย้าย vector store: LanceDB → ? — **พักไว้ รอ AI algorithm นิ่งก่อน**
+**แผนเต็มอยู่ที่ [`task.md`](../task.md)**
+
+กำลังจะรื้อ algorithm วิเคราะห์เนื้อเรื่องครั้งใหญ่ และการเลือก vector store เป็นการตัดสินใจ *ปลายน้ำ*
+ของ algorithm นั้น — chunk ขนาดไหน, embedding model ตัวไหน (768 มิติยังใช่ไหม), 1 entity = 1 vector
+หรือหลายตัว, ต้อง join กับ graph/references ตอน retrieve ไหม คำตอบพวกนี้เปลี่ยนได้หมด
+ย้ายตอนนี้ = ตัดสินใจทั้งที่ยังไม่รู้โจทย์ แล้วอาจต้องย้ายซ้ำ
+
+LanceDB บนดิสก์ **ไม่เจ็บตอน dev** — มันเจ็บเฉพาะตอนจะ deploy Python เท่านั้น เลยเลื่อนไปพร้อมกัน
+
+**เมื่อถึงเวลาตัดสินใจ ค่าตั้งต้นคือ pgvector บน Neon ไม่ใช่ Upstash Vector**
+`main.py:197` ส่ง `content: text[:500]` — เนื้อเรื่อง 500 ตัวอักษรแรกของทุกบท ไปเก็บไว้ที่ vector store ด้วย
+ถ้าไปอยู่ Upstash เท่ากับต้นฉบับที่ยังไม่เผยแพร่ออกไปอยู่เซิร์ฟเวอร์บริษัทอื่น ซึ่งขัดกับเหตุผลที่
+[`task.md`](../task.md) ใช้ปฏิเสธ Upstash Redis ไปแล้ว (ตอนนั้นแค่ *ชื่อตัวละคร* ยังไม่ให้ส่ง)
+Neon ถือต้นฉบับอยู่แล้ว → "ข้อมูลไม่ได้ออกไปที่ใหม่" ได้ครบทั้ง FK cascade + join เดียวจบ ตามข้างล่าง
 
 ปัญหาปัจจุบัน: เวกเตอร์อยู่ใน `vector-db/*.lance` (ไฟล์บนดิสก์ของเครื่องที่รัน Python) ส่วนข้อมูลจริงอยู่ Neon
 - Vercel เขียนไฟล์ไม่ได้ + หายทุก deploy → Python ต้อง deploy แยกตลอดไป
