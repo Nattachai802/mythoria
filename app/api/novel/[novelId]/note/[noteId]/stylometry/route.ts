@@ -70,11 +70,22 @@ export async function POST(
         });
 
         if (historyData.length > 0) {
+            // Python (author_fingerprint_discovery.extract_metrics) อ่าน key แบบ snake_case
+            // แต่ Drizzle คืน camelCase — ส่งดิบ ๆ ไปทุกมิติจะกลายเป็น 0 แล้วบอกว่า
+            // "เหมือนงานเดิม" ทุกตอนโดยไม่มีใครรู้ (server/stylometry.ts:38-43 แปลงถูกอยู่แล้ว)
+            const snakeCaseHistory = historyData.map(d => ({
+                id: d.id,
+                lexical_richness: d.lexicalRichness,
+                pacing_and_mood: d.pacingAndMood,
+                chapter_anatomy: d.chapterAnatomy,
+                character_dialogue_vibes: d.characterDialogueVibes,
+            }));
+
             const fingerprintResponse = await pyFetch("/analyze-fingerprint", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    history: historyData,
+                    history: snakeCaseHistory,
                     current_metrics: style_metrics
                 })
             });
