@@ -146,19 +146,22 @@ export function SceneParticipantsPanel({
             return
         }
 
+        // ponytail: เพิ่มลง state ให้ครบก่อนใน tick เดียว (React batch ให้) แล้วค่อย await ยิง DB
+        // ถ้าสลับ onAddChild กับ await ในลูป transition จะถูก replay แล้ว prev.map() คืน array ใหม่ทุกรอบ
+        // → items เปลี่ยน identity ทุก render → effect ที่ผูกกับ items วนจน React ตัดที่ 50 (#185)
+        const children = fresh.map(title => ({
+            id: crypto.randomUUID(),
+            type: partType,
+            referenceId: null,
+            title,
+            content: "",
+            role,
+        }))
+        children.forEach(child => onAddChild(ideaItem.id, child))
+
         startTransition(async () => {
             let saved = 0
-            for (const title of fresh) {
-                const child = {
-                    id: crypto.randomUUID(),
-                    type: partType,
-                    referenceId: null,
-                    title,
-                    content: "",
-                    role,
-                }
-                onAddChild(ideaItem.id, child)
-
+            for (const child of children) {
                 const res = await upsertSceneElementDetail({
                     sceneId,
                     elementType: partType,

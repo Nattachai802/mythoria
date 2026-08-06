@@ -937,7 +937,20 @@ export function PlaygroundBoard({
                 h: r.height / BOARD_ZOOM,
             });
         });
-        setLinkPositions(next);
+        // ponytail: พิกัดเท่าเดิม → คืน state ตัวเดิม ไม่งั้น Map ใหม่ทุกครั้ง = re-render ทุกครั้ง
+        // ทั้งที่ไม่มีอะไรขยับ (ฟังก์ชันนี้ถูกเรียกทั้งจาก layout effect และ ResizeObserver)
+        // ไม่ใช่ตัวแก้ #185 — ตัวนั้นอยู่ที่ scene-participants-panel handleAddMany
+        setLinkPositions(prev => {
+            if (prev.size === next.size) {
+                let same = true;
+                for (const [id, p] of next) {
+                    const q = prev.get(id);
+                    if (!q || q.x !== p.x || q.y !== p.y || q.w !== p.w || q.h !== p.h) { same = false; break; }
+                }
+                if (same) return prev;
+            }
+            return next;
+        });
     }, []);
 
     // การ์ดสูงขึ้นหลัง note/children/ancestor โหลด async → ต้องวัดใหม่ ไม่งั้น anchor ค้างที่กึ่งกลางเก่า (เลื่อนไปด้านบน)
