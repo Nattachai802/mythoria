@@ -13,6 +13,8 @@ from pythainlp.tokenize import word_tokenize, sent_tokenize
 from pythainlp.util import normalize, dict_trie
 from pythainlp.corpus.common import thai_words
 
+import longdo_client
+
 # ตัวแนะนำคำ: Hunspell (spylls = Hunspell เขียนใหม่ด้วย Python ล้วน ไม่ต้องลง lib ระบบ)
 #
 # ใช้แทน pythainlp.spell() เฉพาะขั้น "แนะนำคำที่น่าจะถูก" เท่านั้น ส่วนขั้น "คำนี้ผิดไหม"
@@ -158,12 +160,22 @@ class NovelSpellChecker:
                         if part:
                             self.custom_whitelist.add(part)
 
-        # สร้าง custom trie สำหรับ tokenizer
-        # ต้อง union กับ thai_words() ด้วย — custom_dict ของ PyThaiNLP "แทนที่" พจนานุกรม
-        # ไม่ใช่ "เพิ่มเข้าไป" ถ้าส่งแค่ whitelist ตัวตัดคำจะรู้จักแค่ ~50 คำ แล้วเชื่อม
-        # ช่วงที่ไม่รู้จักเป็นก้อนเดียว ("ถูกทิ้งร้างมานานนับศตวรรษ" กลายเป็น token เดียว)
-        self._custom_trie = dict_trie(set(thai_words()) | self.custom_whitelist)
+        # trie สร้างตอนใช้ครั้งแรก ไม่ใช่ตอน __init__ — มันกิน ~65 MB (62,101 คำ)
+        # และใช้เฉพาะทาง fallback ในเครื่อง ทาง Longdo ไม่ต้องใช้เลย
+        self._trie = None
 
+
+    def _get_custom_trie(self):
+        """
+        พจนานุกรมสำหรับตัวตัดคำ — union ของ thai_words() กับคำเฉพาะของเรื่อง
+
+        ต้อง union เพราะ custom_dict ของ PyThaiNLP "แทนที่" พจนานุกรม ไม่ใช่ "เพิ่มเข้าไป"
+        ถ้าส่งแค่ whitelist ตัวตัดคำจะรู้จักแค่ ~50 คำ แล้วเชื่อมช่วงที่ไม่รู้จักเป็นก้อนเดียว
+        ("ถูกทิ้งร้างมานานนับศตวรรษ" กลายเป็น token เดียว)
+        """
+        if self._trie is None:
+            self._trie = dict_trie(set(thai_words()) | self.custom_whitelist)
+        return self._trie
 
     def _should_skip(self, word: str) -> bool:
         """คืน True ถ้าคำนี้ไม่ต้องตรวจ"""
@@ -189,11 +201,24 @@ class NovelSpellChecker:
         return -1
 
     def check_text(self, text: str) -> SpellCheckResult:
-        """ตรวจสอบ text ทั้งหมด คืน SpellCheckResult"""
+        """
+        ตรวจสอบ text ทั้งหมด
+
+        ลอง Longdo ก่อน ถ้าไม่ได้ค่อยตกมาที่ตัวในเครื่อง — ทางแรกไม่โหลดอะไรเข้า RAM
+        เลย ส่วนทางที่สองปลุก attacut (184 MB) + hunspell (34 MB) ขึ้นมาตอนนั้น
+        ทั้งคู่ lazy อยู่แล้ว การไม่เรียกจึงแปลว่าไม่กิน
+        """
         import time
         t0 = time.time()
 
         cleaned = self._preprocess(text)
+
+        remote = self._check_via_longdo(cleaned, text)
+        if remote is not None:
+            elapsed = time.time() - t0
+            print(f"[SpellChecker] longdo -- {remote.error_count} errors, {elapsed:.2f}s")
+            return remote
+
         sentences = sent_tokenize(cleaned, engine="whitespace+newline")
 
         print(f"[SpellChecker] text length      : {len(text)} chars")
@@ -261,6 +286,45 @@ class NovelSpellChecker:
             custom_words_used=sorted(custom_words_found),
         )
 
+    def _check_via_longdo(self, cleaned: str, original: str) -> Optional[SpellCheckResult]:
+        """
+        ตรวจด้วย Longdo แล้วแปลงผลให้เข้ารูป SpellCheckResult เดิม
+
+        คืน None ถ้าเรียกไม่ได้ ให้ผู้เรียกไปใช้ทางในเครื่องแทน
+
+        ต้องกรองด้วย whitelist เอง เพราะ API ไม่รับพจนานุกรมเฉพาะเรื่อง —
+        ไม่กรองแล้วชื่อตัวละครกับคำที่ประดิษฐ์ขึ้นจะโดนขีดแดงทุกหน้า
+        """
+        hits = longdo_client.proof(cleaned)
+        if hits is None:
+            return None
+
+        errors: List[SpellError] = []
+        custom_found: set = set()
+        for h in hits:
+            word = h["word"]
+            if word in self.custom_whitelist:
+                custom_found.add(word)
+                continue
+            if self._should_skip(word) or not self._is_real_word(word):
+                continue
+            errors.append(SpellError(
+                word=word,
+                position=-1,           # Longdo ให้ offset ตัวอักษร ไม่ให้ลำดับ token
+                offset=h["offset"],
+                suggestions=h["suggestions"],
+                sentence="",           # ไม่ได้แบ่งประโยค จึงไม่มี context ให้แนบ
+                sentence_index=-1,
+            ))
+
+        return SpellCheckResult(
+            original_text=original,
+            errors=errors,
+            total_words=len(cleaned.split()),
+            error_count=len(errors),
+            custom_words_used=sorted(custom_found),
+        )
+
     def check_word(self, word: str) -> dict:
         """ตรวจคำเดียว — ใช้สำหรับ inline check"""
         if self._should_skip(word):
@@ -284,7 +348,9 @@ class NovelSpellChecker:
                 for part in w.strip().split():
                     if part:
                         self.custom_whitelist.add(part)
-        self._custom_trie = dict_trie(self.custom_whitelist)
+        # ทิ้ง trie เดิมให้สร้างใหม่ตอนใช้ — เดิมบรรทัดนี้ประกอบ trie จาก whitelist
+        # อย่างเดียว ซึ่งเป็นบั๊กเดียวกับที่แก้ไปใน __init__ (ตัวตัดคำจะรู้จักแค่ ~50 คำ)
+        self._trie = None
 
     # ============================================================
     # Private helpers
@@ -309,7 +375,7 @@ class NovelSpellChecker:
                 return list(tokens)
             except Exception:
                 pass  # fallback newmm
-        return word_tokenize(text, engine="newmm", custom_dict=self._custom_trie)
+        return word_tokenize(text, engine="newmm", custom_dict=self._get_custom_trie())
 
     def _is_real_word(self, token: str) -> bool:
         """กรองเฉพาะ token ที่เป็นคำจริงๆ (มีตัวอักษรไทย)"""

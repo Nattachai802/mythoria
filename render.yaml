@@ -36,6 +36,8 @@ services:
         sync: false
       - key: TYPHOON_API_KEY # ai_agent.py, character_analyzer.py
         sync: false
+      - key: LONGDO_API_KEY # ตัวตรวจคำผิดหลัก — ไม่ใส่ก็ทำงานได้ แต่จะตกไปใช้
+        sync: false          # ตัวในเครื่องซึ่งกิน RAM เพิ่ม ~190 MB (ดู longdo_client.py)
       - key: NEXT_PUBLIC_BASE_URL # Python เรียก API ของ Next.js กลับ ต้องเป็น URL จริงบน Vercel
         sync: false
 
