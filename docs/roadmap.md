@@ -18,6 +18,21 @@
 
 ## ⬜ ยังไม่ทำ (unblocked — ทำได้เลย)
 
+### รื้อระบบรีวิวรายตอน (stylometry + NarraBench)
+**แผนเต็มอยู่ที่ [`chapter-review-redesign.md`](./chapter-review-redesign.md)**
+
+ปัญหา: persona 5 ตัวต่างกันแค่น้ำเสียง ได้ input เดียวกัน (ตัดมา 3000 ตัวอักษร) และ
+`server/rag.ts` ดึง context ด้วยความคล้ายโดยไม่กรอง `orderIndex` — รีวิวบท 5 จึงเห็นบท 20 ได้
+เท่ากับ AI รู้ตอนจบแล้ว ประเมินความลุ้น/ความสงสัยไม่ได้
+
+ทางแก้: ใช้รหัส SMV ของ NarraBench เป็นตัวจ่ายงานว่าคำถามไหนตอบด้วยตัวเลข (stylometry/SQL)
+คำถามไหนต้องใช้ LLM — ปรากฏว่า 3 ใน 4 ของผลลัพธ์ที่อยากได้เป็น SQL ล้วน เพราะ
+`noteStylometry` กับ `plotThreads` มีข้อมูลครบอยู่แล้ว แค่ไม่เคยถูกส่งเข้า prompt รีวิว
+
+**เริ่มจากข้อ 1-3 ได้เลย ไม่ต้องแตะ LLM**
+
+---
+
 ### C5 — ของเสริมเล็ก (stylometry)
 - Thai readability score (sentence/word length + MTLD → "ความยากในการอ่าน")
 - Dialogue vs narration rhythm แยกกัน (บทพูดควรกระชับ บรรยายควรไหล)
