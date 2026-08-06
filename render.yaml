@@ -30,6 +30,8 @@ services:
       # ค่าลับ — sync: false แปลว่าไม่เก็บใน git ต้องกรอกใน Dashboard เอง
       - key: INTERNAL_API_KEY # ต้องตรงกับฝั่ง Vercel เป๊ะ ไม่งั้นโดน 401 ทุก request
         sync: false
+      - key: NEON_DATABASE_URL # vector store อยู่ที่นี่แล้ว (lance_client.py)
+        sync: false
       - key: GEMINI_API_KEY # embeddings.py
         sync: false
       - key: TYPHOON_API_KEY # ai_agent.py, character_analyzer.py

@@ -1,4 +1,3 @@
-lancedb
 langchain
 langchain-openai
 pydantic
@@ -15,6 +14,8 @@ httpx
 psycopg2-binary>=2.9.0
 redis>=5.0.0
 
+# vector store ย้ายไป pgvector บน Neon แล้ว (ดู lance_client.py) — psycopg2 ข้างล่างพอ
+#
 # วัด RAM ด้วย venv ของโปรเจกต์เอง (baseline python = 14 MB):
 #
 #   attacut  184 MB — หนักสุด เพราะลาก torch มา แต่ "ห้ามถอด" ลองแล้ว: ถ้าเหลือแต่
@@ -22,5 +23,6 @@ redis>=5.0.0
 #            แล้วหลุดหมด วัดได้ 0/4 คำ — 184 MB นี้ซื้อฟังก์ชันหลักของ spell checker
 #
 # ถอดออกแล้ว:
+#   lancedb     123 MB — เขียนไฟล์ลงดิสก์ ทำให้ deploy บน host ที่ดิสก์ไม่ถาวรไม่ได้
 #   pandas       77 MB — ไม่มี import ที่ไหนเลยใน repo นี้
 #   discord.py   34 MB — เป็นของ Mythoria_bot ที่ deploy แยกอยู่แล้ว
