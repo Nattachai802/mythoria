@@ -1,137 +1,170 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { Loader2, MessageSquare, RefreshCw, Send } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { toast } from "sonner"
-import { cn } from "@/lib/utils"
+import { useCallback, useEffect, useState } from "react";
+import { BookOpen, RefreshCw, Sparkles } from "lucide-react";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
-interface Review {
-  id?: string
-  persona: number
-  personaName: string
-  content: string
+/**
+ * ผู้อ่านจำลอง — คะแนนการตอบสนอง ไม่ใช่คำชม
+ *
+ * เดิมเป็นฟองแชทจาก persona 5 ตัวที่พูดเรื่องเดียวกันคนละน้ำเสียง
+ * ตอนนี้เหลือผู้อ่านคนเดียวที่ "เห็นเฉพาะตอนก่อนหน้า" และให้คะแนน 3 มิติ
+ * บรรทัด "เห็น N ตอนก่อนหน้า" คือหลักฐานว่าคะแนนความลุ้นเชื่อถือได้ ต้องแสดงเสมอ
+ */
+
+interface ReaderResponse {
+    suspense: number; suspenseReason: string;
+    curiosity: number; curiosityReason: string;
+    surprise: number; surpriseReason: string;
+    motivationClarity: string | null; motivationReason: string | null;
+    causality: string | null; causalityReason: string | null;
+    stakes: string | null; stakesReason: string | null;
+    contextPosition: number;
+    truncated: boolean;
+    model: string;
+    createdAt: string;
 }
 
-interface AIReviewPanelProps {
-  noteId: string
-  novelId: string
+interface Props {
+    noteId: string;
+    novelId: string;
 }
 
-export function AIReviewPanel({ noteId, novelId }: AIReviewPanelProps) {
-  const [reviews, setReviews] = useState<Review[]>([])
-  const [loading, setLoading] = useState(false)
-  const [hasFetched, setHasFetched] = useState(false)
+const SCALE_LABEL: Record<string, { text: string; cls: string }> = {
+    clear: { text: "ชัดเจน", cls: "text-emerald-600 dark:text-emerald-400" },
+    muddy: { text: "คลุมเครือ", cls: "text-amber-600 dark:text-amber-400" },
+    unclear: { text: "ไม่เข้าใจ", cls: "text-red-500" },
+};
 
-  const fetchReviews = async () => {
-    try {
-      const res = await fetch(`/api/novel/${novelId}/note/${noteId}/ai-review`)
-      const data = await res.json()
-      if (data.reviews && data.reviews.length > 0) {
-        setReviews(data.reviews)
-        setHasFetched(true)
-      }
-    } catch (error) {
-      console.error("Failed to fetch reviews", error)
-    }
-  }
+export function AIReviewPanel({ noteId, novelId }: Props) {
+    const [data, setData] = useState<ReaderResponse | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [generating, setGenerating] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchReviews()
-  }, [noteId])
+    const load = useCallback(async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const res = await fetch(`/api/novel/${novelId}/note/${noteId}/ai-review`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const json = await res.json();
+            setData(json.response ?? null);
+        } catch (e) {
+            setError(e instanceof Error ? e.message : String(e));
+        } finally {
+            setLoading(false);
+        }
+    }, [novelId, noteId]);
 
-  const handleGenerate = async () => {
-    setLoading(true)
-    toast.info("กำลังเรียกให้นักอ่านมารีวิว (อาจใช้เวลาสักครู่)...")
-    try {
-      const res = await fetch(`/api/novel/${novelId}/note/${noteId}/ai-review`, {
-        method: "POST"
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data.error || "เกิดข้อผิดพลาดในการสร้างรีวิว")
-      }
-      setReviews(data.reviews || [])
-      setHasFetched(true)
-      toast.success("นักอ่านรีวิวเสร็จแล้ว!")
-    } catch (error: any) {
-      toast.error(error.message)
-    } finally {
-      setLoading(false)
-    }
-  }
+    useEffect(() => { load(); }, [load]);
 
-  return (
-    <Card className="flex flex-col border border-border shadow-sm">
-      <CardHeader className="bg-muted/50 py-3 px-4 flex flex-row items-center justify-between border-b">
-        <div>
-          <CardTitle className="text-sm flex items-center gap-2">
-            <MessageSquare className="h-4 w-4" />
-            แชทกลุ่มนักอ่าน (AI)
-          </CardTitle>
-          <CardDescription className="text-xs pt-1">ทดสอบฟีดแบคจาก 5 บุคลิก</CardDescription>
-        </div>
-        <Button 
-          variant="outline" 
-          size="icon" 
-          className="h-7 w-7" 
-          onClick={handleGenerate} 
-          disabled={loading}
-        >
-          <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-        </Button>
-      </CardHeader>
+    const generate = async () => {
+        setGenerating(true);
+        setError(null);
+        try {
+            const res = await fetch(`/api/novel/${novelId}/note/${noteId}/ai-review`, { method: "POST" });
+            const json = await res.json();
+            if (!res.ok || !json.success) {
+                const msg = json.message || json.error || `HTTP ${res.status}`;
+                setError(msg);
+                toast.error(msg);
+                return;
+            }
+            setData(json.response);
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            setError(msg);
+            toast.error(msg);
+        } finally {
+            setGenerating(false);
+        }
+    };
 
-      <CardContent className="p-0">
-        {!hasFetched && !loading ? (
-          <div className="p-6 flex flex-col items-center justify-center text-center space-y-3">
-            <div className="bg-primary/10 p-3 rounded-full">
-              <MessageSquare className="h-6 w-6 text-primary" />
+    return (
+        <div className="rounded-lg border bg-card p-3">
+            <div className="flex items-center gap-2 mb-2">
+                <BookOpen className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-xs font-semibold">ผู้อ่านจำลอง</span>
+                {data && (
+                    <span className="text-[11px] text-muted-foreground ml-auto">
+                        เห็น {data.contextPosition} ตอนก่อนหน้า
+                    </span>
+                )}
             </div>
-            <p className="text-xs text-muted-foreground">ยังไม่มีการรีวิวเนื้อหาตอนนี้<br/>กดปุ่มด้านล่างเพื่อให้นักอ่าน AI เริ่มวิจารณ์</p>
-            <Button size="sm" onClick={handleGenerate} disabled={loading} className="w-full">
-              <Send className="h-3.5 w-3.5 mr-2" />
-              ส่งให้อ่านเลย
-            </Button>
-          </div>
-        ) : (
-          <ScrollArea className="h-[350px] p-4 bg-muted/10">
-            {loading && reviews.length === 0 ? (
-              <div className="flex flex-col justify-center items-center h-full space-y-3 text-muted-foreground">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                <p className="text-xs animate-pulse">นักอ่านกำลังตั้งใจอ่านและพิมพ์แชท...</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {reviews.map((msg, idx) => {
-                  const isPositive = msg.persona <= 2;
-                  const isNeutral = msg.persona === 3;
-                  const isNegative = msg.persona >= 4;
 
-                  return (
-                    <div key={idx} className={cn(
-                      "flex flex-col gap-1 w-[90%]",
-                      msg.persona % 2 === 0 ? "ml-auto items-end" : "mr-auto items-start"
-                    )}>
-                      <span className="text-[10px] text-muted-foreground px-1 font-medium">
-                        {msg.personaName}
-                      </span>
-                      <div className={cn(
-                        "p-3 rounded-2xl text-xs leading-relaxed shadow-sm",
-                        msg.persona % 2 === 0 ? "rounded-tr-sm bg-primary text-primary-foreground" : "rounded-tl-sm bg-card border border-border"
-                      )}>
-                        {msg.content}
-                      </div>
+            {error && <p className="text-[11px] text-destructive mb-2">{error}</p>}
+
+            {loading && !data ? (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground py-3">
+                    <RefreshCw className="h-3 w-3 animate-spin" /> กำลังโหลด…
+                </div>
+            ) : !data ? (
+                <div className="py-3 text-center space-y-2">
+                    <p className="text-[11px] text-muted-foreground">
+                        ให้ผู้อ่านที่ยังไม่รู้ตอนจบ อ่านตอนนี้แล้วบอกว่าลุ้นแค่ไหน
+                    </p>
+                    <Button size="sm" variant="outline" onClick={generate} disabled={generating}>
+                        {generating ? <RefreshCw className="h-3 w-3 mr-1.5 animate-spin" /> : <Sparkles className="h-3 w-3 mr-1.5" />}
+                        {generating ? "กำลังอ่าน…" : "ส่งให้อ่าน"}
+                    </Button>
+                </div>
+            ) : (
+                <div className="space-y-2">
+                    <Score label="ความลุ้น" value={data.suspense} reason={data.suspenseReason} />
+                    <Score label="ความสงสัย" value={data.curiosity} reason={data.curiosityReason} />
+                    <Score label="เซอร์ไพรส์" value={data.surprise} reason={data.surpriseReason} />
+
+                    <div className="border-t pt-2 space-y-1">
+                        <Flag label="แรงจูงใจ" value={data.motivationClarity} reason={data.motivationReason} />
+                        <Flag label="เหตุ-ผล" value={data.causality} reason={data.causalityReason} />
+                        <Flag label="เดิมพัน" value={data.stakes} reason={data.stakesReason} />
                     </div>
-                  )
-                })}
-              </div>
+
+                    {data.truncated && (
+                        <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                            ตอนนี้ยาวเกินโควตา — ผู้อ่านได้เห็นช่วงต้นและช่วงท้าย ตัดช่วงกลางออก
+                        </p>
+                    )}
+
+                    <div className="flex items-center gap-2 pt-1">
+                        <Button size="sm" variant="ghost" className="h-6 text-[11px] px-2" onClick={generate} disabled={generating}>
+                            <RefreshCw className={cn("h-3 w-3 mr-1", generating && "animate-spin")} />
+                            อ่านใหม่
+                        </Button>
+                        <span className="text-[10px] text-muted-foreground/70 ml-auto">{data.model}</span>
+                    </div>
+                </div>
             )}
-          </ScrollArea>
-        )}
-      </CardContent>
-    </Card>
-  )
+        </div>
+    );
+}
+
+function Score({ label, value, reason }: { label: string; value: number; reason: string }) {
+    return (
+        <div className="text-[11px]">
+            <div className="flex items-center gap-2">
+                <span className="w-16 shrink-0 text-muted-foreground">{label}</span>
+                <span className="font-mono tracking-tight" aria-label={`${value} จาก 5`}>
+                    {"▓".repeat(value)}<span className="text-muted-foreground/30">{"░".repeat(5 - value)}</span>
+                </span>
+                <span className="tabular-nums text-muted-foreground">{value}/5</span>
+            </div>
+            <p className="pl-[4.5rem] text-muted-foreground/80 leading-snug">{reason}</p>
+        </div>
+    );
+}
+
+function Flag({ label, value, reason }: { label: string; value: string | null; reason: string | null }) {
+    if (!value) return null;
+    const s = SCALE_LABEL[value];
+    return (
+        <div className="text-[11px] flex items-baseline gap-2">
+            <span className="w-16 shrink-0 text-muted-foreground">{label}</span>
+            <span className={cn("shrink-0 font-medium", s?.cls)}>{s?.text ?? value}</span>
+            {reason && reason !== "—" && <span className="text-muted-foreground/80 leading-snug">{reason}</span>}
+        </div>
+    );
 }

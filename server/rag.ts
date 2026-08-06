@@ -62,11 +62,30 @@ async function vectorSearch(novelId: string, query: string, limit: number): Prom
 export async function retrieveContext(
     novelId: string,
     query: string,
-    opts?: { searchLimit?: number; expandTop?: number; neighborsPerHit?: number },
+    opts?: {
+        searchLimit?: number;
+        expandTop?: number;
+        neighborsPerHit?: number;
+        /**
+         * จำกัดให้เห็นเฉพาะตอนที่ระบุ — ใช้กับผู้อ่านจำลองที่ต้องรู้เท่าคนอ่าน ณ จุดนั้น
+         *
+         * เมื่อส่งมา จะเก็บเฉพาะ item ที่เป็น note และอยู่ในเซตนี้ ตัด type อื่นทิ้งทั้งหมด
+         * (ตัวละคร/สถานที่เขียนจากมุมคนที่รู้ตอนจบ — คำอธิบายตัวละครที่บอกว่า
+         * "ภายหลังทรยศ" ทำลายการวัดความลุ้นทั้งหมด)
+         *
+         * ไม่ส่ง = พฤติกรรมเดิม ทุก call site อื่นจึงไม่กระทบ
+         */
+        allowedNoteIds?: Set<string>;
+    },
 ): Promise<RetrieveResult> {
     const searchLimit = opts?.searchLimit ?? 8;
     const expandTop = opts?.expandTop ?? 3;        // เดินเส้นจาก hit กี่อันแรก
     const neighborsPerHit = opts?.neighborsPerHit ?? 4;
+    const allowed = opts?.allowedNoteIds;
+
+    /** ผ่านตัวกรองตำแหน่งการอ่านไหม */
+    const permitted = (type: string, id: string) =>
+        !allowed || (type === "note" && allowed.has(id));
 
     const hits = await vectorSearch(novelId, query, searchLimit);
 
@@ -77,6 +96,7 @@ export async function retrieveContext(
     for (const h of hits) {
         const key = `${h.content_type}:${h.id}`;
         if (seen.has(key)) continue;
+        if (!permitted(h.content_type, h.id)) continue;
         seen.add(key);
         items.push({
             type: h.content_type, id: h.id, title: h.title,
@@ -105,6 +125,7 @@ export async function retrieveContext(
             if (!n.entity) continue;
             const key = `${n.entity.type}:${n.entity.id}`;
             if (seen.has(key)) continue;
+            if (!permitted(n.entity.type, n.entity.id)) continue;
             seen.add(key);
             items.push({
                 type: n.entity.type, id: n.entity.id, title: n.entity.title,

@@ -1296,7 +1296,55 @@ export const noteStylometry = pgTable("note_stylometry", {
   novelIdIdx: index("note_stylometry_novel_id_idx").on(table.novelId),
 }));
 
-// AI Reviews Table
+/**
+ * ผู้อ่านจำลองรายตอน — คะแนนการตอบสนอง ไม่ใช่ร้อยแก้ว
+ *
+ * แทน aiChapterReviews (persona 5 ตัวที่คืนคำชมลอย ๆ) ด้วยคะแนนที่เทียบข้ามตอนได้
+ * suspense/curiosity/surprise มาจากกรอบ Revelation ของ NarraBench ซึ่งเป็น
+ * คุณสมบัติที่ประเมินได้ก็ต่อเมื่อผู้อ่าน "ยังไม่รู้ตอนจบ" — contextPosition
+ * บันทึกไว้ว่าตอนนั้นผู้อ่านเห็นกี่ตอนก่อนหน้า เพื่อให้ตรวจย้อนได้ว่าไม่มีสปอยล์
+ *
+ * model/promptVersion จำเป็นตั้งแต่แถวแรก: คะแนนเทียบกันได้เฉพาะภายในคู่เดียวกัน
+ * ถ้าไม่เก็บ วันที่แก้ prompt กราฟจะผสมสเกลที่เทียบกันไม่ได้โดยไม่มีใครสังเกต
+ */
+export const chapterReaderResponse = pgTable("chapter_reader_response", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  noteId: text("note_id")
+    .notNull()
+    .unique()
+    .references(() => notes.id, { onDelete: "cascade" }),
+  novelId: text("novel_id")
+    .notNull()
+    .references(() => novels.id, { onDelete: "cascade" }),
+
+  suspense: integer("suspense").notNull(),
+  suspenseReason: text("suspense_reason").notNull(),
+  curiosity: integer("curiosity").notNull(),
+  curiosityReason: text("curiosity_reason").notNull(),
+  surprise: integer("surprise").notNull(),
+  surpriseReason: text("surprise_reason").notNull(),
+
+  // clear | muddy | unclear
+  motivationClarity: text("motivation_clarity"),
+  motivationReason: text("motivation_reason"),
+  causality: text("causality"),
+  causalityReason: text("causality_reason"),
+  stakes: text("stakes"),
+  stakesReason: text("stakes_reason"),
+
+  raw: jsonb("raw"), // output เต็มจากโมเดล เผื่อเพิ่มมิติทีหลังโดยไม่ต้อง migrate
+  model: text("model").notNull(),
+  promptVersion: text("prompt_version").notNull(),
+  contextPosition: integer("context_position").notNull(), // เห็นกี่ตอนก่อนหน้า
+  truncated: boolean("truncated").notNull().default(false),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  novelIdIdx: index("chapter_reader_response_novel_id_idx").on(table.novelId),
+}));
+
+// AI Reviews Table — เลิกใช้แล้ว แทนด้วย chapterReaderResponse ข้างบน
+// เว้นไว้หนึ่งรอบ release ก่อนค่อย drop
 export const aiChapterReviews = pgTable("ai_chapter_reviews", {
   id: text("id").primaryKey().default(sql`gen_random_uuid()`),
   noteId: text("note_id")

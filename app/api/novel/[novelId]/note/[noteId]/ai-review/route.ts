@@ -1,211 +1,284 @@
 import { NextRequest, NextResponse } from "next/server";
 import { guardNovel } from "@/lib/authz";
 import { db } from "@/db/drizzle";
-import { aiChapterReviews, notes } from "@/db/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { chapterReaderResponse, notes } from "@/db/schema";
+import { and, eq, isNull } from "drizzle-orm";
 import { retrieveContext } from "@/server/rag";
+import { getReadingOrder, notesBefore } from "@/server/reading-order";
+
+/**
+ * ผู้อ่านจำลองรายตอน
+ *
+ * เดิมเป็น persona 5 ตัวที่เรียก LLM 5 ครั้ง ต่างกันแค่น้ำเสียง ได้ input เดียวกัน
+ * และคืนร้อยแก้วที่เอาไปแก้งานไม่ได้ ตอนนี้เหลือการเรียกครั้งเดียวที่คืน "คะแนน
+ * การตอบสนองของผู้อ่าน" ซึ่งเทียบข้ามตอนได้
+ *
+ * ข้อจำกัดที่เป็นหัวใจของฟีเจอร์: ผู้อ่านต้องเห็นเฉพาะตอนก่อนหน้า คนที่รู้ตอนจบแล้ว
+ * ประเมินความลุ้นไม่ได้ตามนิยาม — ตัวกรองอยู่ที่ allowedNoteIds ของ retrieveContext
+ */
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
 const TYPHOON_API_URL = "https://api.opentyphoon.ai/v1/chat/completions";
 const TYPHOON_API_KEY = process.env.TYPHOON_API_KEY || "";
 
-const PERSONAS_MAPPING = {
-  groq: [
-    { id: 1, name: "แฟนคลับเบอร์หนึ่ง", emoji: "🥰", desc: "ตื่นเต้น หวีดร้อง ใช้ emoji เยอะๆ ชอบทุกอย่าง" },
-    { id: 2, name: "นักอ่านสายชิลล์", emoji: "😊", desc: "อ่านเอาสนุก สบายๆ ซื่อๆ ตรงไปตรงมา" },
-    { id: 3, name: "นักวิจารณ์สายวิเคราะห์", emoji: "🧐", desc: "วิเคราะห์โครงเรื่อง จังหวะ มีเหตุมีผล วิจารณ์ตรงประเด็น" }
-  ],
-  typhoon: [
-    { id: 4, name: "คุณครูจอมเนี้ยบ", emoji: "🤨", desc: "เข้มงวด จับผิดคำผิด ตรรกะ ความสมเหตุสมผล ชี้ปัญหาชัดเจน" },
-    { id: 5, name: "ตัวตึงขี้อคติ", emoji: "👿", desc: "บ่น มึนๆ ไม่ค่อยพอใจอะไร แต่ภายใต้คำบ่นมักมีประเด็นที่ถูกต้องแฝงอยู่" } // These tricky personas benefit from Typhoon's deeper Thai nuance
-  ]
-};
+const GROQ_MODEL = "llama-3.3-70b-versatile";
+const TYPHOON_MODEL = "typhoon-v2.5-30b-a3b-instruct";
 
-const JSON_PROMPT = `
-อ่านเนื้อหานิยายตอนล่าสุดนี้ แล้วให้คอมเมนต์ในมุมมองของนักอ่านหลายๆ แบบพร้อมกัน
-กรุณาตอบกลับเป็น JSON Array โดยมีโครงสร้างดังนี้เท่านั้น (งดใส่ข้อความอื่น):
-[
-  { "id": 1, "content": "คอมเมนต์นักอ่านคนที่ 1..." },
-  { "id": 2, "content": "คอมเมนต์นักอ่านคนที่ 2..." }
-]
+/**
+ * ขึ้นเวอร์ชันทุกครั้งที่แก้ rubric หรือ SYSTEM_PROMPT
+ * คะแนนเทียบกันได้เฉพาะภายในเวอร์ชันเดียวกัน กราฟข้ามตอนต้องกรองด้วยค่านี้
+ */
+const PROMPT_VERSION = "v1";
 
-สวมบทบาทนักอ่านตาม ID ต่อไปนี้:
-`;
+/** ทั้งบทโดยประมาณ — เดิมตัดที่ 3,000 ซึ่งเป็นแค่ครึ่งบท คนอ่านครึ่งบทตัดสินความลุ้นไม่ได้ */
+const MAX_CHARS = 12_000;
 
-async function fetchStoryContext(novelId: string, query: string, currentNoteId: string) {
-  try {
-    // Graph RAG: vector search + 1-hop reference expansion (server/rag.ts)
-    const { items } = await retrieveContext(novelId, query);
-    const kept = items.filter((it) => it.id !== currentNoteId).slice(0, 8);
+const SYSTEM_PROMPT = `คุณคือผู้อ่านนิยายคนหนึ่งที่กำลังอ่านมาถึงตอนนี้พอดี
+คุณ "ยังไม่รู้" ว่าเรื่องจะดำเนินต่อไปอย่างไร ห้ามเดาหรือสมมติเหตุการณ์ในตอนถัดไป
+ให้ตอบจากสิ่งที่อ่านมาถึงตรงนี้เท่านั้น
 
-    console.log(`[RAG] Fetched ${kept.length} context items for AI Review (search+graph).`);
-    if (kept.length === 0) return "";
+ตอบกลับเป็น JSON object เดียวตามโครงนี้เท่านั้น (ห้ามมีข้อความอื่นนอก JSON)
+ใส่เหตุผลก่อนคะแนนเสมอ — ให้ตัดสินจากหลักฐานที่เขียนไว้ ไม่ใช่ความรู้สึกรวม ๆ
 
-    return kept
-      .map((it) =>
-        it.via === "search"
-          ? `[${it.type}] ${it.title}: ${it.content ?? ""}`
-          : `[${it.type}] ${it.title} (เกี่ยวข้องผ่าน: ${it.relation})`,
-      )
-      .join("\n");
-  } catch (error) {
-    console.error("[RAG] Context Search Error:", error);
-    return "";
-  }
+{
+  "suspense_reason": "เหตุผลสั้น 1 ประโยค",
+  "suspense": 1-5,
+  "curiosity_reason": "เหตุผลสั้น 1 ประโยค",
+  "curiosity": 1-5,
+  "surprise_reason": "เหตุผลสั้น 1 ประโยค",
+  "surprise": 1-5,
+  "motivation_reason": "เหตุผลสั้น 1 ประโยค",
+  "motivation_clarity": "clear" | "muddy" | "unclear",
+  "causality_reason": "เหตุผลสั้น 1 ประโยค",
+  "causality": "clear" | "muddy" | "unclear",
+  "stakes_reason": "เหตุผลสั้น 1 ประโยค",
+  "stakes": "clear" | "muddy" | "unclear"
 }
+
+เกณฑ์คะแนน — ใช้ตามนี้เคร่งครัด อย่าให้คะแนนกลาง ๆ เพื่อความปลอดภัย
+
+ความลุ้น (suspense) = กลัวว่าจะเกิดเรื่องร้ายกับคนที่เราแคร์
+  1 = ไม่มีอะไรให้กลัว ไม่รู้ว่าอะไรกำลังจะเสียไป
+  2 = มีภัยอยู่ห่าง ๆ แต่ยังไม่กระทบใครที่เรารู้จัก
+  3 = มีภัยชัดเจน แต่ไม่รู้ว่าจะเสียอะไรถ้าล้มเหลว
+  4 = รู้ว่าจะเสียอะไร และภัยใกล้เข้ามา
+  5 = ภัยกำลังเกิดตรงหน้า และเดิมพันสูงจนวางไม่ลง
+
+ความสงสัย (curiosity) = อยากรู้คำตอบของสิ่งที่ยังไม่เฉลย
+  1 = ไม่มีอะไรค้างคาใจ
+  2 = มีจุดคลุมเครือ แต่ไม่ได้อยากรู้เป็นพิเศษ
+  3 = มีคำถามชัด 1 ข้อที่อยากรู้
+  4 = มีหลายคำถามค้าง และตอนนี้เพิ่งเพิ่มคำถามใหม่
+  5 = อยากรู้จนต้องอ่านต่อทันที
+
+ความประหลาดใจ (surprise) = สิ่งที่เกิดขึ้นขัดกับที่คาดไว้
+  1 = เดาได้ทั้งหมดตั้งแต่ต้นตอน
+  2 = เป็นไปตามคาด มีรายละเอียดเล็กน้อยที่ไม่คิดว่าจะเจอ
+  3 = มีจุดพลิกเล็ก ๆ หนึ่งจุด
+  4 = มีเรื่องที่ไม่คาดคิด และเมื่อมองย้อนกลับไปมีการปูทางไว้
+  5 = พลิกความเข้าใจเดิมทั้งหมด แต่ยังสมเหตุสมผล
+
+แรงจูงใจ/เหตุ-ผล/เดิมพัน ให้ "clear" เมื่อเข้าใจได้จากตัวบท
+"muddy" เมื่อพอเดาได้แต่ไม่ชัด "unclear" เมื่ออ่านแล้วงง`;
 
 /** ข้อความที่ผู้อ่านเห็นแทนรีวิว เมื่อรอบนั้นล้ม — บอกสาเหตุจริงจะได้รู้ว่าควรลองใหม่หรือรอ */
 function failureMessage(status: number | null): string {
-  if (status === 429) return "⏳ เรียก AI ถี่เกินไป (rate limit) — รอสักครู่แล้วกดใหม่อีกครั้ง";
-  if (status === 401 || status === 403) return "🔑 คีย์ AI ใช้ไม่ได้หรือถูกปิดสิทธิ์ — ตรวจสอบการตั้งค่า";
-  if (status === 404) return "🧩 โมเดล AI ที่ตั้งไว้ไม่มีแล้ว — ต้องแก้ที่โค้ด";
-  if (status !== null && status >= 500) return "🛠️ ผู้ให้บริการ AI ขัดข้องชั่วคราว — ลองใหม่ภายหลัง";
-  if (status !== null) return `⚠️ เรียก AI ไม่สำเร็จ (HTTP ${status})`;
-  return "⚠️ ตอบกลับจาก AI อ่านไม่ได้ — ลองกดใหม่อีกครั้ง";
+    if (status === 429) return "⏳ เรียก AI ถี่เกินไป (rate limit) — รอสักครู่แล้วกดใหม่อีกครั้ง";
+    if (status === 401 || status === 403) return "🔑 คีย์ AI ใช้ไม่ได้หรือถูกปิดสิทธิ์ — ตรวจสอบการตั้งค่า";
+    if (status === 404) return "🧩 โมเดล AI ที่ตั้งไว้ไม่มีแล้ว — ต้องแก้ที่โค้ด";
+    if (status !== null && status >= 500) return "🛠️ ผู้ให้บริการ AI ขัดข้องชั่วคราว — ลองใหม่ภายหลัง";
+    if (status !== null) return `⚠️ เรียก AI ไม่สำเร็จ (HTTP ${status})`;
+    return "⚠️ ตอบกลับจาก AI อ่านไม่ได้ — ลองกดใหม่อีกครั้ง";
 }
 
-type BatchResult = { items: any[] | null; status: number | null };
+type ProviderResult = { data: Record<string, unknown> | null; status: number | null };
 
-async function fetchBatchReviews(provider: "groq" | "typhoon", personas: any[], text: string, contextString: string = ""): Promise<BatchResult> {
-  const url = provider === "groq" ? GROQ_API_URL : TYPHOON_API_URL;
-  const key = provider === "groq" ? GROQ_API_KEY : TYPHOON_API_KEY;
-  // Groq ปลดระวางโมเดลเงียบ ๆ — ตัวเดิม (llama-4-scout) คืน 404 model_not_found อยู่บน production
-  // อาการคือ persona 1-3 ขึ้น "ขออภัย" ส่วน 2 ตัวของ Typhoon ยังทำงานปกติ
-  // เช็คว่าตัวไหนยังใช้ได้ต้องยิง /chat/completions จริง — GET /v1/models คืนตัวที่ org ปิดไว้มาด้วย (403)
-  const model = provider === "groq" ? "llama-3.3-70b-versatile" : "typhoon-v2.5-30b-a3b-instruct";
+async function askReader(
+    provider: "groq" | "typhoon",
+    text: string,
+    contextString: string,
+): Promise<ProviderResult> {
+    const url = provider === "groq" ? GROQ_API_URL : TYPHOON_API_URL;
+    const key = provider === "groq" ? GROQ_API_KEY : TYPHOON_API_KEY;
+    const model = provider === "groq" ? GROQ_MODEL : TYPHOON_MODEL;
+    if (!key) return { data: null, status: 401 };
 
-  const personaInstructions = personas.map(p => `ID ${p.id}: ${p.name} - สไตล์: ${p.desc} (ความยาว 2-4 ประโยค)`).join('\n');
-  const systemPrompt = JSON_PROMPT + personaInstructions;
+    const userContent = contextString
+        ? `=== สิ่งที่คุณอ่านมาก่อนหน้านี้ ===\n${contextString}\n\n=== ตอนที่กำลังอ่าน ===\n${text}`
+        : `=== ตอนที่กำลังอ่าน (ยังไม่มีตอนก่อนหน้า) ===\n${text}`;
 
-  const userContent = contextString 
-    ? `=== ข้อมูลบริบทอ้างอิง ===\n${contextString}\n\n=== เนื้อหานิยาย ===\n${text}`
-    : `เนื้อหานิยาย:\n\n${text}`;
-
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent },
-        ],
-        temperature: 0.8,
-        max_tokens: 8192,
-        // ไม่ใส่ response_format: { type: "json_object" } — prompt นี้ขอ "JSON Array"
-        // แต่โหมดนั้นบังคับให้ตอบเป็น Object โมเดลเลยห่อ array ไว้ในคีย์ที่เดาไม่ได้
-        // (เจอทั้ง "review", "reviews") และบางครั้งตอบ 400 ไปเลย ปล่อยว่างแล้วมันคืน array ตรง ๆ
-      })
-    });
-
-    if (!res.ok) {
-      console.error(`AI API Error from ${provider} (HTTP ${res.status}):`, await res.text());
-      return { items: null, status: res.status };
-    }
-
-    const data = await res.json();
-    let rawText = data.choices?.[0]?.message?.content?.trim() ?? "[]";
-
-    const cleanText = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
-    
-    let parsed;
     try {
-      parsed = JSON.parse(cleanText);
-    } catch (parseError) {
-      console.warn(`[JSON Parse Error] ${provider} failed. Attempting regex extraction...`);
-      // Fallback regex extraction for array
-      const arrayMatch = cleanText.match(/\[[\s\S]*\]/);
-      if (arrayMatch) {
-        try {
-          parsed = JSON.parse(arrayMatch[0]);
-        } catch (e2) {
-          console.error(`[Regex Fallback Error] ${provider} failed again:`, e2);
-          return { items: null, status: null };
+        const res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+            body: JSON.stringify({
+                model,
+                messages: [
+                    { role: "system", content: SYSTEM_PROMPT },
+                    { role: "user", content: userContent },
+                ],
+                // 0 เพราะนี่คือการให้คะแนน ไม่ใช่การเขียน — ความสุ่มทำให้กราฟข้ามตอนอ่านไม่ได้
+                temperature: 0,
+                max_tokens: 2048,
+                // ตอนนี้สัญญาคือ object เดียว จึงใช้โหมดนี้ได้ (ตอนที่ prompt ขอ array ใช้ไม่ได้)
+                response_format: { type: "json_object" },
+            }),
+        });
+
+        if (!res.ok) {
+            console.error(`Reader API error from ${provider} (HTTP ${res.status}):`, await res.text());
+            return { data: null, status: res.status };
         }
-      } else {
-         return { items: null, status: null };
-      }
+
+        const raw = (await res.json()).choices?.[0]?.message?.content?.trim() ?? "";
+        const clean = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
+        try {
+            return { data: JSON.parse(clean), status: 200 };
+        } catch {
+            const m = clean.match(/\{[\s\S]*\}/);
+            if (m) {
+                try { return { data: JSON.parse(m[0]), status: 200 }; } catch { /* ตกไป null */ }
+            }
+            console.error(`[Reader] แกะ JSON ไม่ได้จาก ${provider}:`, clean.slice(0, 200));
+            return { data: null, status: null };
+        }
+    } catch (e) {
+        console.error(`Reader fetch error from ${provider}:`, e);
+        return { data: null, status: null };
     }
-    
-    // ถ้าโมเดลห่อ array ไว้ในอ็อบเจกต์ ให้หยิบ array ตัวแรกที่เจอ แทนที่จะเดาชื่อคีย์
-    // (เคยเดาไว้แค่ reviews/data แล้วเจอของจริงคืนมาเป็น "review" — หลุดหมดทั้ง 3 persona)
-    if (Array.isArray(parsed)) return { items: parsed, status: 200 };
-    const nested = Object.values(parsed ?? {}).find(Array.isArray) as any[] | undefined;
-    return { items: nested ?? [], status: 200 };
-  } catch (e) {
-    console.error(`Fetch Error from ${provider}:`, e);
-    return { items: null, status: null };
-  }
 }
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ novelId: string; noteId: string }> }) {
-  try {
-    const { novelId, noteId } = await params;
-    const denied = await guardNovel(novelId); if (denied) return denied;
-    const reviews = await db.select().from(aiChapterReviews)
-      .where(eq(aiChapterReviews.noteId, noteId));
-    return NextResponse.json({ success: true, reviews });
-  } catch (e) {
-    console.error("GET Reviews Error:", e);
-    return NextResponse.json({ success: false, error: "Database error" }, { status: 500 });
-  }
+const SCALES = ["clear", "muddy", "unclear"] as const;
+
+function score(v: unknown): number | null {
+    const n = typeof v === "string" ? Number(v) : v;
+    if (typeof n !== "number" || !Number.isFinite(n)) return null;
+    return Math.min(5, Math.max(1, Math.round(n)));
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ novelId: string; noteId: string }> }) {
-  try {
-    const { novelId, noteId } = await params;
-    const denied = await guardNovel(novelId); if (denied) return denied;
-    const note = await db.query.notes.findFirst({ where: and(eq(notes.id, noteId), isNull(notes.deletedAt)) });
-    if (!note) return NextResponse.json({ success: false, error: "Note not found" }, { status: 404 });
+function scale(v: unknown): string | null {
+    return typeof v === "string" && (SCALES as readonly string[]).includes(v) ? v : null;
+}
 
-    const rawHtml = (note.content as any)?.text ?? "";
-    const plainText = rawHtml.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
-    if (plainText.length < 50) return NextResponse.json({ success: false, error: "เนื้อหาสั้นเกินไป" }, { status: 400 });
+function reason(v: unknown): string {
+    return typeof v === "string" && v.trim() ? v.trim() : "—";
+}
 
-    const truncated = plainText.slice(0, 3000);
+export async function GET(
+    _req: NextRequest,
+    { params }: { params: Promise<{ novelId: string; noteId: string }> },
+) {
+    try {
+        const { novelId, noteId } = await params;
+        const denied = await guardNovel(novelId);
+        if (denied) return denied;
 
-    const searchQuery = `${note.title || ""} ${plainText.slice(0, 500)}`.trim();
-    const contextString = await fetchStoryContext(novelId, searchQuery, noteId);
-
-    let [groqAns, typhoonAns] = await Promise.all([
-      fetchBatchReviews("groq", PERSONAS_MAPPING.groq, truncated, contextString),
-      fetchBatchReviews("typhoon", PERSONAS_MAPPING.typhoon, truncated, contextString)
-    ]);
-
-    // Provider Fallback: หาก Typhoon ล่มหรือไม่สามารถแกะ JSON ได้, ให้ Groq มารับช่วงต่อ
-    if (!typhoonAns.items) {
-      console.warn("⚠️ Typhoon API failed. Falling back to Groq for Typhoon's personas...");
-      typhoonAns = await fetchBatchReviews("groq", PERSONAS_MAPPING.typhoon, truncated, contextString);
+        const [row] = await db.select().from(chapterReaderResponse)
+            .where(eq(chapterReaderResponse.noteId, noteId)).limit(1);
+        return NextResponse.json({ success: true, response: row ?? null });
+    } catch (e) {
+        console.error("GET reader response error:", e);
+        return NextResponse.json({ success: false, error: "Database error" }, { status: 500 });
     }
+}
 
-    const allAns = [...(groqAns.items || []), ...(typhoonAns.items || [])];
+export async function POST(
+    _req: NextRequest,
+    { params }: { params: Promise<{ novelId: string; noteId: string }> },
+) {
+    try {
+        const { novelId, noteId } = await params;
+        const denied = await guardNovel(novelId);
+        if (denied) return denied;
 
-    // persona ของค่ายไหนล้ม ให้ขึ้นสาเหตุจริงของค่ายนั้น ไม่ใช่ "ขออภัย" ลอย ๆ
-    // 429 กับ 404 ต้องทำคนละอย่าง (รอแล้วกดใหม่ vs ต้องแก้โค้ด) ผู้อ่านควรแยกออกได้เอง
-    const failureFor = new Map<number, string>();
-    for (const p of PERSONAS_MAPPING.groq) failureFor.set(p.id, failureMessage(groqAns.status));
-    for (const p of PERSONAS_MAPPING.typhoon) failureFor.set(p.id, failureMessage(typhoonAns.status));
+        const note = await db.query.notes.findFirst({
+            where: and(eq(notes.id, noteId), isNull(notes.deletedAt)),
+        });
+        if (!note) return NextResponse.json({ success: false, error: "Note not found" }, { status: 404 });
 
-    const allPersonas = [...PERSONAS_MAPPING.groq, ...PERSONAS_MAPPING.typhoon];
-    const finalResults = allPersonas.map(p => {
-      const ans = allAns.find((a: any) => a.id === p.id);
-      return {
-        noteId: noteId,
-        novelId: novelId,
-        persona: p.id,
-        personaName: `${p.emoji} ${p.name}`,
-        content: ans?.content || failureFor.get(p.id) || failureMessage(null)
-      };
-    });
+        const plainText = ((note.content as { text?: string })?.text ?? "")
+            .replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+        if (plainText.length < 50) {
+            return NextResponse.json({ success: false, error: "เนื้อหาสั้นเกินไป" }, { status: 400 });
+        }
 
-    await db.delete(aiChapterReviews).where(eq(aiChapterReviews.noteId, noteId));
-    await db.insert(aiChapterReviews).values(finalResults);
+        // เกินโควตาให้เอาหัวและท้าย — ตัดแต่หัวอย่างเดียวจะไม่เห็นจุดจบตอน
+        // ซึ่งเป็นจุดที่ตัดสินความลุ้นและความสงสัยมากที่สุด
+        const truncated = plainText.length > MAX_CHARS;
+        const text = truncated
+            ? `${plainText.slice(0, Math.floor(MAX_CHARS * 0.6))}\n\n[…ตัดช่วงกลางออก…]\n\n${plainText.slice(-Math.floor(MAX_CHARS * 0.4))}`
+            : plainText;
 
-    return NextResponse.json({ success: true, reviews: finalResults });
-  } catch (e) {
-    console.error("POST Review Error:", e);
-    return NextResponse.json({ success: false, error: "Internal server error" }, { status: 500 });
-  }
+        // ── บริบท: เฉพาะตอนก่อนหน้าเท่านั้น ──
+        const order = await getReadingOrder(novelId);
+        const before = notesBefore(order, noteId);
+        const allowedNoteIds = new Set(before);
+        const contextPosition = before.length;
+
+        let contextString = "";
+        if (allowedNoteIds.size > 0) {
+            try {
+                const q = `${note.title || ""} ${plainText.slice(0, 500)}`.trim();
+                const { items } = await retrieveContext(novelId, q, { allowedNoteIds });
+                contextString = items
+                    .map((it) => `[ตอนก่อนหน้า] ${it.title}: ${it.content ?? ""}`)
+                    .join("\n");
+            } catch (e) {
+                console.error("[Reader] ดึงบริบทไม่สำเร็จ:", e);
+            }
+        }
+
+        // ── เรียกครั้งเดียว Typhoon เป็นตัวสำรอง ──
+        let result = await askReader("groq", text, contextString);
+        let usedModel = GROQ_MODEL;
+        if (!result.data) {
+            console.warn("⚠️ Groq ล้ม — ลอง Typhoon แทน");
+            const fb = await askReader("typhoon", text, contextString);
+            if (fb.data) { result = fb; usedModel = TYPHOON_MODEL; }
+            else result = { data: null, status: result.status ?? fb.status };
+        }
+
+        if (!result.data) {
+            return NextResponse.json({ success: false, message: failureMessage(result.status) }, { status: 502 });
+        }
+
+        const d = result.data;
+        const suspense = score(d.suspense);
+        const curiosity = score(d.curiosity);
+        const surprise = score(d.surprise);
+
+        // ขาดคะแนนใดคะแนนหนึ่ง = ไม่บันทึกเลย แถวที่ครบครึ่งเดียวจะทำให้กราฟข้ามตอนเสียถาวร
+        if (suspense === null || curiosity === null || surprise === null) {
+            console.error("[Reader] คะแนนไม่ครบ:", JSON.stringify(d).slice(0, 200));
+            return NextResponse.json({ success: false, message: failureMessage(null) }, { status: 502 });
+        }
+
+        const values = {
+            noteId, novelId,
+            suspense, suspenseReason: reason(d.suspense_reason),
+            curiosity, curiosityReason: reason(d.curiosity_reason),
+            surprise, surpriseReason: reason(d.surprise_reason),
+            motivationClarity: scale(d.motivation_clarity), motivationReason: reason(d.motivation_reason),
+            causality: scale(d.causality), causalityReason: reason(d.causality_reason),
+            stakes: scale(d.stakes), stakesReason: reason(d.stakes_reason),
+            raw: d,
+            model: usedModel,
+            promptVersion: PROMPT_VERSION,
+            contextPosition,
+            truncated,
+        };
+
+        const [saved] = await db.insert(chapterReaderResponse).values(values)
+            .onConflictDoUpdate({
+                target: chapterReaderResponse.noteId,
+                set: { ...values, createdAt: new Date() },
+            })
+            .returning();
+
+        return NextResponse.json({ success: true, response: saved });
+    } catch (e) {
+        console.error("POST reader response error:", e);
+        return NextResponse.json({ success: false, error: "Internal server error" }, { status: 500 });
+    }
 }
