@@ -55,7 +55,19 @@ async function fetchStoryContext(novelId: string, query: string, currentNoteId: 
   }
 }
 
-async function fetchBatchReviews(provider: "groq" | "typhoon", personas: any[], text: string, contextString: string = "") {
+/** ข้อความที่ผู้อ่านเห็นแทนรีวิว เมื่อรอบนั้นล้ม — บอกสาเหตุจริงจะได้รู้ว่าควรลองใหม่หรือรอ */
+function failureMessage(status: number | null): string {
+  if (status === 429) return "⏳ เรียก AI ถี่เกินไป (rate limit) — รอสักครู่แล้วกดใหม่อีกครั้ง";
+  if (status === 401 || status === 403) return "🔑 คีย์ AI ใช้ไม่ได้หรือถูกปิดสิทธิ์ — ตรวจสอบการตั้งค่า";
+  if (status === 404) return "🧩 โมเดล AI ที่ตั้งไว้ไม่มีแล้ว — ต้องแก้ที่โค้ด";
+  if (status !== null && status >= 500) return "🛠️ ผู้ให้บริการ AI ขัดข้องชั่วคราว — ลองใหม่ภายหลัง";
+  if (status !== null) return `⚠️ เรียก AI ไม่สำเร็จ (HTTP ${status})`;
+  return "⚠️ ตอบกลับจาก AI อ่านไม่ได้ — ลองกดใหม่อีกครั้ง";
+}
+
+type BatchResult = { items: any[] | null; status: number | null };
+
+async function fetchBatchReviews(provider: "groq" | "typhoon", personas: any[], text: string, contextString: string = ""): Promise<BatchResult> {
   const url = provider === "groq" ? GROQ_API_URL : TYPHOON_API_URL;
   const key = provider === "groq" ? GROQ_API_KEY : TYPHOON_API_KEY;
   // Groq ปลดระวางโมเดลเงียบ ๆ — ตัวเดิม (llama-4-scout) คืน 404 model_not_found อยู่บน production
@@ -89,8 +101,8 @@ async function fetchBatchReviews(provider: "groq" | "typhoon", personas: any[], 
     });
 
     if (!res.ok) {
-      console.error(`AI API Error from ${provider}:`, await res.text());
-      return null;
+      console.error(`AI API Error from ${provider} (HTTP ${res.status}):`, await res.text());
+      return { items: null, status: res.status };
     }
 
     const data = await res.json();
@@ -110,21 +122,21 @@ async function fetchBatchReviews(provider: "groq" | "typhoon", personas: any[], 
           parsed = JSON.parse(arrayMatch[0]);
         } catch (e2) {
           console.error(`[Regex Fallback Error] ${provider} failed again:`, e2);
-          return null;
+          return { items: null, status: null };
         }
       } else {
-         return null;
+         return { items: null, status: null };
       }
     }
     
     // ถ้าโมเดลห่อ array ไว้ในอ็อบเจกต์ ให้หยิบ array ตัวแรกที่เจอ แทนที่จะเดาชื่อคีย์
     // (เคยเดาไว้แค่ reviews/data แล้วเจอของจริงคืนมาเป็น "review" — หลุดหมดทั้ง 3 persona)
-    if (Array.isArray(parsed)) return parsed;
-    const nested = Object.values(parsed ?? {}).find(Array.isArray);
-    return nested ?? [];
+    if (Array.isArray(parsed)) return { items: parsed, status: 200 };
+    const nested = Object.values(parsed ?? {}).find(Array.isArray) as any[] | undefined;
+    return { items: nested ?? [], status: 200 };
   } catch (e) {
     console.error(`Fetch Error from ${provider}:`, e);
-    return null;
+    return { items: null, status: null };
   }
 }
 
@@ -163,13 +175,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ nov
     ]);
 
     // Provider Fallback: หาก Typhoon ล่มหรือไม่สามารถแกะ JSON ได้, ให้ Groq มารับช่วงต่อ
-    if (!typhoonAns) {
+    if (!typhoonAns.items) {
       console.warn("⚠️ Typhoon API failed. Falling back to Groq for Typhoon's personas...");
       typhoonAns = await fetchBatchReviews("groq", PERSONAS_MAPPING.typhoon, truncated, contextString);
     }
 
-    // หากของค่ายไหนพินาศ (ทำ fallback แล้วก็ยังไม่ได้) ให้กลายเป็น Array ว่างเพื่อไปดึงข้อความ Default ถัดไป
-    const allAns = [...(groqAns || []), ...(typhoonAns || [])];
+    const allAns = [...(groqAns.items || []), ...(typhoonAns.items || [])];
+
+    // persona ของค่ายไหนล้ม ให้ขึ้นสาเหตุจริงของค่ายนั้น ไม่ใช่ "ขออภัย" ลอย ๆ
+    // 429 กับ 404 ต้องทำคนละอย่าง (รอแล้วกดใหม่ vs ต้องแก้โค้ด) ผู้อ่านควรแยกออกได้เอง
+    const failureFor = new Map<number, string>();
+    for (const p of PERSONAS_MAPPING.groq) failureFor.set(p.id, failureMessage(groqAns.status));
+    for (const p of PERSONAS_MAPPING.typhoon) failureFor.set(p.id, failureMessage(typhoonAns.status));
 
     const allPersonas = [...PERSONAS_MAPPING.groq, ...PERSONAS_MAPPING.typhoon];
     const finalResults = allPersonas.map(p => {
@@ -179,7 +196,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ nov
         novelId: novelId,
         persona: p.id,
         personaName: `${p.emoji} ${p.name}`,
-        content: ans?.content || "ขออภัย ฉันไม่สามารถรีวิวตอนนี้ได้"
+        content: ans?.content || failureFor.get(p.id) || failureMessage(null)
       };
     });
 
