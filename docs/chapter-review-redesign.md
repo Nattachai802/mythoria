@@ -1,6 +1,15 @@
 # รื้อระบบรีวิวรายตอน — stylometry + NarraBench
 
-> สถานะ: ร่างออกแบบ ยังไม่ลงมือ
+> สถานะ: **ทำแล้ว** (Stage 0-3) — ดู commit d799aaa, 31b1036, a892a1a
+>
+> สิ่งที่ต่างจากร่างนี้ตอนลงมือจริง:
+> - `notes` ไม่มี `orderIndex` มาก่อน ต้องเพิ่มเองพร้อม backfill (migrations/0016)
+> - ลำดับการอ่านเป็นสองชั้น `chapters.orderIndex` → `notes.orderIndex`
+>   ไม่ใช่ชั้นเดียวอย่างที่ร่างไว้
+> - stylometry ที่เก็บไว้ทั้งหมดเป็นของ analyzer เวอร์ชันก่อน #1-#5 มีแค่
+>   `total_sentences` — จังหวะ/สัมผัส/คำซ้ำจะว่างจนกว่าจะสั่งวิเคราะห์ใหม่
+> - ปมค้างอ่านจาก `plotThreads` ได้เลย ไม่ต้องใช้ LLM (ตรงตามร่าง) แต่ต้องอนุมาน
+>   สถานะจาก beats เพราะ auto-advance ใน server/plot-threads.ts ทำครึ่งเดียว
 > อ้างอิง: [[NarraBench]] (Hamilton, Wilkens, Piper 2025, arXiv 2510.09869)
 
 ## ปัญหาของระบบปัจจุบัน
