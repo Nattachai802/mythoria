@@ -16,6 +16,7 @@ import {
     Sprout, Repeat, Target, Plus, Trash2, AlertTriangle, Clock, Unlink, Link2, X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { analyzeThread, makeEventChapterOrder } from "@/lib/plot-thread-analysis"
 import { toast } from "sonner"
 import {
     deleteThread, updateThread, addBeat, deleteBeat,
@@ -43,7 +44,6 @@ const ROLES: Record<string, { label: string; icon: typeof Sprout; cls: string }>
     payoff: { label: "เฉลย", icon: Target, cls: "text-emerald-500" },
 }
 
-const STALE_GAP = 8 // บทที่ปมไม่ถูกแตะ → เตือน "ผู้อ่านลืม"
 
 interface Props {
     novelId: string
@@ -63,11 +63,6 @@ export function PlotThreadLedger({ novelId, threads, events, chapters }: Props) 
     }
 
     // eventId → chapter order, for warnings + labels
-    const chapterOrderById = useMemo(() => {
-        const m = new Map<string, number>()
-        chapters.forEach(c => m.set(c.id, c.orderIndex))
-        return m
-    }, [chapters])
     const chapterTitleById = useMemo(() => {
         const m = new Map<string, string>()
         chapters.forEach(c => m.set(c.id, c.title))
@@ -83,23 +78,14 @@ export function PlotThreadLedger({ novelId, threads, events, chapters }: Props) 
         [chapters]
     )
 
-    const eventChapterOrder = (eventId: string) => {
-        const ev = eventById.get(eventId)
-        if (!ev?.relatedChapterId) return null
-        return chapterOrderById.get(ev.relatedChapterId) ?? null
-    }
+    const eventChapterOrder = useMemo(
+        () => makeEventChapterOrder(events, chapters),
+        [events, chapters]
+    )
 
-    // ── L2 warnings per thread ──
-    const analyze = (t: ThreadWithBeats) => {
-        const hasPayoff = t.beats.some(b => b.role === "payoff")
-        const hasSeed = t.beats.some(b => b.role === "seed")
-        const beatOrders = t.beats.map(b => eventChapterOrder(b.eventId)).filter((n): n is number => n != null)
-        const lastOrder = beatOrders.length ? Math.max(...beatOrders) : null
-        const dangling = t.status !== "paid" && t.status !== "abandoned" && !hasPayoff
-        const stale = dangling && lastOrder != null && (maxChapterOrder - lastOrder) >= STALE_GAP
-        const orphanPayoff = hasPayoff && !hasSeed
-        return { dangling, stale, orphanPayoff, gap: lastOrder != null ? maxChapterOrder - lastOrder : null }
-    }
+    // ── L2 warnings per thread ── (ตรรกะอยู่ที่ lib/plot-thread-analysis.ts
+    // เพราะรายงานรายตอนฝั่ง server ใช้ตัวเดียวกัน)
+    const analyze = (t: ThreadWithBeats) => analyzeThread(t, eventChapterOrder, maxChapterOrder)
 
     const warnCount = threads.filter(t => {
         const a = analyze(t)

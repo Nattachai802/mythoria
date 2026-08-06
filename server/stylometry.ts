@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/db/drizzle";
-import { notes, noteStylometry } from "@/db/schema";
+import { chapters, notes, noteStylometry } from "@/db/schema";
 import { eq, asc } from "drizzle-orm";
 import { pyFetch } from "@/lib/python-service";
 
@@ -24,8 +24,12 @@ export async function getNovelStylometry(novelId: string) {
             })
             .from(noteStylometry)
             .innerJoin(notes, eq(noteStylometry.noteId, notes.id))
+            // เรียงตามลำดับการอ่านจริง (บท แล้วตอนในบท) — เดิมเรียงด้วย notes.createdAt
+            // และไม่ join chapters เลย แกน x ของ dashboard จึงเพี้ยนทุกครั้งที่ลำดับบท
+            // ไม่ตรงกับลำดับการสร้าง
+            .leftJoin(chapters, eq(notes.linkedToChapterId, chapters.id))
             .where(eq(noteStylometry.novelId, novelId))
-            .orderBy(asc(notes.createdAt));
+            .orderBy(asc(chapters.orderIndex), asc(notes.orderIndex));
 
         // Check if any fingerprints are missing
         const hasMissing = data.some(d => !d.fingerprintAnalysis);

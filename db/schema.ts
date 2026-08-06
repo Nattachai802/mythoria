@@ -352,6 +352,9 @@ export const notes = pgTable("notes", {
   type: text("type").notNull().default("general"), // character_note, plot_note, research, idea, general
   tags: jsonb("tags"), // array of tag strings
   linkedToChapterId: text("linked_to_chapter_id").references(() => chapters.id, { onDelete: "set null" }),
+  // ลำดับของตอนภายในบท — คู่กับ chapters.orderIndex จะได้ "ลำดับการอ่าน" ที่แท้จริง
+  // เดิมใช้ createdAt เรียง ซึ่งเพี้ยนทันทีที่แทรกตอนย้อนหลังหรือสลับลำดับ
+  orderIndex: integer("order_index").notNull().default(0),
   linkedToCharacterId: text("linked_to_character_id").references(() => characters.id, { onDelete: "set null" }),
   linkedToLocationId: text("linked_to_location_id").references(() => locations.id, { onDelete: "set null" }),
   // AI Summary

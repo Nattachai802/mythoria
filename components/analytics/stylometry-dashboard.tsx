@@ -4,6 +4,7 @@ import { useState, useMemo, useRef } from "react";
 import { BarChart3, Info, Search, X, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { FEATURES, computeZScores, FEATURE_PLAIN } from "@/lib/stylometry-features";
 
 export interface StylometryData {
     id: string;
@@ -27,85 +28,6 @@ export interface StylometryData {
 interface StylometryDashboardProps {
     data: StylometryData[];
 }
-
-const FEATURES = [
-    {
-        key: "mtld",
-        label: "ความหลากหลายของคลังคำ (MTLD)",
-        shortLabel: "คลังคำ MTLD",
-        unit: "",
-        color: "#8b5cf6",
-        // MTLD ทนต่อความยาวตอน — แม่นกว่า TTR (fallback TTR ถ้าตอนเก่ายังไม่มี mtld)
-        extract: (d: StylometryData) => d.lexicalRichness?.mtld ?? d.lexicalRichness?.type_token_ratio_percentage ?? null,
-    },
-    {
-        key: "burstiness",
-        label: "จังหวะประโยค (สั้น-ยาวสลับ)",
-        shortLabel: "จังหวะ",
-        unit: "",
-        color: "#f43f5e",
-        // -1 = สม่ำเสมอ, +1 = สั้นสลับยาวรุนแรง (action/บรรยายสลับ)
-        extract: (d: StylometryData) => d.chapterAnatomy?.sentence_rhythm?.burstiness ?? null,
-    },
-    {
-        key: "punct",
-        label: "ความหนาแน่นของเครื่องหมาย",
-        shortLabel: "เครื่องหมาย",
-        unit: "/1k",
-        color: "#0ea5e9",
-        extract: (d: StylometryData) => d.pacingAndMood?.total_density_per_1k ?? null,
-    },
-    {
-        key: "sentlen",
-        label: "ความยาวประโยคเฉลี่ย",
-        shortLabel: "ยาวประโยค",
-        unit: "คำ",
-        color: "#f59e0b",
-        extract: (d: StylometryData) => d.chapterAnatomy?.avg_words_per_sentence ?? null,
-    },
-    {
-        key: "dialogue",
-        label: "สัดส่วนบทสนทนา",
-        shortLabel: "บทสนทนา",
-        unit: "%",
-        color: "#10b981",
-        extract: (d: StylometryData) => d.chapterAnatomy?.dialogue_ratio_percentage ?? null,
-    },
-    {
-        key: "particle",
-        label: "ความหนาแน่นของคำลงท้าย",
-        shortLabel: "คำลงท้าย",
-        unit: "/1k",
-        color: "#ec4899",
-        extract: (d: StylometryData) => {
-            const total = d.lexicalRichness?.total_words ?? 0;
-            const particles = d.characterDialogueVibes?.total_particles ?? 0;
-            return total > 0 ? Math.round((particles / total) * 1000 * 10) / 10 : null;
-        },
-    },
-];
-
-function computeZScores(data: StylometryData[], feat: typeof FEATURES[0]) {
-    const vals = data.map(d => feat.extract(d));
-    const valid = vals.filter((v): v is number => v !== null);
-    if (valid.length < 2) return vals.map(() => ({ z: 0, raw: null as number | null }));
-    const mean = valid.reduce((a, b) => a + b, 0) / valid.length;
-    const std = Math.sqrt(valid.reduce((a, b) => a + (b - mean) ** 2, 0) / valid.length) || 0.001;
-    return vals.map(v => ({
-        z: v !== null ? parseFloat(((v - mean) / std).toFixed(2)) : 0,
-        raw: v,
-    }));
-}
-
-// แปล z-score แต่ละมิติ → ภาษานักเขียน (เทียบกับ "ค่าปกติของคุณเอง" ไม่ใช่คะแนน)
-const FEATURE_PLAIN: Record<string, { name: string; high: string; low: string }> = {
-    mtld: { name: "คลังคำ", high: "คำศัพท์หลากหลายกว่าปกติ", low: "ใช้คำซ้ำเยอะกว่าปกติ" },
-    burstiness: { name: "จังหวะ", high: "สั้น-ยาวสลับแรง (action/ดราม่า)", low: "สม่ำเสมอ ราบเรียบ" },
-    punct: { name: "เครื่องหมาย", high: "เยอะ อารมณ์พุ่ง", low: "น้อย โทนสงบ" },
-    sentlen: { name: "ความยาวประโยค", high: "ประโยคยาว บรรยายไหล", low: "ประโยคสั้น กระชับเร็ว" },
-    dialogue: { name: "บทสนทนา", high: "บทสนทนาเยอะ", low: "เน้นบรรยาย" },
-    particle: { name: "คำลงท้าย", high: "เยอะ น้ำเสียงตัวละครชัด", low: "น้อย" },
-};
 
 /** สรุปตอนเป็นภาษาคน — เลขเป็นหลักฐาน คำเป็นคำตอบ */
 function ChapterVerdict({ scores }: { scores: { key: string; z: number; raw: number | null }[] }) {

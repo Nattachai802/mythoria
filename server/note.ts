@@ -2,7 +2,7 @@
 
 import { db } from "@/db/drizzle";
 import { notes, InsertNote } from "@/db/schema";
-import { eq, desc, and, or, like, gt, lt, ne, asc, isNull } from "drizzle-orm";
+import { eq, desc, and, or, like, gt, lt, ne, asc, isNull, sql } from "drizzle-orm";
 import { syncChapterCharactersFromNotes } from "./analysis-helper";
 import { recalculateNovelWordCountFromNotes } from "./word-count";
 import { queueNoteForStateExtraction } from "./character-state-extractor";
@@ -11,10 +11,31 @@ import { CACHE_TAGS, CACHE_DURATION } from "@/lib/cache-config";
 import { NoteStatus } from "@/lib/note-constants";
 import { requireNovelAccess } from "@/lib/authz";
 
+/**
+ * ลำดับถัดไปของตอนในบทนั้น — ต่อท้ายเสมอ
+ *
+ * ไม่ export เพราะไฟล์นี้เป็น "use server" (export ต้องเป็น server action)
+ * นับจาก max ไม่ใช่ count เพื่อไม่ให้ชนกันเมื่อมีตอนถูกลบไปแล้ว
+ */
+async function nextOrderIndex(novelId: string, linkedToChapterId: string | null | undefined): Promise<number> {
+    const [row] = await db
+        .select({ max: sql<number | null>`max(${notes.orderIndex})` })
+        .from(notes)
+        .where(and(
+            eq(notes.novelId, novelId),
+            linkedToChapterId ? eq(notes.linkedToChapterId, linkedToChapterId) : isNull(notes.linkedToChapterId),
+            isNull(notes.deletedAt),
+        ));
+    return (row?.max ?? -1) + 1;
+}
+
 export const createNote = async (data: InsertNote) => {
     try {
         await requireNovelAccess(data.novelId);
-        const [newNote] = await db.insert(notes).values(data).returning();
+        const [newNote] = await db.insert(notes).values({
+            ...data,
+            orderIndex: data.orderIndex ?? await nextOrderIndex(data.novelId, data.linkedToChapterId),
+        }).returning();
 
         // Clear cache (Next.js 16 requires 2 args: tag, profile)
         revalidateTag(CACHE_TAGS.notes(newNote.novelId), "default");
@@ -245,17 +266,17 @@ export const getOrCreateNextNote = async (
     console.log("[getOrCreateNextNote] Called with:", { currentNoteId, novelId, linkedToChapterId });
     try {
         await requireNovelAccess(novelId);
-        // 1. ดึง note ปัจจุบันเพื่อเอา createdAt
+        // 1. ดึง note ปัจจุบันเพื่อเอา orderIndex
         const currentNote = await db.query.notes.findFirst({
             where: and(eq(notes.id, currentNoteId), isNull(notes.deletedAt)),
-            columns: { id: true, createdAt: true },
+            columns: { id: true, orderIndex: true },
         });
 
         if (!currentNote) {
             console.log("[getOrCreateNextNote] Current note not found!");
             return { success: false, message: "Note not found" };
         }
-        console.log("[getOrCreateNextNote] Current note createdAt:", currentNote.createdAt);
+        console.log("[getOrCreateNextNote] Current note orderIndex:", currentNote.orderIndex);
 
         // 2. ถ้า note ผูกกับ chapter → หา note ถัดไปใน chapter เดียวกันที่สร้างทีหลัง
         if (linkedToChapterId) {
@@ -264,11 +285,11 @@ export const getOrCreateNextNote = async (
                 where: and(
                     eq(notes.novelId, novelId),
                     eq(notes.linkedToChapterId, linkedToChapterId),
-                    gt(notes.createdAt, currentNote.createdAt),
-                    ne(notes.id, currentNoteId), // ป้องกัน timestamp precision ทำให้เจอ note ตัวเอง
+                    gt(notes.orderIndex, currentNote.orderIndex),
+                    ne(notes.id, currentNoteId),
                     isNull(notes.deletedAt)
                 ),
-                orderBy: [asc(notes.createdAt)],
+                orderBy: [asc(notes.orderIndex)],
                 columns: { id: true },
             });
 
@@ -289,6 +310,7 @@ export const getOrCreateNextNote = async (
             content: { text: "" },
             novelId,
             type: "general",
+            orderIndex: await nextOrderIndex(novelId, linkedToChapterId),
             ...(linkedToChapterId ? { linkedToChapterId } : {}),
         } as InsertNote).returning({ id: notes.id });
 
@@ -313,7 +335,7 @@ export const getOrCreateNextNote = async (
 };
 
 /**
- * ค้นหา note ก่อนหน้าใน chapter เดียวกัน (เรียงตาม createdAt)
+ * ค้นหา note ก่อนหน้าใน chapter เดียวกัน (เรียงตาม orderIndex)
  * ถ้าไม่มี → return error (ไม่สร้างใหม่เหมือน next)
  */
 export const getPreviousNote = async (
@@ -325,7 +347,7 @@ export const getPreviousNote = async (
         await requireNovelAccess(novelId);
         const currentNote = await db.query.notes.findFirst({
             where: and(eq(notes.id, currentNoteId), isNull(notes.deletedAt)),
-            columns: { id: true, createdAt: true },
+            columns: { id: true, orderIndex: true },
         });
 
         if (!currentNote) {
@@ -337,11 +359,11 @@ export const getPreviousNote = async (
                 where: and(
                     eq(notes.novelId, novelId),
                     eq(notes.linkedToChapterId, linkedToChapterId),
-                    lt(notes.createdAt, currentNote.createdAt),
+                    lt(notes.orderIndex, currentNote.orderIndex),
                     ne(notes.id, currentNoteId),
                     isNull(notes.deletedAt)
                 ),
-                orderBy: [desc(notes.createdAt)],
+                orderBy: [desc(notes.orderIndex)],
                 columns: { id: true },
             });
 

@@ -43,6 +43,7 @@ const PlotHoleChecker = dynamic(() => import("@/components/project/plot-hole-che
 const VersionHistoryPanel = dynamic(() => import("@/components/project/version-history-panel").then(m => ({ default: m.VersionHistoryPanel })), { ssr: false })
 const NoteSummaryButton = dynamic(() => import("@/components/project/note-summary-button").then(m => ({ default: m.NoteSummaryButton })), { ssr: false })
 const AIReviewPanel = dynamic(() => import("@/components/project/ai-review-panel").then(m => ({ default: m.AIReviewPanel })), { ssr: false })
+const ChapterStatsReport = dynamic(() => import("@/components/project/review/chapter-stats-report").then(m => ({ default: m.ChapterStatsReport })), { ssr: false })
 const NotePlotPanel = dynamic(() => import("@/components/project/note-plot-panel").then(m => ({ default: m.NotePlotPanel })), { ssr: false })
 const NoteReferencePanel = dynamic(() => import("@/components/project/note-reference-panel").then(m => ({ default: m.NoteReferencePanel })), { ssr: false })
 
@@ -851,7 +852,10 @@ export function NoteEditor({ note, novelId }: NoteEditorProps) {
                                         />
                                     )}
                                     {activeSidebarTab === 'ai' && (
-                                        <AIReviewPanel noteId={note.id} novelId={novelId} />
+                                        <div className="space-y-3">
+                                            <ChapterStatsReport noteId={note.id} novelId={novelId} />
+                                            <AIReviewPanel noteId={note.id} novelId={novelId} />
+                                        </div>
                                     )}
                                 </div>
                             </div>

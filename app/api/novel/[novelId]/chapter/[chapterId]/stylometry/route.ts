@@ -16,7 +16,7 @@ export async function POST(
     // 1. Fetch chapter content from linked notes
     const chapterNotes = await db.query.notes.findMany({
       where: and(eq(notes.linkedToChapterId, chapterId), isNull(notes.deletedAt)),
-      orderBy: (notes, { asc }) => [asc(notes.createdAt)],
+      orderBy: (notes, { asc }) => [asc(notes.orderIndex)],
     });
 
     let plainText = "";
