@@ -140,6 +140,10 @@ whitelist, which the attacut branch never does.
   `NEXT_PUBLIC_BASE_URL`, `GEMINI_API_KEY`, `TYPHOON_API_KEY`, `GROQ_API_KEY`,
   `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `CLOUDINARY_*`, `RESEND_*`,
   `REGISTRATION_CODE`, `NEXT_PUBLIC_SENTRY_DSN`.
+- **`SENTRY_AUTH_TOKEN` ต้องตั้งใน Vercel ด้วย** (ไม่ได้อยู่ในลิสต์ข้างบนเพราะไม่ใช่ตัวที่แอป
+  อ่านตอน runtime — `withSentryConfig` ใช้ตอน build เพื่ออัป source map เท่านั้น) ไม่มี token
+  build ยังผ่าน แต่ stack trace บน Sentry จะอ่านไม่ออก ตอนไล่ error #185 ของ plot playground
+  เสียเวลาไปเพราะข้อนี้ — สร้าง token ที่ Sentry → Settings → Auth Tokens (scope `project:releases`)
 - **Leave `PYTHON_SERVICE_URL` unset for now.** Five API routes call Python
   (spell-check, stylometry for chapters and notes, analysis-trigger, and the
   `/api/py/[...path]` passthrough). With no Python host they return errors;

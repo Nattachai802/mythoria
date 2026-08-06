@@ -37,9 +37,14 @@ const nextConfig: NextConfig = {
 };
 
 export default withSentryConfig(nextConfig, {
-  // ไม่มี org/project auth token ก็ build ได้ปกติ — แค่จะไม่ได้ source map ที่อ่าน stack trace เป็นโค้ดจริง (readable) บน Sentry
+  // build ผ่านได้แม้ไม่มี SENTRY_AUTH_TOKEN — แต่จะไม่อัป source map แล้ว stack trace บน Sentry
+  // จะเป็นชื่อย่อหลัง minify (rm, rf, 2_beqrdeq0c64.js) อ่านไม่ออก ต้องตั้ง token ใน env ของ Vercel
   org: "nattachai-6f",
   project: "mythoria",
   silent: true, // ไม่ต้อง log ระหว่าง build ให้รก
   widenClientFileUpload: true,
+  // ส่ง event ผ่าน route ของเราเองแทนการยิงตรงไป *.ingest.sentry.io
+  // ad blocker (uBlock/Brave/DNS filter) บล็อกโดเมนนั้นตรงๆ — ไม่มี tunnel = error ฝั่ง client
+  // ของ user กลุ่มนั้นหายเงียบทั้งหมด ไม่ใช่แค่บางส่วน
+  tunnelRoute: "/monitoring",
 });
