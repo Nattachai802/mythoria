@@ -35,7 +35,7 @@ async function callLLM(
     const key = provider === "groq" ? GROQ_API_KEY : TYPHOON_API_KEY;
     const model =
         provider === "groq"
-            ? "meta-llama/llama-4-scout-17b-16e-instruct"
+            ? "llama-3.3-70b-versatile" // llama-4-scout ถูกปลดระวาง คืน 404
             : "typhoon-v2.5-30b-a3b-instruct";
 
     if (!key) return null;

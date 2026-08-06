@@ -58,7 +58,10 @@ async function fetchStoryContext(novelId: string, query: string, currentNoteId: 
 async function fetchBatchReviews(provider: "groq" | "typhoon", personas: any[], text: string, contextString: string = "") {
   const url = provider === "groq" ? GROQ_API_URL : TYPHOON_API_URL;
   const key = provider === "groq" ? GROQ_API_KEY : TYPHOON_API_KEY;
-  const model = provider === "groq" ? "meta-llama/llama-4-scout-17b-16e-instruct" : "typhoon-v2.5-30b-a3b-instruct";
+  // Groq ปลดระวางโมเดลเงียบ ๆ — ตัวเดิม (llama-4-scout) คืน 404 model_not_found อยู่บน production
+  // อาการคือ persona 1-3 ขึ้น "ขออภัย" ส่วน 2 ตัวของ Typhoon ยังทำงานปกติ
+  // เช็คว่าตัวไหนยังใช้ได้ต้องยิง /chat/completions จริง — GET /v1/models คืนตัวที่ org ปิดไว้มาด้วย (403)
+  const model = provider === "groq" ? "llama-3.3-70b-versatile" : "typhoon-v2.5-30b-a3b-instruct";
 
   const personaInstructions = personas.map(p => `ID ${p.id}: ${p.name} - สไตล์: ${p.desc} (ความยาว 2-4 ประโยค)`).join('\n');
   const systemPrompt = JSON_PROMPT + personaInstructions;
@@ -79,7 +82,9 @@ async function fetchBatchReviews(provider: "groq" | "typhoon", personas: any[], 
         ],
         temperature: 0.8,
         max_tokens: 8192,
-        response_format: { type: "json_object" }
+        // ไม่ใส่ response_format: { type: "json_object" } — prompt นี้ขอ "JSON Array"
+        // แต่โหมดนั้นบังคับให้ตอบเป็น Object โมเดลเลยห่อ array ไว้ในคีย์ที่เดาไม่ได้
+        // (เจอทั้ง "review", "reviews") และบางครั้งตอบ 400 ไปเลย ปล่อยว่างแล้วมันคืน array ตรง ๆ
       })
     });
 
@@ -112,7 +117,11 @@ async function fetchBatchReviews(provider: "groq" | "typhoon", personas: any[], 
       }
     }
     
-    return Array.isArray(parsed) ? parsed : (parsed.reviews || parsed.data || []);
+    // ถ้าโมเดลห่อ array ไว้ในอ็อบเจกต์ ให้หยิบ array ตัวแรกที่เจอ แทนที่จะเดาชื่อคีย์
+    // (เคยเดาไว้แค่ reviews/data แล้วเจอของจริงคืนมาเป็น "review" — หลุดหมดทั้ง 3 persona)
+    if (Array.isArray(parsed)) return parsed;
+    const nested = Object.values(parsed ?? {}).find(Array.isArray);
+    return nested ?? [];
   } catch (e) {
     console.error(`Fetch Error from ${provider}:`, e);
     return null;

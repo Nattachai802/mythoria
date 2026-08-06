@@ -24,7 +24,8 @@ import { isGuest, GUEST_AI_MESSAGE } from "@/lib/guest";
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
-const GROQ_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"; // Groq เท่านั้น (รองรับ function-calling)
+const GROQ_MODEL = "llama-3.3-70b-versatile"; // Groq เท่านั้น (รองรับ function-calling — ยืนยันแล้วว่าตัวนี้เรียก tool ได้)
+// llama-4-scout ตัวเดิมถูกปลดระวาง คืน 404 model_not_found
 
 // แคตตาล็อกฟิลด์ต่อ type (ฉีดเข้า system prompt ให้ LLM รู้ว่า type ไหนมีฟิลด์อะไร)
 const FIELD_CATALOG = CRUD_TYPES.map((t) => {
