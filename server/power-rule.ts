@@ -6,8 +6,9 @@ import { eq, asc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireNovelAccess } from "@/lib/authz";
 
-export const RULE_KINDS = ["cost", "limit", "forbidden", "condition"] as const;
-export const RULE_SEVERITIES = ["hard", "soft"] as const;
+// ห้าม export — ไฟล์ 'use server' export ได้แค่ async function ค่าคงที่จะทำ build พัง
+const RULE_KINDS = ["cost", "limit", "forbidden", "condition"] as const;
+const RULE_SEVERITIES = ["hard", "soft"] as const;
 
 type RuleInput = {
     title: string;
