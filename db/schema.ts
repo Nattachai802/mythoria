@@ -840,6 +840,33 @@ export const powerCombinations = pgTable("power_combinations", {
   novelIdIdx: index("power_combinations_novel_id_idx").on(table.novelId),
 }));
 
+// Power Rules - กฎของระบบพลัง
+// ตารางเดียวคุมทั้งกฎระดับเล่มและกฎรายพลัง — ต่างกันแค่ powerIds:
+// ว่าง/null = ใช้กับทุกพลังในเรื่อง, มีรายการ = บังคับเฉพาะพลังที่ระบุ
+export const powerRules = pgTable("power_rules", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  novelId: text("novel_id")
+    .notNull()
+    .references(() => novels.id, { onDelete: "cascade" }),
+
+  title: text("title").notNull(),        // ตัวกฎสั้น ๆ: "ใช้เวทต้องแลกด้วยอายุขัย"
+  description: text("description"),      // ขยายความ/ตัวอย่าง/ข้อยกเว้น
+
+  kind: text("kind").notNull().default("limit"),      // cost | limit | forbidden | condition
+  severity: text("severity").notNull().default("hard"), // hard = ฝ่าฝืนไม่ได้, soft = ฝ่าได้แต่มีราคา
+
+  powerIds: jsonb("power_ids"),          // string[] — ว่าง = ทั้งระบบ
+  orderIndex: integer("order_index").default(0),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+}, (table) => ({
+  novelIdIdx: index("power_rules_novel_id_idx").on(table.novelId),
+}));
+
 // Character Powers - ตัวละครมีพลังอะไรบ้าง
 export const characterPowers = pgTable("character_powers", {
   id: text("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -1794,6 +1821,13 @@ export const powerLevelRelations = relations(powerLevels, ({ one }) => ({
   }),
 }));
 
+export const powerRuleRelations = relations(powerRules, ({ one }) => ({
+  novel: one(novels, {
+    fields: [powerRules.novelId],
+    references: [novels.id],
+  }),
+}));
+
 export const powerCombinationRelations = relations(powerCombinations, ({ one }) => ({
   novel: one(novels, {
     fields: [powerCombinations.novelId],
@@ -2060,6 +2094,7 @@ export type InsertSceneElementDetails = typeof sceneElementDetails.$inferInsert;
 export type Power = typeof powers.$inferSelect;
 export type PowerLevel = typeof powerLevels.$inferSelect;
 export type PowerCombination = typeof powerCombinations.$inferSelect;
+export type PowerRule = typeof powerRules.$inferSelect;
 export type CharacterPower = typeof characterPowers.$inferSelect;
 export type CharacterDesignElement = typeof characterDesignElements.$inferSelect;
 export type InsertPower = typeof powers.$inferInsert;

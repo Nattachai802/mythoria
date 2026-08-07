@@ -1,5 +1,8 @@
 import { getPowersByNovelId } from "@/server/power";
+import { getPowerRules } from "@/server/power-rule";
 import { getNovelByIdSimple } from "@/server/novel";
+import { PowerRulesPanel } from "@/components/project/power/power-rules-panel";
+import { Separator } from "@/components/ui/separator";
 import { CreatePowerDialog } from "@/components/project/power/create-power-dialog";
 import { PowersView } from "@/components/project/power/powers-view";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
@@ -13,9 +16,10 @@ interface PowersPageProps {
 export default async function PowersPage({ params }: PowersPageProps) {
     const { id: novelId } = await params;
 
-    const [powersResult, novelResult] = await Promise.all([
+    const [powersResult, novelResult, rulesResult] = await Promise.all([
         getPowersByNovelId(novelId),
         getNovelByIdSimple(novelId),
+        getPowerRules(novelId),
     ]);
 
     if (!powersResult.success) {
@@ -56,6 +60,15 @@ export default async function PowersPage({ params }: PowersPageProps) {
             <PowersView
                 powers={powers}
                 novelId={novelId}
+            />
+
+            <Separator />
+
+            <PowerRulesPanel
+                novelId={novelId}
+                rules={rulesResult.data ?? []}
+                powers={powers}
+                hasLegacyLimitations={powers.some((p) => ((p.limitations as string[] | null) ?? []).length > 0)}
             />
         </div>
     );
