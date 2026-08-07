@@ -25,10 +25,11 @@ import { SceneElementDetails } from "@/db/schema";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Save, Link2, X, Check, Download, List, Navigation, SkipBack, SkipForward, StickyNote, GitBranchPlus, Lightbulb, Loader2, Sprout, LayoutGrid, Rows3, PanelLeftClose, PanelLeftOpen, Repeat, Target, FileText } from "lucide-react";
+import { Plus, Link2, X, Check, Download, List, Navigation, StickyNote, GitBranchPlus, Lightbulb, Loader2, Sprout, LayoutGrid, Rows3, PanelLeftClose, PanelLeftOpen, Repeat, Target, FileText } from "lucide-react";
 import { CreateIdeaDialog } from "@/components/project/idea/create-idea-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { createPortal } from "react-dom";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
@@ -1180,6 +1181,7 @@ export function PlaygroundBoard({
             const chapterNodes = chapters.map(c => ({ id: c.id, type: 'chapter', name: c.name, startBeat: c.startBeat, endBeat: c.endBeat }));
             const result = await updateTimelineCanvas(eventId, [...items, ...laneNodes, ...chapterNodes]);
             if (result.success) setLastSaved(new Date());
+            else toast.error("บันทึกอัตโนมัติไม่สำเร็จ — ลองแก้อะไรสักอย่างเพื่อบันทึกใหม่");
             setIsSaving(false);
         }, 2000);
         return () => clearTimeout(timeoutId);
@@ -1305,8 +1307,6 @@ export function PlaygroundBoard({
         setShowNavigator(false);
     };
 
-    const handleJumpToFirst = () => viewportRef.current?.scrollTo({ left: 0, behavior: 'smooth' });
-    const handleJumpToLast = () => viewportRef.current?.scrollTo({ left: viewportRef.current.scrollWidth, behavior: 'smooth' });
 
     const sensors = useSensors(
         useSensor(PointerSensor, {
@@ -1610,21 +1610,6 @@ export function PlaygroundBoard({
                 );
             }
         }
-    };
-
-    const handleSave = async () => {
-        setIsSaving(true);
-        const laneNodes = lanes_.map(l => ({ id: l.id, type: 'lane', name: l.name, orderIndex: l.orderIndex, color: l.color }));
-        // ต้องมี endBeat ด้วย — ตอนอ่านกลับมี fallback `endBeat ?? startBeat` ถ้าลืมส่ง ตอนที่คร่อมหลายจังหวะจะยุบเหลือจังหวะเดียวเงียบ ๆ
-        const chapterNodes = chapters.map(c => ({ id: c.id, type: 'chapter', name: c.name, startBeat: c.startBeat, endBeat: c.endBeat }));
-        const result = await updateTimelineCanvas(eventId, [...items, ...laneNodes, ...chapterNodes]);
-        if (result.success) {
-            setLastSaved(new Date());
-            toast.success("บันทึก layout แล้ว");
-        } else {
-            toast.error("บันทึกไม่สำเร็จ");
-        }
-        setIsSaving(false);
     };
 
     const handleSetColor = (id: string, color: string | null) => {
@@ -2056,7 +2041,7 @@ export function PlaygroundBoard({
                     {/* Linking Mode Banner */}
                     {linkingSourceId && (
                         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-                            <div className="pointer-events-auto flex items-center gap-3 bg-blue-500 text-white px-4 py-2 rounded-lg shadow-lg border-2 border-blue-600">
+                            <div className="pointer-events-auto flex items-center gap-3 bg-[var(--forge-amber)] text-black px-4 py-2 rounded-lg shadow-lg border border-black/20">
                                 <Link2 className="w-4 h-4 animate-pulse" />
                                 <div className="flex flex-col">
                                     <span className="text-sm font-medium">โหมดเชื่อมเส้น</span>
@@ -2065,10 +2050,10 @@ export function PlaygroundBoard({
                                     </span>
                                 </div>
                                 <div className="flex gap-1 ml-2">
-                                    <Button size="sm" variant="ghost" className="h-7 bg-white/20 hover:bg-white/30 text-white border-0" onClick={handleFinishLinking}>
+                                    <Button size="sm" variant="ghost" className="h-7 bg-black/10 hover:bg-black/20 text-black border-0" onClick={handleFinishLinking}>
                                         <Check className="w-3.5 h-3.5 mr-1" />เสร็จ
                                     </Button>
-                                    <Button size="sm" variant="ghost" className="h-7 bg-white/20 hover:bg-white/30 text-white border-0" onClick={handleCancelLink}>
+                                    <Button size="sm" variant="ghost" className="h-7 bg-black/10 hover:bg-black/20 text-black border-0" onClick={handleCancelLink}>
                                         <X className="w-3.5 h-3.5 mr-1" />ยกเลิก
                                     </Button>
                                 </div>
@@ -2082,7 +2067,7 @@ export function PlaygroundBoard({
                     <div className="relative z-40 flex items-center gap-2 px-3 py-2 border-b bg-background/85 backdrop-blur">
                         <div className="relative">
                             <Button variant={showNavigator ? "secondary" : "ghost"} size="icon" className="h-8 w-8"
-                                onClick={() => setShowNavigator(!showNavigator)} title="สารบัญ">
+                                onClick={() => setShowNavigator(!showNavigator)} aria-label="สารบัญ" title="สารบัญ">
                                 <List className="h-4 w-4" />
                             </Button>
                             {showNavigator && (
@@ -2123,28 +2108,24 @@ export function PlaygroundBoard({
                             )}
                         </div>
 
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-purple-600 hover:bg-purple-100" onClick={handleAddStickyNote} title="เพิ่ม Sticky Note">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleAddStickyNote} aria-label="เพิ่ม Sticky Note" title="เพิ่ม Sticky Note">
                             <StickyNote className="h-4 w-4" />
                         </Button>
 
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-amber-600 hover:bg-amber-100" onClick={handleAutoArrange} title='เรียง beat ตาม "นำไปสู่"'>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleAutoArrange} aria-label='เรียง beat ตาม "นำไปสู่"' title='เรียง beat ตาม "นำไปสู่"'>
                             <LayoutGrid className="h-4 w-4" />
                         </Button>
 
-                        <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs text-emerald-600 hover:bg-emerald-100" onClick={handleAddLane} title="เพิ่มเลนใหม่">
+                        <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs" onClick={handleAddLane} title="เพิ่มเลนใหม่">
                             <Rows3 className="h-4 w-4" />เพิ่มเลน
                         </Button>
 
-                        <div className="w-px h-4 bg-border mx-1" />
-
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleJumpToFirst} title="ไปจุดเริ่มต้น">
-                            <SkipBack className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleJumpToLast} title="ไปจุดสุดท้าย">
-                            <SkipForward className="h-4 w-4" />
-                        </Button>
-
                         <div className="flex-1" />
+
+                        {/* สถานะบันทึก — autosave debounce 2 วิ ทำงานอยู่แล้ว ไม่มีปุ่ม Save */}
+                        <span className="text-xs text-muted-foreground tabular-nums" aria-live="polite">
+                            {isSaving ? "กำลังบันทึก…" : lastSaved ? "บันทึกแล้ว" : ""}
+                        </span>
 
                         <CreateIdeaDialog
                             novelId={novelId}
@@ -2210,17 +2191,21 @@ export function PlaygroundBoard({
                             }
                         />
 
-                        <Button onClick={handleSave} disabled={isSaving} size="icon" variant="outline"
-                            className={`h-8 w-8 ${lastSaved && !isSaving ? 'text-green-600 border-green-300' : ''}`}
-                            title={isSaving ? "กำลังบันทึก..." : lastSaved ? "บันทึกแล้ว" : "บันทึก Layout"}>
-                            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : lastSaved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-                        </Button>
-                        <Button onClick={handleExport} size="icon" variant="outline" className="h-8 w-8" title="Export JSON (backup/re-import)">
-                            <Download className="w-4 h-4" />
-                        </Button>
-                        <Button onClick={handleExportMarkdown} size="icon" variant="outline" className="h-8 w-8" title="Export Markdown (อ่านง่าย / ส่งให้ AI)">
-                            <FileText className="w-4 h-4" />
-                        </Button>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button size="icon" variant="outline" className="h-8 w-8" aria-label="ส่งออก" title="ส่งออก">
+                                    <Download className="w-4 h-4" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={handleExport}>
+                                    <Download className="w-4 h-4" />JSON (backup / re-import)
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={handleExportMarkdown}>
+                                    <FileText className="w-4 h-4" />Markdown (อ่านง่าย / ส่งให้ AI)
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     </div>
 
                     {/* Grid viewport (scroll) */}
