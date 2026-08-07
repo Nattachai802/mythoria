@@ -21,6 +21,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { Popover, PopoverTrigger, PopoverContent, PopoverAnchor } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { mentionRangeAtCaret } from "@/lib/mentions";
 import { SceneParticipantsPanel } from "./scene-participants-panel";
 
 // สีโน้ต — ผู้ใช้เลือกสีเองจากพาเลตเดียวกับป้ายจัดกลุ่มการ์ด แทนชนิดตายตัว (tension/dialogue/question เดิม)
@@ -397,6 +398,8 @@ export function CanvasItem({
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null); // null = สร้างใหม่, id = แก้ไขโน้ตเดิม
   const [quickNoteKind, setQuickNoteKind] = useState<string | null>(null); // null = ทั่วไป
   const [deletingNote, setDeletingNote] = useState(false);
+  const [noteBaseline, setNoteBaseline] = useState(""); // ข้อความตอนเปิดตัวแก้ — ใช้เช็คว่าแก้ค้างไว้ไหมตอนจะปิด
+  const [confirmDeleteNote, setConfirmDeleteNote] = useState(false); // ลบต้องกดสองครั้ง
   const [draggedNoteId, setDraggedNoteId] = useState<string | null>(null); // ลากสลับตำแหน่งโน้ต
   // เหตุการณ์สำคัญ (mock) — เก็บ label อิสระใน canvas node ไปก่อน, ค่อยเลื่อนขึ้นตาราง ideas ทีหลัง
   const [editingKeyMoment, setEditingKeyMoment] = useState(false);
@@ -492,17 +495,22 @@ export function CanvasItem({
     setSavingQuickNote(true);
     await onQuickAddNote(item, text, editingNoteId ?? undefined, quickNoteKind ?? undefined);
     setSavingQuickNote(false);
-    setQuickNote("");
-    setQuickNoteOpen(false);
-    setEditingNoteId(null);
-    setQuickNoteKind(null);
+    resetQuickNote();
   };
 
-  const closeQuickNote = () => {
+  const resetQuickNote = () => {
     setQuickNote("");
     setQuickNoteOpen(false);
     setEditingNoteId(null);
     setQuickNoteKind(null);
+    setNoteBaseline("");
+    setConfirmDeleteNote(false);
+  };
+
+  // ปิดตัวแก้ — ถ้าเขียนค้างไว้ต้องยืนยันก่อน (Escape/ปุ่มยกเลิก มือลั่นทีเดียวงานหายหมด)
+  const closeQuickNote = () => {
+    if (quickNote.trim() && quickNote !== noteBaseline && !window.confirm("ทิ้งข้อความที่เขียนไว้?")) return;
+    resetQuickNote();
   };
 
   // quickNoteKind เก็บ hex สีตรงๆ แล้ว — null = ทั่วไป (เหลืองเดิม)
@@ -553,7 +561,7 @@ export function CanvasItem({
             autoFocus
             ref={quickNoteRef}
             value={quickNote}
-            onChange={(e) => { setQuickNote(e.target.value); detectQm(e.target.value, e.target.selectionStart ?? e.target.value.length); }}
+            onChange={(e) => { setQuickNote(e.target.value); setConfirmDeleteNote(false); detectQm(e.target.value, e.target.selectionStart ?? e.target.value.length); }}
             onKeyDown={(e) => {
               if (qmOpen && qmMatches.length > 0) {
                 if (e.key === "ArrowDown") { e.preventDefault(); setQmIndex(i => (i + 1) % qmMatches.length); return; }
@@ -561,13 +569,26 @@ export function CanvasItem({
                 if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); insertQm(qmMatches[qmIndex].name); return; }
                 if (e.key === "Escape") { e.preventDefault(); setQmOpen(false); return; }
               }
+              // @mention = แท็กก้อนเดียว — Backspace/Delete ติดขอบแท็กให้ลบทั้งก้อน ไม่ต้องกดทีละตัว
+              if ((e.key === "Backspace" || e.key === "Delete") && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                const ta = e.currentTarget;
+                if (ta.selectionStart === ta.selectionEnd) {
+                  const r = mentionRangeAtCaret(quickNote, ta.selectionStart, allMentionChars.map(c => c.name), e.key === "Backspace" ? "back" : "forward");
+                  if (r) {
+                    e.preventDefault();
+                    setQuickNote(quickNote.slice(0, r[0]) + quickNote.slice(r[1]));
+                    requestAnimationFrame(() => ta.setSelectionRange(r[0], r[0]));
+                    return;
+                  }
+                }
+              }
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitQuickNote(); }
               else if (e.key === "Escape") { closeQuickNote(); }
             }}
             placeholder={allMentionChars.length > 0
               ? "เขียนโน้ต… (@ เพื่อ mention ตัวละคร, ⌘/Ctrl+Enter บันทึก)"
               : "เขียนโน้ต… (⌘/Ctrl+Enter เพื่อบันทึก)"}
-            className={cn("min-h-[52px] resize-none text-xs", !activeNoteColor && "bg-yellow-500/10 border-yellow-500/30 focus-visible:ring-yellow-500/40")}
+            className={cn("min-h-[52px] max-h-64 field-sizing-content resize-none text-xs", !activeNoteColor && "bg-yellow-500/10 border-yellow-500/30 focus-visible:ring-yellow-500/40")}
             style={activeNoteColor ? { background: `${activeNoteColor}1a`, borderColor: `${activeNoteColor}4d` } : undefined}
           />
         </PopoverAnchor>
@@ -575,7 +596,6 @@ export function CanvasItem({
           side="right"
           align="start"
           sideOffset={8}
-          avoidCollisions={false}
           hideWhenDetached
           onOpenAutoFocus={(e) => e.preventDefault()}
           onCloseAutoFocus={(e) => e.preventDefault()}
@@ -620,11 +640,11 @@ export function CanvasItem({
         {editingNoteId && onDeleteNote && (
           <Button
             type="button" size="sm" variant="ghost"
-            className="h-6 text-xs px-2 text-destructive hover:text-destructive"
+            className={cn("h-6 text-xs px-2 text-destructive hover:text-destructive", confirmDeleteNote && "bg-destructive/10")}
             disabled={deletingNote}
-            onClick={deleteEditingNote}
+            onClick={() => confirmDeleteNote ? deleteEditingNote() : setConfirmDeleteNote(true)}
           >
-            {deletingNote ? <Loader2 className="w-3 h-3 animate-spin" /> : "ลบ"}
+            {deletingNote ? <Loader2 className="w-3 h-3 animate-spin" /> : confirmDeleteNote ? "แน่ใจ?" : "ลบ"}
           </Button>
         )}
         <div className="flex justify-end gap-1 ml-auto">
@@ -1460,7 +1480,9 @@ Sticky Notes: ${stickyNotes}`;
                           // แก้ไข inline ตรงที่โน้ตนั้นเลย (ตัวแก้แทนที่ preview)
                           setEditingNoteId(note.id);
                           setQuickNote(note.notes || "");
+                          setNoteBaseline(note.notes || "");
                           setQuickNoteKind(note.noteKind ?? null);
+                          setConfirmDeleteNote(false);
                           setQuickNoteOpen(true);
                         }}
                       >
@@ -1477,7 +1499,7 @@ Sticky Notes: ${stickyNotes}`;
                     noteEditor
                   ) : !quickNoteOpen ? (
                     <button
-                      onClick={(e) => { e.stopPropagation(); setEditingNoteId(null); setQuickNote(""); setQuickNoteKind(null); setQuickNoteOpen(true); }}
+                      onClick={(e) => { e.stopPropagation(); setEditingNoteId(null); setQuickNote(""); setNoteBaseline(""); setQuickNoteKind(null); setConfirmDeleteNote(false); setQuickNoteOpen(true); }}
                       className="flex items-center justify-center gap-1 w-full text-xs text-yellow-700/70 dark:text-yellow-500/70 hover:text-yellow-800 dark:hover:text-yellow-400 border border-dashed border-yellow-500/30 hover:border-yellow-500/50 hover:bg-yellow-500/5 rounded-md px-2 py-1.5 transition-colors"
                     >
                       <Plus className="w-3 h-3" />

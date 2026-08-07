@@ -21,3 +21,32 @@ export function parseMentions(html: string): { type: EntityType; id: string }[] 
     }
     return out;
 }
+
+/**
+ * ช่วง [start,end) ของ @mention ที่ติดกับ caret ใน textarea — ให้ Backspace/Delete ลบทั้งแท็กในทีเดียว
+ * แทนที่จะกินทีละตัวอักษร (ชื่อไทยยาว ๆ ต้องกด 10 กว่าครั้ง)
+ * dir "back" = Backspace (มองข้างหลัง caret), "forward" = Delete (มองข้างหน้า)
+ * เรียงชื่อยาวก่อน กัน "@สมชาย" ไปแมตช์ทับ "@สมชายใหญ่" — เหมือน renderNoteMentions
+ * pure + sync → ดู lib/mentions.test.ts
+ */
+export function mentionRangeAtCaret(
+    text: string,
+    caret: number,
+    names: string[],
+    dir: "back" | "forward",
+): [number, number] | null {
+    const esc = names
+        .filter(Boolean)
+        .slice()
+        .sort((a, b) => b.length - a.length)
+        .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    if (!esc.length) return null;
+    // " ?" = กินช่องว่างที่ insertQm เติมท้ายไปด้วย ไม่งั้นลบแท็กแล้วเหลือช่องว่างลอย
+    const alt = `@(?:${esc.join("|")}) ?`;
+    if (dir === "back") {
+        const m = text.slice(0, caret).match(new RegExp(`${alt}$`));
+        return m ? [caret - m[0].length, caret] : null;
+    }
+    const m = text.slice(caret).match(new RegExp(`^${alt}`));
+    return m ? [caret, caret + m[0].length] : null;
+}
