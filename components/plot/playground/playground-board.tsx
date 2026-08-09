@@ -202,10 +202,27 @@ function ConnectionLine({ start, end, kind = "related", label, onClick }: {
 }
 
 // เส้นเชื่อมแบบตั้งฉาก (orthogonal) — วาด polyline หัก 90° ไม่มีเส้นเฉียง หัวลูกศรที่ปลายสุด
-function OrthoLine({ points, kind = "related", label, onClick }: {
+/**
+ * จุดวางป้ายชื่อเส้น = กลางช่วงที่ยาวที่สุด — ไม่คร่อมมุมหัก และเส้นคนละเส้นได้คนละตำแหน่งเอง
+ * เดิมเกาะจุดเริ่ม เส้นที่ออกจากการ์ดเดียวกันจึงได้พิกัดเดียวกันเป๊ะ ป้ายทับสนิท
+ */
+function labelAnchor(points: Array<{ x: number; y: number }>) {
+    let best = points[0];
+    let longest = -1;
+    for (let i = 0; i < points.length - 1; i++) {
+        const a = points[i], b = points[i + 1];
+        const len = Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
+        if (len > longest) { longest = len; best = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
+    }
+    return best;
+}
+
+function OrthoLine({ points, kind = "related", label, labelSlot = 0, onClick }: {
     points: Array<{ x: number; y: number }>;
     kind?: string;
     label?: string | null;
+    /** ลำดับป้ายที่ใช้จุดเริ่มร่วมกัน — เส้นหลายเส้นออกจากการ์ดเดียวกันได้ anchor จุดเดียว ป้ายจะทับกัน */
+    labelSlot?: number;
     onClick?: () => void;
 }) {
     if (points.length < 2) return null;
@@ -226,19 +243,26 @@ function OrthoLine({ points, kind = "related", label, onClick }: {
     const start = points[0];
     const displayLabel = label || (kind !== "related" ? cfg.label : null);
 
+    const mid = labelAnchor(points);
+
     return (
         <g>
             <path d={d} stroke="var(--background)" strokeWidth="4" strokeOpacity="0.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
             <path d={d} stroke={cfg.color} strokeWidth="2" strokeOpacity="0.7" fill="none" strokeLinecap="round" strokeLinejoin="round" />
             <polygon points={`${p2.x},${p2.y} ${a1x},${a1y} ${a2x},${a2y}`} fill={cfg.color} fillOpacity="0.85" />
             <circle cx={start.x} cy={start.y} r={4} fill={cfg.pinFill} stroke={cfg.pinStroke} strokeWidth="1" />
-            {displayLabel && (
-                <g style={{ pointerEvents: "none" }}>
-                    <rect x={start.x + 6} y={start.y - 8} width={displayLabel.length * 9} height={16} rx="4"
-                        fill="white" stroke={cfg.color} strokeWidth="1" opacity="0.92" />
-                    <text x={start.x + 6 + displayLabel.length * 4.5} y={start.y + 3.5} textAnchor="middle" fontSize="10" fill={cfg.color} fontWeight="600">{displayLabel}</text>
-                </g>
-            )}
+            {displayLabel && (() => {
+                const w = displayLabel.length * 9;
+                // ยังเหลือ slot ไว้เผื่อสองเส้นทับกันจนกลางช่วงตรงกันพอดี
+                const ly = mid.y + labelSlot * 18;
+                return (
+                    <g style={{ pointerEvents: "none" }}>
+                        <rect x={mid.x - w / 2} y={ly - 8} width={w} height={16} rx="4"
+                            fill="white" stroke={cfg.color} strokeWidth="1" opacity="0.92" />
+                        <text x={mid.x} y={ly + 3.5} textAnchor="middle" fontSize="10" fill={cfg.color} fontWeight="600">{displayLabel}</text>
+                    </g>
+                );
+            })()}
             {onClick && (
                 <path d={d} stroke="transparent" strokeWidth="16" fill="none"
                     style={{ pointerEvents: "auto", cursor: "pointer" }}
@@ -1982,14 +2006,54 @@ export function PlaygroundBoard({
             placed.push({ x, y0: v.y0, y1: v.y1 });
         });
 
-        return built.map(({ e, points }) => (
-            <OrthoLine
-                key={`${e.sourceId}-${e.targetId}`}
-                points={points}
-                kind={e.link.kind} label={e.link.label}
-                onClick={() => setEditingLink({ sourceId: e.sourceId, targetId: e.targetId })}
-            />
-        ));
+        // หัวลูกศรต้องเข้าทางด้านที่เส้นวิ่งมาถึงจริง ๆ
+        //
+        // ด้านของ anchor ถูกเลือกไว้ตั้งแต่ต้นจาก beatIndex แต่ pass "จัด track" ข้างบนดัน
+        // เส้นแนวตั้งไปทางขวาได้เรื่อย ๆ เส้นที่เคยอยู่ซ้ายของการ์ดปลายทางจึงไปโผล่ขวา
+        // ขณะที่จุดจบยังปักที่ขอบซ้าย — ขาสุดท้ายเลยลากผ่ากลางการ์ดทั้งใบ
+        // เช็คทีหลังเพราะต้องรู้ตำแหน่งจริงหลังโดนดันแล้ว
+        built.forEach(({ e, points }) => {
+            const n = points.length;
+            if (n < 2) return;
+            const tip = points[n - 1];
+            const from = points[n - 2];
+            const t = e.tPos;
+            if (Math.abs(from.y - tip.y) < 0.5) {
+                // ขาสุดท้ายแนวนอน → ลงที่ขอบซ้าย/ขวาอันที่ใกล้ทางเข้ากว่า
+                const nearX = from.x > t.x ? t.x + t.w / 2 : t.x - t.w / 2;
+                if (Math.abs(nearX - tip.x) > 0.5) {
+                    // y ต้องอยู่ในช่วงของการ์ดด้วย ไม่งั้น anchor ลอยเลยขอบไป
+                    const y = clampY(tip.y, t);
+                    points[n - 1] = { x: nearX, y };
+                    points[n - 2] = { ...from, y };
+                }
+            } else if (Math.abs(from.x - tip.x) < 0.5) {
+                // ขาสุดท้ายแนวตั้ง → ลงที่ขอบบน/ล่างอันที่ใกล้ทางเข้ากว่า
+                const nearY = from.y > t.y ? t.y + t.h / 2 : t.y - t.h / 2;
+                if (Math.abs(nearY - tip.y) > 0.5) points[n - 1] = { ...tip, y: nearY };
+            }
+        });
+
+        // ป้ายวางกลางเส้นแล้ว แต่สองเส้นยังบังเอิญได้จุดกลางตรงกันได้ → เหลื่อมลงมาเป็นชั้น
+        const labelSlots = new Map<string, number>();
+        return built.map(({ e, points }) => {
+            const hasLabel = !!(e.link.label || e.link.kind !== "related");
+            let slot = 0;
+            if (hasLabel) {
+                const a = labelAnchor(points);
+                const key = `${Math.round(a.x)},${Math.round(a.y)}`;
+                slot = labelSlots.get(key) ?? 0;
+                labelSlots.set(key, slot + 1);
+            }
+            return (
+                <OrthoLine
+                    key={`${e.sourceId}-${e.targetId}`}
+                    points={points}
+                    kind={e.link.kind} label={e.link.label} labelSlot={slot}
+                    onClick={() => setEditingLink({ sourceId: e.sourceId, targetId: e.targetId })}
+                />
+            );
+        });
     })();
 
     const ancestorLines = ancestorConnections.map(conn => {
