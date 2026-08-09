@@ -33,6 +33,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { createPortal } from "react-dom";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
+import { snapSimultaneousBeats } from "@/lib/simultaneous-beats";
 
 interface PlaygroundBoardProps {
     eventId: string;
@@ -1261,14 +1262,7 @@ export function PlaygroundBoard({
                 });
             }
 
-            const srcItem = prev.find(i => i.id === sourceId);
-            const tgtItem = prev.find(i => i.id === targetId);
-            const shouldMoveBeat =
-                patch.kind === "simultaneous" &&
-                srcItem && tgtItem &&
-                srcItem.beatIndex !== tgtItem.beatIndex;
-
-            return prev.map(item => {
+            const next = prev.map(item => {
                 if (item.id === sourceId) {
                     return {
                         ...item,
@@ -1282,11 +1276,13 @@ export function PlaygroundBoard({
                     return {
                         ...item,
                         ...(newChildren.length > 0 ? { children: [...(item.children || []), ...newChildren] } : {}),
-                        ...(shouldMoveBeat ? { beatIndex: srcItem!.beatIndex } : {}),
                     };
                 }
                 return item;
             });
+
+            // ยึด beat ของต้นทาง แล้วดึงทั้งกลุ่ม "เกิดพร้อมกัน" ตามมา
+            return snapSimultaneousBeats(next, [sourceId]);
         });
         if (patch.kind === "leads_to") toast.success('ตั้งเป็น "นำไปสู่" — ตัวละครถูกส่งต่อไปการ์ดปลายทาง');
 
@@ -1419,7 +1415,13 @@ export function PlaygroundBoard({
         };
         ideaItems.forEach(i => depthOf(i.id));
 
-        setItems(prev => prev.map(i => i.type === 'idea' && depths.has(i.id) ? { ...i, beatIndex: depths.get(i.id) } : i));
+        // เรียงตาม chain แล้วค่อยดึงคู่ "เกิดพร้อมกัน" กลับมารวมจังหวะ — anchor เรียงตาม
+        // depth ตื้นไปลึก ตัวที่มาก่อนใน chain จึงเป็นคนกำหนดจังหวะของกลุ่ม
+        const anchors = [...depths.entries()].sort((a, b) => a[1] - b[1]).map(([id]) => id);
+        setItems(prev => snapSimultaneousBeats(
+            prev.map(i => i.type === 'idea' && depths.has(i.id) ? { ...i, beatIndex: depths.get(i.id) } : i),
+            anchors,
+        ));
         toast.success('เรียง beat ตามลำดับ "นำไปสู่" แล้ว', {
             action: {
                 label: 'ย้อนกลับ',
@@ -1538,7 +1540,12 @@ export function PlaygroundBoard({
             if (cellMatch) {
                 const [, laneId, beatIndexStr] = overId.split(':');
                 const beatIndex = Number(beatIndexStr);
-                setItems(prev => prev.map(item => item.id === active.id ? { ...item, laneId, beatIndex } : item));
+                // การ์ดที่ผูก "เกิดพร้อมกัน" ต้องย้ายจังหวะตามไปด้วย ไม่งั้นคู่แยกคอลัมน์
+                // แล้วเส้นจะไปตกที่ตัววาดแบบ cross-beat ที่ลากยาวข้ามการ์ดอื่น
+                setItems(prev => snapSimultaneousBeats(
+                    prev.map(item => item.id === active.id ? { ...item, laneId, beatIndex } : item),
+                    [String(active.id)],
+                ));
             }
             return;
         }
