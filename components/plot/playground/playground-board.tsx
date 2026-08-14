@@ -1738,13 +1738,32 @@ export function PlaygroundBoard({
         toast.success('Export Playground สำเร็จ!');
     };
 
-    // Export Markdown — อ่านง่าย + AI-friendly: เรียงตาม beat→lane, ความสัมพันธ์เขียนเป็นคำ
+    // Export Markdown — เขียนให้ LLM อ่านแล้วตีความไม่ผิด ไม่ใช่แค่ให้คนอ่านสวย
+    //
+    // สามอย่างที่ฟอร์แมตเดิมทำหาย แล้วอันนี้แก้:
+    //  1. "การ์ดคนละเลนในจังหวะเดียวกัน = เกิดพร้อมกัน" — เดิมเรียงต่อกันเฉย ๆ AI สรุปว่าเกิดก่อนหลัง
+    //  2. เส้นเชื่อมอ้างด้วยชื่อการ์ด — ชื่อซ้ำกันเมื่อไหร่กราฟพัง จึงเปลี่ยนไปอ้างรหัส [C01]
+    //  3. bullet ทุกชนิดกองรวมกัน ต่างกันแค่ prefix — แยกเป็นหัวข้อย่อยที่มีชื่อ
     const handleExportMarkdown = () => {
-        const ROLE_LABEL: Record<string, string> = { seed: "🌱 หว่าน", reinforce: "🔁 ย้ำ", payoff: "🎯 เฉลย" };
+        const ROLE_LABEL: Record<string, string> = { seed: "หว่าน", reinforce: "ย้ำ", payoff: "เฉลย" };
         const OUTCOME_LABEL: Record<string, string> = { success: "สำเร็จ", failure: "ล้มเหลว", ongoing: "ยังไม่จบ", unknown: "ไม่แน่ชัด" };
+        // ชนิดที่โผล่จริงในข้อมูล: character, dummy_character, building, faction, sticky-note
+        // dummy = ตัวประกอบที่ยังไม่ได้สร้างเป็นตัวละครจริง — บอกไว้ ไม่งั้น AI จะรายงานว่าข้อมูลตัวละครหาย
+        const TYPE_LABEL: Record<string, string> = {
+            character: "ตัวละคร",
+            dummy_character: "ตัวประกอบ (ยังไม่ได้สร้างเป็นตัวละคร)",
+            building: "สถานที่",
+            location: "สถานที่",
+            faction: "กลุ่ม",
+            idea: "ไอเดีย",
+            group: "กลุ่มการ์ด",
+            "sticky-note": "โน้ต",
+        };
+        const typeLabel = (t?: string) =>
+            (t && (TYPE_LABEL[t] ?? TYPE_LABEL[t.replace(/^dummy_/, "")])) || t || "-";
         const laneName = new Map(lanes_.map(l => [l.id, l.name]));
         const laneOrder = new Map(lanes_.map((l, i) => [l.id, i]));
-        const titleById = new Map<string, string>(items.map(i => [i.id, i.title || "(ไม่มีชื่อ)"]));
+
         const notesByItem = new Map<string, SceneElementDetails[]>();
         ideaNotes.forEach(n => {
             if (!n.canvasItemId) return;
@@ -1752,53 +1771,161 @@ export function PlaygroundBoard({
             a.push(n); notesByItem.set(n.canvasItemId, a);
         });
 
-        const L: string[] = [];
-        L.push(`# ฉาก: ${event?.title || "(ไม่มีชื่อ)"}`);
-        if (event?.description) L.push("", event.description);
-
-        const drama: string[] = [];
-        if (event?.sceneGoal) drama.push(`**เป้าหมาย:** ${event.sceneGoal}`);
-        if (event?.sceneConflict) drama.push(`**อุปสรรค:** ${event.sceneConflict}`);
-        if (event?.sceneOutcome) drama.push(`**ผล:** ${OUTCOME_LABEL[event.sceneOutcome] ?? event.sceneOutcome}`);
-        if (drama.length) L.push("", drama.join(" · "));
-        if (event?.causeKind) {
-            const w = event.causeKind === "therefore" ? "ดังนั้น (therefore)" : "แต่ว่า (but)";
-            L.push("", `**เหตุ-ผล:** ${w}${event.causeNote ? ` — ${event.causeNote}` : ""}`);
-        }
-
-        // เรียงตามเวลาเล่า: จังหวะ แล้วเลน
+        // เรียงตามเวลาเล่า: จังหวะ แล้วเลน — ลำดับนี้กำหนดรหัส [C01] ด้วย
         const sorted = [...items].sort((a, b) =>
             ((a.beatIndex ?? 0) - (b.beatIndex ?? 0)) || ((laneOrder.get(a.laneId) ?? 0) - (laneOrder.get(b.laneId) ?? 0)));
+        const codeById = new Map<string, string>(
+            sorted.map((it, i) => [it.id, `C${String(i + 1).padStart(2, "0")}`]));
+
+        // ── ตัวย่อผู้ร่วมฉาก ──
+        // ชื่อยาว ๆ ซ้ำกันกินครึ่งไฟล์ (วัดจากข้อมูลจริงในโปรเจกต์: 54%) ประกาศครั้งเดียวบนสุดแล้วใช้ตัวย่อทั้งไฟล์
+        // ใช้ @A ไม่ใช่ A เปล่า ๆ เพราะชื่อจริงมีตัวอักษรเดี่ยวอยู่ในตัวเอง ("เพื่อนหมายเลข A")
+        // ตัวอักษรลอย ๆ จะกลืนกับข้อความจนแยกไม่ออกทั้งคนและ AI
+        // วัดกับ tokenizer ของ llama-3.3-70b จริง: ชื่อเต็ม 5 โทเคน/ครั้ง · [A] 2 · @A 1
+        // และ @ คือสัญลักษณ์ที่แอปใช้อ้างถึงตัวละครอยู่แล้วในโน้ตบนกระดาน
+        const nameCards = new Map<string, Set<string>>(); // ชื่อ → เซตการ์ดที่โผล่
+        const nameType = new Map<string, string>();
+        sorted.forEach(item => {
+            ((item.children ?? []) as any[]).forEach(c => {
+                if (!c.title) return;
+                const set = nameCards.get(c.title) ?? new Set<string>();
+                set.add(item.id); nameCards.set(c.title, set);
+                if (!nameType.has(c.title)) nameType.set(c.title, typeLabel(c.type));
+            });
+        });
+        // ตั้งตัวย่อเฉพาะชื่อที่โผล่ตั้งแต่ 2 การ์ดขึ้นไป — โผล่หนเดียวย่อแล้วไม่ประหยัด แถมเสียแถวใน legend ฟรี
+        const aliasOf = new Map<string, string>();
+        const letter = (i: number) => i < 26
+            ? String.fromCharCode(65 + i)
+            : String.fromCharCode(65 + Math.floor(i / 26) - 1) + String.fromCharCode(65 + (i % 26));
+        [...nameCards.entries()]
+            .filter(([, set]) => set.size >= 2)
+            .sort((a, b) => b[1].size - a[1].size || a[0].localeCompare(b[0]))
+            .forEach(([name], i) => aliasOf.set(name, `@${letter(i)}`));
+
+        // แทนที่ชื่อยาวก่อนชื่อสั้น กันชื่อที่เป็นส่วนหนึ่งของอีกชื่อไปตัดกลางคำ
+        const aliasRe = aliasOf.size
+            ? new RegExp([...aliasOf.keys()].sort((a, b) => b.length - a.length)
+                .map(n => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g")
+            : null;
+        const sub = (t?: string | null) => !t ? "" : (aliasRe ? t.replace(aliasRe, m => aliasOf.get(m) ?? m) : t);
+
+        const openThreads = threadState.filter(t => !t.beats.some(b => b.role === "payoff"));
+        const beatCountReal = new Set(sorted.map(i => i.beatIndex ?? 0)).size;
+
+        const L: string[] = [];
+
+        // frontmatter: ให้ AI รู้ขนาดและโฟกัสก่อนอ่านเนื้อ
+        L.push("---");
+        L.push("เอกสาร: กระดานพล็อตรายฉาก (หนึ่งไฟล์ = หนึ่งฉาก)");
+        L.push(`ฉาก: ${sub(event?.title) || "(ไม่มีชื่อ)"}`);
+        if (event?.sceneGoal) L.push(`เป้าหมาย: ${sub(event.sceneGoal)}`);
+        if (event?.sceneConflict) L.push(`อุปสรรค: ${sub(event.sceneConflict)}`);
+        if (event?.sceneOutcome) L.push(`ผล: ${OUTCOME_LABEL[event.sceneOutcome] ?? event.sceneOutcome}`);
+        if (event?.causeKind) {
+            const w = event.causeKind === "therefore" ? "ดังนั้น" : "แต่ว่า";
+            L.push(`ต่อจากฉากก่อน: ${w}${event.causeNote ? ` — ${sub(event.causeNote)}` : ""}`);
+        }
+        L.push(`จำนวนจังหวะ: ${beatCountReal}`);
+        L.push(`จำนวนการ์ด: ${sorted.length}`);
+        L.push(`ปมที่ยังไม่เฉลย: ${openThreads.length}`);
+        L.push("---");
+
+        // ไม่ซ้ำชื่อฉากอีกรอบ — frontmatter บอกไปแล้ว พอไม่มี # heading มันก็เหลือแค่บรรทัดซ้ำเปล่า ๆ
+        if (event?.description) L.push("", sub(event.description));
+
+        L.push("", "วิธีอ่านเอกสารนี้:");
+        L.push("- จังหวะ = ช่วงเวลาในฉาก เรียงตามลำดับการเล่า การ์ดที่อยู่จังหวะเดียวกัน คือเหตุการณ์ที่เกิดขึ้นพร้อมกัน");
+        L.push("- เลน = สายเรื่องที่เดินขนานกัน คนละเลนในจังหวะเดียวกัน = เกิดพร้อมกันคนละที่หรือคนละกลุ่ม");
+        L.push("- การ์ดทุกใบมีรหัส [C01] เส้นเชื่อมอ้างถึงรหัสนี้เสมอ ไม่ได้อ้างด้วยชื่อ");
+        L.push("- ปม = เรื่องที่ต้องเฉลยภายหลัง มีสามบทบาท: หว่าน (ตั้งคำถาม) → ย้ำ (เตือนว่ายังค้าง) → เฉลย (ตอบ)");
+        if (aliasOf.size) {
+            L.push("- ผู้ร่วมฉากที่โผล่หลายการ์ดใช้ตัวย่อขึ้นต้นด้วย @ เช่น @A — ดูตารางถัดไป");
+        }
+
+        if (nameCards.size) {
+            L.push("", "ผู้ร่วมฉากทั้งหมด:");
+            L.push("| ตัวย่อ | ชื่อ | ชนิด | อยู่กี่การ์ด |");
+            L.push("|---|---|---|---|");
+            [...nameCards.entries()]
+                .sort((a, b) => b[1].size - a[1].size || a[0].localeCompare(b[0]))
+                .forEach(([name, set]) => {
+                    L.push(`| ${aliasOf.get(name) ?? "—"} | ${name} | ${nameType.get(name) ?? "-"} | ${set.size} / ${sorted.length} |`);
+                });
+        }
 
         sorted.forEach(item => {
-            L.push("", `## จังหวะ ${String((item.beatIndex ?? 0) + 1).padStart(2, "0")} — ${item.title || "(ไม่มีชื่อ)"}   [เลน: ${laneName.get(item.laneId) ?? "-"}]`);
-            if (item.keyMomentLabel) L.push(`> ⭐ ${item.keyMomentLabel}`);
-            if (item.content) L.push("", item.content);
+            const code = codeById.get(item.id)!;
+            L.push("", `[${code}] ${sub(item.title) || "(ไม่มีชื่อ)"}`);
+
+            const beatNo = String((item.beatIndex ?? 0) + 1).padStart(2, "0");
+            L.push(`จังหวะ ${beatNo} · เลน: ${laneName.get(item.laneId) ?? "-"}`);
+
+            // การ์ดอื่นในจังหวะเดียวกัน = เกิดพร้อมกัน — ข้อมูลนี้หายไปทั้งดุ้นในฟอร์แมตเดิม
+            const together = sorted.filter(o => o.id !== item.id && (o.beatIndex ?? 0) === (item.beatIndex ?? 0));
+            if (together.length) {
+                L.push(`เกิดพร้อมกันกับ: ${together.map(o => `[${codeById.get(o.id)}]`).join(" ")}`);
+            }
+            if (item.isNarration) L.push("เป็นคำบรรยาย ไม่มีตัวละครร่วมฉาก");
+            if (item.keyMomentLabel) L.push(`เหตุการณ์สำคัญ: ${sub(item.keyMomentLabel)}`);
+
+            if (item.content) L.push("", sub(item.content));
 
             const kids = (item.children ?? []) as any[];
-            kids.forEach(c => {
-                const det = elementDetailsMap.get(`${item.id}-${c.type}-${c.referenceId || c.id}`);
-                const extra = det ? [det.action, det.goal && `(เพื่อ ${det.goal})`, det.outcome && `→ ${OUTCOME_LABEL[det.outcome] ?? det.outcome}`].filter(Boolean).join(" ") : "";
-                L.push(`- **${c.type}:** ${c.title}${extra ? ` — ${extra}` : ""}`);
-            });
+            if (kids.length) {
+                L.push("ผู้ร่วมฉาก:");
+                kids.forEach(c => {
+                    const det = elementDetailsMap.get(`${item.id}-${c.type}-${c.referenceId || c.id}`);
+                    const bits = [
+                        det?.action && `ทำ: ${sub(det.action)}`,
+                        det?.goal && `เพื่อ: ${sub(det.goal)}`,
+                        det?.outcome && `ผล: ${OUTCOME_LABEL[det.outcome] ?? det.outcome}`,
+                    ].filter(Boolean);
+                    const who = aliasOf.get(c.title) ?? c.title;
+                    L.push(`- ${typeLabel(c.type)} — ${who}${bits.length ? ` · ${bits.join(" · ")}` : ""}`);
+                });
+            }
 
-            (cardBeats.get(item.id) ?? []).forEach(b =>
-                L.push(`- ปม: ${ROLE_LABEL[b.role] ?? b.role} “${b.title}”`));
+            const beats = cardBeats.get(item.id) ?? [];
+            if (beats.length) {
+                L.push("ปมที่แตะในจังหวะนี้:");
+                beats.forEach(b => L.push(`- ${ROLE_LABEL[b.role] ?? b.role} — "${sub(b.title)}"`));
+            }
 
-            (item.links ?? []).map(normalizeLink).forEach((l: CanvasLink) => {
-                const t = titleById.get(l.targetId);
-                if (t) L.push(`- → ${LINK_KINDS[l.kind]?.label ?? l.kind} “${t}”${l.label ? ` (${l.label})` : ""}`);
-            });
+            const links = (item.links ?? []).map(normalizeLink)
+                .filter((l: CanvasLink) => codeById.has(l.targetId));
+            if (links.length) {
+                L.push("เชื่อมไปยัง:");
+                links.forEach((l: CanvasLink) => {
+                    const t = items.find((x: any) => x.id === l.targetId);
+                    L.push(`- ${LINK_KINDS[l.kind]?.label ?? l.kind} → [${codeById.get(l.targetId)}] ${sub(t?.title) || ""}${l.label ? ` (${sub(l.label)})` : ""}`);
+                });
+            }
 
-            (notesByItem.get(item.id) ?? []).forEach(n => n.notes && L.push(`- 📝 ${n.notes}`));
+            const notes = (notesByItem.get(item.id) ?? []).filter(n => n.notes);
+            if (notes.length) {
+                L.push("โน้ตของนักเขียน:");
+                notes.forEach(n => L.push(`- ${sub(n.notes)}`));
+            }
         });
 
-        // สรุปปมทั้งเรื่อง (setup→payoff) ท้ายไฟล์
         if (threadState.length) {
-            L.push("", "---", "", "## ปมเรื่องทั้งหมด");
+            L.push("", "ปมทั้งหมดที่ผ่านฉากนี้:");
+            L.push("| ปม | สถานะ | บทบาทที่ปรากฏ |");
+            L.push("|---|---|---|");
             threadState.forEach(t => {
                 const roles = t.beats.map(b => ROLE_LABEL[b.role] ?? b.role).join(" → ") || "ยังไม่ผูก";
-                L.push(`- **${t.title}** (${t.status}) — ${roles}${t.note ? ` · ${t.note}` : ""}`);
+                L.push(`| ${sub(t.title)} | ${t.status} | ${roles} |`);
+            });
+        }
+        // แยกเป็นหัวข้อของตัวเอง — นี่คือคำถามอันดับหนึ่งที่คนเอาไฟล์นี้ไปถาม AI
+        if (openThreads.length) {
+            L.push("", "ปมที่ยังไม่เฉลย:");
+            openThreads.forEach(t => {
+                const where = t.beats
+                    .filter(b => b.canvasItemId && codeById.has(b.canvasItemId))
+                    .map(b => `[${codeById.get(b.canvasItemId!)}]`);
+                L.push(`- ${sub(t.title)} — ${where.length ? `แตะไว้ที่ ${where.join(" ")}` : "ยังไม่ผูกกับจังหวะไหน"} ยังไม่มีจังหวะไหนเฉลย`);
             });
         }
 
