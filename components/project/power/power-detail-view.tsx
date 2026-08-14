@@ -12,6 +12,7 @@ import { PowerLevelDialog } from "./power-level-dialog";
 import { EditPowerDialog } from "./edit-power-dialog";
 import { EntityIdeasTab } from "@/components/project/shared/entity-ideas-tab";
 import { deletePowerLevel } from "@/server/power";
+import { ACCESS_LEVELS, asAccess } from "./power-access-field";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
@@ -48,6 +49,13 @@ export function PowerDetailView({ power, novelId, ideas = [] }: PowerDetailViewP
         : 1;
 
     const limitations = ((power as any).limitations as string[]) || [];
+
+    // ประโยคเดียวกับตอนกรอก — อ่านทวนแล้วต้องจริงในโลกของเรื่อง
+    const access = asAccess((power as any).access);
+    const accessTail = access === "restricted"
+        ? (power as any).accessNote
+        : (access === "universal" || access === "learnable") ? (power as any).baseline : null;
+    const accessTailLabel = access === "restricted" ? "กลุ่มคือ" : "ระดับปกติคือ";
 
     const handleAddLevel = () => {
         setEditingLevel(null);
@@ -118,6 +126,14 @@ export function PowerDetailView({ power, novelId, ideas = [] }: PowerDetailViewP
                     {power.description && (
                         <p className="text-muted-foreground">{power.description}</p>
                     )}
+
+                    <p className="text-sm">
+                        <span className="font-medium">{ACCESS_LEVELS[access].label}</span>
+                        <span className="text-muted-foreground"> {ACCESS_LEVELS[access].verb}</span>
+                        {accessTail && (
+                            <span className="text-muted-foreground"> — {accessTailLabel} {accessTail}</span>
+                        )}
+                    </p>
 
                     {/* Limitations */}
                     {limitations.length > 0 && (

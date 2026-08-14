@@ -20,6 +20,9 @@ export async function createPower(data: {
     icon?: string;
     color?: string;
     limitations?: string[];
+    access?: string;
+    accessNote?: string;
+    baseline?: string;
     novelId: string;
 }) {
     try {
@@ -35,6 +38,9 @@ export async function createPower(data: {
                 icon: data.icon,
                 color: data.color,
                 limitations: data.limitations,
+                access: data.access || "unique",
+                accessNote: data.accessNote,
+                baseline: data.baseline,
                 novelId: data.novelId,
             })
             .returning();
@@ -100,6 +106,9 @@ export async function updatePower(
         icon: string;
         color: string;
         limitations: string[];
+        access: string;
+        accessNote: string;
+        baseline: string;
     }>
 ) {
     try {

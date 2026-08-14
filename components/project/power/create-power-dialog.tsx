@@ -32,6 +32,7 @@ import {
 import { Plus, Zap, X } from "lucide-react";
 import { createPower } from "@/server/power";
 import { toast } from "sonner";
+import { PowerAccessField, asAccess } from "./power-access-field";
 import { Badge } from "@/components/ui/badge";
 
 const powerSchema = z.object({
@@ -43,6 +44,9 @@ const powerSchema = z.object({
     icon: z.string().optional(),
     color: z.string().optional(),
     limitations: z.array(z.string()).optional(),
+    access: z.string().default("unique"),
+    accessNote: z.string().optional(),
+    baseline: z.string().optional(),
 });
 
 type PowerFormData = z.infer<typeof powerSchema>;
@@ -82,6 +86,9 @@ export function CreatePowerDialog({ novelId, trigger }: CreatePowerDialogProps) 
             icon: "",
             color: "#3b82f6",
             limitations: [],
+            access: "unique",
+            accessNote: "",
+            baseline: "",
         },
     });
 
@@ -263,6 +270,19 @@ export function CreatePowerDialog({ novelId, trigger }: CreatePowerDialogProps) 
                                     <FormMessage />
                                 </FormItem>
                             )}
+                        />
+
+
+                        {/* ใครใช้พลังนี้ได้ — ถามก่อนระบบเลเวล เพราะตอบข้อนี้แล้วข้ออื่นถึงมีความหมาย */}
+                        <PowerAccessField
+                            access={asAccess(form.watch("access"))}
+                            accessNote={form.watch("accessNote") || ""}
+                            baseline={form.watch("baseline") || ""}
+                            onChange={(patch) => {
+                                if (patch.access !== undefined) form.setValue("access", patch.access);
+                                if (patch.accessNote !== undefined) form.setValue("accessNote", patch.accessNote);
+                                if (patch.baseline !== undefined) form.setValue("baseline", patch.baseline);
+                            }}
                         />
 
                         {/* Limitations Field */}

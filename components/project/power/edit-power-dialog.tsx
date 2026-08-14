@@ -31,6 +31,7 @@ import {
 import { Plus, Zap, X } from "lucide-react";
 import { updatePower } from "@/server/power";
 import { toast } from "sonner";
+import { PowerAccessField, asAccess } from "./power-access-field";
 import { Badge } from "@/components/ui/badge";
 import { Power } from "@/db/schema";
 
@@ -43,6 +44,9 @@ const powerSchema = z.object({
     icon: z.string().optional(),
     color: z.string().optional(),
     limitations: z.array(z.string()).optional(),
+    access: z.string().default("unique"),
+    accessNote: z.string().optional(),
+    baseline: z.string().optional(),
 });
 
 type PowerFormData = z.infer<typeof powerSchema>;
@@ -84,6 +88,9 @@ export function EditPowerDialog({ power, open, onOpenChange, onSuccess }: EditPo
             icon: power.icon || "",
             color: power.color || "#3b82f6",
             limitations: ((power as any).limitations as string[]) || [],
+            access: (power as any).access || "unique",
+            accessNote: (power as any).accessNote || "",
+            baseline: (power as any).baseline || "",
         },
     });
 
@@ -99,6 +106,9 @@ export function EditPowerDialog({ power, open, onOpenChange, onSuccess }: EditPo
                 icon: power.icon || "",
                 color: power.color || "#3b82f6",
                 limitations: ((power as any).limitations as string[]) || [],
+                access: (power as any).access || "unique",
+                accessNote: (power as any).accessNote || "",
+                baseline: (power as any).baseline || "",
             });
             setNewLimitation("");
         }
@@ -278,6 +288,19 @@ export function EditPowerDialog({ power, open, onOpenChange, onSuccess }: EditPo
                                     <FormMessage />
                                 </FormItem>
                             )}
+                        />
+
+
+                        {/* ใครใช้พลังนี้ได้ — ถามก่อนระบบเลเวล เพราะตอบข้อนี้แล้วข้ออื่นถึงมีความหมาย */}
+                        <PowerAccessField
+                            access={asAccess(form.watch("access"))}
+                            accessNote={form.watch("accessNote") || ""}
+                            baseline={form.watch("baseline") || ""}
+                            onChange={(patch) => {
+                                if (patch.access !== undefined) form.setValue("access", patch.access);
+                                if (patch.accessNote !== undefined) form.setValue("accessNote", patch.accessNote);
+                                if (patch.baseline !== undefined) form.setValue("baseline", patch.baseline);
+                            }}
                         />
 
                         {/* Limitations Field */}

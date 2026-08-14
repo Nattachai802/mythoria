@@ -779,6 +779,14 @@ export const powers = pgTable("powers", {
   icon: text("icon"), // Icon name or emoji
   color: text("color").default("#3b82f6"), // Theme color
   limitations: jsonb("limitations"), // ["ใช้ได้เฉพาะตอนกลางคืน", "ต้องมีน้ำอยู่ใกล้ๆ"]
+
+  // ใครใช้พลังนี้ได้ — เดิมตอบได้ทางเดียวคือไล่เพิ่มแถวใน characterPowers ทีละคน
+  // พลังที่ทั้งโลกใช้ได้จึงเขียนลงระบบไม่ได้เลย (ตัวประกอบไม่มีชื่อก็ไม่มีแถว)
+  access: text("access").default("unique"), // universal | learnable | restricted | unique
+  accessNote: text("access_note"), // เงื่อนไขของ restricted: "ต้องเกิดในตระกูลคาเงะ"
+  // ระดับที่คนทั่วไปทำได้ (เฉพาะ universal/learnable) — ถ้าไม่รู้เส้นฐาน คนอ่านจะไม่รู้ว่าอะไรน่าทึ่ง
+  baseline: text("baseline"),
+
   novelId: text("novel_id")
     .notNull()
     .references(() => novels.id, { onDelete: "cascade" }),
