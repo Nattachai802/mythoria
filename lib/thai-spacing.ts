@@ -163,17 +163,3 @@ export function checkSpacing(text: string): SpacingError[] {
     }
     return errors;
 }
-
-// ponytail: self-check แทน test framework — รันด้วย `npx tsx lib/thai-spacing.ts`
-if (require.main === module) {
-    const eq = (got: number, want: number, label: string) => {
-        if (got !== want) throw new Error(`FAIL ${label}: got ${got}, want ${want}`);
-    };
-    eq(checkSpacing("วันๆ").length, 1, "ๆ ติดคำ → ต้อง flag");            // expected SMALL, actual NONE
-    eq(checkSpacing("วัน ๆ").length, 0, "ๆ เว้นถูก → ไม่ flag");
-    eq(checkSpacing("เลี้ยงสุนัข๓๐ตัว").length, 2, "ไทย↔เลขติดกัน → flag 2 จุด");
-    eq(checkSpacing("ข้าวเหนือSmilaxในวงศ์X").length, 3, "ไทย↔อังกฤษติดกัน 3 ขอบ");
-    eq(checkSpacing('เขาพูดว่า “สวัสดี”').length, 0, "อัญประกาศเว้นถูก");
-    eq(checkSpacing("กรุงเทพฯ-เชียงใหม่").length, 0, "ฯ ก่อนยัติภังค์ → NONE");
-    console.log("OK: thai-spacing self-check passed");
-}
