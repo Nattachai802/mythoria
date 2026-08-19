@@ -34,6 +34,7 @@ import { createPortal } from "react-dom";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import { snapSimultaneousBeats } from "@/lib/simultaneous-beats";
+import { labelAnchor } from "@/lib/link-label";
 
 interface PlaygroundBoardProps {
     eventId: string;
@@ -202,27 +203,12 @@ function ConnectionLine({ start, end, kind = "related", label, onClick }: {
 }
 
 // เส้นเชื่อมแบบตั้งฉาก (orthogonal) — วาด polyline หัก 90° ไม่มีเส้นเฉียง หัวลูกศรที่ปลายสุด
-/**
- * จุดวางป้ายชื่อเส้น = กลางช่วงที่ยาวที่สุด — ไม่คร่อมมุมหัก และเส้นคนละเส้นได้คนละตำแหน่งเอง
- * เดิมเกาะจุดเริ่ม เส้นที่ออกจากการ์ดเดียวกันจึงได้พิกัดเดียวกันเป๊ะ ป้ายทับสนิท
- */
-function labelAnchor(points: Array<{ x: number; y: number }>) {
-    let best = points[0];
-    let longest = -1;
-    for (let i = 0; i < points.length - 1; i++) {
-        const a = points[i], b = points[i + 1];
-        const len = Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
-        if (len > longest) { longest = len; best = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
-    }
-    return best;
-}
-
-function OrthoLine({ points, kind = "related", label, labelSlot = 0, onClick }: {
+function OrthoLine({ points, kind = "related", label, hideLabel = false, onClick }: {
     points: Array<{ x: number; y: number }>;
     kind?: string;
     label?: string | null;
-    /** ลำดับป้ายที่ใช้จุดเริ่มร่วมกัน — เส้นหลายเส้นออกจากการ์ดเดียวกันได้ anchor จุดเดียว ป้ายจะทับกัน */
-    labelSlot?: number;
+    /** เส้นนี้รวมบัสกับเส้นอื่นที่ป้ายเหมือนกัน — ให้เส้นแรกวาดป้ายคนเดียว */
+    hideLabel?: boolean;
     onClick?: () => void;
 }) {
     if (points.length < 2) return null;
@@ -241,8 +227,7 @@ function OrthoLine({ points, kind = "related", label, labelSlot = 0, onClick }: 
     const a2y = p2.y - arrowSize * Math.sin(angle + aAng);
 
     const start = points[0];
-    const displayLabel = label || (kind !== "related" ? cfg.label : null);
-
+    const displayLabel = hideLabel ? null : (label || (kind !== "related" ? cfg.label : null));
     const mid = labelAnchor(points);
 
     return (
@@ -253,8 +238,7 @@ function OrthoLine({ points, kind = "related", label, labelSlot = 0, onClick }: 
             <circle cx={start.x} cy={start.y} r={4} fill={cfg.pinFill} stroke={cfg.pinStroke} strokeWidth="1" />
             {displayLabel && (() => {
                 const w = displayLabel.length * 9;
-                // ยังเหลือ slot ไว้เผื่อสองเส้นทับกันจนกลางช่วงตรงกันพอดี
-                const ly = mid.y + labelSlot * 18;
+                const ly = mid.y;
                 return (
                     <g style={{ pointerEvents: "none" }}>
                         <rect x={mid.x - w / 2} y={ly - 8} width={w} height={16} rx="4"
@@ -2061,25 +2045,23 @@ export function PlaygroundBoard({
                 const pt = { x: bX, y: ptY };
                 points = [ps, { x: busX, y: psY }, { x: busX, y: ptY }, pt];
             } else {
-                // cross-beat = แนวนอน → ถ้ากึ่งกลาง y ต่างกัน เฉลี่ยแล้วลากเส้นตรง (ต้องซ้อน y กัน); ไม่ซ้อนค่อยหักมุม
+                // cross-beat = แนวนอน → หักมุมฉากเสมอ ไม่มีสาขาแยก
+                //
+                // เดิมมีสาขา "ถ้าการ์ดซ้อน y กันให้ลากตรงที่ y เฉลี่ย" ซึ่งพังสองชั้น:
+                //  1. เป็นสวิตช์ ไม่ใช่การไล่ระดับ — การ์ดปลายทางสูงขึ้นจนซ้อนแค่ 1px
+                //     รูปเส้นเปลี่ยนจากหักมุม 5 จุดเป็นเส้นตรง 2 จุดทันที กระโดดทั้งเส้น
+                //  2. y เฉลี่ยคำนวณจากการ์ด "ทั้งสองใบ" จุดที่เส้นออกจากต้นทางจึงขยับ
+                //     เมื่อปลายทางยาวขึ้น ทั้งที่ไม่มีใครแตะต้นทางเลย
+                //
+                // รูปหักมุมยุบเป็นเส้นตรงเองอยู่แล้วเมื่อกึ่งกลาง y ตรงกัน (ขาแนวตั้งยาวศูนย์)
+                // จึงไม่ต้องมีสาขาแยก และ ps อ้าง e.sPos อย่างเดียว — ปลายทางเปลี่ยนไม่กระทบจุดเริ่ม
                 const sSide = sideToCard(sItem, tItem);
                 const tSide = sideToCard(tItem, sItem);
-                const ax = anchorOn(e.sPos, sSide).x;
-                const bx = anchorOn(e.tPos, tSide).x;
-                const overlapTop = Math.max(e.sPos.y - e.sPos.h / 2, e.tPos.y - e.tPos.h / 2) + 10;
-                const overlapBot = Math.min(e.sPos.y + e.sPos.h / 2, e.tPos.y + e.tPos.h / 2) - 10;
-                if (overlapTop <= overlapBot) {
-                    // การ์ดซ้อน y กัน → ลากตรงที่ y เฉลี่ย (clamp เข้าโซนซ้อน กัน anchor หลุดขอบ)
-                    const y = Math.max(overlapTop, Math.min(overlapBot, (e.sPos.y + e.tPos.y) / 2));
-                    points = [{ x: ax, y }, { x: bx, y }];
-                } else {
-                    // ไม่ซ้อน y เลย → หักมุมฉาก
-                    const ps = anchorOn(e.sPos, sSide);
-                    const pt = anchorOn(e.tPos, tSide);
-                    const s1 = { x: ps.x + SIDE_VEC[sSide][0] * GAP, y: ps.y };
-                    const t1 = { x: pt.x + SIDE_VEC[tSide][0] * GAP, y: pt.y };
-                    points = [ps, s1, { x: t1.x, y: s1.y }, t1, pt];
-                }
+                const ps = anchorOn(e.sPos, sSide);
+                const pt = anchorOn(e.tPos, tSide);
+                const s1 = { x: ps.x + SIDE_VEC[sSide][0] * GAP, y: ps.y };
+                const t1 = { x: pt.x + SIDE_VEC[tSide][0] * GAP, y: pt.y };
+                points = [ps, s1, { x: t1.x, y: s1.y }, t1, pt];
             }
 
             // ถ้าหัวลูกศร (จุดสุดท้าย) ตกทับกรอบการ์ดอื่น (ไม่ใช่ต้น/ปลายทาง) → ขยับ y ออก
@@ -2161,22 +2143,20 @@ export function PlaygroundBoard({
             }
         });
 
-        // ป้ายวางกลางเส้นแล้ว แต่สองเส้นยังบังเอิญได้จุดกลางตรงกันได้ → เหลื่อมลงมาเป็นชั้น
-        const labelSlots = new Map<string, number>();
+        // เส้นหลายเส้นที่รวมเข้าการ์ดเดียวกันใช้บัสร่วมกัน ช่วงท้ายจึงทับกันสนิท —
+        // ป้ายชนิดเดียวกันซ้ำที่เดิมไม่ได้บอกอะไรเพิ่ม วาดครั้งเดียวพอ
+        // (ป้ายที่ผู้ใช้พิมพ์เองไม่ถือว่าซ้ำ ต่อให้ตกตำแหน่งเดียวกัน)
+        const drawn = new Set<string>();
         return built.map(({ e, points }) => {
-            const hasLabel = !!(e.link.label || e.link.kind !== "related");
-            let slot = 0;
-            if (hasLabel) {
-                const a = labelAnchor(points);
-                const key = `${Math.round(a.x)},${Math.round(a.y)}`;
-                slot = labelSlots.get(key) ?? 0;
-                labelSlots.set(key, slot + 1);
-            }
+            const a = labelAnchor(points);
+            const key = `${e.link.kind}@${Math.round(a.x / 8)},${Math.round(a.y / 8)}`;
+            const duplicate = !e.link.label && drawn.has(key);
+            if (!e.link.label) drawn.add(key);
             return (
                 <OrthoLine
                     key={`${e.sourceId}-${e.targetId}`}
                     points={points}
-                    kind={e.link.kind} label={e.link.label} labelSlot={slot}
+                    kind={e.link.kind} label={e.link.label} hideLabel={duplicate}
                     onClick={() => setEditingLink({ sourceId: e.sourceId, targetId: e.targetId })}
                 />
             );
