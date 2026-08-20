@@ -1,19 +1,19 @@
 ---
 name: narrative-metrics
 description: >-
-  Select, cost, and correctly interpret quantitative signals over narrative text
-  when building AI writing systems — with the AI-detection framing stripped out,
-  leaving what each metric actually measures, what high/low values mean, what is
-  required to interpret a number at all, and where its construct validity breaks.
-  Use this skill whenever the user is designing, scoping, or debugging a system
-  component that has to measure something about generated or human prose — plot
-  repetitiveness, pacing, output diversity across samples, creative quality
-  scoring, automated writer feedback, reranking candidates, setting thresholds,
-  or building an eval harness for a writing tool. Trigger it on open-ended
-  engineering questions too, such as what could I even measure here, how do I
-  know if this prompt change helped, or what does this score mean — and on any
-  mention of Sui Generis, echo score, drop ratio, TTCW, NarraBench, StoryScope,
-  Fast-DetectGPT, or mode collapse.
+  Select, cost, and correctly interpret quantitative signals over narrative and
+  stylistic text properties when building AI writing systems — with the
+  AI-detection framing stripped out, leaving what each metric actually measures,
+  what high/low values mean, what is required to interpret a number at all, and
+  where its construct validity breaks. Use this skill whenever the user is
+  designing, scoping, or debugging a system component that has to measure
+  something about generated or human prose — plot repetitiveness, pacing, output
+  diversity, creative quality scoring, style baselines and drift, authorship
+  attribution, voice imitation, minimum sample size, reranking, thresholds, or an
+  eval harness for a writing tool. Trigger on open-ended engineering questions
+  too, such as what could I even measure here or what does this score mean — and
+  on any mention of Sui Generis, echo score, drop ratio, TTCW, NarraBench,
+  StoryScope, Fast-DetectGPT, LISA, Delta, stylometry, idiolect, or mode collapse.
 ---
 
 # Narrative Metrics — measurement design, not detection
@@ -25,6 +25,13 @@ Most of the source papers validate themselves on a human-vs-AI classification ta
 This skill exists to hand back **measurement instruments an engineer can put into a pipeline**, together with the conditions that make their output meaningful.
 
 The user is an AI engineer, not a novelist. Answers should be about *what the system computes, what it costs, and what decision the number drives* — not about how to improve a particular manuscript. Never turn a metric into writing advice unless explicitly asked.
+
+The cards cover **two independent layers**, and conflating them is the most common design error here:
+
+- **Narrative layer** — structural choices: what happens, in what order, how predictable, how resolved.
+- **Style layer** — surface realization: lexical and syntactic signature, register, idiolect.
+
+StoryScope's rewriting experiment demonstrated these are orthogonal: stripping stylistic tells barely moved narrative-feature classification (95.5% → 93.9% macro-F1). A stylometry layer therefore cannot detect structural problems, and a narrative layer cannot detect voice drift. When a user reports a symptom, decide which layer it lives in before selecting anything.
 
 **Do not use this skill to answer "was this written by AI".** If asked that directly, answer normally and note that detection and property-measurement are different problems.
 
@@ -49,6 +56,11 @@ The user is an AI engineer, not a novelist. Answers should be about *what the sy
 | need to turn prose into structured records before analysis | intermediate representation design | `references/storyscope.md` |
 | what defaults will a model drift toward if unconstrained? | measured generation tendencies | `references/storyscope.md` |
 | need a cheap first-pass filter before expensive analysis | token-level anomaly against in-context alternatives | `references/probability-curvature.md` |
+| want a per-work or per-author style baseline; want drift reported in readable terms | interpretable stylistic attribute profile | `references/style-vectors.md` |
+| "write in my voice"; few-shot from user samples; personalization | style-distribution alignment of generated text | `references/style-imitation.md` |
+| choosing the unit to score (chapter? scene?); scores look unstable or noisy | minimum text length for a stylometric estimate to mean anything | `references/sample-size.md` |
+
+**Read `references/sample-size.md` whenever the plan involves computing style features over a product-chosen unit** (per chapter, per scene, per session), even if the user did not raise sample size. It is the most common silent invalidator in this area.
 
 If the symptom is not in this table, say so. Do not stretch a metric onto a problem it was not built for.
 
@@ -73,10 +85,14 @@ Add a **Cost** column when the user is scoping a real implementation; omit it du
 
 **Do not treat an LLM judge as ground truth.** Infinity-Chat found reward models and LM judges lose correlation with human ratings exactly (a) when candidates are close in quality and (b) when human raters disagree with each other. Both are the default condition in creative work. Judges are acceptable for discarding clearly-bad output, weakest precisely at ranking near-ties.
 
+**Check the sample-size floor before trusting any style number.** Word frequencies are random variables; below roughly 2,500 words a stylometric estimate is dominated by sampling noise, and novels stabilize only at 5,000–10,000. This holds regardless of the classifier — better algorithms do not shorten the requirement. A profile computed on a short chapter is noise with a decimal point.
+
 **Distinguish measurable from decidable.** NarraBench marks some aspects *perspectival*: readers legitimately disagree. Scoring those with a single model and reporting a point value is a category error — report a distribution or design for multiple raters.
 
 ## Scope limits
 
-All six papers rest on English short-story corpora (WritingPrompts, Wiki, New Yorker, r/WritingPrompts). Constructs transfer to Thai text or serialized long-form fiction; **published numbers and thresholds do not**. A new reference corpus is required.
+The narrative papers rest on English short-story corpora (WritingPrompts, Wiki, New Yorker, r/WritingPrompts); the style papers rest on English Reddit, email, news, and blog corpora, plus multilingual European and classical corpora for sample-size work. Constructs transfer to Thai text or serialized long-form fiction; **published numbers and thresholds do not**. A new reference corpus is required.
+
+Thai adds a specific hazard for the style layer: every word-count threshold, POS distribution, and per-token statistic assumes word tokenization, which Thai does not provide natively. Flag the segmentation dependency rather than quietly reusing English figures.
 
 Segment-level metrics port to long-form more cleanly than whole-work metrics, because "ending" means something different in a serialized chapter. Anything anchored on the ending — drop ratio, the TTCW ending item — needs reinterpretation rather than direct reuse.
