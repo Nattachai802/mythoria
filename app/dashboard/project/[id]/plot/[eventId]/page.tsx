@@ -6,9 +6,11 @@ import { getChapters } from "@/server/chapter";
 import { getNovelByIdSimple } from "@/server/novel";
 import { getThreadsByNovelId } from "@/server/plot-threads";
 import { getFactionsByNovelId } from "@/server/factions";
+import { getEchoFindings } from "@/server/plot-analysis";
 import { PlaygroundBoard } from "@/components/plot/playground/playground-board";
 import { SceneNavigator } from "@/components/plot/playground/scene-navigator";
 import { SceneDramaticPanel } from "@/components/plot/playground/scene-dramatic-panel";
+import { EchoScorePanel } from "@/components/plot/playground/echo-score-panel";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
 import { notFound } from "next/navigation";
 
@@ -17,15 +19,18 @@ interface PlotPlaygroundPageProps {
     id: string;
     eventId: string;
   }>;
+  searchParams: Promise<{ action?: string }>;
 }
 
 export default async function PlotPlaygroundPage({
   params,
+  searchParams,
 }: PlotPlaygroundPageProps) {
   const { id: novelId, eventId } = await params;
+  const { action } = await searchParams;
 
   // Fetch all necessary data in parallel
-  const [eventRes, charactersRes, locationsRes, ideasRes, eventsRes, chaptersRes, novelRes, threadsRes, factionsRes, boardChaptersRes] = await Promise.all([
+  const [eventRes, charactersRes, locationsRes, ideasRes, eventsRes, chaptersRes, novelRes, threadsRes, factionsRes, boardChaptersRes, echoRes] = await Promise.all([
     getTimelineEventById(eventId),
     getCharactersByNovelId(novelId),
     getLocationsByNovelId(novelId),
@@ -36,6 +41,7 @@ export default async function PlotPlaygroundPage({
     getThreadsByNovelId(novelId),
     getFactionsByNovelId(novelId),
     getNovelBoardChapters(novelId),
+    getEchoFindings(novelId, eventId),
   ]);
 
   if (!eventRes.success || !eventRes.event) {
@@ -45,6 +51,7 @@ export default async function PlotPlaygroundPage({
   // Parse canvas data if it exists, otherwise empty array
   const initialCanvasData = eventRes.event.canvasData || [];
   const novelTitle = novelRes.novel?.title || "Project";
+  const initialEchoFindings = echoRes.success ? echoRes.findings : [];
 
   return (
     <div className="h-[calc(100vh-4rem)] overflow-hidden flex flex-col">
@@ -65,6 +72,13 @@ export default async function PlotPlaygroundPage({
             chapters={chaptersRes.chapters || []}
           />
           <SceneDramaticPanel event={eventRes.event} characters={charactersRes.data || []} events={eventsRes.events || []} />
+        </div>
+        <div style={{ paddingTop: 8 }}>
+          <EchoScorePanel
+            novelId={novelId}
+            sceneId={eventId}
+            initialFindings={initialEchoFindings}
+          />
         </div>
       </div>
 

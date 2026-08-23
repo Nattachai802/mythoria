@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -34,19 +35,21 @@ interface Props {
 }
 
 export function PowerAccessField({ access, accessNote, baseline, onChange, className }: Props) {
+    // id ต้องไม่ชนกัน — dialog สร้างกับ dialog แก้ไขอาจอยู่บนหน้าเดียวกัน แล้ว label ไปชี้ตัวแรกทั้งคู่
+    const selectId = useId();
     const showBaseline = access === "universal" || access === "learnable";
     const showNote = access === "restricted";
 
     return (
         <div className={cn("space-y-2", className)}>
-            <label htmlFor="power-access" className="text-sm font-medium">
+            <label htmlFor={selectId} className="text-sm font-medium">
                 ใครใช้พลังนี้ได้
             </label>
 
             {/* leading-loose + items-baseline ให้ตกบรรทัดแล้วยังอ่านเป็นประโยคอยู่ */}
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 leading-loose">
                 <select
-                    id="power-access"
+                    id={selectId}
                     value={access}
                     onChange={(e) => onChange({ access: e.target.value as AccessLevel })}
                     className="h-9 rounded-md border border-input bg-background px-2 text-sm"

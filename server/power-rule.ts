@@ -2,7 +2,7 @@
 
 import { db } from "@/db/drizzle";
 import { powerRules, powers, PowerRule } from "@/db/schema";
-import { eq, asc } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireNovelAccess } from "@/lib/authz";
 
@@ -25,7 +25,8 @@ function clean(data: RuleInput) {
         description: data.description?.trim() || null,
         kind: (RULE_KINDS as readonly string[]).includes(data.kind ?? "") ? data.kind! : "limit",
         severity: (RULE_SEVERITIES as readonly string[]).includes(data.severity ?? "") ? data.severity! : "hard",
-        powerIds: data.powerIds ?? [],
+        // ไม่ส่ง powerIds มา = ไม่ได้ตั้งใจแก้ขอบเขต — ตอน update ต้องไม่ล้างเป็นกฎทั้งเล่มเงียบ ๆ
+        ...(data.powerIds ? { powerIds: data.powerIds } : {}),
     };
 }
 
@@ -70,8 +71,11 @@ export async function updatePowerRule(id: string, novelId: string, data: RuleInp
         const [rule] = await db
             .update(powerRules)
             .set(clean(data))
-            .where(eq(powerRules.id, id))
+            // ผูก novelId ด้วย — requireNovelAccess เช็คแค่ว่ามีสิทธิ์ในเรื่องที่ส่งมา
+            // ไม่ได้เช็คว่ากฎ id นี้อยู่ในเรื่องนั้นจริง
+            .where(and(eq(powerRules.id, id), eq(powerRules.novelId, novelId)))
             .returning();
+        if (!rule) return { success: false, error: "ไม่พบกฎนี้ในเรื่อง" };
 
         revalidatePath(`/dashboard/project/${novelId}/powers`);
         return { success: true, data: rule };
@@ -84,7 +88,13 @@ export async function updatePowerRule(id: string, novelId: string, data: RuleInp
 export async function deletePowerRule(id: string, novelId: string) {
     try {
         await requireNovelAccess(novelId);
-        await db.delete(powerRules).where(eq(powerRules.id, id));
+        const deleted = await db
+            .delete(powerRules)
+            .where(and(eq(powerRules.id, id), eq(powerRules.novelId, novelId)))
+            .returning({ id: powerRules.id });
+        // ลบ 0 แถวไม่ใช่ความสำเร็จ — ไม่งั้น UI ขึ้น "ลบแล้ว" แต่กฎยังอยู่ตรงนั้น
+        if (!deleted.length) return { success: false, error: "ไม่พบกฎนี้ในเรื่อง" };
+
         revalidatePath(`/dashboard/project/${novelId}/powers`);
         return { success: true };
     } catch (error) {
@@ -96,6 +106,9 @@ export async function deletePowerRule(id: string, novelId: string) {
 /**
  * ย้าย powers.limitations (array ข้อความเปล่า ๆ ของเดิม) ขึ้นมาเป็นกฎที่มีโครงสร้าง
  * ข้ามอันที่ชื่อซ้ำกับกฎที่มีอยู่แล้ว → กดซ้ำได้ไม่สร้างซ้ำ
+ *
+ * ข้อความเดียวกันที่อยู่ในหลายพลัง (เช่น "ใช้ได้เฉพาะตอนกลางคืน" ซึ่งซ้ำกันง่ายมาก)
+ * รวมเป็นกฎเดียวที่ผูกทุกพลังนั้น ไม่ใช่กฎของพลังแรกแล้วทิ้งที่เหลือ
  */
 export async function importLimitationsAsRules(novelId: string) {
     try {
@@ -105,19 +118,23 @@ export async function importLimitationsAsRules(novelId: string) {
             db.select().from(powerRules).where(eq(powerRules.novelId, novelId)),
         ]);
 
-        const seen = new Set(existing.map((r) => r.title));
-        const rows = all.flatMap((p) =>
-            ((p.limitations as string[] | null) ?? [])
-                .map((t) => t?.trim())
-                .filter((t): t is string => !!t && !seen.has(t) && (seen.add(t), true))
-                .map((title) => ({
-                    novelId,
-                    title,
-                    kind: "limit",
-                    severity: "hard",
-                    powerIds: [p.id],
-                })),
-        );
+        const alreadyRules = new Set(existing.map((r) => r.title));
+        const byTitle = new Map<string, string[]>(); // ข้อความกฎ → พลังทุกตัวที่มีข้อความนี้
+        for (const p of all) {
+            for (const raw of (p.limitations as string[] | null) ?? []) {
+                const title = raw?.trim();
+                if (!title || alreadyRules.has(title)) continue;
+                byTitle.set(title, [...(byTitle.get(title) ?? []), p.id]);
+            }
+        }
+
+        const rows = [...byTitle].map(([title, powerIds]) => ({
+            novelId,
+            title,
+            kind: "limit",
+            severity: "hard",
+            powerIds,
+        }));
 
         if (rows.length) await db.insert(powerRules).values(rows);
 

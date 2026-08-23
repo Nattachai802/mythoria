@@ -4,8 +4,16 @@ import { db } from "@/db/drizzle";
 import { chapters, notes, noteStylometry } from "@/db/schema";
 import { eq, asc } from "drizzle-orm";
 import { pyFetch } from "@/lib/python-service";
+import { requireNovelAccess } from "@/lib/authz";
 
 export async function getNovelStylometry(novelId: string) {
+    // "use server" = client เรียกได้ตรง ๆ ต้องเช็คสิทธิ์เอง
+    // คืนค่าว่างแทน throw — ตัวนี้อยู่ใน Promise.all ของหน้า project
+    try {
+        await requireNovelAccess(novelId);
+    } catch {
+        return { success: false, data: [] };
+    }
     try {
         const data = await db
             .select({

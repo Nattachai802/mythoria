@@ -68,7 +68,27 @@ Quill เหมาะกับที่มันอยู่ตอนนี้ �
 
 ---
 
-## 4. `zoom: BOARD_ZOOM` ในกระดานพล็อต
+## 4. `lib/story-format.ts` — ที่ค้างจากการรีวิว
+
+รีวิวไฟล์เต็มเมื่อ 2026-08-22 หลังแยก logic ออกจาก `playground-board.tsx`
+
+**แก้ครบแล้วทั้งหมด (2026-08-23)** — รอบแรก: ตัวย่อ `@ชื่อ` ยึด `@` นำหน้า,
+`codesByBeat` แทน filter ซ้อน, sticky note ไม่นับเป็นเหตุการณ์ (`isBoardNote`)
+รอบสอง: `formatVersion` ลง frontmatter, ตารางสรุปปมกรองเฉพาะปมที่แตะฉาก
+(`roles` เก็บทุกตัวไว้ ว่าง = ไม่แตะฉากนี้ ส่วน `dangling` ยังมองทั้งเรื่อง),
+cast คีย์ด้วย ชนิด+ชื่อ ไม่ยุบชื่อพ้องคนละชนิด, `itemById` Map แทน
+`items.find()` ใน loop, การ์ดคำบรรยายที่มี children บอกตามจริงแทน "ไม่มีตัวละคร",
+`causeKind` ไม่รู้จักแสดง raw, escape `|` ในตาราง, `beatCount`/`cardCount`
+ไม่นับ sticky note — มีเทสต์คุมทุกจุดใน `lib/story-format.test.ts`
+
+### ยังไม่ทำตามแผน (ไม่ใช่ข้อบกพร่อง)
+
+ข้อ 3 และ 4 ของ "ลำดับการทำ" ใน plan — ขยายจากรายฉากเป็นทั้งเรื่อง และให้
+ตัววิเคราะห์พล็อต Phase 1 อ่านจาก format แทนที่จะมี export เป็นผู้ใช้รายเดียว
+
+---
+
+## 5. `zoom: BOARD_ZOOM` ในกระดานพล็อต
 
 `playground-board.tsx:78` ใช้ CSS `zoom` ซึ่งไม่ standard พังกับ pointer
 coordinate ของ dnd-kit และเพิ่งมาถึง Firefox โค้ดต้องหารกลับด้วย `BOARD_ZOOM`
@@ -79,7 +99,7 @@ coordinate ของ dnd-kit และเพิ่งมาถึง Firefox โ
 
 ---
 
-## 5. Mobile responsive
+## 6. Mobile responsive
 
 ทั้งแอปเป็น desktop-first ยังไม่เริ่มทำ — งานใหญ่แยกต่างหาก
 

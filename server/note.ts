@@ -9,7 +9,7 @@ import { queueNoteForStateExtraction } from "./character-state-extractor";
 import { revalidateTag, revalidatePath, unstable_cache } from "next/cache";
 import { CACHE_TAGS, CACHE_DURATION } from "@/lib/cache-config";
 import { NoteStatus } from "@/lib/note-constants";
-import { requireNovelAccess } from "@/lib/authz";
+import { requireNovelAccess, authErrorMessage } from "@/lib/authz";
 
 /**
  * ลำดับถัดไปของตอนในบทนั้น — ต่อท้ายเสมอ
@@ -89,7 +89,13 @@ const _getNotes = async (novelId: string, type?: string) => {
 // Cached version - getNotes with 30s cache (shorter because notes change more frequently)
 export const getNotes = async (novelId: string, type?: string) => {
     // เช็คสิทธิ์นอก unstable_cache เสมอ
-    await requireNovelAccess(novelId);
+    // คืน { success: false } แทน throw — หน้า project โหลดตัวนี้ใน Promise.all คู่กับ
+    // getNovelByIdLight ถ้า throw ทั้ง Promise.all จะ reject ก่อนถึง notFound() แล้วได้ 500 แทน 404
+    try {
+        await requireNovelAccess(novelId);
+    } catch (error) {
+        return { success: false as const, notes: [], message: authErrorMessage(error, "Failed to get notes") };
+    }
     const cachedFn = unstable_cache(
         () => _getNotes(novelId, type),
         [`notes-${novelId}-${type || 'all'}`],

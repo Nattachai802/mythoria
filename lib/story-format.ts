@@ -55,6 +55,8 @@ export interface FormatBeat {
     title: string;
     content?: string | null;
     isNarration: boolean;
+    /** โน้ตที่นักเขียนแปะไว้บนกระดาน ไม่ใช่เหตุการณ์ในเรื่อง */
+    isBoardNote: boolean;
     keyMoment?: string | null;
     simultaneousWith: string[];   // รหัส ["C02"]
     participants: BeatParticipant[];
@@ -67,7 +69,7 @@ export interface ThreadSummary {
     id: string;
     title: string;
     status: string;
-    roles: string[];        // ["หว่าน", "ย้ำ"]
+    roles: string[];        // บทบาทเฉพาะฉากนี้ ["หว่าน", "ย้ำ"] — ว่าง = ไม่เคยแตะฉากนี้
     dangling: boolean;      // ยังไม่มี payoff
     danglingAtCards: string[];  // รหัส ["C01"]
 }
@@ -94,6 +96,9 @@ export interface SceneFormat {
 // ─── Label maps (ย้ายจาก handleExportMarkdown) ─────────────────────────
 
 const ROLE_LABEL: Record<string, string> = { seed: "หว่าน", reinforce: "ย้ำ", payoff: "เฉลย" };
+const CAUSE_LABEL: Record<string, string> = { therefore: "ดังนั้น", but_then: "แต่ว่า" };
+// ค่าที่ไม่รู้จักแสดง raw — ไม่เดาเป็น "แต่ว่า" เหมือนเดิม (คนละมาตรฐานกับ clean() ใน server/power-rule.ts)
+const causeLabel = (k?: string | null) => (k ? (CAUSE_LABEL[k] ?? k) : null);
 const OUTCOME_LABEL: Record<string, string> = { success: "สำเร็จ", failure: "ล้มเหลว", ongoing: "ยังไม่จบ", unknown: "ไม่แน่ชัด" };
 // ชนิดที่โผล่จริงในข้อมูล: character, dummy_character, building, faction, sticky-note
 // dummy = ตัวประกอบที่ยังไม่ได้สร้างเป็นตัวละครจริง — บอกไว้ ไม่งั้น AI จะรายงานว่าข้อมูลตัวละครหาย
@@ -127,12 +132,20 @@ function buildAliasMap(nameCards: Map<string, Set<string>>): Map<string, string>
 }
 
 function buildSubstituter(aliasOf: Map<string, string>): (t?: string | null) => string {
-    // แทนที่ชื่อยาวก่อนชื่อสั้น กันชื่อที่เป็นส่วนหนึ่งของอีกชื่อไปตัดกลางคำ
+    // ยึด @ นำหน้าเสมอ — ในแอปนี้การอ้างถึงตัวละครในข้อความเขียนเป็น "@ชื่อ" อยู่แล้ว
+    // (ดู renderNoteMentions ใน canvas-item.tsx ที่ใช้ anchor เดียวกัน)
+    //
+    // แทนชื่อเปล่าไม่ได้ด้วยสองเหตุผล: ภาษาไทยไม่เว้นวรรคระหว่างคำ ชื่อสั้นอย่าง "แดง"
+    // จะไปกินคำอื่น ("ชุดสีแดง" -> "ชุดสี@A") และ "@ชื่อ" ที่เขียนถูกอยู่แล้วจะได้ @ ซ้อน
+    // เพราะตัวย่อมี @ ในตัว
+    //
+    // ชื่อยาวก่อนชื่อสั้น กันชื่อที่เป็นส่วนหนึ่งของอีกชื่อไปตัดกลางคำ
     const aliasRe = aliasOf.size
-        ? new RegExp([...aliasOf.keys()].sort((a, b) => b.length - a.length)
-            .map(n => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g")
+        ? new RegExp("@(?:" + [...aliasOf.keys()].sort((a, b) => b.length - a.length)
+            .map(n => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")", "g")
         : null;
-    return (t?: string | null) => !t ? "" : (aliasRe ? t.replace(aliasRe, m => aliasOf.get(m) ?? m) : t);
+    // alias มี @ ในตัวแล้ว จึงคืนตรง ๆ ไม่ต้องเติม @ ซ้ำ
+    return (t?: string | null) => !t ? "" : (aliasRe ? t.replace(aliasRe, m => aliasOf.get(m.slice(1)) ?? m) : t);
 }
 
 // ─── Input types ───────────────────────────────────────────────────────
@@ -150,6 +163,8 @@ export interface SceneFormatInput {
     };
     items: Array<{
         id: string;
+        /** ชนิดการ์ด — "sticky-note" คือโน้ตของนักเขียน ไม่ใช่เหตุการณ์ */
+        type?: string;
         title?: string | null;
         content?: string | null;
         beatIndex?: number;
@@ -186,6 +201,7 @@ export function buildSceneFormat(input: SceneFormatInput): SceneFormat {
 
     const codeById = new Map<string, string>(
         sorted.map((it, i) => [it.id, `C${String(i + 1).padStart(2, "0")}`]));
+    const itemById = new Map(items.map(it => [it.id, it]));
 
     // ── Notes by item ──
     const notesByItem = new Map<string, Array<{ notes?: string | null }>>();
@@ -196,14 +212,18 @@ export function buildSceneFormat(input: SceneFormatInput): SceneFormat {
     });
 
     // ── ตัวย่อผู้ร่วมฉาก ──
+    // คีย์ด้วย ชนิด+ชื่อ — ตัวละครชื่อ "ปราสาท" กับสถานที่ชื่อ "ปราสาท" คนละคน
+    // ไม่ต้องยุบเป็นแถวเดียว (ชื่อพ้องก็จริง แต่นับการ์ดผสมและบอกชนิดผิด)
+    const castKey = (c: { title: string; type: string }) => `${c.type}\u0000${c.title}`;
     const nameCards = new Map<string, Set<string>>();
     const nameType = new Map<string, string>();
     sorted.forEach(item => {
         ((item.children ?? []) as any[]).forEach(c => {
             if (!c.title) return;
-            const set = nameCards.get(c.title) ?? new Set<string>();
-            set.add(item.id); nameCards.set(c.title, set);
-            if (!nameType.has(c.title)) nameType.set(c.title, typeLabel(c.type));
+            const k = castKey(c);
+            const set = nameCards.get(k) ?? new Set<string>();
+            set.add(item.id); nameCards.set(k, set);
+            if (!nameType.has(k)) nameType.set(k, typeLabel(c.type));
         });
     });
 
@@ -220,29 +240,40 @@ export function buildSceneFormat(input: SceneFormatInput): SceneFormat {
 
     // ── Cast ──
     const cast: CastEntry[] = [...nameCards.entries()]
-        .sort((a, b) => b[1].size - a[1].size || a[0].localeCompare(b[0]))
-        .map(([name, set]) => ({
-            alias: aliasOf.get(name) ?? null,
-            name,
-            type: nameType.get(name) ?? "-",
+        .sort((a, b) => b[1].size - a[1].size || a[0].split("\u0000")[1].localeCompare(b[0].split("\u0000")[1]))
+        .map(([k, set]) => ({
+            alias: aliasOf.get(k) ?? null,
+            name: k.split("\u0000")[1],
+            type: nameType.get(k) ?? "-",
             cardCount: set.size,
         }));
+
+    // ── การ์ดที่อยู่จังหวะเดียวกัน ──
+    // จัดกลุ่มรอบเดียวแทนการ filter ซ้ำในทุกการ์ด
+    // โน้ตบนกระดานไม่นับ — มันไม่ใช่เหตุการณ์ จะบอกว่า "เกิดพร้อมกัน" กับอะไรไม่ได้
+    const isNote = (it: { type?: string }) => it.type === "sticky-note";
+    const codesByBeat = new Map<number, string[]>();
+    sorted.forEach(it => {
+        if (isNote(it)) return;
+        const b = it.beatIndex ?? 0;
+        codesByBeat.set(b, [...(codesByBeat.get(b) ?? []), codeById.get(it.id)!]);
+    });
 
     // ── Beats ──
     const beats: FormatBeat[] = sorted.map(item => {
         const code = codeById.get(item.id)!;
 
         // simultaneous
-        const together = sorted
-            .filter(o => o.id !== item.id && (o.beatIndex ?? 0) === (item.beatIndex ?? 0))
-            .map(o => codeById.get(o.id)!);
+        const together = isNote(item)
+            ? []
+            : (codesByBeat.get(item.beatIndex ?? 0) ?? []).filter(c => c !== code);
 
         // participants
         const kids = (item.children ?? []) as any[];
         const participants: BeatParticipant[] = kids.map(c => {
             const det = elementDetails.get(`${item.id}-${c.type}-${c.referenceId || c.id}`);
             return {
-                alias: aliasOf.get(c.title) ?? null,
+                alias: aliasOf.get(castKey(c)) ?? null,
                 name: c.title,
                 type: typeLabel(c.type),
                 action: det?.action ?? null,
@@ -255,7 +286,7 @@ export function buildSceneFormat(input: SceneFormatInput): SceneFormat {
         const rawLinks = (item.links ?? []).map(normalizeLink)
             .filter((l: CanvasLink) => codeById.has(l.targetId));
         const beatLinks: BeatLink[] = rawLinks.map((l: CanvasLink) => {
-            const t = items.find(x => x.id === l.targetId);
+            const t = itemById.get(l.targetId);
             return {
                 toCode: codeById.get(l.targetId)!,
                 toTitle: t?.title ?? "",
@@ -286,6 +317,7 @@ export function buildSceneFormat(input: SceneFormatInput): SceneFormat {
             title: item.title || "(ไม่มีชื่อ)",   // || ไม่ใช่ ?? — ชื่อว่างต้องได้ fallback ด้วย
             content: item.content ?? null,
             isNarration: !!item.isNarration,
+            isBoardNote: isNote(item),
             keyMoment: item.keyMomentLabel ?? null,
             simultaneousWith: together,
             participants,
@@ -296,13 +328,17 @@ export function buildSceneFormat(input: SceneFormatInput): SceneFormat {
     });
 
     // ── Threads ──
+    // roles นับเฉพาะจังหวะในฉากนี้ — roles ว่าง = ปมนั้นไม่เคยแตะฉากนี้
+    // ตัวปมเองเก็บทุกตัวไว้ เพราะ dangling มองทั้งเรื่อง — ปมค้างเป็นคำถาม
+    // ระดับนิยาย ฉากอื่นปล่อยไว้ไม่เฉลยก็ต้องเห็นที่นี่
     const threadSummaries: ThreadSummary[] = threads.map(t => {
+        const sceneBeats = t.beats.filter(b => b.eventId === eventId);
         const hasPayoff = t.beats.some(b => b.role === "payoff");
         const closedByAuthor = t.status === "paid" || t.status === "abandoned";
         const dangling = !closedByAuthor && !hasPayoff;
-        const roles = t.beats.map(b => ROLE_LABEL[b.role] ?? b.role);
+        const roles = sceneBeats.map(b => ROLE_LABEL[b.role] ?? b.role);
         const danglingAtCards = dangling
-            ? t.beats
+            ? sceneBeats
                 .filter(b => b.canvasItemId && codeById.has(b.canvasItemId))
                 .map(b => codeById.get(b.canvasItemId!)!)
             : [];
@@ -316,7 +352,9 @@ export function buildSceneFormat(input: SceneFormatInput): SceneFormat {
         };
     });
 
-    const beatCountReal = new Set(sorted.map(i => i.beatIndex ?? 0)).size;
+    // โน้ตบนกระดานไม่ใช่การ์ดเหตุการณ์ — ไม่นับเข้าจำนวนจังหวะ/การ์ด
+    const realCards = sorted.filter(i => !isNote(i));
+    const beatCountReal = new Set(realCards.map(i => i.beatIndex ?? 0)).size;
 
     return {
         formatVersion: FORMAT_VERSION,
@@ -331,7 +369,7 @@ export function buildSceneFormat(input: SceneFormatInput): SceneFormat {
             description: event.description ?? null,
         },
         beatCount: beatCountReal,
-        cardCount: sorted.length,
+        cardCount: realCards.length,
         cast,
         beats,
         threads: threadSummaries,
@@ -347,17 +385,20 @@ export function renderSceneMarkdown(format: SceneFormat): string {
     const sub = buildSubstituter(aliasOf);
 
     const openThreads = format.threads.filter(t => t.dangling);
+    // ชื่อที่มี | จะตัดคอลัมน์ตาราง Markdown —  escape ทุก cell
+    const esc = (s: string) => s.replace(/\|/g, "\\|");
     const L: string[] = [];
 
     // frontmatter: ให้ AI รู้ขนาดและโฟกัสก่อนอ่านเนื้อ
     L.push("---");
     L.push("เอกสาร: กระดานพล็อตรายฉาก (หนึ่งไฟล์ = หนึ่งฉาก)");
+    L.push(`formatVersion: ${format.formatVersion}`);
     L.push(`ฉาก: ${sub(format.scene.title)}`);
     if (format.scene.goal) L.push(`เป้าหมาย: ${sub(format.scene.goal)}`);
     if (format.scene.conflict) L.push(`อุปสรรค: ${sub(format.scene.conflict)}`);
     if (format.scene.outcome) L.push(`ผล: ${format.scene.outcome}`);
     if (format.scene.causeKind) {
-        const w = format.scene.causeKind === "therefore" ? "ดังนั้น" : "แต่ว่า";
+        const w = causeLabel(format.scene.causeKind);
         L.push(`ต่อจากฉากก่อน: ${w}${format.scene.causeNote ? ` — ${sub(format.scene.causeNote)}` : ""}`);
     }
     L.push(`จำนวนจังหวะ: ${format.beatCount}`);
@@ -382,7 +423,7 @@ export function renderSceneMarkdown(format: SceneFormat): string {
         L.push("| ตัวย่อ | ชื่อ | ชนิด | อยู่กี่การ์ด |");
         L.push("|---|---|---|---|");
         format.cast.forEach(c => {
-            L.push(`| ${c.alias ?? "—"} | ${c.name} | ${c.type} | ${c.cardCount} / ${format.cardCount} |`);
+            L.push(`| ${c.alias ?? "—"} | ${esc(c.name)} | ${esc(c.type)} | ${c.cardCount} / ${format.cardCount} |`);
         });
     }
 
@@ -396,7 +437,14 @@ export function renderSceneMarkdown(format: SceneFormat): string {
         if (beat.simultaneousWith.length) {
             L.push(`เกิดพร้อมกันกับ: ${beat.simultaneousWith.map(c => `[${c}]`).join(" ")}`);
         }
-        if (beat.isNarration) L.push("เป็นคำบรรยาย ไม่มีตัวละครร่วมฉาก");
+        if (beat.isBoardNote) L.push("เป็นโน้ตที่นักเขียนแปะไว้บนกระดาน ไม่ใช่เหตุการณ์ในเรื่อง");
+        // การ์ดคำบรรยายบนกระดานแค่ติ๊ก flag ไม่ลบ children — ถ้ายังมีผู้ร่วมฉาก บอกตามจริง
+        // สองประโยคขัดกัน ("ไม่มีตัวละคร" แล้วตามด้วยรายชื่อ) แย่กว่าไม่พูด
+        if (beat.isNarration) {
+            L.push(beat.participants.length
+                ? "ตั้งเป็นคำบรรยาย แต่การ์ดยังผูกผู้ร่วมฉากไว้:"
+                : "เป็นคำบรรยาย ไม่มีตัวละครร่วมฉาก");
+        }
         if (beat.keyMoment) L.push(`เหตุการณ์สำคัญ: ${sub(beat.keyMoment)}`);
 
         if (beat.content) L.push("", sub(beat.content));
@@ -432,21 +480,27 @@ export function renderSceneMarkdown(format: SceneFormat): string {
         }
     });
 
-    if (format.threads.length) {
+    // roles ว่าง = ปมไม่เคยแตะฉากนี้ ไม่เอาลงตารางสรุปของฉาก
+    const sceneThreads = format.threads.filter(t => t.roles.length);
+    if (sceneThreads.length) {
         L.push("", "ปมทั้งหมดที่ผ่านฉากนี้:");
         L.push("| ปม | สถานะ | บทบาทที่ปรากฏ |");
         L.push("|---|---|---|");
-        format.threads.forEach(t => {
+        sceneThreads.forEach(t => {
             const roles = t.roles.join(" → ") || "ยังไม่ผูก";
-            L.push(`| ${sub(t.title)} | ${t.status} | ${roles} |`);
+            L.push(`| ${esc(sub(t.title))} | ${esc(t.status)} | ${roles} |`);
         });
     }
     // แยกเป็นหัวข้อของตัวเอง — นี่คือคำถามอันดับหนึ่งที่คนเอาไฟล์นี้ไปถาม AI
+    // เก็บปมค้างทุกตัวแม้ไม่แตะฉากนี้ — ปมค้างเป็นคำถามระดับนิยาย
     if (openThreads.length) {
         L.push("", "ปมที่ยังไม่เฉลย:");
         openThreads.forEach(t => {
             const where = t.danglingAtCards;
-            L.push(`- ${sub(t.title)} — ${where.length ? `แตะไว้ที่ ${where.map(c => `[${c}]`).join(" ")}` : "ยังไม่ผูกกับจังหวะไหน"} ยังไม่มีจังหวะไหนเฉลย`);
+            const whereText = where.length
+                ? `แตะไว้ที่ ${where.map(c => `[${c}]`).join(" ")}`
+                : (t.roles.length ? "ยังไม่ผูกกับจังหวะไหน" : "แตะในฉากอื่น ยังไม่ผูกในฉากนี้");
+            L.push(`- ${sub(t.title)} — ${whereText} ยังไม่มีจังหวะไหนเฉลย`);
         });
     }
 

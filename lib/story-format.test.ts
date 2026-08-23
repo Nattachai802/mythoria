@@ -200,4 +200,125 @@ const butFmt = buildSceneFormat(makeInput({
 const butMd = renderSceneMarkdown(butFmt);
 assert(butMd.includes("ต่อจากฉากก่อน: แต่ว่า — อะไรบางอย่าง"), "but_then cause rendered");
 
+// ── ตัวย่อยึด @ นำหน้า ─────────────────────────────────────────────────
+// "อัศวิน" โผล่ 2 การ์ดจึงได้ตัวย่อ ชื่อนี้เป็นส่วนหนึ่งของคำว่า "อัศวินดำ" ได้
+// และภาษาไทยไม่เว้นวรรค ถ้าแทนชื่อเปล่าจะไปตัดกลางคำอื่น
+
+const aliasFmt = buildSceneFormat(makeInput({
+    items: [
+        {
+            id: "item1", title: "ก", content: "เขาเห็นอัศวินดำยืนอยู่ แล้ว @อัศวิน ก็เดินเข้ามา",
+            beatIndex: 0, laneId: "lane1",
+            children: [{ id: "ch1", title: "อัศวิน", type: "character" }],
+        },
+        {
+            id: "item2", title: "ข", content: null, beatIndex: 1, laneId: "lane1",
+            children: [{ id: "ch2", title: "อัศวิน", type: "character" }],
+        },
+    ],
+}));
+const aliasMd = renderSceneMarkdown(aliasFmt);
+
+assert(aliasMd.includes("เขาเห็นอัศวินดำยืนอยู่"), "bare name inside another word is left alone");
+assert(aliasMd.includes("แล้ว @A ก็เดินเข้ามา"), "@name is replaced by the alias");
+assert(!aliasMd.includes("@@"), "alias never doubles the @");
+
+// ── โน้ตบนกระดานไม่ใช่เหตุการณ์ ─────────────────────────────────────────
+
+const noteFmt = buildSceneFormat(makeInput({
+    items: [
+        { id: "n1", type: "sticky-note", title: "อย่าลืมแก้ชื่อเมือง", content: null, beatIndex: 0, laneId: "lane1" },
+        { id: "a1", title: "การ์ดจริง ก", content: null, beatIndex: 0, laneId: "lane1" },
+        { id: "a2", title: "การ์ดจริง ข", content: null, beatIndex: 0, laneId: "lane2" },
+    ],
+}));
+
+const noteBeat = noteFmt.beats.find(b => b.id === "n1")!;
+const realBeat = noteFmt.beats.find(b => b.id === "a1")!;
+
+assert(noteBeat.isBoardNote, "sticky note flagged as board note");
+assert(noteBeat.simultaneousWith.length === 0, "board note is simultaneous with nothing");
+assert(!realBeat.simultaneousWith.includes(noteBeat.code), "board note excluded from other cards' simultaneous list");
+assert(realBeat.simultaneousWith.length === 1, "real card still sees the other real card");
+assert(renderSceneMarkdown(noteFmt).includes("เป็นโน้ตที่นักเขียนแปะไว้บนกระดาน"), "board note labelled in markdown");
+
+// ── 4a: formatVersion ลง frontmatter เสมอ ─────────────────────────────
+
+assert(md.includes(`formatVersion: ${FORMAT_VERSION}`), "formatVersion rendered in frontmatter");
+assert(emptyMd.includes(`formatVersion: ${FORMAT_VERSION}`), "formatVersion rendered even in empty scene");
+
+// ── 4b: ปมที่ไม่แตะฉากนี้ไม่ลงตารางสรุป แต่ปมค้างยังโผล่ ──────────────────
+
+const otherThread = {
+    id: "th9", title: "ปมฉากอื่น", status: "active", color: null,
+    beats: [{ id: "b9", eventId: "evX", canvasItemId: null, role: "seed" }],
+};
+const crossFmt = buildSceneFormat(makeInput({
+    threads: [...makeInput().threads, otherThread],
+}));
+const crossMd = renderSceneMarkdown(crossFmt);
+const table = crossMd.slice(crossMd.indexOf("ปมทั้งหมดที่ผ่านฉากนี้:"), crossMd.indexOf("ปมที่ยังไม่เฉลย:"));
+assert(!table.includes("ปมฉากอื่น"), "thread from another scene excluded from summary table");
+assert(crossMd.includes("ปมฉากอื่น — แตะในฉากอื่น ยังไม่ผูกในฉากนี้"), "dangling thread from another scene still listed with honest label");
+
+// ── 4c: ชื่อพ้องคนละชนิดไม่ยุบเป็นแถวเดียว ──────────────────────────────
+
+const dupFmt = buildSceneFormat(makeInput({
+    items: [
+        {
+            id: "item1", title: "ก", content: null, beatIndex: 0, laneId: "lane1",
+            children: [
+                { id: "c1", title: "ปราสาท", type: "character" },
+                { id: "c2", title: "ปราสาท", type: "building" },
+            ],
+        },
+        {
+            id: "item2", title: "ข", content: null, beatIndex: 1, laneId: "lane1",
+            children: [{ id: "c3", title: "ปราสาท", type: "character" }],
+        },
+    ],
+}));
+const castleRows = dupFmt.cast.filter(c => c.name === "ปราสาท");
+assert(castleRows.length === 2, "same name different type = 2 cast rows");
+assert(castleRows.some(r => r.type === "ตัวละคร" && r.cardCount === 2), "character ปราสาท counts 2 cards");
+assert(castleRows.some(r => r.type === "สถานที่" && r.cardCount === 1), "building ปราสาท counts 1 card");
+
+// ── 4e: การ์ดคำบรรยายที่ยังมี children ไม่ขัดกับตัวเอง ───────────────────
+
+const narrFmt = buildSceneFormat(makeInput({
+    items: [{
+        id: "item1", title: "คำบรรยายเปิดเรื่อง", content: null,
+        beatIndex: 0, laneId: "lane1", isNarration: true,
+        children: [{ id: "c1", title: "อัศวิน", type: "character" }],
+    }],
+}));
+const narrMd = renderSceneMarkdown(narrFmt);
+assert(!narrMd.includes("ไม่มีตัวละครร่วมฉาก"), "narration with participants does not claim no characters");
+assert(narrMd.includes("ตั้งเป็นคำบรรยาย แต่การ์ดยังผูกผู้ร่วมฉากไว้:"), "narration with participants states the truth");
+
+// ── 4f: causeKind ไม่รู้จักแสดง raw, ชื่อมี | ถูก escape ────────────────
+
+const rawCauseFmt = buildSceneFormat(makeInput({
+    event: { id: "ev4", title: "ฉาก4", causeKind: "meanwhile" },
+}));
+assert(renderSceneMarkdown(rawCauseFmt).includes("ต่อจากฉากก่อน: meanwhile"), "unknown causeKind shown raw, not guessed as แต่ว่า");
+
+const pipeFmt = buildSceneFormat(makeInput({
+    items: [{
+        id: "item1", title: "ก", content: null, beatIndex: 0, laneId: "lane1",
+        children: [{ id: "c1", title: "ทด|สอบ", type: "character" }],
+    }],
+}));
+const pipeMd = renderSceneMarkdown(pipeFmt);
+assert(pipeMd.includes("| ทด\\|สอบ |"), "pipe in cast name escaped");
+const pipeThreadFmt = buildSceneFormat(makeInput({
+    threads: [{ id: "th1", title: "ปม|ทดสอบ", status: "active", color: null, beats: [{ id: "b1", eventId: "ev1", canvasItemId: "item1", role: "seed" }] }],
+}));
+assert(renderSceneMarkdown(pipeThreadFmt).includes("| ปม\\|ทดสอบ |"), "pipe in thread title escaped");
+
+// ── 4f: จำนวนการ์ดไม่นับ sticky note ───────────────────────────────────
+
+assert(noteFmt.cardCount === 2, "cardCount excludes board notes");
+assert(noteFmt.beatCount === 1, "beatCount from real cards only");
+
 console.log("\n✅ All tests passed");

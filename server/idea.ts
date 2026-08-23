@@ -174,7 +174,12 @@ const _getIdeasCount = async (novelId: string) => {
 // Cached version - Fast count-only query with 60s cache
 export async function getIdeasCount(novelId: string) {
     // เช็คสิทธิ์นอก unstable_cache เสมอ — ถ้าเช็คในนั้น cache hit จะข้ามการเช็คไป
-    await requireNovelAccess(novelId);
+    // คืน count 0 แทน throw ด้วยเหตุผลเดียวกับ getNotes: อยู่ใน Promise.all ของหน้า project
+    try {
+        await requireNovelAccess(novelId);
+    } catch {
+        return { success: false as const, count: 0 };
+    }
     const cachedFn = unstable_cache(
         () => _getIdeasCount(novelId),
         [`ideas-count-${novelId}`],

@@ -1467,6 +1467,46 @@ export const noteAuditIssuesRelations = relations(noteAuditIssues, ({ one }) => 
   }),
 }));
 
+// ── ตัววิเคราะห์พล็อต (docs/plot-analysis-plan.md ข้อ 1.6) ──
+// ธงคำนวณสดทุกครั้ง — ตารางนี้มีไว้จำ verdict ของผู้เขียนเท่านั้น
+// จับคู่กับธงด้วย (novelId, checkId, subjectRef) ปมที่ถูกปัดตกแล้วต้องไม่โผล่ซ้ำ
+export const plotFindings = pgTable("plot_findings", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  novelId: text("novel_id")
+    .notNull()
+    .references(() => novels.id, { onDelete: "cascade" }),
+  sceneId: text("scene_id").references(() => timelineEvents.id, { onDelete: "cascade" }),
+
+  checkId: text("check_id").notNull(), // 'threads_unpaid' | 'single_lane' | ...
+  subjectRef: text("subject_ref").notNull(), // รหัสการ์ด/ปม/ชื่อ ที่ธงนี้ชี้ถึง
+  evidence: jsonb("evidence").notNull(), // ตัวเลขและรายการที่ใช้สร้างข้อความ
+
+  verdict: text("verdict"), // null | 'real' | 'not_real' | 'irrelevant'
+  formatVersion: text("format_version").notNull(),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+}, (table) => ({
+  novelIdIdx: index("plot_findings_novel_id_idx").on(table.novelId),
+  // หนึ่ง verdict ต่อธงหนึ่งอัน — upsert ด้วยคีย์นี้
+  subjectUnique: uniqueIndex("plot_findings_check_subject_idx").on(
+    table.novelId, table.checkId, table.subjectRef),
+}));
+
+export const plotFindingsRelations = relations(plotFindings, ({ one }) => ({
+  novel: one(novels, {
+    fields: [plotFindings.novelId],
+    references: [novels.id],
+  }),
+  scene: one(timelineEvents, {
+    fields: [plotFindings.sceneId],
+    references: [timelineEvents.id],
+  }),
+}));
+
 // ============================================
 // RELATIONS
 // ============================================

@@ -1,0 +1,518 @@
+"use server";
+
+import { db } from "@/db/drizzle";
+import {
+    timelineEvents,
+    plotThreads,
+    plotThreadBeats,
+    sceneElementDetails,
+    plotFindings,
+} from "@/db/schema";
+import { eq, and, inArray } from "drizzle-orm";
+import { requireNovelAccess } from "@/lib/authz";
+import { buildSceneFormat, type SceneFormatInput } from "@/lib/story-format";
+import {
+    analyzePlot,
+    type PlotAnalysisReport,
+    type CoverageInput,
+} from "@/lib/plot-analysis";
+import {
+    ECHO_PROMPT_VERSION,
+    ECHO_K,
+    ECHO_MODEL,
+    buildPrefixText,
+    buildCardText,
+    hashEchoInput,
+    buildGuessPrompt,
+    buildJudgePrompt,
+    filterEchoTargets,
+    parseGuessResponse,
+    parseJudgeResponse,
+    type EchoEvidence,
+    type EchoFinding,
+} from "@/lib/echo-score";
+import { GoogleGenAI } from "@google/genai";
+import { isGuest, GUEST_AI_MESSAGE } from "@/lib/guest";
+
+const geminiClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+
+// ─── Shared helpers ─────────────────────────────────────────────────────
+
+/** ดึง canvasData ของ event หนึ่งแล้วแยก items / lanes */
+function parseCanvasData(canvasData: unknown): {
+    items: any[];
+    lanes: Array<{ id: string; name: string }>;
+} {
+    const raw: any[] = Array.isArray(canvasData) ? (canvasData as any[]) : [];
+    const laneItems = raw.filter((it: any) => it.type === "lane");
+    const lanes: Array<{ id: string; name: string }> = laneItems
+        .map((l: any) => ({ id: l.id, name: l.name || "เลน" }))
+        .sort((a: any, b: any) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+    const items = raw.filter(
+        (it: any) => it.type !== "lane" && it.type !== "group" && it.type !== "chapter",
+    );
+    return { items, lanes };
+}
+
+// ─── getPlotAnalysis ───────────────────────────────────────────────────────
+
+/**
+ * ดึงข้อมูลทั้งนิยาย → ประกอบ SceneFormat → วิเคราะห์ → merge verdicts
+ * ไม่แคช — Phase 1 เป็นเลขคณิตล้วน ไม่มีต้นทุนพิเศษ
+ */
+export async function getPlotAnalysis(novelId: string): Promise<
+    | { success: true; report: PlotAnalysisReport; verdicts: Record<string, string | null> }
+    | { success: false; error: string }
+> {
+    try {
+        await requireNovelAccess(novelId);
+
+        // ── 1. ดึงทุกฉากพร้อม canvasData ─────────────────────────────────
+        const events = await db.query.timelineEvents.findMany({
+            where: eq(timelineEvents.novelId, novelId),
+            columns: {
+                id: true,
+                title: true,
+                sceneGoal: true,
+                sceneConflict: true,
+                sceneOutcome: true,
+                causeKind: true,
+                causeNote: true,
+                description: true,
+                storyTimeIndex: true,
+                storyDuration: true,
+                povCharacterId: true,
+                canvasData: true,
+            },
+            orderBy: (e, { asc }) => [asc(e.orderIndex)],
+        });
+
+        if (events.length === 0) {
+            const empty = analyzePlot([], { scenes: [], threads: [] });
+            return { success: true, report: empty, verdicts: {} };
+        }
+
+        // ── 2. ดึง threads + beats ทั้งนิยาย ──────────────────────────────
+        const allThreads = await db.query.plotThreads.findMany({
+            where: eq(plotThreads.novelId, novelId),
+        });
+
+        const allBeats = allThreads.length > 0
+            ? await db.query.plotThreadBeats.findMany({
+                where: inArray(plotThreadBeats.threadId, allThreads.map(t => t.id)),
+            })
+            : [];
+
+        const threadsForFormat: SceneFormatInput["threads"] = allThreads.map(t => ({
+            id: t.id,
+            title: t.title,
+            status: t.status,
+            color: t.color,
+            beats: allBeats
+                .filter(b => b.threadId === t.id)
+                .map(b => ({
+                    id: b.id,
+                    eventId: b.eventId,
+                    canvasItemId: b.canvasItemId,
+                    role: b.role,
+                })),
+        }));
+
+        // ── 3. ดึง sceneElementDetails ทุกฉาก ────────────────────────────
+        const allDetails = events.length > 0
+            ? await db.query.sceneElementDetails.findMany({
+                where: inArray(sceneElementDetails.sceneId, events.map(e => e.id)),
+                columns: {
+                    sceneId: true,
+                    canvasItemId: true,
+                    action: true,
+                    goal: true,
+                    outcome: true,
+                },
+            })
+            : [];
+
+        const detailsByScene = new Map<string, Map<string, { action?: string | null; goal?: string | null; outcome?: string | null }>>();
+        for (const d of allDetails) {
+            if (!d.canvasItemId) continue;
+            if (!detailsByScene.has(d.sceneId)) detailsByScene.set(d.sceneId, new Map());
+            detailsByScene.get(d.sceneId)!.set(d.canvasItemId, {
+                action: d.action, goal: d.goal, outcome: d.outcome,
+            });
+        }
+
+        // ── 4. ประกอบ SceneFormat ทีละฉาก ────────────────────────────────
+        const scenes = events.map(event => {
+            const { items, lanes } = parseCanvasData(event.canvasData);
+            const elementDetails = detailsByScene.get(event.id) ?? new Map();
+            const input: SceneFormatInput = {
+                event: {
+                    id: event.id,
+                    title: event.title,
+                    sceneGoal: event.sceneGoal,
+                    sceneConflict: event.sceneConflict,
+                    sceneOutcome: event.sceneOutcome,
+                    causeKind: event.causeKind,
+                    causeNote: event.causeNote,
+                    description: event.description,
+                },
+                items, lanes, threads: threadsForFormat,
+                eventId: event.id, elementDetails, ideaNotes: [],
+            };
+            return buildSceneFormat(input);
+        });
+
+        // ── 5. ประกอบ CoverageInput ───────────────────────────────────────
+        const coverageInput: CoverageInput = {
+            scenes: events.map(event => {
+                const { items } = parseCanvasData(event.canvasData);
+                const cardCount = items.filter((it: any) => it.type !== "sticky-note").length;
+                const keyMomentCount = items.filter(
+                    (it: any) => it.keyMomentLabel && it.keyMomentLabel !== "",
+                ).length;
+                return {
+                    id: event.id,
+                    hasSceneGoal: !!event.sceneGoal,
+                    hasStoryTimeIndex: event.storyTimeIndex != null,
+                    hasStoryDuration: event.storyDuration != null,
+                    hasPovCharacterId: !!event.povCharacterId,
+                    keyMomentCount,
+                    cardCount,
+                };
+            }),
+            threads: allThreads.map(t => ({
+                id: t.id,
+                boundBeatCount: allBeats.filter(
+                    b => b.threadId === t.id && b.canvasItemId != null,
+                ).length,
+            })),
+        };
+
+        // ── 6. วิเคราะห์ ──────────────────────────────────────────────────
+        const report = analyzePlot(scenes, coverageInput);
+
+        // ── 7. ดึง verdicts ที่เคย save ไว้ ──────────────────────────────
+        const savedFindings = await db
+            .select({ checkId: plotFindings.checkId, subjectRef: plotFindings.subjectRef, verdict: plotFindings.verdict })
+            .from(plotFindings)
+            .where(eq(plotFindings.novelId, novelId));
+
+        const verdicts: Record<string, string | null> = {};
+        for (const f of savedFindings) {
+            verdicts[`${f.checkId}:${f.subjectRef}`] = f.verdict;
+        }
+
+        return { success: true, report, verdicts };
+    } catch (error) {
+        console.error("getPlotAnalysis error:", error);
+        return { success: false, error: "วิเคราะห์พล็อตไม่สำเร็จ" };
+    }
+}
+
+// ─── setPlotFindingVerdict ────────────────────────────────────────────────
+
+export async function setPlotFindingVerdict(
+    novelId: string,
+    checkId: string,
+    subjectRef: string,
+    verdict: "real" | "not_real" | "irrelevant" | null,
+    evidence: Record<string, unknown> = {},
+    formatVersion: string = "1",
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        await requireNovelAccess(novelId);
+
+        if (verdict === null) {
+            await db.delete(plotFindings).where(
+                and(
+                    eq(plotFindings.novelId, novelId),
+                    eq(plotFindings.checkId, checkId),
+                    eq(plotFindings.subjectRef, subjectRef),
+                ),
+            );
+        } else {
+            await db
+                .insert(plotFindings)
+                .values({ novelId, checkId, subjectRef, verdict, evidence, formatVersion })
+                .onConflictDoUpdate({
+                    target: [plotFindings.novelId, plotFindings.checkId, plotFindings.subjectRef],
+                    set: { verdict, evidence, formatVersion, updatedAt: new Date() },
+                });
+        }
+
+        return { success: true };
+    } catch (error) {
+        console.error("setPlotFindingVerdict error:", error);
+        return { success: false, error: "บันทึก verdict ไม่สำเร็จ" };
+    }
+}
+
+// ─── runEchoScore ─────────────────────────────────────────────────────────
+
+/**
+ * คำนวณ Echo Score ของฉากหนึ่ง — เรียก LLM (Gemini 2.5 Flash) K+1 ครั้งต่อการ์ด
+ *
+ * กระบวนการ:
+ * 1. ดึง canvasData → buildSceneFormat → ได้ beats
+ * 2. filter เฉพาะ beat ที่ตรวจได้ (ไม่ใช่ board note, มี title, ไม่ใช่ beat แรก)
+ * 3. ต่อการ์ดแต่ละใบ:
+ *    a. คำนวณ inputHash เทียบกับ DB — ถ้าตรง: ข้าม
+ *    b. เรียก LLM สุ่ม K เดา
+ *    c. เรียก LLM ตัดสินว่าตรงกี่ครั้ง
+ *    d. upsert plot_findings (checkId="echo")
+ */
+export async function runEchoScore(
+    novelId: string,
+    sceneId: string,
+): Promise<
+    | { success: true; findings: EchoFinding[]; skipped: number }
+    | { success: false; error: string }
+> {
+    try {
+        if (await isGuest()) return { success: false, error: GUEST_AI_MESSAGE };
+        await requireNovelAccess(novelId);
+
+        // ── 1. ดึง event + canvasData ─────────────────────────────────────
+        const event = await db.query.timelineEvents.findFirst({
+            where: and(
+                eq(timelineEvents.id, sceneId),
+                eq(timelineEvents.novelId, novelId),
+            ),
+            columns: {
+                id: true,
+                title: true,
+                sceneGoal: true,
+                sceneConflict: true,
+                sceneOutcome: true,
+                causeKind: true,
+                causeNote: true,
+                description: true,
+                canvasData: true,
+            },
+        });
+
+        if (!event) return { success: false, error: "ไม่พบฉากนี้" };
+
+        // ── 2. ดึง threads + beats เพื่อ buildSceneFormat ─────────────────
+        const allThreads = await db.query.plotThreads.findMany({
+            where: eq(plotThreads.novelId, novelId),
+        });
+        const allBeats = allThreads.length > 0
+            ? await db.query.plotThreadBeats.findMany({
+                where: inArray(plotThreadBeats.threadId, allThreads.map(t => t.id)),
+            })
+            : [];
+
+        const threadsForFormat: SceneFormatInput["threads"] = allThreads.map(t => ({
+            id: t.id, title: t.title, status: t.status, color: t.color,
+            beats: allBeats.filter(b => b.threadId === t.id).map(b => ({
+                id: b.id, eventId: b.eventId, canvasItemId: b.canvasItemId, role: b.role,
+            })),
+        }));
+
+        // ── 3. ดึง sceneElementDetails ────────────────────────────────────
+        const details = await db.query.sceneElementDetails.findMany({
+            where: eq(sceneElementDetails.sceneId, sceneId),
+            columns: { canvasItemId: true, action: true, goal: true, outcome: true },
+        });
+        const elementDetails = new Map<string, { action?: string | null; goal?: string | null; outcome?: string | null }>();
+        for (const d of details) {
+            if (d.canvasItemId) elementDetails.set(d.canvasItemId, { action: d.action, goal: d.goal, outcome: d.outcome });
+        }
+
+        // ── 4. buildSceneFormat → beats ───────────────────────────────────
+        const { items, lanes } = parseCanvasData(event.canvasData);
+        const sceneFormat = buildSceneFormat({
+            event: {
+                id: event.id, title: event.title, sceneGoal: event.sceneGoal,
+                sceneConflict: event.sceneConflict, sceneOutcome: event.sceneOutcome,
+                causeKind: event.causeKind, causeNote: event.causeNote, description: event.description,
+            },
+            items, lanes, threads: threadsForFormat,
+            eventId: event.id, elementDetails, ideaNotes: [],
+        });
+
+        const beats = sceneFormat.beats;
+        const targets = filterEchoTargets(beats);
+
+        if (targets.length === 0) {
+            return { success: true, findings: [], skipped: 0 };
+        }
+
+        // ── 5. ดึง echo findings เดิม (สำหรับ hash check) ─────────────────
+        const existing = await db
+            .select({
+                subjectRef: plotFindings.subjectRef,
+                evidence: plotFindings.evidence,
+            })
+            .from(plotFindings)
+            .where(
+                and(
+                    eq(plotFindings.novelId, novelId),
+                    eq(plotFindings.checkId, "echo"),
+                    eq(plotFindings.sceneId, sceneId),
+                ),
+            );
+
+        const existingByRef = new Map<string, { inputHash?: string }>(
+            existing.map(e => [
+                e.subjectRef,
+                { inputHash: (e.evidence as any)?.inputHash },
+            ]),
+        );
+
+        // ── 6. วนทีละการ์ด ────────────────────────────────────────────────
+        const findings: EchoFinding[] = [];
+        let skipped = 0;
+
+        for (const beat of targets) {
+            const prefixText = buildPrefixText(beats, beat.beatIndex);
+            const cardText = buildCardText(beat);
+            const inputHash = hashEchoInput(prefixText, cardText);
+
+            // ข้ามถ้า hash เดิม — ไม่จ่ายค่า LLM ซ้ำ
+            const old = existingByRef.get(beat.code);
+            if (old?.inputHash === inputHash) {
+                skipped++;
+                // ดึงผลเก่ามาใส่ findings
+                const oldRow = existing.find(e => e.subjectRef === beat.code);
+                if (oldRow) {
+                    findings.push({
+                        cardCode: beat.code,
+                        cardId: beat.id,
+                        cardTitle: beat.title,
+                        beatIndex: beat.beatIndex,
+                        hasIncomingLink: beat.links.some(l => l.kind === "leads_to"),
+                        evidence: oldRow.evidence as EchoEvidence,
+                    });
+                }
+                continue;
+            }
+
+            // ── 6a. สุ่ม K เดา ─────────────────────────────────────────────
+            let guesses: string[] = [];
+            try {
+                const guessResp = await geminiClient.models.generateContent({
+                    model: ECHO_MODEL,
+                    contents: buildGuessPrompt(prefixText, ECHO_K),
+                    config: { temperature: 1.0, maxOutputTokens: 512 },
+                });
+                const raw = guessResp.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+                guesses = parseGuessResponse(raw) ?? [];
+            } catch (err) {
+                console.error(`[EchoScore] guess error card ${beat.code}:`, err);
+                continue;
+            }
+
+            if (guesses.length === 0) {
+                console.warn(`[EchoScore] no guesses for card ${beat.code}`);
+                continue;
+            }
+
+            // ── 6b. ตัดสินว่าตรงกี่ครั้ง ──────────────────────────────────
+            let hitCount = 0;
+            let matched: number[] = [];
+            try {
+                const judgeResp = await geminiClient.models.generateContent({
+                    model: ECHO_MODEL,
+                    contents: buildJudgePrompt(prefixText, cardText, guesses),
+                    config: { temperature: 0.0, maxOutputTokens: 128 },
+                });
+                const raw = judgeResp.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+                const parsed = parseJudgeResponse(raw);
+                if (parsed) {
+                    hitCount = parsed.hits;
+                    matched = parsed.matched;
+                }
+            } catch (err) {
+                console.error(`[EchoScore] judge error card ${beat.code}:`, err);
+            }
+
+            // ── 6c. upsert plot_findings ───────────────────────────────────
+            const evidence: EchoEvidence = {
+                hitCount,
+                guesses,
+                matched,
+                model: ECHO_MODEL,
+                promptVersion: ECHO_PROMPT_VERSION,
+                k: ECHO_K,
+                inputHash,
+            };
+
+            await db
+                .insert(plotFindings)
+                .values({
+                    novelId,
+                    sceneId,
+                    checkId: "echo",
+                    subjectRef: beat.code,
+                    evidence,
+                    formatVersion: ECHO_PROMPT_VERSION,
+                })
+                .onConflictDoUpdate({
+                    target: [plotFindings.novelId, plotFindings.checkId, plotFindings.subjectRef],
+                    set: { evidence, formatVersion: ECHO_PROMPT_VERSION, updatedAt: new Date() },
+                });
+
+            findings.push({
+                cardCode: beat.code,
+                cardId: beat.id,
+                cardTitle: beat.title,
+                beatIndex: beat.beatIndex,
+                hasIncomingLink: beat.links.some(l => l.kind === "leads_to"),
+                evidence,
+            });
+        }
+
+        return { success: true, findings, skipped };
+    } catch (error) {
+        console.error("runEchoScore error:", error);
+        return { success: false, error: "คำนวณ Echo Score ไม่สำเร็จ" };
+    }
+}
+
+// ─── getEchoFindings ──────────────────────────────────────────────────────
+
+/** ดึง echo findings ที่บันทึกไว้แล้วสำหรับฉากหนึ่ง */
+export async function getEchoFindings(
+    novelId: string,
+    sceneId: string,
+): Promise<
+    | { success: true; findings: EchoFinding[] }
+    | { success: false; error: string }
+> {
+    try {
+        await requireNovelAccess(novelId);
+
+        const rows = await db
+            .select({
+                subjectRef: plotFindings.subjectRef,
+                evidence: plotFindings.evidence,
+                verdict: plotFindings.verdict,
+            })
+            .from(plotFindings)
+            .where(
+                and(
+                    eq(plotFindings.novelId, novelId),
+                    eq(plotFindings.checkId, "echo"),
+                    eq(plotFindings.sceneId, sceneId),
+                ),
+            );
+
+        // ต้องการ title + beatIndex จาก canvasData → buildSceneFormat
+        // แต่เราไม่ cache format ไว้ — คืนแค่ข้อมูลที่เก็บใน evidence แทน
+        const findings: EchoFinding[] = rows.map(r => ({
+            cardCode: r.subjectRef,
+            cardId: (r.evidence as any)?.cardId ?? r.subjectRef,
+            cardTitle: (r.evidence as any)?.cardTitle ?? r.subjectRef,
+            beatIndex: (r.evidence as any)?.beatIndex ?? 0,
+            hasIncomingLink: (r.evidence as any)?.hasIncomingLink ?? false,
+            evidence: r.evidence as EchoEvidence,
+        }));
+
+        return { success: true, findings };
+    } catch (error) {
+        console.error("getEchoFindings error:", error);
+        return { success: false, error: "โหลด Echo Findings ไม่สำเร็จ" };
+    }
+}

@@ -6,6 +6,19 @@ import { eq, and, gte, lte, desc, isNull } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 import { CACHE_TAGS, CACHE_DURATION } from "@/lib/cache-config";
 import { getNovelsByUserId } from "./novel";
+import { requireNovelAccess, requireUser } from "@/lib/authz";
+
+// ไฟล์นี้เป็น "use server" — ทุก export คือ endpoint ที่ client เรียกได้ตรง ๆ จึงต้องเช็คสิทธิ์เอง
+// เช็คนอก unstable_cache เสมอ ถ้าเช็คข้างในพอ cache hit จะข้ามการเช็คไปเลย
+// คืนค่าว่างแทน throw — หน้า project เรียกหลายตัวใน Promise.all เดียว ถ้า throw จะได้ 500 แทน 404
+const canRead = async (novelId: string) => {
+    try {
+        await requireNovelAccess(novelId);
+        return true;
+    } catch {
+        return false;
+    }
+};
 
 // Get word count from content
 function getWordCount(content: any): number {
@@ -78,6 +91,7 @@ async function _getWritingActivity(novelId: string, days: number = 90) {
 
 // Cached version - Get writing activity for the past N days
 export async function getWritingActivity(novelId: string, days: number = 90) {
+    if (!await canRead(novelId)) return { success: false as const, activity: [] };
     const cachedFn = unstable_cache(
         () => _getWritingActivity(novelId, days),
         [`writing-activity-${novelId}-${days}`],
@@ -91,6 +105,7 @@ export async function getWritingActivity(novelId: string, days: number = 90) {
 
 // Get words per day for the past N days
 export async function getWordsPerDay(novelId: string, days: number = 7) {
+    if (!await canRead(novelId)) return { success: false as const, data: [] };
     try {
         const result: { date: string; words: number }[] = [];
 
@@ -206,6 +221,7 @@ async function _getWritingStreak(novelId: string) {
 
 // Cached version - Calculate writing streak
 export async function getWritingStreak(novelId: string) {
+    if (!await canRead(novelId)) return { success: false as const, currentStreak: 0, bestStreak: 0, lastWrittenDate: null };
     const cachedFn = unstable_cache(
         () => _getWritingStreak(novelId),
         [`writing-streak-${novelId}`],
@@ -344,6 +360,7 @@ async function _getAnalyticsSummary(novelId: string) {
 
 // Cached version - Get analytics summary
 export async function getAnalyticsSummary(novelId: string) {
+    if (!await canRead(novelId)) return { success: false as const, summary: null };
     const cachedFn = unstable_cache(
         () => _getAnalyticsSummary(novelId),
         [`analytics-summary-${novelId}`],
@@ -413,6 +430,10 @@ type AccountNovelRow = {
 
 export async function getAccountAnalytics(userId: string) {
     try {
+        // userId มาจากผู้เรียก — ยึด session เป็นหลัก ไม่งั้นส่ง id ของคนอื่นมาก็อ่านสถิติเขาได้
+        if (await requireUser() !== userId) {
+            return { success: false as const, error: "Forbidden" };
+        }
         const { novels: novelList } = await getNovelsByUserId(userId);
         const list = (novelList ?? []) as AccountNovelRow[];
 
