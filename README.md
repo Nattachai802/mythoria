@@ -1,3 +1,4 @@
+```text
 +==============================================================================+
 |                                                                              |
 |   /##      /## /##    /## /###### /##   /##  /######  /#######  /###### /###### 
@@ -11,74 +12,75 @@
 |                                                                              |
 |                THE AI-POWERED FORGE FOR YOUR NEXT MASTERPIECE                |
 +==============================================================================+
+```
 
-Mythoria คือแพลตฟอร์มเขียนนิยายยุคใหม่ที่รวมพลัง Project Management + AI อัจฉริยะ + World Building + Plot Engine เข้าไว้ในที่เดียว ออกแบบมาสำหรับนักเขียนที่ต้องการเครื่องมือจริงจัง ไม่ใช่แค่ Text Editor ทั่วไป
+Mythoria is a next-generation novel writing and story architecture platform integrating Project Management, AI Agents, World Building, and Deterministic Plot Analysis into a single workspace. Designed specifically for serious authors who need more than just a plain text editor.
 
-[+] Current Version: v2.3+ (Plot Analysis Engine, Echo Score, Power Rules & Sheets Sync)
+[+] Current Version: v0.5.0 (Plot Analysis Engine, Echo Score, Power Rules, Stylometry & Dual Sync)
 [+] Design Philosophy: Forge Mode (Industrial Creativity Framework)
 
-==============================================================================
-=== สารบัญ (TABLE OF CONTENTS)
-==============================================================================
+---
 
-  - [01] DESIGN PHILOSOPHY (แนวคิดการออกแบบ) (#01-design-philosophy)
-  - [02] SYSTEM ARCHITECTURE (สถาปัตยกรรมระบบ) (#02-system-architecture)
-  - [03] CORE FEATURES (ฟีเจอร์หลัก) (#03-core-features)
-  - [04] ADVANCED PLOT & ANALYTICS ENGINE (ระบบวิเคราะห์พล็อต) (#04-advanced-plot--analytics-engine)
-  - [05] AI SYSTEMS & MICROSERVICES (ระบบ AI อัจฉริยะ) (#05-ai-systems--microservices)
-  - [06] TECH STACK & INTEGRATIONS (เทคโนโลยีที่ใช้) (#06-tech-stack--integrations)
-  - [07] DATABASE SCHEMA & SYSTEM TABLES (โครงสร้างฐานข้อมูล) (#07-database-schema--system-tables)
-  - [08] CONTEXT FABRIC ARCHITECTURE (สถาปัตยกรรมเชื่อมโยงบริบท) (#08-context-fabric-architecture)
-  - [09] INSTALLATION & SETUP GUIDE (การติดตั้งและรันระบบ) (#09-installation--setup-guide)
+## TABLE OF CONTENTS
 
-==============================================================================
-=== <a id="01-design-philosophy"></a>[01] DESIGN PHILOSOPHY (แนวคิดการออกแบบ)
-==============================================================================
+- [[01] DESIGN PHILOSOPHY](#01-design-philosophy)
+- [[02] SYSTEM ARCHITECTURE](#02-system-architecture)
+- [[03] CORE FEATURES](#03-core-features)
+- [[04] ADVANCED PLOT & ANALYTICS ENGINE](#04-advanced-plot--analytics-engine)
+- [[05] AI SYSTEMS & MICROSERVICES](#05-ai-systems--microservices)
+- [[06] TECH STACK & INTEGRATIONS](#06-tech-stack--integrations)
+- [[07] DATABASE SCHEMA & SYSTEM TABLES](#07-database-schema--system-tables)
+- [[08] CONTEXT FABRIC ARCHITECTURE](#08-context-fabric-architecture)
+- [[09] INSTALLATION & SETUP GUIDE](#09-installation--setup-guide)
 
-ใช้ Design System ที่พัฒนาขึ้นเองในชื่อ "Forge Mode" (Industrial Creativity Theme)
+---
 
-  +-- Aesthetics: รูปทรงเรขาคณิตตัดมุม, ลวดลายอุตสาหกรรม, Typography แบบ Technical
-  +-- Color System: ระบบสี OKLCH เพื่อความสม่ำเสมอใน Light/Dark Mode ทุกสภาพแสง
-  +-- Experience: Micro-interactions, Glassmorphism, และ Keyboard Shortcuts ที่ลื่นไหล
-  +-- Core Principle: "Tool disappears into the task" — ขณะเขียน UI ไม่แย่งความสนใจ แต่พร้อมเสมอเมื่อต้องการ
+## <a id="01-design-philosophy"></a>[01] DESIGN PHILOSOPHY
 
-==============================================================================
-=== <a id="02-system-architecture"></a>[02] SYSTEM ARCHITECTURE (สถาปัตยกรรมระบบ)
-==============================================================================
+Mythoria utilizes a custom design system called "Forge Mode" (Industrial Creativity Theme):
 
-ระบบของ Mythoria ถูกออกแบบด้วยสถาปัตยกรรมแบบ Hybrid Monolith (Next.js) ร่วมกับ Python AI Microservice เพื่อการประมวลผล RAG, Graph RAG และ AI Agents:
+  +-- Aesthetics: Beveled geometric shapes, industrial patterns, and technical typography.
+  +-- Color System: OKLCH color space for visual consistency across Light/Dark modes in any ambient light.
+  +-- Experience: Fluid micro-interactions, glassmorphism, and intuitive keyboard shortcuts.
+  +-- Core Principle: "Tool disappears into the task" — UI stays out of your way while writing, yet remains instantly accessible when needed.
+
+---
+
+## <a id="02-system-architecture"></a>[02] SYSTEM ARCHITECTURE
+
+Mythoria is engineered as a Hybrid Monolith (Next.js 16 App Router) coupled with a Python FastAPI AI Microservice for vector embeddings, RAG pipelines, Graph RAG, and AI agent execution:
 
 ```mermaid
 graph TD
     subgraph Client ["Client Side (Browser)"]
-        UI["Next.js Pages Forge Mode UI"]
-        Canvas["Visual Canvas React Flow"]
-        Editor["Writing Studio Quill.js"]
-        GraphVis["Relationship & World Graph"]
+        UI["Next.js Pages (Forge Mode UI)"]
+        Canvas["Visual Canvas (React Flow / dnd-kit)"]
+        Editor["Writing Studio (Quill.js)"]
+        GraphVis["Relationship & World Graph (Force Graph 2D)"]
     end
 
-    subgraph WebServer ["Web and Backend Server"]
-        NextServer["Next.js Server Actions and APIs"]
-        BAuth["Better Auth"]
+    subgraph WebServer ["Web & Backend Server (Next.js 16 Monolith)"]
+        NextServer["Next.js Server Actions & API Routes"]
+        BAuth["Better Auth + Invite Rules Engine"]
         Drizzle["Drizzle ORM"]
         ContextFabric["Context Fabric Layer"]
     end
 
-    subgraph AIService ["AI Microservice Python FastAPI port 8000"]
-        VectorRAG["Vector and RAG /sync /search"]
+    subgraph AIService ["AI Microservice (Python FastAPI port 8000)"]
+        VectorRAG["Vector & RAG (/sync, /search)"]
         PlotAgent["Plot Hole Agent & Plot Engine"]
-        CharAnalyzer["Character Analyzer SSE"]
-        Stylo["Stylometry Engine #1-#5"]
-        SpellSvc["Spell Checker"]
+        CharAnalyzer["Character State Extractor (SSE Stream)"]
+        Stylo["Stylometry Engine & Fingerprint Discovery"]
+        SpellSvc["Thai Spell Checker (PyThaiNLP + Longdo Dict)"]
         LanceDB[("LanceDB Vector DB")]
     end
 
-    subgraph External ["External Services and DB"]
-        Postgres[("Neon PostgreSQL")]
+    subgraph External ["External Services & DB"]
+        Postgres[("Neon PostgreSQL Serverless")]
         GeminiEmbed["Gemini API Embeddings 768d"]
         Typhoon["Typhoon v2.1 Thai LLM"]
-        Groq["Groq API Llama fast inference"]
-        PyThaiNLP["PyThaiNLP Spell Check"]
+        Groq["Groq API (Llama Fast Inference)"]
+        LongdoDict["Longdo Dictionary API"]
         GDrive["Google Drive & Sheets API"]
         Discord["Discord Webhooks"]
     end
@@ -106,187 +108,201 @@ graph TD
     PlotAgent --> Groq
     CharAnalyzer --> Typhoon
     Stylo --> Typhoon
-    SpellSvc --> PyThaiNLP
+    SpellSvc --> LongdoDict
 ```
 
-==============================================================================
-=== <a id="03-core-features"></a>[03] CORE FEATURES (ฟีเจอร์หลัก)
-==============================================================================
+---
+
+## <a id="03-core-features"></a>[03] CORE FEATURES
+
+```text
++------------------------------------------------------------------------------+
+| 1. WRITING STUDIO & REWRITE WORKSPACE                                        |
++------------------------------------------------------------------------------+
+  |-- Quill Rich Text Editor: A5 paper layout view with page breaks & mention tags @[Name](character:id)
+  |-- Multi-tab Reference Panel: Read, search, and highlight across notes concurrently
+  |-- Paragraph Rewrite Mode (Alt+P): Side-by-side paragraph revision workspace
+  |-- Inline Word-level Diff (Alt+D) & Bookmarks (Alt+B): Pin key paragraphs for instant jumping
+  |-- Thai Spacing Corrector: Automated formatting of spaces around Thai words and punctuation
+  |-- Audit & Proofreading Panel: 3-level issue flagging (Developmental, Line, Proofreading)
+  |-- Version History & Visual Diff Viewer: Track and compare revisions across all saved versions
+  |-- Export & Publish Assistant: Export to EPUB, Markdown, or Plain Text with pre-publish checks
 
 +------------------------------------------------------------------------------+
-| 1. WRITING STUDIO                                                            |
+| 2. WORLD BUILDING & WORLD SYSTEMS                                            |
 +------------------------------------------------------------------------------+
-  |-- Rich Text Editor: Powered by Quill.js พร้อม Toolbar ที่ปรับแต่งเฉพาะ
-  |-- A5 Page View: มุมมองกระดาษ A5 กลางพื้นเทา พร้อมเส้นแบ่งหน้าอัตโนมัติ
-  |-- Smart Sidebar:
-  |     |-- NoteCastDeck: แสดงตัวละครที่ปรากฏในตอนนั้นๆ
-  |     |-- NotePlotPanel: แสดง Timeline Events และ Idea ที่เชื่อมกับ Chapter
-  |     `-- Plot Summary: สรุป Note ด้วย AI อัตโนมัติ
-  |-- Note Reference Panel: เปิดตอนอื่นๆ แบบ Multi-tab พร้อมค้นหา/Highlight ข้ามตอน
-  |-- Version History: บันทึกและเปรียบเทียบประวัติการแก้ไขย้อนหลังได้ทุก Version
-  |-- Real-time Word Count Tracking & Note Status Management (Draft, Published, ฯลฯ)
+  |-- Characters & Relationships: Character profiles, relationship graphs, and state timelines
+  |-- Locations & Hierarchical Tree: Country -> City -> Building nested structure
+  |-- World Systems & Attributes: Custom JSONB attributes for Magic Systems, Tech Trees, Ranks
+  |-- Factions, Items, Eras & Lore Groups: Group lore, timeline events, and world rules
+  |-- Interactive World Graph: 2D Force-directed relationship visualization with view switching
 
 +------------------------------------------------------------------------------+
-| 2. REWRITE WORKSPACE                                                         |
+| 3. STORY BIBLE IMPORT & CLOSED AUTHENTICATION                                |
 +------------------------------------------------------------------------------+
-  |-- Paragraph Rewrite Mode (Alt/Option+P): สลับโหมดเกลาย่อหน้าแบบ Side-by-Side
-  |-- Word-level Diff: แสดงความเปลี่ยนแปลงรายคำด้วย inline diff (Alt+D)
-  |-- Paragraph Bookmarks (Alt+B): Pin ย่อหน้าสำคัญสำหรับ Jump กลับทันที
-  |-- Audit / Proofreading Panel: Flag ปัญหาใน 3 ระดับ (Developmental, Line, Proofreading)
-  |-- Background Spell Check: ตรวจคำผิดอัตโนมัติเมื่อสลับสถานะเป็น Proofreading พร้อม Auto-Fix
+  |-- Batch Extract: Extract characters, factions, items, powers, and world systems from Markdown
+  |-- Extract-Only Principle: Strictly extracts existing facts without hallucinating lore
+  |-- Closed Registration: Invitation code enforcement (invitations table & invite rules)
 
 +------------------------------------------------------------------------------+
-| 3. WORLD BUILDING & WORLD SYSTEMS                                            |
+| 4. GOOGLE DRIVE & SHEETS DUAL SYNC                                           |
 +------------------------------------------------------------------------------+
-  |-- Characters & Relationships: โปรไฟล์ตัวละคร, ความสัมพันธ์ (Graph Vis), และ Character States
-  |-- Locations & Tree Connections: โครงสร้างสถานที่แบบลำดับชั้น (ประเทศ -> เมือง -> อาคาร)
-  |-- World Systems: Primitive เก็บระบบกลาง (ยศ, ลำดับชั้น, Tech Tree, Magic System)
-  |     `-- Flexible JSONB Table: ผู้ใช้กำหนดคอลัมน์ Attribute เองได้ พร้อม Presets สำเร็จรูป
-  |-- Factions, Items, Eras & Lore Groups: จัดกลุ่มตำนาน, กฎของโลก, และเรื่องราวพื้นหลัง
-  |-- Lore Timeline & Lore Inspector Panel: Slide-in Panel ดูรายละเอียดและเชื่อมโยงกับ Eras
+  |-- Google Drive Chapter Sync: Automated cloud backup and chapter synchronization
+  |-- Google Sheets Bible Sync: Bidirectional sync for characters, locations, items, and lore
 
 +------------------------------------------------------------------------------+
-| 4. STORY BIBLE IMPORT                                                        |
+| 5. WRITING GOALS & DEADLINE TRACKER                                          |
 +------------------------------------------------------------------------------+
-  |-- Batch Extract: สกัดตัวละคร, Factions, Items, Powers และ World Systems จาก Markdown
-  |-- Extract-Only Principle: สกัดเฉพาะข้อมูลที่มีอยู่จริง ไม่แต่งเพิ่ม ไม่เดาเนื้อหา
-  |-- Safety Net Review: ติ๊กเลือกรายการก่อนกดยืนยันบันทึกลง Database
+  |-- Daily Word Count Targets: Dynamic or static daily target modes
+  |-- Target Deadline & Timeline Epoch: Countdown trackers and story timeline epoch dates
+```
 
-+------------------------------------------------------------------------------+
-| 5. GOOGLE DRIVE & SHEETS DUAL SYNC                                           |
-+------------------------------------------------------------------------------+
-  |-- Google Drive Chapter Sync: บันทึกและ Sync เนื้อหาบทเรียนขึ้น Cloud อัตโนมัติ
-  |-- Google Sheets Bible Sync: Sync ข้อมูลตัวละคร, สถานที่, ไอเทม, Lore ข้ามไปยัง Google Sheets
+---
 
-+------------------------------------------------------------------------------+
-| 6. TRASH & RECOVERY SYSTEM                                                   |
-+------------------------------------------------------------------------------+
-  |-- Soft-Delete Architecture: กู้คืนไฟล์และข้อมูลที่ลบผิด (Notes, Chapters, Entities) ได้ตลอดเวลา
+## <a id="04-advanced-plot--analytics-engine"></a>[04] ADVANCED PLOT & ANALYTICS ENGINE
 
-==============================================================================
-=== <a id="04-advanced-plot--analytics-engine"></a>[04] ADVANCED PLOT & ANALYTICS ENGINE
-==============================================================================
-
+```text
 +------------------------------------------------------------------------------+
-| 1. PLOT ANALYSIS ENGINE (PHASE 1 - DETERMINISTIC ANALYSIS)                    |
+| 1. DETERMINISTIC PLOT ANALYSIS ENGINE (PHASE 1)                               |
 +------------------------------------------------------------------------------+
-  |-- Pure Arithmetic Engine: ประมวลผลจาก Story Format ไม่เสียค่า LLM
-  |-- 5 Structural Checks (กฎการวิเคราะห์พล็อต):
-  |     1. Unpaid Threads (threads_unpaid): ตรวจหาปมที่หว่านแล้วยังไม่มีจังหวะเฉลย
-  |     2. Vanished Participants (vanished_participant): ตรวจหาตัวละคร/สิ่งของที่โผล่การ์ดเดียวแล้วหายไป
-  |     3. Single-Lane Pacing (single_lane): ตรวจสอบฉากที่เดินเลนเดียวตลอดทั้งฉาก
-  |     4. Repetitive Scene Shape (repetitive_shape): ตรวจหาฉากที่มีลำดับปมและจังหวะซ้ำกันเป๊ะ
-  |     5. Name-Only Beats (name_only_beat): ตรวจหาจังหวะที่เนื้อความ >50% เป็นเพียงชื่อผู้ร่วมฉาก
-  |-- Scene Spine View: แสดงภาพรวมกระดูกสันหลังของแต่ละฉาก (Card count, Lanes used, Thread count)
-  |-- Coverage Report: ตรวจความครอบคลุมข้อมูล (เป้าหมายฉาก, ลำดับเวลา, ระยะเวลา, POV, จุดหักเห)
+  |-- Pure Arithmetic Engine: Zero-LLM cost evaluation based on Story Format
+  |-- 5 Structural Rules Checks:
+  |     1. Unpaid Threads (threads_unpaid): Detects unfulfilled setup threads
+  |     2. Vanished Participants (vanished_participant): Flags entities appearing once then disappearing
+  |     3. Single-Lane Pacing (single_lane): Identifies scenes stuck in a single pacing lane
+  |     4. Repetitive Scene Shape (repetitive_shape): Identifies scenes with identical beat sequences
+  |     5. Name-Only Beats (name_only_beat): Flags beats where >50% of content is entity names
+  |-- Scene Spine View: Visual summary of beat count, lanes used, and thread density
 
 +------------------------------------------------------------------------------+
 | 2. ECHO SCORE & PREDICTABILITY (PHASE 2 - LLM JUDGE)                         |
 +------------------------------------------------------------------------------+
-  |-- Predictability & Twist Detection: วัดว่าการ์ดเหตุการณ์ถัดไป "คาดเดาง่ายแค่ไหน"
-  |-- K=8 LLM Sampling: สุ่มเดาทางเลือกถัดไป 8 รูปแบบจากบริบทก่อนหน้า แล้วใช้ LLM ตัดสิน (Hits vs Matched)
+  |-- Predictability & Twist Detection: Measures event predictability in upcoming scene cards
+  |-- K=8 LLM Sampling: Samples 8 potential next choices from context to compute Hits vs Matched
 
 +------------------------------------------------------------------------------+
 | 3. POWER RULES ENGINE                                                        |
 +------------------------------------------------------------------------------+
-  |-- Global & Per-Power Boundaries: กำหนดกฎควบคุมขอบเขตพลังระดับเล่มและรายพลัง
-  |-- Severity Level (Hard / Soft): แยกกฎบังคับเด็ดขาด (Hard) vs กฎที่ละเมิดได้ถ้าจ่ายราคา (Soft)
-  |-- Context Injection: ป้อนกฎเข้า AI Writing Prompt เพื่อป้องกัน AI เขียนหลุดกติกาโลก
+  |-- Global & Per-Power Boundaries: Enforces rules globally or per magic/power system
+  |-- Severity Levels (Hard / Soft): Strict enforcement vs conditional soft rules
+  |-- Context Injection: Injects power boundaries directly into AI prompts to prevent lore breaks
 
 +------------------------------------------------------------------------------+
-| 4. STYLOMETRY & CONSISTENCY GUARDIAN                                         |
+| 4. STYLOMETRY & AUTHOR FINGERPRINT DISCOVERY                                 |
 +------------------------------------------------------------------------------+
-  |-- Stylometry Analysis (#1-#5): วิเคราะห์ลายนิ้วมือการเขียน (MTLD/MATTR, Rhythm, Burstiness, POS n-gram)
-  |-- Consistency Guardian: ตรวจจับข้อผิดพลาดเชิงโครงสร้าง (เช่น ตัวละครสถานะ dead แต่โผล่ในบทถัดมา)
+  |-- 5 Stylometric Metrics: MTLD/MATTR (lexical richness), Rhythm, Burstiness, POS n-grams
+  |-- Author Fingerprint Discovery: Single chapter & bulk style analysis across chapters
+  |-- Consistency Guardian: Catches logical conflicts (e.g., dead character appearing in scene)
+```
 
-==============================================================================
-=== <a id="05-ai-systems--microservices"></a>[05] AI SYSTEMS & MICROSERVICES
-==============================================================================
+---
 
-  [+] AI Reader Group Chat: จำลองห้องแชทนักอ่าน 5 บุคลิก (Groq Llama + Typhoon Thai LLM)
-  [+] Plot Hole Checker Agent: Agent ตรวจสอบความขัดแย้งของเวลาและการปรากฏตัว
-  [+] Character State Extractor: วิเคราะห์และสกัดสถานะตัวละครหลังบันทึก Note
-  [+] Librarian Q&A (บรรณารักษ์ประจำเรื่อง): ถาม-ตอบข้อมูลนิยายบนหน้า World Graph จาก Canon เท่านั้น
-  [+] Graph RAG Pipeline: ดึง Context ผ่าน Vector Search + Reference Graph 1 Hop ก่อนส่งให้ LLM
+## <a id="05-ai-systems--microservices"></a>[05] AI SYSTEMS & MICROSERVICES
 
-==============================================================================
-=== <a id="06-tech-stack--integrations"></a>[06] TECH STACK & INTEGRATIONS
-==============================================================================
+  [+] Single Simulated Reader: Evaluates reader feedback using Blind Context (seeing only N preceding chapters) across 3 dimensions (Suspense, Curiosity, Surprise), Motivation Clarity, Causality, and Stakes.
+  [+] SSE Real-Time Streaming Audit: Real-time SSE streaming for character state extraction and note auditing (`/analyze-characters-stream`, `/check-all-notes-stream`).
+  [+] Plot Hole Checker Agent: Agent checking temporal conflicts and presence anomalies.
+  [+] Librarian Q&A Assistant: Canon-only RAG assistant answering world questions on the World Graph.
+  [+] Graph RAG Pipeline: Vector search + 1-hop reference graph traversal before LLM prompt injection.
+  [+] Thai Spell Checker & Longdo Dict: Statistical Thai NLP combined with dictionary lookup and auto-fixing.
 
-  +-- FRONTEND & BACKEND (Next.js Monolith)
-  |     |-- Next.js 16 (App Router, Server Actions, TurboPack)
-  |     |-- Tailwind CSS v4 (CSS-first configuration)
-  |     |-- React Flow (@xyflow/react) & @dnd-kit (Canvas & Drag-and-Drop)
-  |     |-- Quill.js / react-quill-new (Rich Text Editing)
-  |     |-- Better Auth (Authentication & Invite-only controls)
-  |     `-- Drizzle ORM + Neon PostgreSQL
+---
 
-  +-- AI & MICROSERVICES (Python FastAPI)
-        |-- FastAPI & LangChain (Agent Orchestration)
-        |-- LanceDB (Vector Store & Embedded Search)
-        |-- Typhoon v2.1 & Groq API (Thai LLM & Fast Llama Inference)
-        `-- PyThaiNLP (Statistical Thai NLP & Spell Checker)
+## <a id="06-tech-stack--integrations"></a>[06] TECH STACK & INTEGRATIONS
 
-==============================================================================
-=== <a id="07-database-schema--system-tables"></a>[07] DATABASE SCHEMA & SYSTEM TABLES
-==============================================================================
+- **FRONTEND & BACKEND (Next.js Monolith)**
+  - Next.js 16.2+ (App Router, Server Actions, TurboPack)
+  - React 19.2 (React 19 Server Components)
+  - Tailwind CSS v4 (`@tailwindcss/postcss` & `tw-animate-css`)
+  - React Flow (`@xyflow/react` v12), `@dnd-kit` & `react-force-graph-2d`
+  - Quill.js v2.0 (`react-quill-new`, `quill-mention`)
+  - Better Auth v1.6+ (Authentication & Invite Rules Engine)
+  - Drizzle ORM v0.45+ + Neon PostgreSQL Serverless
+  - Sentry Edge & Server Observability
 
-ระบบใช้ทั้งหมด 56+ Tables แบ่งตามหน้าที่หลัก:
+- **AI & MICROSERVICES (Python FastAPI)**
+  - FastAPI & LangChain Microservice (port 8000)
+  - LanceDB (Embedded Vector Store & 768d Gemini Embeddings)
+  - Typhoon v2.1 & Groq API (Thai LLM & High-Speed Llama Inference)
+  - PyThaiNLP & Longdo Dictionary (Thai Spell Checker & Word Lookup)
+  - Stylometry & Author Fingerprint Engine (#1-#5 Analysis)
 
-  +-- Core: novels, chapters, notes, note_versions, tags, chapter_tags
-  +-- Characters: characters, character_relationships, character_states, character_factions, ฯลฯ
-  +-- World: locations, location_connections, items, factions, eras, world_systems
-  +-- Powers: powers, character_powers, power_levels, power_combinations, power_rules
-  +-- Plotting: ideas, idea_connections, timeline_events, plot_threads, story_arcs
-  +-- Analytics & AI: chapter_stylometry, note_audit_issues, librarian_messages, ai_suggestions
-  +-- Context Fabric: references (Derive reference index from junctions)
-  +-- Auth & System: user, session, account, invitations, drive_credentials, drive_settings
+---
 
-==============================================================================
-=== <a id="08-context-fabric-architecture"></a>[08] CONTEXT FABRIC ARCHITECTURE
-==============================================================================
+## <a id="07-database-schema--system-tables"></a>[07] DATABASE SCHEMA & SYSTEM TABLES
 
-  L4  Graph RAG — Vector search + เดิน reference graph 1 hop -> ได้ context เชิงความหมาย + โครงสร้าง
-  L3  Knowledge Graph — getNovelGraph() ครอบทุก entity + World Graph UI (สลับ views ได้)
-  L2  RAG / Vector — LanceDB ครอบ 14 entity types (Gemini 768d)
-  L1  Reference Layer — ตาราง `references` ( derive จาก junction · rebuild ตอน Vector Sync )
-  L0  Entity Registry — Abstraction เหนือ 56 ตาราง (resolve / search / embeddable)
+System consists of 56+ PostgreSQL tables categorized by domain:
 
-==============================================================================
-=== <a id="09-installation--setup-guide"></a>[09] INSTALLATION & SETUP GUIDE
-==============================================================================
+- **Core & Auth:** `user`, `session`, `account`, `verification`, `invitations` (Closed Invite-Only System)
+- **Novels & Studio:** `novels`, `chapters`, `notes`, `note_versions`, `tags`, `chapter_tags`
+- **Characters:** `characters`, `character_relationships`, `character_states`, `character_factions`, `life_events`
+- **World Building:** `locations`, `location_connections`, `items`, `factions`, `faction_relationships`, `eras`, `world_systems`, `lore`, `lore_groups`, `lore_timeline`
+- **Powers & Magic:** `powers`, `character_powers`, `power_levels`, `power_combinations`, `power_rules` (Global & Per-Power Boundaries)
+- **Plotting & Timeline:** `ideas`, `idea_connections`, `timeline_events`, `plot_threads`, `story_arcs`
+- **Analytics & AI:** `chapter_stylometry`, `author_fingerprint`, `note_audit_issues`, `librarian_messages`, `ai_suggestions`
+- **Context Fabric & Sync:** `references` (Context Indexing), `drive_credentials`, `drive_settings` (Google Drive/Sheets Sync)
 
-------------------------------------------------------------------------------
-METHOD 1: DEV CONTAINERS (RECOMMENDED)
-------------------------------------------------------------------------------
-  1. ติดตั้ง Docker Desktop และ VS Code พร้อม Extension "Dev Containers"
-  2. Clone Repository:
-     $ git clone https://github.com/Nattachai802/mythoria.git
-     $ cd mythoria
-  3. เปิดโฟลเดอร์ใน VS Code แล้วเลือก "Reopen in Container"
-  4. รันคำสั่งเริ่มระบบ:
-     $ npm run dev:all
+---
 
-------------------------------------------------------------------------------
-METHOD 2: MANUAL INSTALLATION
-------------------------------------------------------------------------------
-  1. Install Dependencies:
-     $ npm install
-     $ cd pythonservice && python -m venv venv
-     $ venv\Scripts\activate   # Windows (หรือ source venv/bin/activate บน Mac/Linux)
-     $ pip install -r requirements.txt
+## <a id="08-context-fabric-architecture"></a>[08] CONTEXT FABRIC ARCHITECTURE
 
-  2. Setup Environment Variables (.env):
-     DATABASE_URL="postgresql://postgres:1234@localhost:5432/mythoria_db"
-     BETTER_AUTH_SECRET="your-secret"
-     TYPHOON_API_KEY="your-typhoon-key"
-     GROQ_API_KEY="your-groq-key"
-     INTERNAL_API_KEY="..."
+- **L4 Graph RAG:** Vector search + 1-hop reference graph traversal for semantic & structural context.
+- **L3 Knowledge Graph:** `getNovelGraph()` aggregating all entities with World Graph UI switching.
+- **L2 RAG / Vector:** LanceDB embedding 14 entity types with 768d Gemini embeddings.
+- **L1 Reference Layer:** `references` table derived from entity junction tables & rebuilt during Vector Sync.
+- **L0 Entity Registry:** Abstraction layer over 56 database tables for uniform resolve/search/embedding operations.
 
-  3. Database & Dev Server:
-     $ npm run db:push
-     $ npm run dev:all
+---
 
-==============================================================================
-LICENSE: MIT License (c) 2025 Nattachai802
-==============================================================================
+## <a id="09-installation--setup-guide"></a>[09] INSTALLATION & SETUP GUIDE
+
+### METHOD 1: DEV CONTAINERS (RECOMMENDED)
+
+1. Install Docker Desktop and VS Code with the "Dev Containers" extension.
+2. Clone Repository:
+   ```bash
+   git clone https://github.com/Nattachai802/mythoria.git
+   cd mythoria
+   ```
+3. Open folder in VS Code and select "Reopen in Container".
+4. Start development server:
+   ```bash
+   npm run dev:all:linux
+   ```
+
+### METHOD 2: MANUAL INSTALLATION
+
+1. Install Dependencies:
+   ```bash
+   npm install
+   cd pythonservice && python -m venv venv
+   # Windows:
+   venv\Scripts\activate
+   # Mac/Linux:
+   # source venv/bin/activate
+   pip install -r requirements.txt
+   ```
+
+2. Setup Environment Variables (`.env`):
+   ```env
+   DATABASE_URL="postgresql://postgres:1234@localhost:5432/mythoria_db"
+   BETTER_AUTH_SECRET="your-secret"
+   TYPHOON_API_KEY="your-typhoon-key"
+   GROQ_API_KEY="your-groq-key"
+   INTERNAL_API_KEY="..."
+   ```
+
+3. Database Push & Development Servers:
+   ```bash
+   # Push schema changes to Neon DB (Do NOT run db:generate or db:migrate)
+   npm run db:push
+
+   # Run both Next.js and Python service on Windows:
+   npm run dev:all:windows
+   ```
+
+---
+
+## LICENSE
+
+MIT License (c) 2025 Nattachai802
