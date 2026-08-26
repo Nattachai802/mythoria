@@ -4,7 +4,7 @@
 
 **Mythoria** คือแพลตฟอร์มเขียนนิยายยุคใหม่ที่รวมพลัง Project Management + AI อัจฉริยะ + World Building เข้าไว้ในที่เดียว ออกแบบมาสำหรับนักเขียนที่ต้องการเครื่องมือจริงจัง ไม่ใช่แค่ Text Editor ทั่วไป
 
-> **Current Version: `v2.3`** — Launch readiness: invite-only signup, guest demo mode, data isolation ครบทุก server action, Python service auth · Story Codex ยุบรวมเข้า World Graph · Stylometry #5 (POS n-gram + emotional arc)
+> **Current Version: `v2.3`** — Launch readiness: invite-only signup, guest demo mode, data isolation ครบทุก server action, Python service auth · Story Codex ยุบรวมเข้า World Graph · Stylometry #5 (POS n-gram + emotional arc) · **AI Control Center** (gateway เดียว + CLI `npm run ai` + board)
 
 ---
 
@@ -14,6 +14,7 @@
 - [🏗️ System Architecture](#-system-architecture)
 - [🚀 ฟีเจอร์หลัก](#-ฟีเจอร์หลัก)
 - [🤖 ระบบ AI](#-ระบบ-ai)
+- [🎛️ AI Control Center](#️-ai-control-center)
 - [🛠️ Tech Stack](#-tech-stack)
 - [🗄️ โครงสร้างฐานข้อมูล](#-โครงสร้างฐานข้อมูล)
 - [🗺️ Context Fabric](#-context-fabric)
@@ -353,6 +354,39 @@ Agent อัจฉริยะที่ใช้ Tool Calling ตรวจสอ
 
 ---
 
+## 🎛️ AI Control Center
+
+ศูนย์ควบคุมระบบ AI ทั้งหมด — ทุกการเรียก AI ใน Mythoria ผ่าน **Gateway** (`lib/ai-gateway.ts`) เป็นจุดเดียว (single choke point):
+
+```
+callAi({ feature: "librarian", prompt })
+   │
+   ├─ 1. Flag check      → ฟีเจอร์ถูกปิด?        (ai_features table, cache 15 วิ)
+   ├─ 2. Guest check     → บัญชีเดโม block อัตโนมัติ
+   ├─ 3. Quota check     → เกินโควตา/วัน?        (นับจาก ai_usage_log, รีเซ็ตเที่ยงคืน)
+   ├─ 4. LLM call        → fallback chain เดินเอง  (Groq→Typhoon, Gemini→Groq)
+   │       └─ โดน 429 = cooldown provider 60 วิ
+   └─ 5. Usage log       → tokens / latency / status ลง ai_usage_log
+```
+
+- **Registry**: `lib/ai-features.ts` — ประกาศฟีเจอร์ AI ครบ **15 ตัว** (11 LLM ฝั่ง Next + 4 Python) พร้อม model / temperature / fallback chain / quota default · *ไม่ตั้งอะไรเลยก็ใช้ได้* (ไม่มีแถวใน DB = default จาก registry)
+- **CLI**: dev คุมผ่าน terminal ล้วน — app หยิบค่าใหม่ใน ~15 วิ **ไม่ต้องรีสตาร์ท**
+
+  ```bash
+  npm run ai list              # สถานะ + quota + ใช้ไปวันนี้ + model chain ของทุกฟีเจอร์
+  npm run ai off librarian     # ปิดฟีเจอร์
+  npm run ai on librarian      # เปิด
+  npm run ai quota note-summary 100   # โควตา 100 ครั้ง/วัน/ผู้ใช้ (0 = ไม่จำกัด)
+  npm run ai reset echo-score  # คืนค่า default จาก registry
+  npm run ai log 30            # runs ล่าสุด + error detail
+  ```
+- **Board** (`/dashboard/ai-control`, read-only): user logged-in ดูได้หมด — แผนผังโมเดล (ฟังก์ชันไหน → model ไหน → fallback อะไร), การ์ดสถานะ/quota/used-today รายฟีเจอร์, ตาราง runs ล่าสุดพร้อม error · guest ดูไม่ได้
+- **Python side**: endpoint ที่เผาโควตา LLM/embedding (sync/search/analyze*/check*) ถูก gate ที่ proxy `/api/py` + route triggers ผ่าน registry เดียวกัน — spell-check/stylometry (local compute) ไม่ผ่าน by design
+
+> หลักการ: *AI รอถูกเรียก + dev เป็นคนคุมพลังงาน* — ปิดฟีเจอร์/ตัดโควตาได้ทันทีโดยไม่แต่โค้ด และทุก run มี audit log ไว้ตรวจย้อนหลัง
+
+---
+
 ## 🛠️ Tech Stack
 
 ### Frontend & Backend (Next.js Monolith)
@@ -389,7 +423,7 @@ Agent อัจฉริยะที่ใช้ Tool Calling ตรวจสอ
 
 ## 🗄️ โครงสร้างฐานข้อมูล
 
-ระบบมี **56 tables** ครอบคลุมทุกมิติของการเขียนนิยาย:
+ระบบมี **58 tables** ครอบคลุมทุกมิติของการเขียนนิยาย:
 
 | กลุ่ม | Tables |
 |---|---|
@@ -400,6 +434,7 @@ Agent อัจฉริยะที่ใช้ Tool Calling ตรวจสอ
 | **Powers** | `powers`, `character_powers`, `power_levels`, `power_combinations` |
 | **Plotting** | `ideas`, `idea_connections`, `timeline_events`, `scene_element_details`, `plot_threads`, `plot_thread_beats`, `story_arcs` |
 | **AI** | `ai_suggestions`, `ai_chapter_reviews`, `character_analysis_queue`, `state_extraction_queue`, `note_audit_issues`, `librarian_messages`, `alias_cache` |
+| **AI Control** | `ai_features` (toggle + quota รายฟีเจอร์), `ai_usage_log` (audit ทุก AI run) |
 | **Stylometry** | `chapter_stylometry`, `note_stylometry` |
 | **Context Fabric** | `references` (ดัชนี derive จาก junction) |
 | **Sync** | `drive_credentials`, `drive_settings`, `drive_sync` |

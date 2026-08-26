@@ -3,6 +3,7 @@
 import { getContextBundle, type ResolvedReference } from "./references";
 import { isEntityType, type EntityType } from "./registry/entity-registry";
 import { pyFetch } from "@/lib/python-service";
+import { assertAiAllowed } from "@/lib/ai-gateway";
 
 /**
  * Context Fabric — Graph RAG retrieval
@@ -82,6 +83,9 @@ export async function retrieveContext(
     const expandTop = opts?.expandTop ?? 3;        // เดินเส้นจาก hit กี่อันแรก
     const neighborsPerHit = opts?.neighborsPerHit ?? 4;
     const allowed = opts?.allowedNoteIds;
+
+    // /search ยิง embedding query ที่ Gemini ด้วย — ผ่าน gate กลาง (flag/guest) ก่อนยิง Python
+    await assertAiAllowed("graph-rag-search");
 
     /** ผ่านตัวกรองตำแหน่งการอ่านไหม */
     const permitted = (type: string, id: string) =>

@@ -7,7 +7,7 @@ import { getLocationsByNovelId } from "@/server/locations"
 import { getThreadsByNovelId } from "@/server/plot-threads"
 import { getArcsByNovelId } from "@/server/story-arcs"
 import { getErasByNovelId } from "@/server/eras"
-import { getPlotAnalysis } from "@/server/plot-analysis"
+import { getPlotAnalysis, getAllEchoFindings } from "@/server/plot-analysis"
 import { TimelineBoard } from "@/components/project/timeline/timeline-board"
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb"
 import { PlotPageTabs } from "@/components/plot/analysis/plot-page-tabs"
@@ -98,7 +98,10 @@ function AnalysisLoading() {
 
 // Server component ที่เรียก getPlotAnalysis ตรงๆ (static import)
 async function PlotAnalysisTabServer({ novelId }: { novelId: string }) {
-    const result = await getPlotAnalysis(novelId)
+    const [result, echoFindings] = await Promise.all([
+        getPlotAnalysis(novelId),
+        getAllEchoFindings(novelId),
+    ])
 
     if (!result.success) {
         return (
@@ -108,10 +111,8 @@ async function PlotAnalysisTabServer({ novelId }: { novelId: string }) {
         )
     }
 
-    // echoFindings จาก verdicts ที่มี checkId="echo" จัดกลุ่มตาม sceneId
-    // ตอนนี้ยังไม่มีใน getPlotAnalysis — ใส่ empty ก่อน (ดึงจาก DB แยกถ้าต้องการ)
-    const echoFindings: Record<string, any[]> = {}
-
+    // echoFindings = ผล Echo Score เก่าจาก plot_findings จัดกลุ่มตาม sceneId
+    // (แถวที่รันก่อนหน้านี้อาจไม่มี meta การ์ด — panel รับได้เพราะ fallback ที่ loader)
     return (
         <PlotAnalysisPanel
             novelId={novelId}

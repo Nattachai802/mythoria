@@ -8,18 +8,15 @@ import {
 import { applyProposal, type Proposal, type ProposalDetail } from "./assistant";
 import { createWorldSystem } from "./world-systems";
 import type { WorldSystemEntry } from "@/db/schema";
-import { isGuest, GUEST_AI_MESSAGE } from "@/lib/guest";
+import { callAiProvider, assertAiAllowed, AiControlError } from "@/lib/ai-gateway";
 
 /**
  * Story Bible Import — Phase 1 engine
  * สกัด entity จากเอกสาร markdown → คืน Proposal[] ให้ผู้ใช้ review → applyProposal เขียนจริง
  * หลักการ: สกัดอย่างเดียว ห้ามแต่ง (ตรงกับผู้ช่วยเดิม) — ช่องที่เอกสารไม่ระบุ = เว้นว่าง
  * docs/story-bible-import-plan.md
+ * LLM: Groq ผ่าน AI Gateway (useCooldown:false — จัดการ retry ราย section เอง)
  */
-
-const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
-const GROQ_MODEL = "llama-3.3-70b-versatile"; // llama-4-scout ถูกปลดระวาง คืน 404
 
 // ชนิดที่สกัดได้ (instance ล้วน) — ตัด note/chapter/timelineEvent/worldSystem (entries jsonb) ออกก่อน
 const EXTRACT_TYPES: EntityType[] = [
@@ -117,39 +114,34 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 /** เรียก LLM สกัด 1 section — retry สูงสุด 3 ครั้งเมื่อ rate limit */
 async function extractSection(text: string, attempt = 1): Promise<RawEntity[]> {
-    const res = await fetch(GROQ_API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_API_KEY}` },
-        body: JSON.stringify({
-            model: GROQ_MODEL,
-            messages: [
-                { role: "system", content: EXTRACT_PROMPT },
-                { role: "user", content: text },
-            ],
-            response_format: { type: "json_object" },
+    let content: string;
+    try {
+        const res = await callAiProvider("bible-import", "groq", {
+            system: EXTRACT_PROMPT,
+            prompt: text,
             temperature: 0,
-            max_tokens: 3000,
-        }),
-    });
-
-    if (res.status === 429) {
-        const errText = await res.text();
-        if (attempt >= 3) {
-            console.error("[bible-import] rate limit — หมด retry:", errText.slice(0, 120));
-            return [];
+            maxTokens: 3000,
+            extraBody: { response_format: { type: "json_object" } },
+            useCooldown: false, // import ยาวหลาย section — retry เอง ไม่ให้ cooldown ตัดทิ้งกลางคัน
+        });
+        content = res.text || "{}";
+    } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/429|rate.?limit/i.test(msg)) {
+            if (attempt >= 3) {
+                console.error("[bible-import] rate limit — หมด retry:", msg.slice(0, 120));
+                return [];
+            }
+            const waitMs = parseRetryAfterMs(msg);
+            console.warn(`[bible-import] rate limit — รอ ${waitMs}ms แล้ว retry (attempt ${attempt}/3)`);
+            await sleep(waitMs);
+            return extractSection(text, attempt + 1);
         }
-        const waitMs = parseRetryAfterMs(errText);
-        console.warn(`[bible-import] rate limit — รอ ${waitMs}ms แล้ว retry (attempt ${attempt}/3)`);
-        await sleep(waitMs);
-        return extractSection(text, attempt + 1);
-    }
-
-    if (!res.ok) {
-        console.error("[bible-import] groq error:", await res.text());
+        if (e instanceof AiControlError && e.reason !== "all-failed") throw e; // disabled/quota → บอกผู้ใช้
+        console.error("[bible-import] groq error:", msg);
         return [];
     }
-    const data = await res.json();
-    const content = data.choices?.[0]?.message?.content ?? "{}";
+
     try {
         const parsed = JSON.parse(content);
         return Array.isArray(parsed.entities) ? parsed.entities : [];
@@ -175,8 +167,11 @@ export interface ExtractResult {
 
 /** Phase 1: สกัดทั้งเอกสาร → Proposal[] (dedupe ตามชนิด+ชื่อ) */
 export async function extractBible(markdown: string): Promise<ExtractResult> {
-    if (await isGuest()) return { success: false, error: GUEST_AI_MESSAGE };
-    if (!GROQ_API_KEY) return { success: false, error: "ยังไม่ได้ตั้งค่า GROQ_API_KEY" };
+    try {
+        await assertAiAllowed("bible-import");
+    } catch (e) {
+        return { success: false, error: e instanceof AiControlError ? e.message : "ใช้ AI ไม่ได้" };
+    }
     if (!markdown.trim()) return { success: false, error: "เอกสารว่างเปล่า" };
 
     const sections = splitSections(markdown);

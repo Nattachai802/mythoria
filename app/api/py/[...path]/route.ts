@@ -1,18 +1,15 @@
 import { auth } from "@/lib/auth";
 import { PYTHON_SERVICE_URL } from "@/lib/python-service";
-import { isGuest, GUEST_AI_MESSAGE } from "@/lib/guest";
+import { resolvePythonFeature, assertAiAllowed, AiControlError } from "@/lib/ai-gateway";
 
 // Same-origin proxy: เบราว์เซอร์ (fetch + EventSource) เรียกผ่าน /api/py/... แทนที่จะยิง Python ตรง
 // ที่นี่คือจุดเดียวที่ (1) เช็ค session ผู้ใช้ (2) แนบ internal key ให้ Python
 // เบราว์เซอร์ตั้ง custom header กับ EventSource ไม่ได้ แต่ cookie session ไหลมา same-origin เอง
+//
+// endpoint ที่ผูกกับฟีเจอร์ AI (sync/search/analyze*/check*) ผ่าน AI Gateway gate ก่อนทุกครั้ง
+// — flag เปิด/ปิด + guest + quota รายวัน จาก AI_FEATURES registry (lib/ai-gateway.ts)
+// ที่เหลือ (spell-check, stylometry, health) คำนวณในเครื่องล้วน ปล่อยผ่านให้ลองเล่นได้
 const KEY = process.env.INTERNAL_API_KEY || "";
-
-/** segment แรกของ path ที่เรียก LLM/embedding — ดู @app.post ใน pythonservice/main.py */
-const GUEST_BLOCKED = [
-    "sync", "search", "analyze-plot", "analyze-characters",
-    "analyze-characters-stream", "analyze-queue",
-    "check-all-notes", "check-all-notes-stream",
-];
 
 // ponytail: แค่บังคับว่าต้องล็อกอิน — ยังไม่เช็ค ownership ราย novelId บน path ของ Python
 // (endpoint แต่ละตัวพก novelId คนละที่ บ้าง path บ้าง body). ถ้าต้องแน่นกว่านี้ค่อยเพิ่ม per-route check
@@ -22,10 +19,16 @@ async function proxy(req: Request, path: string[]): Promise<Response> {
         return Response.json({ detail: "Unauthorized" }, { status: 401 });
     }
 
-    // ผู้เยี่ยมชมใช้ endpoint ที่เผาโควตา LLM/embedding ไม่ได้
-    // ที่เหลือ (spell-check, stylometry, timeline/character checker) คำนวณในเครื่องล้วน ปล่อยผ่านให้ลองเล่นได้
-    if (GUEST_BLOCKED.some((p) => path[0] === p) && (await isGuest())) {
-        return Response.json({ detail: GUEST_AI_MESSAGE }, { status: 403 });
+    // ฟีเจอร์ที่เผาโควตา LLM/embedding → ผ่าน gate กลาง (flag/guest/quota)
+    const feature = resolvePythonFeature(path[0] ?? "");
+    if (feature) {
+        try {
+            await assertAiAllowed(feature);
+        } catch (e) {
+            const quota = e instanceof AiControlError && e.reason === "quota";
+            const message = e instanceof AiControlError ? e.message : "ไม่ได้รับอนุญาตให้ใช้ AI";
+            return Response.json({ detail: message }, { status: quota ? 429 : 403 });
+        }
     }
 
     const search = new URL(req.url).search;

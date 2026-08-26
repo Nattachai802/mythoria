@@ -2101,6 +2101,54 @@ export const librarianMessagesRelations = relations(librarianMessages, ({ one })
 export type LibrarianMessage = typeof librarianMessages.$inferSelect;
 export type InsertLibrarianMessage = typeof librarianMessages.$inferInsert;
 
+// ============================================
+// AI CONTROL CENTER — ศูนย์ควบคุมระบบ AI ทั้งหมด
+// gateway ใน lib/ai-gateway.ts อ่านสองตารางนี้ก่อนยิง LLM ทุกครั้ง
+// (ai_features: แถวไม่ต้องมีครบ — ไม่มีแถว = ใช้ default จาก registry เปิด/ไม่จำกัด)
+// ============================================
+
+/** toggle เปิด/ปิด + quota รายฟีเจอร์ — admin แก้ผ่านหน้า /dashboard/ai-control */
+export const aiFeatures = pgTable("ai_features", {
+  key: text("key").primaryKey(), // feature key จาก AI_FEATURES registry เช่น "librarian"
+  enabled: boolean("enabled").notNull().default(true),
+  dailyLimitPerUser: integer("daily_limit_per_user"), // null = ไม่จำกัด
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => /* @__PURE__ */ new Date())
+    .notNull(),
+});
+
+/** log ทุก run ของ AI (success/error/blocked) — ไว้ดู usage, token, latency, ตัด quota */
+export const aiUsageLog = pgTable("ai_usage_log", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+  novelId: text("novel_id").references(() => novels.id, { onDelete: "set null" }),
+  feature: text("feature").notNull(), // key จาก AI_FEATURES registry
+  provider: text("provider").notNull(), // groq | typhoon | gemini | python
+  model: text("model").notNull(),
+  status: text("status").notNull(), // success | error | blocked
+  promptTokens: integer("prompt_tokens").default(0).notNull(),
+  completionTokens: integer("completion_tokens").default(0).notNull(),
+  latencyMs: integer("latency_ms"),
+  errorDetail: text("error_detail"), // ตัดสั้นๆ — อย่าเก็บ prompt/เนื้อหาผู้ใช้
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  userDayIdx: index("ai_usage_user_day_idx").on(table.userId, table.createdAt),
+  featureIdx: index("ai_usage_feature_idx").on(table.feature, table.createdAt),
+}));
+
+export const aiFeaturesRelations = relations(aiFeatures, () => ({}));
+
+export const aiUsageLogRelations = relations(aiUsageLog, ({ one }) => ({
+  user: one(user, { fields: [aiUsageLog.userId], references: [user.id] }),
+  novel: one(novels, { fields: [aiUsageLog.novelId], references: [novels.id] }),
+}));
+
+export type AiFeature = typeof aiFeatures.$inferSelect;
+export type InsertAiFeature = typeof aiFeatures.$inferInsert;
+export type AiUsageLog = typeof aiUsageLog.$inferSelect;
+export type InsertAiUsageLog = typeof aiUsageLog.$inferInsert;
+
 export type User = typeof user.$inferSelect;
 export type Novel = typeof novels.$inferSelect;
 // (chapterStylometry table and relations moved earlier to avoid undefined references)
@@ -2279,4 +2327,7 @@ export const schema = {
   referencesRelations,
   // Faction Status Presets
   factionStatusPresets,
+  // AI Control Center
+  aiFeatures,
+  aiUsageLog,
 };

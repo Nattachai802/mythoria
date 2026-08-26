@@ -1,17 +1,12 @@
 "use server";
 
-import { GoogleGenAI } from "@google/genai";
 import { db } from "@/db/drizzle";
 import { characters, locations, items, ideas, loreEntries } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import OpenAI from "openai";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { CACHE_TAGS } from "@/lib/cache-config";
 import { addReferences, removeOutgoingReferences, type AddReferenceInput } from "./references";
-import { isGuest, GUEST_AI_MESSAGE } from "@/lib/guest";
-
-// Initialize AI clients
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+import { callAi, assertAiAllowed } from "@/lib/ai-gateway";
 
 export async function extractLoreEntitiesInBackground(
     loreId: string,
@@ -19,7 +14,12 @@ export async function extractLoreEntitiesInBackground(
     content: string
 ): Promise<void> {
     try {
-        if (await isGuest()) return;
+        try {
+            // guest/flag/quota — gateway บล็อกให้ (background job เงียบๆ เหมือนเดิม)
+            await assertAiAllowed("lore-extractor");
+        } catch {
+            return;
+        }
         console.log(`[Background Extraction] Starting for Lore Entry: ${loreId}, Novel: ${novelId}`);
 
         // Set status to processing
@@ -36,17 +36,6 @@ export async function extractLoreEntitiesInBackground(
                 .set({
                     extractionStatus: "completed",
                     extractionError: null
-                })
-                .where(eq(loreEntries.id, loreId));
-            return;
-        }
-
-        if (!process.env.GEMINI_API_KEY) {
-            console.warn("[Background Extraction] GEMINI_API_KEY is not set. Background extraction aborted.");
-            await db.update(loreEntries)
-                .set({
-                    extractionStatus: "failed",
-                    extractionError: "GEMINI_API_KEY is not set"
                 })
                 .where(eq(loreEntries.id, loreId));
             return;
@@ -92,64 +81,42 @@ Lore Content:
 
         let extracted: { characters: string[], locations: string[], items: string[] } = { characters: [], locations: [], items: [] };
 
+        // 2. ถาม LLM ผ่าน AI Gateway (Gemini → Groq fallback + json mode, log/quota จัดการที่ gateway)
         try {
-            const response = await ai.models.generateContent({
-                model: "gemini-2.5-flash",
-                contents: prompt,
-                config: {
-                    temperature: 0.2,
-                }
+            const response = await callAi({
+                feature: "lore-extractor",
+                prompt,
+                extraBody: { response_format: { type: "json_object" } },
+                novelId,
             });
-
-            const textResponse = response.text || "{}";
-            const cleanedJson = textResponse.replace(/```json/g, "").replace(/```/g, "").trim();
+            const cleanedJson = response.text.replace(/```json/g, "").replace(/```/g, "").trim();
             extracted = JSON.parse(cleanedJson);
         } catch (e: any) {
-            console.warn(`[Background Extraction] Gemini failed: ${e.message}. Trying OpenAI Fallback.`);
+            console.warn(`[Background Extraction] LLM failed (${e?.message}). Running local scan fallback.`);
 
-            try {
-                if (!process.env.GROQ_API_KEY) throw new Error("GROQ_API_KEY is not set");
+            // FALLBACK: Local Keyword Match Scan
+            const lowerContent = content.toLowerCase();
+            const [allChars, allLocs, allItems] = await Promise.all([
+                db.query.characters.findMany({ where: eq(characters.novelId, novelId) }),
+                db.query.locations.findMany({ where: eq(locations.novelId, novelId) }),
+                db.query.items.findMany({ where: eq(items.novelId, novelId) })
+            ]);
 
-                const openai = new OpenAI({
-                    apiKey: process.env.GROQ_API_KEY,
-                    baseURL: "https://api.groq.com/openai/v1"
-                });
-                const completion = await openai.chat.completions.create({
-                    model: "llama-3.3-70b-versatile",
-                    messages: [{ role: "user", content: prompt }],
-                    temperature: 0.2,
-                    response_format: { type: "json_object" }
-                });
-
-                const textResponse = completion.choices[0].message.content || "{}";
-                extracted = JSON.parse(textResponse);
-            } catch (e2: any) {
-                console.warn(`[Background Extraction] Groq Fallback failed: ${e2.message}. Running local scan fallback.`);
-
-                // FALLBACK: Local Keyword Match Scan
-                const lowerContent = content.toLowerCase();
-                const [allChars, allLocs, allItems] = await Promise.all([
-                    db.query.characters.findMany({ where: eq(characters.novelId, novelId) }),
-                    db.query.locations.findMany({ where: eq(locations.novelId, novelId) }),
-                    db.query.items.findMany({ where: eq(items.novelId, novelId) })
-                ]);
-
-                allChars.forEach((c: any) => {
-                    if (lowerContent.includes(c.name.toLowerCase()) && c.name.length > 1) {
-                        extracted.characters.push(c.name);
-                    }
-                });
-                allLocs.forEach((l: any) => {
-                    if (lowerContent.includes(l.name.toLowerCase()) && l.name.length > 1) {
-                        extracted.locations.push(l.name);
-                    }
-                });
-                allItems.forEach((i: any) => {
-                    if (lowerContent.includes(i.name.toLowerCase()) && i.name.length > 1) {
-                        extracted.items.push(i.name);
-                    }
-                });
-            }
+            allChars.forEach((c: any) => {
+                if (lowerContent.includes(c.name.toLowerCase()) && c.name.length > 1) {
+                    extracted.characters.push(c.name);
+                }
+            });
+            allLocs.forEach((l: any) => {
+                if (lowerContent.includes(l.name.toLowerCase()) && l.name.length > 1) {
+                    extracted.locations.push(l.name);
+                }
+            });
+            allItems.forEach((i: any) => {
+                if (lowerContent.includes(i.name.toLowerCase()) && i.name.length > 1) {
+                    extracted.items.push(i.name);
+                }
+            });
         }
 
         const foundCharacters: string[] = [];
