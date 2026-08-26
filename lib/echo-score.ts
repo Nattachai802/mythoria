@@ -28,6 +28,11 @@ export interface EchoEvidence {
     promptVersion: string;    // ECHO_PROMPT_VERSION
     k: number;                // K ที่ใช้จริง
     inputHash: string;        // hash ของ prefix + card เพื่อ detect การเปลี่ยนแปลง
+    // meta สำหรับแสดงผล — เก็บพร้อม evidence ตั้งแต่รอบล่าสุด · แถวเก่ากว่า v1.5 อาจไม่มี
+    cardId?: string;
+    cardTitle?: string;
+    beatIndex?: number;
+    hasIncomingLink?: boolean;
 }
 
 export interface EchoFinding {

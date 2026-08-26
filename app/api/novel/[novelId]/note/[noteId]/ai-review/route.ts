@@ -5,6 +5,7 @@ import { chapterReaderResponse, notes } from "@/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { retrieveContext } from "@/server/rag";
 import { getReadingOrder, notesBefore } from "@/server/reading-order";
+import { callAi, assertAiAllowed, AiControlError } from "@/lib/ai-gateway";
 
 /**
  * ผู้อ่านจำลองรายตอน
@@ -15,15 +16,9 @@ import { getReadingOrder, notesBefore } from "@/server/reading-order";
  *
  * ข้อจำกัดที่เป็นหัวใจของฟีเจอร์: ผู้อ่านต้องเห็นเฉพาะตอนก่อนหน้า คนที่รู้ตอนจบแล้ว
  * ประเมินความลุ้นไม่ได้ตามนิยาม — ตัวกรองอยู่ที่ allowedNoteIds ของ retrieveContext
+ *
+ * LLM เรียกผ่าน AI Gateway (Groq หลัก Typhoon สำรอง — fallback เดินให้เอง)
  */
-
-const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
-const TYPHOON_API_URL = "https://api.opentyphoon.ai/v1/chat/completions";
-const TYPHOON_API_KEY = process.env.TYPHOON_API_KEY || "";
-
-const GROQ_MODEL = "llama-3.3-70b-versatile";
-const TYPHOON_MODEL = "typhoon-v2.5-30b-a3b-instruct";
 
 /**
  * ขึ้นเวอร์ชันทุกครั้งที่แก้ rubric หรือ SYSTEM_PROMPT
@@ -83,69 +78,54 @@ const SYSTEM_PROMPT = `คุณคือผู้อ่านนิยายค
 "muddy" เมื่อพอเดาได้แต่ไม่ชัด "unclear" เมื่ออ่านแล้วงง`;
 
 /** ข้อความที่ผู้อ่านเห็นแทนรีวิว เมื่อรอบนั้นล้ม — บอกสาเหตุจริงจะได้รู้ว่าควรลองใหม่หรือรอ */
-function failureMessage(status: number | null): string {
-    if (status === 429) return "⏳ เรียก AI ถี่เกินไป (rate limit) — รอสักครู่แล้วกดใหม่อีกครั้ง";
-    if (status === 401 || status === 403) return "🔑 คีย์ AI ใช้ไม่ได้หรือถูกปิดสิทธิ์ — ตรวจสอบการตั้งค่า";
-    if (status === 404) return "🧩 โมเดล AI ที่ตั้งไว้ไม่มีแล้ว — ต้องแก้ที่โค้ด";
-    if (status !== null && status >= 500) return "🛠️ ผู้ให้บริการ AI ขัดข้องชั่วคราว — ลองใหม่ภายหลัง";
-    if (status !== null) return `⚠️ เรียก AI ไม่สำเร็จ (HTTP ${status})`;
+function failureMessage(detail: string | null): string {
+    const d = detail ?? "";
+    if (/429|rate.?limit/i.test(d)) return "⏳ เรียก AI ถี่เกินไป (rate limit) — รอสักครู่แล้วกดใหม่อีกครั้ง";
+    if (/\b(401|403)\b/.test(d)) return "🔑 คีย์ AI ใช้ไม่ได้หรือถูกปิดสิทธิ์ — ตรวจสอบการตั้งค่า";
+    if (/\b404\b/.test(d)) return "🧩 โมเดล AI ที่ตั้งไว้ไม่มีแล้ว — ต้องแก้ที่โค้ด";
+    if (/\b5\d\d\b/.test(d)) return "🛠️ ผู้ให้บริการ AI ขัดข้องชั่วคราว — ลองใหม่ภายหลัง";
     return "⚠️ ตอบกลับจาก AI อ่านไม่ได้ — ลองกดใหม่อีกครั้ง";
 }
 
-type ProviderResult = { data: Record<string, unknown> | null; status: number | null };
-
 async function askReader(
-    provider: "groq" | "typhoon",
+    novelId: string,
     text: string,
     contextString: string,
-): Promise<ProviderResult> {
-    const url = provider === "groq" ? GROQ_API_URL : TYPHOON_API_URL;
-    const key = provider === "groq" ? GROQ_API_KEY : TYPHOON_API_KEY;
-    const model = provider === "groq" ? GROQ_MODEL : TYPHOON_MODEL;
-    if (!key) return { data: null, status: 401 };
-
+): Promise<{ data: Record<string, unknown> | null; model: string | null; errorDetail: string | null }> {
     const userContent = contextString
         ? `=== สิ่งที่คุณอ่านมาก่อนหน้านี้ ===\n${contextString}\n\n=== ตอนที่กำลังอ่าน ===\n${text}`
         : `=== ตอนที่กำลังอ่าน (ยังไม่มีตอนก่อนหน้า) ===\n${text}`;
 
     try {
-        const res = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-            body: JSON.stringify({
-                model,
-                messages: [
-                    { role: "system", content: SYSTEM_PROMPT },
-                    { role: "user", content: userContent },
-                ],
-                // 0 เพราะนี่คือการให้คะแนน ไม่ใช่การเขียน — ความสุ่มทำให้กราฟข้ามตอนอ่านไม่ได้
-                temperature: 0,
-                max_tokens: 2048,
-                // ตอนนี้สัญญาคือ object เดียว จึงใช้โหมดนี้ได้ (ตอนที่ prompt ขอ array ใช้ไม่ได้)
-                response_format: { type: "json_object" },
-            }),
+        const res = await callAi({
+            feature: "reader-review",
+            system: SYSTEM_PROMPT,
+            prompt: userContent,
+            // 0 เพราะนี่คือการให้คะแนน ไม่ใช่การเขียน — ความสุ่มทำให้กราฟข้ามตอนอ่านไม่ได้
+            temperature: 0,
+            maxTokens: 2048,
+            // ตอนนี้สัญญาคือ object เดียว จึงใช้โหมดนี้ได้ (ตอนที่ prompt ขอ array ใช้ไม่ได้)
+            extraBody: { response_format: { type: "json_object" } },
+            novelId,
         });
 
-        if (!res.ok) {
-            console.error(`Reader API error from ${provider} (HTTP ${res.status}):`, await res.text());
-            return { data: null, status: res.status };
-        }
-
-        const raw = (await res.json()).choices?.[0]?.message?.content?.trim() ?? "";
+        const raw = res.text;
         const clean = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
         try {
-            return { data: JSON.parse(clean), status: 200 };
+            return { data: JSON.parse(clean), model: res.model, errorDetail: null };
         } catch {
             const m = clean.match(/\{[\s\S]*\}/);
             if (m) {
-                try { return { data: JSON.parse(m[0]), status: 200 }; } catch { /* ตกไป null */ }
+                try { return { data: JSON.parse(m[0]), model: res.model, errorDetail: null }; } catch { /* ตกไป null */ }
             }
-            console.error(`[Reader] แกะ JSON ไม่ได้จาก ${provider}:`, clean.slice(0, 200));
-            return { data: null, status: null };
+            console.error(`[Reader] แกะ JSON ไม่ได้จาก ${res.provider}:`, clean.slice(0, 200));
+            return { data: null, model: res.model, errorDetail: "unparseable JSON" };
         }
     } catch (e) {
-        console.error(`Reader fetch error from ${provider}:`, e);
-        return { data: null, status: null };
+        const detail = e instanceof Error ? e.message : String(e);
+        console.error("Reader gateway error:", detail);
+        if (e instanceof AiControlError && e.reason !== "all-failed") throw e; // disabled/quota/guest → ส่งต่อ
+        return { data: null, model: null, errorDetail: detail };
     }
 }
 
@@ -229,18 +209,12 @@ export async function POST(
             }
         }
 
-        // ── เรียกครั้งเดียว Typhoon เป็นตัวสำรอง ──
-        let result = await askReader("groq", text, contextString);
-        let usedModel = GROQ_MODEL;
-        if (!result.data) {
-            console.warn("⚠️ Groq ล้ม — ลอง Typhoon แทน");
-            const fb = await askReader("typhoon", text, contextString);
-            if (fb.data) { result = fb; usedModel = TYPHOON_MODEL; }
-            else result = { data: null, status: result.status ?? fb.status };
-        }
+        // ── เรียกครั้งเดียวผ่าน gateway (Groq → Typhoon fallback ในตัว) ──
+        const result = await askReader(novelId, text, contextString);
+        const usedModel = result.model;
 
         if (!result.data) {
-            return NextResponse.json({ success: false, message: failureMessage(result.status) }, { status: 502 });
+            return NextResponse.json({ success: false, message: failureMessage(result.errorDetail) }, { status: 502 });
         }
 
         const d = result.data;
@@ -263,7 +237,7 @@ export async function POST(
             causality: scale(d.causality), causalityReason: reason(d.causality_reason),
             stakes: scale(d.stakes), stakesReason: reason(d.stakes_reason),
             raw: d,
-            model: usedModel,
+            model: usedModel ?? "unknown",
             promptVersion: PROMPT_VERSION,
             contextPosition,
             truncated,

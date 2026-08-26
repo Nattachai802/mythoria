@@ -3,19 +3,8 @@
 import { db } from "@/db/drizzle";
 import { chapters } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
-import { GoogleGenAI } from "@google/genai";
 import { revalidatePath } from "next/cache";
-import { isGuest, GUEST_AI_MESSAGE } from "@/lib/guest";
-
-// API Configuration - reuse from environment
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
-const GEMINI_MODEL = "gemini-2.5-flash";
-
-// Initialize Gemini client
-const geminiClient = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-
-// Rate limit tracking
-let lastRateLimitRetry = 0;
+import { callAi, AiControlError } from "@/lib/ai-gateway";
 
 // Summary prompt
 const SUMMARY_PROMPT = `คุณเป็นผู้ช่วยสรุปเนื้อหานิยาย กรุณาสรุปเนื้อหาต่อไปนี้ใน 2-3 ประโยคสั้นๆ ภาษาไทย
@@ -44,8 +33,6 @@ export async function generateChapterSummary(
     error?: string;
 }> {
     try {
-        if (await isGuest()) return { success: false, error: GUEST_AI_MESSAGE };
-
         // 1. Get chapter
         const chapter = await db.query.chapters.findFirst({
             where: and(eq(chapters.id, chapterId), isNull(chapters.deletedAt)),
@@ -96,37 +83,24 @@ export async function generateChapterSummary(
             plainText = plainText.substring(0, MAX_CHARS) + "...";
         }
 
-        // 5. Check rate limit
-        const now = Date.now();
-        if (lastRateLimitRetry > now) {
-            const waitTime = Math.ceil((lastRateLimitRetry - now) / 1000);
-            return {
-                success: false,
-                error: `Rate limited, please try again in ${waitTime} seconds`
-            };
-        }
-
-        // 6. Call Gemini
+        // 5. Call Gemini ผ่าน AI Gateway (flag/guest/quota/cooldown/log จัดการที่ gateway)
         console.log(`[ChapterSummary] Generating summary for chapter ${chapterId}...`);
 
         const prompt = SUMMARY_PROMPT.replace("{content}", plainText);
 
-        const response = await geminiClient.models.generateContent({
-            model: GEMINI_MODEL,
-            contents: prompt,
-            config: {
-                temperature: 0.3,
-                maxOutputTokens: 256, // Summary ไม่ต้องยาว
-            },
-        });
-
-        const summary = response.text?.trim();
-
-        if (!summary) {
-            return { success: false, error: "AI returned empty response" };
+        let summary: string;
+        try {
+            const res = await callAi({
+                feature: "chapter-summary",
+                prompt,
+            });
+            summary = res.text;
+        } catch (e) {
+            if (e instanceof AiControlError) return { success: false, error: e.message };
+            throw e;
         }
 
-        // 7. Save to database (cache)
+        // 6. Save to database (cache)
         await db
             .update(chapters)
             .set({ summary })
@@ -138,12 +112,6 @@ export async function generateChapterSummary(
 
     } catch (error: any) {
         console.error("[ChapterSummary] Error:", error?.message || error);
-
-        // Handle rate limit
-        if (error?.status === 429 || error?.message?.includes("429") || error?.message?.includes("quota")) {
-            lastRateLimitRetry = Date.now() + 60000;
-            return { success: false, error: "Rate limited, please try again in 60 seconds" };
-        }
 
         return {
             success: false,

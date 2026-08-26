@@ -31,10 +31,7 @@ import {
     type EchoEvidence,
     type EchoFinding,
 } from "@/lib/echo-score";
-import { GoogleGenAI } from "@google/genai";
-import { isGuest, GUEST_AI_MESSAGE } from "@/lib/guest";
-
-const geminiClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+import { callAi, assertAiAllowed, AiControlError } from "@/lib/ai-gateway";
 
 // ─── Shared helpers ─────────────────────────────────────────────────────
 
@@ -269,7 +266,11 @@ export async function runEchoScore(
     | { success: false; error: string }
 > {
     try {
-        if (await isGuest()) return { success: false, error: GUEST_AI_MESSAGE };
+        try {
+            await assertAiAllowed("echo-score");
+        } catch (e) {
+            return { success: false, error: e instanceof AiControlError ? e.message : "ใช้ AI ไม่ได้" };
+        }
         await requireNovelAccess(novelId);
 
         // ── 1. ดึง event + canvasData ─────────────────────────────────────
@@ -389,17 +390,21 @@ export async function runEchoScore(
                 continue;
             }
 
-            // ── 6a. สุ่ม K เดา ─────────────────────────────────────────────
+            // ── 6a. สุ่ม K เดา (ผ่าน AI Gateway — temp สูงให้เดาเอียง) ────
             let guesses: string[] = [];
             try {
-                const guessResp = await geminiClient.models.generateContent({
-                    model: ECHO_MODEL,
-                    contents: buildGuessPrompt(prefixText, ECHO_K),
-                    config: { temperature: 1.0, maxOutputTokens: 512 },
+                const guessResp = await callAi({
+                    feature: "echo-score",
+                    prompt: buildGuessPrompt(prefixText, ECHO_K),
+                    temperature: 1.0,
+                    maxTokens: 512,
+                    novelId,
                 });
-                const raw = guessResp.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-                guesses = parseGuessResponse(raw) ?? [];
+                guesses = parseGuessResponse(guessResp.text) ?? [];
             } catch (err) {
+                if (err instanceof AiControlError) {
+                    return { success: false, error: err.message };
+                }
                 console.error(`[EchoScore] guess error card ${beat.code}:`, err);
                 continue;
             }
@@ -409,17 +414,18 @@ export async function runEchoScore(
                 continue;
             }
 
-            // ── 6b. ตัดสินว่าตรงกี่ครั้ง ──────────────────────────────────
+            // ── 6b. ตัดสินว่าตรงกี่ครั้ง (temp 0 เข้มงวด) ──────────────────
             let hitCount = 0;
             let matched: number[] = [];
             try {
-                const judgeResp = await geminiClient.models.generateContent({
-                    model: ECHO_MODEL,
-                    contents: buildJudgePrompt(prefixText, cardText, guesses),
-                    config: { temperature: 0.0, maxOutputTokens: 128 },
+                const judgeResp = await callAi({
+                    feature: "echo-score",
+                    prompt: buildJudgePrompt(prefixText, cardText, guesses),
+                    temperature: 0.0,
+                    maxTokens: 128,
+                    novelId,
                 });
-                const raw = judgeResp.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-                const parsed = parseJudgeResponse(raw);
+                const parsed = parseJudgeResponse(judgeResp.text);
                 if (parsed) {
                     hitCount = parsed.hits;
                     matched = parsed.matched;
@@ -429,6 +435,8 @@ export async function runEchoScore(
             }
 
             // ── 6c. upsert plot_findings ───────────────────────────────────
+            // เก็บ meta การ์ดลง evidence ด้วย — หน้า analysis tab จะได้โชว์ผลเก่า
+            // โดยไม่ต้อง buildSceneFormat ใหม่ทุกครั้ง (แถวเก่าที่ไม่มี meta → fallback subjectRef)
             const evidence: EchoEvidence = {
                 hitCount,
                 guesses,
@@ -437,6 +445,10 @@ export async function runEchoScore(
                 promptVersion: ECHO_PROMPT_VERSION,
                 k: ECHO_K,
                 inputHash,
+                cardId: beat.id,
+                cardTitle: beat.title,
+                beatIndex: beat.beatIndex,
+                hasIncomingLink: beat.links.some(l => l.kind === "leads_to"),
             };
 
             await db
@@ -471,7 +483,20 @@ export async function runEchoScore(
     }
 }
 
-// ─── getEchoFindings ──────────────────────────────────────────────────────
+// ─── Echo Findings loaders ───────────────────────────────────────────────
+
+/** แปลงแถว plot_findings (checkId="echo") → EchoFinding · meta ที่ไม่เคยเก็บในแถวเก่า fallback จาก subjectRef */
+function echoRowToFinding(subjectRef: string, raw: unknown): EchoFinding {
+    const ev = (raw ?? {}) as EchoEvidence;
+    return {
+        cardCode: subjectRef,
+        cardId: ev.cardId ?? subjectRef,
+        cardTitle: ev.cardTitle ?? subjectRef,
+        beatIndex: ev.beatIndex ?? 0,
+        hasIncomingLink: ev.hasIncomingLink ?? false,
+        evidence: ev,
+    };
+}
 
 /** ดึง echo findings ที่บันทึกไว้แล้วสำหรับฉากหนึ่ง */
 export async function getEchoFindings(
@@ -488,7 +513,6 @@ export async function getEchoFindings(
             .select({
                 subjectRef: plotFindings.subjectRef,
                 evidence: plotFindings.evidence,
-                verdict: plotFindings.verdict,
             })
             .from(plotFindings)
             .where(
@@ -499,20 +523,44 @@ export async function getEchoFindings(
                 ),
             );
 
-        // ต้องการ title + beatIndex จาก canvasData → buildSceneFormat
-        // แต่เราไม่ cache format ไว้ — คืนแค่ข้อมูลที่เก็บใน evidence แทน
-        const findings: EchoFinding[] = rows.map(r => ({
-            cardCode: r.subjectRef,
-            cardId: (r.evidence as any)?.cardId ?? r.subjectRef,
-            cardTitle: (r.evidence as any)?.cardTitle ?? r.subjectRef,
-            beatIndex: (r.evidence as any)?.beatIndex ?? 0,
-            hasIncomingLink: (r.evidence as any)?.hasIncomingLink ?? false,
-            evidence: r.evidence as EchoEvidence,
-        }));
-
-        return { success: true, findings };
+        return { success: true, findings: rows.map(r => echoRowToFinding(r.subjectRef, r.evidence)) };
     } catch (error) {
         console.error("getEchoFindings error:", error);
         return { success: false, error: "โหลด Echo Findings ไม่สำเร็จ" };
     }
+}
+
+/**
+ * ดึง echo findings ทุกฉากของนิยาย จัดกลุ่มตาม sceneId — ใช้บนแท็บ analysis
+ * (ผลลัพธ์อ่านอย่างเดียว ไม่ buildSceneFormat — title/beatIndex เดิมพันกับ meta ที่เก็บไว้)
+ */
+export async function getAllEchoFindings(
+    novelId: string,
+): Promise<Record<string, EchoFinding[]>> {
+    const byScene: Record<string, EchoFinding[]> = {};
+    try {
+        await requireNovelAccess(novelId);
+
+        const rows = await db
+            .select({
+                sceneId: plotFindings.sceneId,
+                subjectRef: plotFindings.subjectRef,
+                evidence: plotFindings.evidence,
+            })
+            .from(plotFindings)
+            .where(
+                and(
+                    eq(plotFindings.novelId, novelId),
+                    eq(plotFindings.checkId, "echo"),
+                ),
+            );
+
+        for (const r of rows) {
+            if (!r.sceneId) continue;
+            (byScene[r.sceneId] ??= []).push(echoRowToFinding(r.subjectRef, r.evidence));
+        }
+    } catch (error) {
+        console.error("getAllEchoFindings error:", error);
+    }
+    return byScene;
 }

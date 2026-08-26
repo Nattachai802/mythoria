@@ -27,6 +27,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:sql": "node --experimental-strip-types scripts/run-sql.ts",
+    "ai": "node --experimental-strip-types scripts/ai-control.ts",
     "seed:demo": "node --experimental-strip-types scripts/seed-demo.ts",
     "db:studio": "drizzle-kit studio"
   },

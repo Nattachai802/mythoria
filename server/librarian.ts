@@ -5,19 +5,16 @@ import { librarianMessages } from "@/db/schema";
 import { eq, asc } from "drizzle-orm";
 import { retrieveContext } from "./rag";
 import { resolveMany, isEntityType, type EntityType } from "./registry/entity-registry";
-import { isGuest, GUEST_AI_MESSAGE } from "@/lib/guest";
+import { callAi, assertAiAllowed, AiControlError } from "@/lib/ai-gateway";
 
 /**
  * บรรณารักษ์ — ถาม-ตอบเกี่ยวกับนิยายด้วย Graph RAG
  * --------------------------------------------------
  * manual / opt-in: ผู้ใช้พิมพ์คำถามเอง → retrieveContext (vector + graph)
  * → LLM ตอบจาก "บริบทที่ให้เท่านั้น" (กัน hallucination เพราะนี่คือ canon ของผู้เขียน)
+ *
+ * LLM เรียกผ่าน AI Gateway (flag/quota/fallback/log จัดการที่ gateway — Groq หลัก Typhoon สำรอง)
  */
-
-const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
-const TYPHOON_API_URL = "https://api.opentyphoon.ai/v1/chat/completions";
-const TYPHOON_API_KEY = process.env.TYPHOON_API_KEY || "";
 
 const SYSTEM_PROMPT = `คุณคือ "บรรณารักษ์" ผู้ช่วยตอบคำถามเกี่ยวกับนิยายเรื่องนี้
 กฎการตอบ:
@@ -25,49 +22,6 @@ const SYSTEM_PROMPT = `คุณคือ "บรรณารักษ์" ผ�
 - ถ้าบริบทไม่มีคำตอบ ให้บอกตรงๆ ว่า "ไม่พบข้อมูลนี้ในคลังข้อมูล (อาจต้อง Vector Sync เนื้อหาล่าสุดก่อน)"
 - ตอบเป็นภาษาไทย กระชับ ตรงคำถาม
 - อ้างชื่อ entity (ตัวละคร/สถานที่/lore ฯลฯ) ที่ใช้ตอบเมื่อเหมาะสม`;
-
-async function callLLM(
-    provider: "groq" | "typhoon",
-    question: string,
-    contextString: string,
-): Promise<string | null> {
-    const url = provider === "groq" ? GROQ_API_URL : TYPHOON_API_URL;
-    const key = provider === "groq" ? GROQ_API_KEY : TYPHOON_API_KEY;
-    const model =
-        provider === "groq"
-            ? "llama-3.3-70b-versatile" // llama-4-scout ถูกปลดระวาง คืน 404
-            : "typhoon-v2.5-30b-a3b-instruct";
-
-    if (!key) return null;
-
-    try {
-        const res = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-            body: JSON.stringify({
-                model,
-                messages: [
-                    { role: "system", content: SYSTEM_PROMPT },
-                    {
-                        role: "user",
-                        content: `=== บริบทอ้างอิง ===\n${contextString}\n\n=== คำถาม ===\n${question}`,
-                    },
-                ],
-                temperature: 0.3, // ต่ำ → ยึดบริบท ไม่ฟุ้ง
-                max_tokens: 1024,
-            }),
-        });
-        if (!res.ok) {
-            console.error(`[librarian] ${provider} API error:`, await res.text());
-            return null;
-        }
-        const data = await res.json();
-        return data.choices?.[0]?.message?.content?.trim() ?? null;
-    } catch (e) {
-        console.error(`[librarian] ${provider} fetch error:`, e);
-        return null;
-    }
-}
 
 export interface LibrarianSource {
     type: string;
@@ -107,14 +61,27 @@ export async function askLibrarian(
     novelId: string,
     question: string,
 ): Promise<AskLibrarianResult> {
-    if (await isGuest()) return { success: false, error: GUEST_AI_MESSAGE };
+    try {
+        await assertAiAllowed("librarian");
+    } catch (e) {
+        const message = e instanceof AiControlError ? e.message : "ไม่ได้รับอนุญาตให้ใช้ AI";
+        return { success: false, error: message };
+    }
+
     const q = question.trim();
     if (!q) {
         return { success: false, error: "กรุณาพิมพ์คำถาม" };
     }
 
-    // 1. Graph RAG retrieval (vector + 1-hop graph)
-    const { items, contextString } = await retrieveContext(novelId, q);
+    // 1. Graph RAG retrieval (vector + 1-hop graph) — อาจโดน gate ถ้า admin ปิด graph-rag-search
+    let retrieval: Awaited<ReturnType<typeof retrieveContext>>;
+    try {
+        retrieval = await retrieveContext(novelId, q);
+    } catch (e) {
+        const message = e instanceof AiControlError ? e.message : "ดึงบริบทจากคลังไม่สำเร็จ";
+        return { success: false, error: message };
+    }
+    const { items, contextString } = retrieval;
 
     if (!contextString) {
         const answer =
@@ -123,9 +90,23 @@ export async function askLibrarian(
         return { success: true, answer, sources: [] };
     }
 
-    // 2. ถาม LLM (Groq หลัก, Typhoon สำรอง)
-    let answer = await callLLM("groq", q, contextString);
-    if (!answer) answer = await callLLM("typhoon", q, contextString);
+    // 2. ถาม LLM ผ่าน gateway (Groq หลัก, Typhoon สำรอง — fallback เดินให้เอง)
+    let answer: string | null = null;
+    try {
+        const res = await callAi({
+            feature: "librarian",
+            system: SYSTEM_PROMPT,
+            prompt: `=== บริบทอ้างอิง ===\n${contextString}\n\n=== คำถาม ===\n${q}`,
+            novelId,
+        });
+        answer = res.text;
+    } catch (e) {
+        if (e instanceof AiControlError && e.reason !== "all-failed") {
+            return { success: false, error: e.message };
+        }
+        // all-failed → เดินเข้าเงื่อนไขด้านล่าง (คำตอบ friendly เดิม)
+    }
+
     if (!answer) {
         // LLM ล้มทั้งคู่ → ไม่บันทึก เพื่อให้ผู้ใช้ retry ได้สะอาด
         return { success: false, error: "บรรณารักษ์ไม่ว่างชั่วคราว ลองใหม่อีกครั้ง" };
@@ -166,7 +147,13 @@ export async function retrieveLibrarianSources(
     question: string,
 ): Promise<{ sources: LibrarianSource[] }> {
     const q = question.trim();
-    if (!q || (await isGuest())) return { sources: [] };
+    if (!q) return { sources: [] };
+    try {
+        // retrieval ยิง embedding query ที่ /search ด้วย — ผ่าน gate เดียวกับ vector search
+        await assertAiAllowed("graph-rag-search");
+    } catch {
+        return { sources: [] };
+    }
     try {
         const { items } = await retrieveContext(novelId, q);
         return { sources: await buildSources(items) };

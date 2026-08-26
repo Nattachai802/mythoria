@@ -10,7 +10,7 @@ import {
     search,
     type EntityType,
 } from "./registry/entity-registry";
-import { isGuest, GUEST_AI_MESSAGE } from "@/lib/guest";
+import { callAi, assertAiAllowed, AiControlError, type OpenAiMessage } from "@/lib/ai-gateway";
 
 /**
  * ผู้ช่วยจัดการข้อมูล (Command Executor)
@@ -20,12 +20,8 @@ import { isGuest, GUEST_AI_MESSAGE } from "@/lib/guest";
  * tool ไม่เขียน DB เอง: การเขียนเกิดใน applyProposal หลังคนยืนยันเท่านั้น
  *
  * เพิ่ม entity type ใหม่ = แก้ CRUD_FORMAT ใน entity-registry.ts ที่เดียว (tool/validation/summary ตามไปเอง)
+ * LLM เรียกผ่าน AI Gateway — Groq เท่านั้น (รองรับ function-calling, ยืนยันแล้ว; llama-4-scout ถูกปลดระวาง)
  */
-
-const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
-const GROQ_MODEL = "llama-3.3-70b-versatile"; // Groq เท่านั้น (รองรับ function-calling — ยืนยันแล้วว่าตัวนี้เรียก tool ได้)
-// llama-4-scout ตัวเดิมถูกปลดระวาง คืน 404 model_not_found
 
 // แคตตาล็อกฟิลด์ต่อ type (ฉีดเข้า system prompt ให้ LLM รู้ว่า type ไหนมีฟิลด์อะไร)
 const FIELD_CATALOG = CRUD_TYPES.map((t) => {
@@ -198,34 +194,38 @@ export async function runAssistant(
     message: string,
     history: ChatTurn[] = [],
 ): Promise<AssistantResult> {
-    if (await isGuest()) return { kind: "error", error: GUEST_AI_MESSAGE };
+    try {
+        await assertAiAllowed("data-assistant");
+    } catch (e) {
+        return { kind: "error", error: e instanceof AiControlError ? e.message : "ใช้ AI ไม่ได้" };
+    }
+
     const msg = message.trim();
     if (!msg) return { kind: "error", error: "กรุณาพิมพ์คำสั่ง" };
-    if (!GROQ_API_KEY) return { kind: "error", error: "ยังไม่ได้ตั้งค่า GROQ_API_KEY" };
+
+    let choice: OpenAiMessage | undefined;
+    try {
+        const res = await callAi({
+            feature: "data-assistant",
+            messages: [
+                { role: "system", content: SYSTEM_PROMPT },
+                ...history.map((t) => ({ role: t.role, content: t.content })),
+                { role: "user", content: msg },
+            ],
+            maxTokens: 1024,
+            extraBody: { tools: TOOLS, tool_choice: "auto" },
+            novelId,
+        });
+        choice = res.rawMessage;
+    } catch (e) {
+        if (e instanceof AiControlError && e.reason !== "all-failed") {
+            return { kind: "error", error: e.message };
+        }
+        console.error("[assistant] gateway error:", e);
+        return { kind: "error", error: "ผู้ช่วยไม่ว่างชั่วคราว ลองใหม่อีกครั้ง" };
+    }
 
     try {
-        const res = await fetch(GROQ_API_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${GROQ_API_KEY}` },
-            body: JSON.stringify({
-                model: GROQ_MODEL,
-                messages: [
-                    { role: "system", content: SYSTEM_PROMPT },
-                    ...history.map((t) => ({ role: t.role, content: t.content })),
-                    { role: "user", content: msg },
-                ],
-                tools: TOOLS,
-                tool_choice: "auto",
-                temperature: 0.2,
-                max_tokens: 1024,
-            }),
-        });
-        if (!res.ok) {
-            console.error("[assistant] groq error:", await res.text());
-            return { kind: "error", error: "ผู้ช่วยไม่ว่างชั่วคราว ลองใหม่อีกครั้ง" };
-        }
-        const data = await res.json();
-        const choice = data.choices?.[0]?.message;
         const call = choice?.tool_calls?.[0];
         const name = call?.function?.name;
 

@@ -4,6 +4,7 @@ import { db } from "@/db/drizzle";
 import { characterAnalysisQueue, chapters } from "@/db/schema";
 import { eq, and, inArray, isNull } from "drizzle-orm";
 import { pyFetch } from "@/lib/python-service";
+import { assertAiAllowed, AiControlError } from "@/lib/ai-gateway";
 
 
 type Props = {
@@ -14,6 +15,17 @@ export async function POST(request: NextRequest, { params }: Props) {
     try {
         const { novelId } = await params;
         const denied = await guardNovel(novelId); if (denied) return denied;
+
+        // คิวนี้จะยิง Typhoon ฝั่ง Python เป็นจำนวนมาก — ผ่าน gate กลางก่อน (flag/guest/quota)
+        try {
+            await assertAiAllowed("character-analysis");
+        } catch (e) {
+            return NextResponse.json(
+                { success: false, error: e instanceof AiControlError ? e.message : "ใช้ AI ไม่ได้" },
+                { status: e instanceof AiControlError && e.reason === "quota" ? 429 : 403 }
+            );
+        }
+
         const body = await request.json().catch(() => ({}));
         const { characterId, analysisType = "all", reanalyzeAll = false } = body;
 

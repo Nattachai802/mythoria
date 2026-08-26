@@ -3,29 +3,7 @@
 import { db } from "@/db/drizzle";
 import { characters, locations } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { GoogleGenAI } from "@google/genai";
-import OpenAI from "openai";
-import { isGuest, GUEST_AI_MESSAGE } from "@/lib/guest";
-
-// API Configuration
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = "gemini-2.5-flash";
-
-const TYPHOON_API_KEY = process.env.TYPHOON_API_KEY;
-const TYPHOON_MODEL = "typhoon-v2.5-30b-a3b-instruct";
-
-// Initialize Gemini client (lazily — key must be set via env)
-const geminiClient = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
-
-// Initialize Typhoon client (using OpenAI SDK)
-const typhoonClient = TYPHOON_API_KEY ? new OpenAI({
-    apiKey: TYPHOON_API_KEY,
-    baseURL: "https://api.opentyphoon.ai/v1",
-}) : null;
-
-// Rate limit tracking
-let lastGeminiRateLimitRetry = 0;
-let lastTyphoonRateLimitRetry = 0;
+import { callAiProvider, assertAiAllowed, AiControlError } from "@/lib/ai-gateway";
 
 // ============================================
 // Types
@@ -151,99 +129,31 @@ ${content}
 // AI API Calls
 // ============================================
 
+/** เหตุผลล่าสุดที่ gateway บล็อก (disabled/quota/guest) — ใช้ตอบเมื่อโหวตไม่ได้เลย */
+let lastGateError: string | null = null;
+
 async function callGemini(prompt: string): Promise<AIExtractionResult | null> {
     try {
-        if (!geminiClient) {
-            console.error("[Gemini] GEMINI_API_KEY is not set in environment variables.");
-            return null;
-        }
-
-        // Check if we're in rate limit cooldown
-        const now = Date.now();
-        if (lastGeminiRateLimitRetry > now) {
-            const waitTime = Math.ceil((lastGeminiRateLimitRetry - now) / 1000);
-            console.log(`[Gemini] Rate limited, waiting ${waitTime}s...`);
-            return null;
-        }
-
-        const response = await geminiClient.models.generateContent({
-            model: GEMINI_MODEL,
-            contents: prompt,
-            config: {
-                temperature: 0.3,
-                maxOutputTokens: 8192,
-            },
-        });
-
-        const content = response.text;
-
-        if (!content) {
-            console.error("[Gemini] No content in response");
-            return null;
-        }
-
-        return parseAIResponse(content, "Gemini");
+        // ผ่าน AI Gateway — provider ตัวเดียวจาก chain (voting ต้องได้ทั้งคู่ ไม่ใช้ fallback)
+        const res = await callAiProvider("character-state-extractor", "gemini", { prompt });
+        return parseAIResponse(res.text, "Gemini");
     } catch (error: any) {
         console.error("[Gemini] Error:", error?.message || error);
-
-        // Handle rate limit errors
-        if (error?.status === 429 || error?.message?.includes("429") || error?.message?.includes("quota")) {
-            console.log("[Gemini] Rate limited, applying 60s backoff");
-            lastGeminiRateLimitRetry = Date.now() + 60000;
-        }
-
+        if (error instanceof AiControlError) lastGateError = error.message;
         return null;
     }
 }
 
 async function callTyphoon(prompt: string): Promise<AIExtractionResult | null> {
     try {
-        if (!typhoonClient) {
-            console.error("[Typhoon] TYPHOON_API_KEY is not set in environment variables.");
-            return null;
-        }
-
-        // Check if we're in rate limit cooldown
-        const now = Date.now();
-        if (lastTyphoonRateLimitRetry > now) {
-            const waitTime = Math.ceil((lastTyphoonRateLimitRetry - now) / 1000);
-            console.log(`[Typhoon] Rate limited, waiting ${waitTime}s...`);
-            return null;
-        }
-
-        const response = await typhoonClient.chat.completions.create({
-            model: TYPHOON_MODEL,
-            messages: [
-                {
-                    role: "system",
-                    content: "You are a helpful assistant that extracts character states from novel content. Always respond in valid JSON format."
-                },
-                {
-                    role: "user",
-                    content: prompt
-                }
-            ],
-            max_tokens: 8192,
-            temperature: 0.3,
+        const res = await callAiProvider("character-state-extractor", "typhoon", {
+            system: "You are a helpful assistant that extracts character states from novel content. Always respond in valid JSON format.",
+            prompt,
         });
-
-        const content = response.choices?.[0]?.message?.content;
-
-        if (!content) {
-            console.error("[Typhoon] No content in response");
-            return null;
-        }
-
-        return parseAIResponse(content, "Typhoon");
+        return parseAIResponse(res.text, "Typhoon");
     } catch (error: any) {
         console.error("[Typhoon] Error:", error?.message || error);
-
-        // Handle rate limit errors
-        if (error?.status === 429 || error?.message?.includes("429")) {
-            console.log("[Typhoon] Rate limited, applying 60s backoff");
-            lastTyphoonRateLimitRetry = Date.now() + 60000;
-        }
-
+        if (error instanceof AiControlError) lastGateError = error.message;
         return null;
     }
 }
@@ -393,7 +303,12 @@ export async function extractCharacterStatesWithVoting(
     error?: string;
 }> {
     try {
-        if (await isGuest()) return { success: false, states: [], confidence: 0, error: GUEST_AI_MESSAGE };
+        try {
+            await assertAiAllowed("character-state-extractor");
+        } catch (e) {
+            const message = e instanceof AiControlError ? e.message : "ใช้ AI ไม่ได้";
+            return { success: false, states: [], confidence: 0, error: message };
+        }
 
         // 1. Get all characters for this novel
         const novelCharacters = await db.query.characters.findMany({
@@ -439,7 +354,7 @@ export async function extractCharacterStatesWithVoting(
                 success: false,
                 states: [],
                 confidence: 0,
-                error: "Both AI services failed to respond",
+                error: lastGateError ?? "Both AI services failed to respond",
             };
         }
 
