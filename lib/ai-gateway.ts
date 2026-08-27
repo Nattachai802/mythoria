@@ -14,7 +14,7 @@ import "server-only";
  */
 
 import { db } from "@/db/drizzle";
-import { aiFeatures, aiUsageLog } from "@/db/schema";
+import { aiFeatures, aiUsageLog, aiActiveRuns } from "@/db/schema";
 import { eq, gte, and, ne, sql } from "drizzle-orm";
 import { GoogleGenAI } from "@google/genai";
 import { isGuest, GUEST_AI_MESSAGE } from "@/lib/guest";
@@ -101,6 +101,34 @@ async function resolveUserId(explicit?: string): Promise<string | null> {
         return await requireUser();
     } catch {
         return null; // background context ไม่มี session — caller ควรส่ง userId มาเอง
+    }
+}
+
+// ============================================
+// Live activity — heartbeat "กำลังทำงานอยู่ไหม" แยกจาก ai_usage_log (นั่นคือ log ประวัติ)
+// แถวเดียวต่อ (userId, feature) ถูก upsert ทับซ้ำเรื่อยๆ — "active" ตัดสินตอนอ่านด้วย
+// lastSeenAt สดพอไหม ไม่ต้องมี job ลบทิ้ง (แอปนี้ไม่มี cron infra)
+// ============================================
+
+export const ACTIVE_STALE_MS = 8_000; // server/ai-control.ts อ่านค่าเดียวกันตอนกรอง "active"
+
+export async function markFeatureActive(featureKey: string, userId: string | null, novelId?: string) {
+    if (!userId) return; // background context ไม่มี session — ไม่มีอะไรให้ระบุเจ้าของ
+    try {
+        await db.insert(aiActiveRuns)
+            .values({ userId, feature: featureKey, novelId: novelId ?? null })
+            .onConflictDoUpdate({
+                target: [aiActiveRuns.userId, aiActiveRuns.feature],
+                set: {
+                    lastSeenAt: sql`now()`,
+                    novelId: novelId ?? null,
+                    // รอบเก่า stale ไปแล้ว (เกิน ACTIVE_STALE_MS) → ถือเป็นรอบใหม่ รีเซ็ต startedAt
+                    startedAt: sql`case when ${aiActiveRuns.lastSeenAt} < now() - interval '${sql.raw(String(ACTIVE_STALE_MS))} milliseconds'
+                                    then now() else ${aiActiveRuns.startedAt} end`,
+                },
+            });
+    } catch (e) {
+        console.error("[ai-gateway] markFeatureActive failed:", e instanceof Error ? e.message : e);
     }
 }
 
@@ -455,6 +483,7 @@ export async function callAi(options: AiCallOptions): Promise<AiCallResult> {
     };
 
     await ensureAiAllowed(featureKey, ctx);
+    await markFeatureActive(featureKey, await resolveUserId(ctx.userId), ctx.novelId);
 
     if (def.chain.length === 0) {
         throw new AiControlError("all-failed", `ฟีเจอร์ "${def.label}" ไม่มี LLM provider (ฝั่ง Python)`);
@@ -504,6 +533,7 @@ export async function callAiProvider(
     };
 
     await ensureAiAllowed(featureKey, ctx);
+    await markFeatureActive(featureKey, await resolveUserId(ctx.userId), ctx.novelId);
 
     if (isCoolingDown(provider)) {
         throw new AiControlError("all-failed", `${provider} cooling down (rate limited earlier)`);

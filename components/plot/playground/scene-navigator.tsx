@@ -26,6 +26,16 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { CreateSceneDialog } from "@/components/project/timeline/create-scene-dialog"
 import { deleteTimelineEvent } from "@/server/timeline"
 import { toast } from "sonner"
@@ -48,6 +58,7 @@ export function SceneNavigator({
 }: SceneNavigatorProps) {
     const router = useRouter()
     const [open, setOpen] = React.useState(false)
+    const [deleteOpen, setDeleteOpen] = React.useState(false)
 
     // Group events by chapter
     const eventsByChapter = React.useMemo(() => {
@@ -80,7 +91,7 @@ export function SceneNavigator({
     // ลบฉาก — snapshot field หลักเก็บเข้าสแตกกู้คืนกลาง (รอด navigation เพราะ sessionStorage ไม่ใช่ React state)
     // undo ทันทีจาก toast, หรือทีหลังจากเมนู "กู้คืนล่าสุด" ที่หน้า /plot (ปม/canvas ของฉากเดิมกู้ไม่คืน — จำกัดเฉพาะ field หลัก)
     const handleDelete = async () => {
-        if (!confirm("ยืนยันลบฉากนี้?")) return
+        setDeleteOpen(false)
         const snapshot = currentEvent
         const res = await deleteTimelineEvent(currentEvent.id)
         if (!res.success) { toast.error("ลบฉากไม่สำเร็จ"); return }
@@ -129,7 +140,7 @@ export function SceneNavigator({
                         variant="outline"
                         role="combobox"
                         aria-expanded={open}
-                        className="w-[250px] justify-between truncate"
+                        className="w-[min(250px,calc(100vw-2rem))] justify-between truncate"
                     >
                         <span className="truncate">
                             {currentEvent.title}
@@ -137,17 +148,17 @@ export function SceneNavigator({
                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                     </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[300px] p-0" align="start">
+                <PopoverContent className="w-[min(300px,calc(100vw-2rem))] p-0" align="start">
                     <Command>
-                        <CommandInput placeholder="Search scene..." />
+                        <CommandInput placeholder="ค้นหาฉาก..." />
                         <CommandList>
-                            <CommandEmpty>No scene found.</CommandEmpty>
+                            <CommandEmpty>ไม่พบฉาก</CommandEmpty>
                             {eventsByChapter.chapterOrder.map(chapterId => {
                                 const chapterEvents = eventsByChapter.grouped[chapterId]
                                 if (chapterEvents.length === 0) return null
                                 const chapter = chapters.find(c => c.id === chapterId)
                                 return (
-                                    <CommandGroup key={chapterId} heading={chapter?.title || "Unknown Chapter"}>
+                                    <CommandGroup key={chapterId} heading={chapter?.title || "ไม่ระบุตอน"}>
                                         {chapterEvents.map(event => (
                                             <CommandItem
                                                 key={event.id}
@@ -170,7 +181,7 @@ export function SceneNavigator({
                                 )
                             })}
                             {eventsByChapter.grouped["unassigned"].length > 0 && (
-                                <CommandGroup heading="Unassigned">
+                                <CommandGroup heading="ยังไม่จัดตอน">
                                     {eventsByChapter.grouped["unassigned"].map(event => (
                                         <CommandItem
                                             key={event.id}
@@ -202,7 +213,7 @@ export function SceneNavigator({
                 trigger={
                     <Button variant="default" size="sm">
                         <Plus className="w-4 h-4 mr-2" />
-                        New Scene
+                        ฉากใหม่
                     </Button>
                 }
             />
@@ -214,12 +225,36 @@ export function SceneNavigator({
                     </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={handleDelete} className="text-destructive focus:text-destructive">
+                    <DropdownMenuItem
+                        onSelect={(e) => { e.preventDefault(); setDeleteOpen(true) }}
+                        className="text-destructive focus:text-destructive"
+                    >
                         <Trash2 className="w-4 h-4 mr-2" />
-                        Delete Scene
+                        ลบฉาก
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
+
+            <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>ลบฉากนี้?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            “{currentEvent.title}” จะถูกลบ — กู้คืนได้จาก toast ทันทีหลังลบ
+                            หรือจากเมนู “กู้คืนล่าสุด” ที่หน้ากระดานพล็อต (ปม/แคนวาสของฉากเดิมกู้คืนไม่ได้)
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={(e) => { e.preventDefault(); handleDelete() }}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                            ลบฉาก
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     )
 }

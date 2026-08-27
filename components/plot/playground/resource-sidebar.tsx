@@ -57,10 +57,10 @@ export function ResourceSidebar({
 
   // Role filters for characters
   const roles = [
-    { label: 'Protagonist', value: 'protagonist', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200' },
-    { label: 'Antagonist', value: 'antagonist', color: 'bg-red-100 text-red-700 hover:bg-red-200' },
-    { label: 'Supporting', value: 'supporting', color: 'bg-green-100 text-green-700 hover:bg-green-200' },
-    { label: 'Minor', value: 'minor', color: 'bg-slate-100 text-slate-700 hover:bg-slate-200' },
+    { label: 'ตัวเอก', value: 'protagonist', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200' },
+    { label: 'ตัวร้าย', value: 'antagonist', color: 'bg-red-100 text-red-700 hover:bg-red-200' },
+    { label: 'ตัวสมทบ', value: 'supporting', color: 'bg-green-100 text-green-700 hover:bg-green-200' },
+    { label: 'ตัวประกอบ', value: 'minor', color: 'bg-slate-100 text-slate-700 hover:bg-slate-200' },
   ];
 
   return (
@@ -70,10 +70,10 @@ export function ResourceSidebar({
           {/* Tabs */}
           <div className="flex items-center gap-1">
           <TabsList className="flex-1 grid grid-cols-4 h-9">
-            <TabsTrigger value="characters" title="Characters"><User className="w-4 h-4" /></TabsTrigger>
-            <TabsTrigger value="factions" title="Factions"><Shield className="w-4 h-4" /></TabsTrigger>
-            <TabsTrigger value="locations" title="Locations"><MapPin className="w-4 h-4" /></TabsTrigger>
-            <TabsTrigger value="ideas" title="Ideas"><Lightbulb className="w-4 h-4" /></TabsTrigger>
+            <TabsTrigger value="characters" title="ตัวละคร"><User className="w-4 h-4" /></TabsTrigger>
+            <TabsTrigger value="factions" title="ฝ่าย"><Shield className="w-4 h-4" /></TabsTrigger>
+            <TabsTrigger value="locations" title="สถานที่"><MapPin className="w-4 h-4" /></TabsTrigger>
+            <TabsTrigger value="ideas" title="ไอเดีย"><Lightbulb className="w-4 h-4" /></TabsTrigger>
           </TabsList>
           {onCollapse && (
             <Button variant="ghost" size="icon" className="h-9 w-8 shrink-0" title="ย่อแถบ" onClick={onCollapse}>
@@ -86,7 +86,7 @@ export function ResourceSidebar({
           <div className="relative">
             <Search className="absolute left-2 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
             <Input
-              placeholder="Search..."
+              placeholder="ค้นหา..."
               className="h-8 pl-8 text-xs bg-background"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -111,7 +111,7 @@ export function ResourceSidebar({
               className={`h-6 text-[10px] px-2.5 rounded-full border shrink-0 ${!activeFilter ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground'}`}
               onClick={() => setActiveFilter(null)}
             >
-              All
+              ทั้งหมด
             </Button>
             {roles.map(role => (
               <button
@@ -132,7 +132,7 @@ export function ResourceSidebar({
           <ScrollArea className="flex-1 overflow-hidden px-2 pb-2">
             <div className="space-y-1.5">
               {filteredCharacters.length === 0 ? (
-                <div className="text-center py-4 text-xs text-muted-foreground">No characters found</div>
+                <div className="text-center py-4 text-xs text-muted-foreground">ไม่พบตัวละคร</div>
               ) : (
                 filteredCharacters.map(char => (
                   <DraggableResource
@@ -152,7 +152,7 @@ export function ResourceSidebar({
           <ScrollArea className="h-full px-2 py-2">
             <div className="space-y-1.5">
               {filteredFactions.length === 0 ? (
-                <div className="text-center py-4 text-xs text-muted-foreground">No factions found</div>
+                <div className="text-center py-4 text-xs text-muted-foreground">ไม่พบฝ่าย</div>
               ) : (
                 filteredFactions.map(faction => (
                   <DraggableResource
@@ -218,70 +218,40 @@ function DraggableResource({ id, type, title, data }: any) {
     },
   });
 
-  // Get colors based on type and role
+  // สีตามชนิด/บทบาท — จุดสีเล็กแทนแถบขอบซ้าย (แถบขอบหนาข้างเดียวเป็นแพทเทิร์นที่ AI UI ใช้จนดูจำเจ)
   const getColors = () => {
     if (type === 'character') {
-      // Color based on character role
       switch (data?.role?.toLowerCase()) {
         case 'protagonist':
-          return {
-            border: 'border-l-amber-500 hover:border-l-amber-600',
-            icon: 'text-amber-500',
-            bg: 'bg-amber-50/50'
-          };
+          return { dot: 'bg-amber-500', icon: 'text-amber-500', bg: 'bg-amber-500/5' };
         case 'antagonist':
-          return {
-            border: 'border-l-red-500 hover:border-l-red-600',
-            icon: 'text-red-500',
-            bg: 'bg-red-50/50'
-          };
+          return { dot: 'bg-red-500', icon: 'text-red-500', bg: 'bg-red-500/5' };
         case 'supporting':
-          return {
-            border: 'border-l-green-300 hover:border-l-green-400',
-            icon: 'text-green-300',
-            bg: 'bg-green-50/50'
-          };
+          return { dot: 'bg-green-400', icon: 'text-green-400', bg: 'bg-green-500/5' };
         case 'minor':
         default:
-          return {
-            border: 'border-l-slate-400 hover:border-l-slate-500',
-            icon: 'text-slate-400',
-            bg: 'bg-slate-50/50'
-          };
+          return { dot: 'bg-slate-400', icon: 'text-slate-400', bg: 'bg-slate-500/5' };
       }
     }
     if (type === 'location') {
-      return {
-        border: 'border-l-green-500 hover:border-l-green-600',
-        icon: 'text-green-500',
-        bg: ''
-      };
+      return { dot: 'bg-green-500', icon: 'text-green-500', bg: '' };
     }
     if (type === 'faction') {
-      return {
-        border: 'border-l-emerald-500 hover:border-l-emerald-600',
-        icon: 'text-emerald-500',
-        bg: 'bg-emerald-50/20'
-      };
+      return { dot: 'bg-emerald-500', icon: 'text-emerald-500', bg: 'bg-emerald-500/5' };
     }
     // idea
-    return {
-      border: 'border-l-yellow-500 hover:border-l-yellow-600',
-      icon: 'text-yellow-500',
-      bg: ''
-    };
+    return { dot: 'bg-yellow-500', icon: 'text-yellow-500', bg: '' };
   };
 
   const colors = getColors();
 
-  // Role label for characters
+  // ป้ายบทบาทตัวละคร (ข้อความ ไม่ใช่สีเดียว — กันอ่านความหมายผ่านสีอย่างเดียว)
   const getRoleLabel = () => {
     if (type !== 'character' || !data?.role) return null;
-    const role = data.role.toLowerCase();
-    switch (role) {
-      case 'protagonist': return '⭐';
-      case 'antagonist': return '👿';
-      case 'supporting': return '👤';
+    switch (data.role.toLowerCase()) {
+      case 'protagonist': return 'ตัวเอก';
+      case 'antagonist': return 'ตัวร้าย';
+      case 'supporting': return 'ตัวสมทบ';
       default: return null;
     }
   };
@@ -294,12 +264,12 @@ function DraggableResource({ id, type, title, data }: any) {
       {...listeners}
       {...attributes}
       className={`
-        group flex items-center gap-2 p-2 rounded-md border border-l-2 bg-card cursor-grab active:cursor-grabbing hover:shadow-sm hover:translate-x-0.5 transition-all
-        ${colors.border}
+        group flex items-center gap-2 p-2 rounded-md border border-border/60 bg-card cursor-grab active:cursor-grabbing hover:shadow-sm hover:translate-x-0.5 transition-all
         ${colors.bg}
         ${isDragging ? "opacity-50 ring-2 ring-primary" : ""}
       `}
     >
+      <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${colors.dot}`} aria-hidden="true" />
       <div className={`shrink-0 ${colors.icon}`}>
         {type === "character" && <User className="w-3.5 h-3.5" />}
         {type === "faction" && <Shield className="w-3.5 h-3.5" />}
@@ -308,7 +278,7 @@ function DraggableResource({ id, type, title, data }: any) {
       </div>
       <span className="truncate text-xs font-medium text-foreground/90 flex-1">{title}</span>
       {roleLabel && (
-        <span className="text-xs shrink-0" title={data.role}>{roleLabel}</span>
+        <span className="text-[10px] text-muted-foreground shrink-0">{roleLabel}</span>
       )}
     </div>
   );

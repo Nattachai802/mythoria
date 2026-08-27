@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { PYTHON_SERVICE_URL } from "@/lib/python-service";
-import { resolvePythonFeature, assertAiAllowed, AiControlError } from "@/lib/ai-gateway";
+import { resolvePythonFeature, assertAiAllowed, markFeatureActive, AiControlError } from "@/lib/ai-gateway";
 
 // Same-origin proxy: เบราว์เซอร์ (fetch + EventSource) เรียกผ่าน /api/py/... แทนที่จะยิง Python ตรง
 // ที่นี่คือจุดเดียวที่ (1) เช็ค session ผู้ใช้ (2) แนบ internal key ให้ Python
@@ -29,6 +29,8 @@ async function proxy(req: Request, path: string[]): Promise<Response> {
             const message = e instanceof AiControlError ? e.message : "ไม่ได้รับอนุญาตให้ใช้ AI";
             return Response.json({ detail: message }, { status: quota ? 429 : 403 });
         }
+        // best-effort — เห็นแค่ช่วงเรียก request เข้า ไม่ครอบคลุมทั้ง stream (endpoint ที่เป็น SSE)
+        await markFeatureActive(feature, session.user.id);
     }
 
     const search = new URL(req.url).search;

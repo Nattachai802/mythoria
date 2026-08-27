@@ -1,11 +1,11 @@
 "use server";
 
 import { db } from "@/db/drizzle";
-import { aiFeatures, aiUsageLog } from "@/db/schema";
+import { aiFeatures, aiUsageLog, aiActiveRuns } from "@/db/schema";
 import { desc, gte, eq, and, ne, sql } from "drizzle-orm";
 import { isGuest } from "@/lib/guest";
 import { requireUser } from "@/lib/authz";
-import { AI_FEATURES } from "@/lib/ai-gateway";
+import { AI_FEATURES, ACTIVE_STALE_MS } from "@/lib/ai-gateway";
 
 /**
  * AI Control Board — ตัวโหลดข้อมูลหน้า /dashboard/ai-control (read-only)
@@ -37,6 +37,8 @@ export interface AiFeatureView {
     isOverridden: boolean;
     steps: AiModelStepView[]; // chain เต็มสำหรับแผนผังโมเดล
     usedToday: number;
+    /** ISO timestamp ถ้ากำลังทำงานอยู่ตอนนี้ (heartbeat สดภายใน ACTIVE_STALE_MS), null = ไม่ได้ทำงาน */
+    activeSince: string | null;
 }
 
 export interface AiOverviewData {
@@ -77,7 +79,9 @@ export async function getAiOverview(): Promise<AiOverviewData> {
     const mine = eq(aiUsageLog.userId, userId);
 
     try {
-        const [overrides, todayRows, recent] = await Promise.all([
+        const staleCutoff = new Date(Date.now() - ACTIVE_STALE_MS);
+
+        const [overrides, todayRows, recent, active] = await Promise.all([
             db.select().from(aiFeatures),
             db
                 .select({
@@ -104,6 +108,10 @@ export async function getAiOverview(): Promise<AiOverviewData> {
                 .where(mine)
                 .orderBy(desc(aiUsageLog.createdAt))
                 .limit(40),
+            db
+                .select({ feature: aiActiveRuns.feature, startedAt: aiActiveRuns.startedAt })
+                .from(aiActiveRuns)
+                .where(and(eq(aiActiveRuns.userId, userId), gte(aiActiveRuns.lastSeenAt, staleCutoff))),
         ]);
 
         const [totals] = await db
@@ -117,6 +125,7 @@ export async function getAiOverview(): Promise<AiOverviewData> {
 
         const overrideMap = new Map(overrides.map((o) => [o.key, o]));
         const usedMap = new Map(todayRows.map((r) => [r.feature, r.runs]));
+        const activeMap = new Map(active.map((a) => [a.feature, a.startedAt.toISOString()]));
 
         const features: AiFeatureView[] = Object.values(AI_FEATURES).map((def) => {
             const o = overrideMap.get(def.key);
@@ -141,6 +150,7 @@ export async function getAiOverview(): Promise<AiOverviewData> {
                 isOverridden: !!o,
                 steps,
                 usedToday: usedMap.get(def.key) ?? 0,
+                activeSince: activeMap.get(def.key) ?? null,
             };
         });
 
@@ -157,5 +167,30 @@ export async function getAiOverview(): Promise<AiOverviewData> {
     } catch (e) {
         console.error("[ai-control] getAiOverview:", e);
         return { isGuest: false, features: [], totalsToday: EMPTY_TOTALS, recentRuns: [] };
+    }
+}
+
+/**
+ * ให้ตัว poll ฝั่ง client (ทุก ~4 วิ) เรียกเบาๆ — ไม่ต้องรื้อ query ก้อนใหญ่ของ getAiOverview ทั้งชุด
+ * คืน { [featureKey]: startedAtISO } เฉพาะฟีเจอร์ที่ยังไม่ stale ของผู้ใช้คนนี้
+ */
+export async function getActiveFeatureKeys(): Promise<Record<string, string>> {
+    if (await isGuest()) return {};
+    let userId: string;
+    try {
+        userId = await requireUser();
+    } catch {
+        return {};
+    }
+    try {
+        const staleCutoff = new Date(Date.now() - ACTIVE_STALE_MS);
+        const active = await db
+            .select({ feature: aiActiveRuns.feature, startedAt: aiActiveRuns.startedAt })
+            .from(aiActiveRuns)
+            .where(and(eq(aiActiveRuns.userId, userId), gte(aiActiveRuns.lastSeenAt, staleCutoff)));
+        return Object.fromEntries(active.map((a) => [a.feature, a.startedAt.toISOString()]));
+    } catch (e) {
+        console.error("[ai-control] getActiveFeatureKeys:", e);
+        return {};
     }
 }

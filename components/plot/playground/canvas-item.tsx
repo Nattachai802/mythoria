@@ -30,6 +30,7 @@ import { SceneParticipantsPanel } from "./scene-participants-panel";
 // For items already on the canvas (moveable)
 export function DraggableCanvasItem({
   item,
+  tonePresets,
   onRemove,
   onRemoveChild,
   onLinkStart,
@@ -63,8 +64,10 @@ export function DraggableCanvasItem({
   onMeasureRef,
   isConnectSource,
   isConnectTarget,
+  dragDisabled,
 }: {
   item: any;
+  tonePresets?: { id: string; label: string; color: string }[];
   onRemove: () => void;
   onSetColor?: (color: string | null) => void;
   onSetKeyMoment?: (label: string | null) => void;
@@ -98,11 +101,12 @@ export function DraggableCanvasItem({
   onDetailSaved?: (detail: SceneElementDetails) => void;
   isConnectSource?: boolean;
   isConnectTarget?: boolean;
+  dragDisabled?: boolean; // mobile list view — no spatial drag/connect there
 }) {
   const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
     id: item.id,
     data: { ...item, from: 'canvas' },
-    disabled: !!isLinkingSource // Disable dragging if this is the source of a link
+    disabled: !!isLinkingSource || !!dragDisabled
   });
 
   // Connect handle — ลากเพื่อเชื่อมการ์ด (แยกจาก drag ย้ายการ์ด)
@@ -151,19 +155,21 @@ export function DraggableCanvasItem({
         }
       }}
     >
-      {/* Connect handle — ลากออกไปปล่อยที่การ์ดอื่นเพื่อเชื่อม */}
-      <button
-        ref={setConnectRef}
-        {...connectAttributes}
-        {...connectListeners}
-        onPointerDown={(e) => { e.stopPropagation(); (connectListeners as any)?.onPointerDown?.(e); }}
-        onClick={(e) => { e.stopPropagation(); e.preventDefault(); }}
-        title="ลากเพื่อเชื่อมการ์ด"
-        aria-label="ลากเพื่อเชื่อมการ์ด"
-        className="absolute -right-2.5 top-1/2 -translate-y-1/2 z-40 h-6 w-6 rounded-full bg-[var(--forge-amber)] text-black shadow-md ring-2 ring-background flex items-center justify-center cursor-crosshair opacity-0 group-hover/connect:opacity-100 transition-opacity hover:scale-110"
-      >
-        <LinkIcon className="w-3 h-3" />
-      </button>
+      {/* Connect handle — ลากออกไปปล่อยที่การ์ดอื่นเพื่อเชื่อม (ไม่มีบนมือถือ ไม่มี drag) */}
+      {!dragDisabled && (
+        <button
+          ref={setConnectRef}
+          {...connectAttributes}
+          {...connectListeners}
+          onPointerDown={(e) => { e.stopPropagation(); (connectListeners as any)?.onPointerDown?.(e); }}
+          onClick={(e) => { e.stopPropagation(); e.preventDefault(); }}
+          title="ลากเพื่อเชื่อมการ์ด"
+          aria-label="ลากเพื่อเชื่อมการ์ด"
+          className="absolute -right-2.5 top-1/2 -translate-y-1/2 z-40 h-6 w-6 rounded-full bg-[var(--forge-amber)] text-black shadow-md ring-2 ring-background flex items-center justify-center cursor-crosshair opacity-0 group-hover/connect:opacity-100 transition-opacity hover:scale-110"
+        >
+          <LinkIcon className="w-3 h-3" />
+        </button>
+      )}
 
       {/* Ring บอกสถานะเชื่อม */}
       {isConnectSource && (
@@ -201,6 +207,7 @@ export function DraggableCanvasItem({
         onPromoteDummy={onPromoteDummy}
         onDetailSaved={onDetailSaved}
         onSetColor={onSetColor}
+        tonePresets={tonePresets}
         onSetKeyMoment={onSetKeyMoment}
         onSetNarration={onSetNarration}
         threadBeats={threadBeats}
@@ -347,12 +354,14 @@ export function CanvasItem({
   onPromoteDummy,
   onDetailSaved,
   onSetColor,
+  tonePresets = [],
   onSetKeyMoment,
   onSetNarration,
   threadBeats,
   onOpenThreadBind,
 }: {
   item: any;
+  tonePresets?: { id: string; label: string; color: string }[];
   onSetColor?: (color: string | null) => void;
   onSetKeyMoment?: (label: string | null) => void;
   onSetNarration?: (isNarration: boolean) => void;
@@ -400,6 +409,7 @@ export function CanvasItem({
   const [deletingNote, setDeletingNote] = useState(false);
   const [noteBaseline, setNoteBaseline] = useState(""); // ข้อความตอนเปิดตัวแก้ — ใช้เช็คว่าแก้ค้างไว้ไหมตอนจะปิด
   const [confirmDeleteNote, setConfirmDeleteNote] = useState(false); // ลบต้องกดสองครั้ง
+  const [confirmDiscardNote, setConfirmDiscardNote] = useState(false); // ทิ้งข้อความที่พิมพ์ค้างไว้ต้องกด/Esc สองครั้ง
   const [draggedNoteId, setDraggedNoteId] = useState<string | null>(null); // ลากสลับตำแหน่งโน้ต
   // เหตุการณ์สำคัญ (mock) — เก็บ label อิสระใน canvas node ไปก่อน, ค่อยเลื่อนขึ้นตาราง ideas ทีหลัง
   const [editingKeyMoment, setEditingKeyMoment] = useState(false);
@@ -505,11 +515,14 @@ export function CanvasItem({
     setQuickNoteKind(null);
     setNoteBaseline("");
     setConfirmDeleteNote(false);
+    setConfirmDiscardNote(false);
   };
 
-  // ปิดตัวแก้ — ถ้าเขียนค้างไว้ต้องยืนยันก่อน (Escape/ปุ่มยกเลิก มือลั่นทีเดียวงานหายหมด)
+  // ปิดตัวแก้ — ถ้าเขียนค้างไว้ต้องกด/Esc ซ้ำเพื่อยืนยันก่อน (มือลั่นทีเดียวงานหายหมด)
+  // เดิมใช้ window.confirm() ดิบ — เปลี่ยนเป็น pattern สองจังหวะเดียวกับปุ่มลบโน้ตด้านบน
   const closeQuickNote = () => {
-    if (quickNote.trim() && quickNote !== noteBaseline && !window.confirm("ทิ้งข้อความที่เขียนไว้?")) return;
+    const dirty = quickNote.trim() && quickNote !== noteBaseline;
+    if (dirty && !confirmDiscardNote) { setConfirmDiscardNote(true); return; }
     resetQuickNote();
   };
 
@@ -561,7 +574,7 @@ export function CanvasItem({
             autoFocus
             ref={quickNoteRef}
             value={quickNote}
-            onChange={(e) => { setQuickNote(e.target.value); setConfirmDeleteNote(false); detectQm(e.target.value, e.target.selectionStart ?? e.target.value.length); }}
+            onChange={(e) => { setQuickNote(e.target.value); setConfirmDeleteNote(false); setConfirmDiscardNote(false); detectQm(e.target.value, e.target.selectionStart ?? e.target.value.length); }}
             onKeyDown={(e) => {
               if (qmOpen && qmMatches.length > 0) {
                 if (e.key === "ArrowDown") { e.preventDefault(); setQmIndex(i => (i + 1) % qmMatches.length); return; }
@@ -648,8 +661,12 @@ export function CanvasItem({
           </Button>
         )}
         <div className="flex justify-end gap-1 ml-auto">
-          <Button type="button" size="sm" variant="ghost" className="h-6 text-xs px-2" onClick={closeQuickNote}>
-            ยกเลิก
+          <Button
+            type="button" size="sm" variant="ghost"
+            className={cn("h-6 text-xs px-2", confirmDiscardNote && "text-destructive bg-destructive/10")}
+            onClick={closeQuickNote}
+          >
+            {confirmDiscardNote ? "ทิ้งข้อความ?" : "ยกเลิก"}
           </Button>
           <Button type="button" size="sm" className="h-6 text-xs px-2" disabled={!quickNote.trim() || savingQuickNote} onClick={submitQuickNote}>
             {savingQuickNote ? <Loader2 className="w-3 h-3 animate-spin" /> : (editingNoteId ? "อัปเดต" : "บันทึก")}
@@ -887,23 +904,11 @@ Sticky Notes: ${stickyNotes}`;
 
             {/* Actions */}
             <div className="flex flex-col gap-1 -mr-1 -mt-1">
-              {/* ทำเครื่องหมายคำบรรยาย/Narrator — ฉากที่ไม่มีตัวละครร่วม แค่บรรยาย (idea only) */}
-              {isContainer && onSetNarration && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    "h-6 w-6 shrink-0 transition-opacity",
-                    item.isNarration
-                      ? "text-amber-500 hover:text-amber-600 opacity-100"
-                      : "text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100"
-                  )}
-                  onClick={(e) => { e.stopPropagation(); onSetNarration(!item.isNarration); }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  title={item.isNarration ? "เอาเครื่องหมายคำบรรยายออก" : "ทำเครื่องหมายเป็นคำบรรยาย (Narrator)"}
-                >
-                  <Quote className="w-3 h-3" fill={item.isNarration ? "currentColor" : "none"} />
-                </Button>
+              {/* สถานะ "คำบรรยาย" — โชว์เฉพาะตอนเปิดอยู่ ปิด/เปิดย้ายไปอยู่ในเมนู 3 จุดแทน (ลดไอคอนที่ลอยอยู่ตลอด) */}
+              {isContainer && item.isNarration && (
+                <div className="h-6 w-6 shrink-0 flex items-center justify-center text-amber-500" title="คำบรรยาย (Narrator)">
+                  <Quote className="w-3 h-3" fill="currentColor" />
+                </div>
               )}
               {/* Three-dot menu */}
               <DropdownMenu>
@@ -933,6 +938,14 @@ Sticky Notes: ${stickyNotes}`;
                     >
                       <LinkIcon className="w-3.5 h-3.5 mr-2" />
                       {isLinkingSource ? 'กำลังเชื่อม...' : 'เชื่อมการ์ด'}
+                    </DropdownMenuItem>
+                  )}
+
+                  {/* คำบรรยาย/Narrator — ฉากที่ไม่มีตัวละครร่วม แค่บรรยาย (idea only) */}
+                  {isContainer && onSetNarration && (
+                    <DropdownMenuItem onSelect={() => onSetNarration(!item.isNarration)}>
+                      <Quote className="w-3.5 h-3.5 mr-2" fill={item.isNarration ? "currentColor" : "none"} />
+                      {item.isNarration ? "เอาเครื่องหมายคำบรรยายออก" : "ทำเครื่องหมายเป็นคำบรรยาย"}
                     </DropdownMenuItem>
                   )}
 
@@ -968,29 +981,36 @@ Sticky Notes: ${stickyNotes}`;
                     </DropdownMenuItem>
                   )}
 
-                  {/* Color picker */}
-                  {onSetColor && (
+                  {/* Tone picker */}
+                  {onSetColor && tonePresets.length > 0 && (
                     <>
                       <DropdownMenuSeparator />
                       <div className="px-2 py-1.5">
-                        <p className="text-[10px] text-muted-foreground mb-1.5 uppercase tracking-wide">สีการ์ด</p>
-                        <div className="flex flex-wrap gap-1">
-                          {CARD_COLORS.map((c) => (
+                        <p className="text-[10px] text-muted-foreground mb-1.5 uppercase tracking-wide">Tone</p>
+                        <div className="flex flex-col gap-0.5">
+                          {tonePresets.map((t) => (
                             <button
-                              key={c}
-                              className="h-4 w-4 rounded-full flex items-center justify-center transition-transform hover:scale-110"
-                              style={{ background: c, outline: item.color === c ? `2px solid ${c}` : "none", outlineOffset: 2 }}
-                              onClick={(e) => { e.stopPropagation(); onSetColor(c); }}
+                              key={t.id}
+                              className={cn(
+                                "flex items-center gap-2 px-1.5 py-1 rounded text-xs text-left transition-colors hover:bg-muted",
+                                item.color === t.color && "bg-muted font-medium"
+                              )}
+                              onClick={(e) => { e.stopPropagation(); onSetColor(t.color); }}
                             >
-                              {item.color === c && <Check className="h-2.5 w-2.5 text-white" />}
+                              <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: t.color }} />
+                              <span className="flex-1 truncate">{t.label}</span>
+                              {item.color === t.color && <Check className="h-3 w-3 shrink-0 text-muted-foreground" />}
                             </button>
                           ))}
-                          <button
-                            className="h-4 w-4 rounded-full border border-dashed border-muted-foreground/50 flex items-center justify-center text-muted-foreground hover:text-foreground"
-                            onClick={(e) => { e.stopPropagation(); onSetColor(null); }}
-                          >
-                            <X className="h-2.5 w-2.5" />
-                          </button>
+                          {item.color && (
+                            <button
+                              className="flex items-center gap-2 px-1.5 py-1 rounded text-xs text-muted-foreground hover:bg-muted transition-colors"
+                              onClick={(e) => { e.stopPropagation(); onSetColor(null); }}
+                            >
+                              <X className="h-2.5 w-2.5 shrink-0" />
+                              ล้าง tone
+                            </button>
+                          )}
                         </div>
                       </div>
                     </>
@@ -1089,108 +1109,19 @@ Sticky Notes: ${stickyNotes}`;
           )}
 
 
-          {/* Ancestor Connections — เหตุผล/ที่มา, สไตล์ pill เดียวกับ thread beats badge */}
-          {isContainer && ancestorConnections && ancestorConnections.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1.5">
-              {ancestorConnections.map((conn) => {
-                const ancestorTitle = conn.label || conn.targetIdeaTitle || conn.targetIdeaId.slice(0, 8) + '...';
-                const categoryLabels: Record<string, string> = {
-                  plot: 'พล็อต',
-                  character: 'ตัวละคร',
-                  worldbuilding: 'สร้างโลก',
-                  subplot: 'เนื้อรอง',
-                  general: 'ทั่วไป',
-                };
-                return (
-                  <Popover key={conn.id}>
-                    <div className="group/ancestor inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded-full border border-amber-500/40 bg-amber-500/10 text-[10px] font-medium">
-                      <PopoverTrigger asChild>
-                        <button
-                          onClick={(e) => e.stopPropagation()}
-                          onPointerDown={(e) => e.stopPropagation()}
-                          className="flex items-center gap-1 cursor-pointer text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-100 transition-colors"
-                        >
-                          <GitBranchPlus className="w-3 h-3 shrink-0" />
-                          <span className="truncate max-w-[110px]">{ancestorTitle}</span>
-                        </button>
-                      </PopoverTrigger>
-                      {onRemoveAncestor && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onRemoveAncestor(conn.id);
-                          }}
-                          onPointerDown={(e) => e.stopPropagation()}
-                          className="opacity-0 group-hover/ancestor:opacity-100 hover:text-destructive transition-opacity text-amber-500/70 shrink-0"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      )}
-                    </div>
-                    <PopoverContent
-                      side="top"
-                      align="start"
-                      className="w-72 p-3 space-y-2"
-                      onClick={(e) => e.stopPropagation()}
-                      onPointerDown={(e) => e.stopPropagation()}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Lightbulb className="w-4 h-4 text-amber-500 shrink-0" />
-                        <p className="text-sm font-semibold truncate">{conn.targetIdeaTitle || 'Idea'}</p>
-                      </div>
-                      {conn.targetIdeaCategory && (
-                        <span className="inline-block text-[10px] font-medium text-amber-700 dark:text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded px-1.5 py-0.5">
-                          {categoryLabels[conn.targetIdeaCategory] || conn.targetIdeaCategory}
-                        </span>
-                      )}
-                      {conn.label && (
-                        <div className="flex items-start gap-1.5">
-                          <MessageCircle className="w-3 h-3 text-muted-foreground shrink-0 mt-0.5" />
-                          <p className="text-xs text-foreground/80 italic">{conn.label}</p>
-                        </div>
-                      )}
-                      {conn.targetIdeaContent ? (
-                        <p className="text-xs text-muted-foreground whitespace-pre-wrap line-clamp-6">
-                          {conn.targetIdeaContent}
-                        </p>
-                      ) : (
-                        <p className="text-xs text-muted-foreground/50 italic">ไม่มีเนื้อหาเพิ่มเติม</p>
-                      )}
-                      {conn.targetIdeaNotes && conn.targetIdeaNotes.length > 0 && (
-                        <div className="pt-2 border-t border-border/60 space-y-1">
-                          <p className="text-[10px] font-semibold text-muted-foreground uppercase flex items-center gap-1">
-                            <BookOpen className="w-3 h-3" /> Notes
-                          </p>
-                          {conn.targetIdeaNotes.map((note, idx) => (
-                            <p key={idx} className="text-xs text-foreground/80 bg-yellow-500/10 border border-yellow-500/20 rounded px-2 py-1 whitespace-pre-wrap">
-                              {note}
-                            </p>
-                          ))}
-                        </div>
-                      )}
-                    </PopoverContent>
-                  </Popover>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Children Area for Ideas */}
+          {/* 5W1H Layout — idea container cards */}
           {isContainer && (
             <div className="space-y-3 pt-2 border-t mt-2">
 
-              {/* Characters Section (Real & Dummy) */}
-              {item.children && item.children.some((c: any) => c.type === 'character' || c.type === 'dummy_character') && (
+              {/* WHO — Characters + Factions รวมกัน */}
+              {item.children?.some((c: any) => ['character', 'dummy_character', 'faction', 'dummy_faction'].includes(c.type)) && (
                 <div className="space-y-1">
-                  <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider mb-1 flex items-center gap-1">
-                    <User className="w-3 h-3" /> Characters
-                  </p>
+                  <p className="text-[9px] uppercase font-bold tracking-widest text-muted-foreground/50">WHO</p>
                   <div className="divide-y divide-border/40">
                     {item.children
                       .filter((c: any) => c.type === 'character' || c.type === 'dummy_character')
                       .map((child: any) => {
                         const detail = getChildDetail(child);
-                        const hasDetail = detail && (detail.action || detail.how || detail.goal);
                         const isDummy = child.type === 'dummy_character';
                         const rm = roleMeta(detail?.role || child.role);
                         return (
@@ -1228,29 +1159,16 @@ Sticky Notes: ${stickyNotes}`;
                           </div>
                         );
                       })}
-                  </div>
-                </div>
-              )}
-
-              {/* Factions Section (Real & Dummy) */}
-              {item.children && item.children.some((c: any) => c.type === 'faction' || c.type === 'dummy_faction') && (
-                <div className="space-y-1">
-                  <p className="text-[10px] uppercase font-bold text-emerald-500/80 tracking-wider mb-1 flex items-center gap-1">
-                    <Shield className="w-3 h-3" /> Factions
-                  </p>
-                  <div className="divide-y divide-border/40">
                     {item.children
                       .filter((c: any) => c.type === 'faction' || c.type === 'dummy_faction')
                       .map((child: any) => {
                         const detail = getChildDetail(child);
                         const isDummy = child.type === 'dummy_faction';
-                        // ข้อมูลจริงของฝ่าย (เป้าหมาย/คำอธิบาย) — ดึงจาก referenceId ที่ผูกไว้ตอนลากมาวาง
                         const realFaction = !isDummy ? factions?.find((f: any) => f.id === child.referenceId) : null;
                         const factionBlurb: string | null = realFaction?.goal || realFaction?.description || null;
                         const allLinkedIdeas: any[] = realFaction?.linkedIdeaIds
                           ? realFaction.linkedIdeaIds.map((id: string) => ideas?.find((i: any) => i.id === id)).filter(Boolean)
                           : [];
-                        // pinnedIdeaIds ยังไม่ตั้ง = โชว์ทั้งหมด (ค่าเริ่มต้นเดิม); ตั้งแล้ว = โชว์เฉพาะที่เลือก
                         const linkedIdeas = child.pinnedIdeaIds
                           ? allLinkedIdeas.filter((i: any) => child.pinnedIdeaIds.includes(i.id))
                           : allLinkedIdeas;
@@ -1273,10 +1191,7 @@ Sticky Notes: ${stickyNotes}`;
                               <span className="flex-1" />
                               {onEditChild && (
                                 <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onEditChild({ ...child, canvasItemId: item.id });
-                                  }}
+                                  onClick={(e) => { e.stopPropagation(); onEditChild({ ...child, canvasItemId: item.id }); }}
                                   className="opacity-0 group-hover/item:opacity-100 hover:text-emerald-500 transition-opacity shrink-0"
                                   title="แก้ไขรายละเอียด"
                                 >
@@ -1285,17 +1200,13 @@ Sticky Notes: ${stickyNotes}`;
                               )}
                               {onRemoveChild && (
                                 <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onRemoveChild(child.id);
-                                  }}
+                                  onClick={(e) => { e.stopPropagation(); onRemoveChild(child.id); }}
                                   className="opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-opacity shrink-0"
                                 >
                                   <X className="w-3 h-3" />
                                 </button>
                               )}
                             </div>
-                            {/* บันทึกเฉพาะฉากนี้ (ที่ผู้ใช้พิมพ์เอง) — มาก่อนรายละเอียดจริงของฝ่าย */}
                             {detail?.action && (
                               <p className="mt-0.5 ml-[18px] text-[11px] leading-snug text-muted-foreground whitespace-pre-wrap">
                                 {detail.action}
@@ -1306,7 +1217,6 @@ Sticky Notes: ${stickyNotes}`;
                                 {factionBlurb}
                               </p>
                             )}
-                            {/* ไอเดียที่แปะไว้กับฝ่ายนี้ — "ในฝ่ายนี้เราจะเล่าเพียงเท่านี้ก่อน" กดกากบาทเพื่อซ่อนออกจากการ์ดนี้ */}
                             {linkedIdeas.length > 0 && (
                               <div className="mt-1 ml-[18px] flex flex-wrap items-center gap-1">
                                 {linkedIdeas.map((idea: any) => (
@@ -1343,12 +1253,10 @@ Sticky Notes: ${stickyNotes}`;
                 </div>
               )}
 
-              {/* Locations Section */}
-              {item.children && item.children.some((c: any) => c.type === 'location') && (
+              {/* WHERE — Locations */}
+              {item.children?.some((c: any) => c.type === 'location') && (
                 <div className="space-y-1">
-                  <p className="text-[10px] uppercase font-bold text-green-500/80 tracking-wider mb-1 flex items-center gap-1">
-                    <MapPin className="w-3 h-3" /> Locations
-                  </p>
+                  <p className="text-[9px] uppercase font-bold tracking-widest text-muted-foreground/50">WHERE</p>
                   <div className="divide-y divide-border/40">
                     {item.children
                       .filter((c: any) => c.type === 'location')
@@ -1367,10 +1275,7 @@ Sticky Notes: ${stickyNotes}`;
                             <span className="flex-1" />
                             {onEditChild && (
                               <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onEditChild({ ...child, canvasItemId: item.id });
-                                }}
+                                onClick={(e) => { e.stopPropagation(); onEditChild({ ...child, canvasItemId: item.id }); }}
                                 className="opacity-0 group-hover/item:opacity-100 hover:text-green-500 transition-opacity shrink-0"
                                 title="แก้ไขรายละเอียด"
                               >
@@ -1379,10 +1284,7 @@ Sticky Notes: ${stickyNotes}`;
                             )}
                             {onRemoveChild && (
                               <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onRemoveChild(child.id);
-                                }}
+                                onClick={(e) => { e.stopPropagation(); onRemoveChild(child.id); }}
                                 className="opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-opacity shrink-0"
                               >
                                 <X className="w-3 h-3" />
@@ -1395,35 +1297,115 @@ Sticky Notes: ${stickyNotes}`;
                 </div>
               )}
 
-              {/* Others Section */}
-              {item.children && item.children.some((c: any) => c.type !== 'character' && c.type !== 'dummy_character' && c.type !== 'faction' && c.type !== 'dummy_faction' && c.type !== 'location' && c.type !== 'sticky-note') && (
-                <div className="space-y-1">
-                  <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider mb-1">Others</p>
-                  <div className="divide-y divide-border/40">
-                    {item.children
-                      .filter((c: any) => c.type !== 'character' && c.type !== 'dummy_character' && c.type !== 'faction' && c.type !== 'dummy_faction' && c.type !== 'location' && c.type !== 'sticky-note')
-                      .map((child: any) => (
-                        <div key={child.id} className="flex items-center gap-1.5 py-1 text-xs group/item">
-                          <Lightbulb className="w-3 h-3 text-yellow-500 shrink-0" />
-                          <span className="truncate flex-1">{child.title}</span>
-                          {onRemoveChild && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onRemoveChild(child.id);
-                              }}
-                              className="opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-opacity shrink-0"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          )}
-                        </div>
-                      ))}
+              {/* WHY — Ancestor Connections */}
+              {ancestorConnections && ancestorConnections.length > 0 && (
+                <div>
+                  <p className="text-[9px] uppercase font-bold tracking-widest text-amber-500/60 mb-1">WHY</p>
+                  <div className="flex flex-wrap gap-1">
+                    {ancestorConnections.map((conn) => {
+                      const ancestorTitle = conn.label || conn.targetIdeaTitle || conn.targetIdeaId.slice(0, 8) + '...';
+                      const categoryLabels: Record<string, string> = {
+                        plot: 'พล็อต',
+                        character: 'ตัวละคร',
+                        worldbuilding: 'สร้างโลก',
+                        subplot: 'เนื้อรอง',
+                        general: 'ทั่วไป',
+                      };
+                      return (
+                        <Popover key={conn.id}>
+                          <div className="group/ancestor inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded-full border border-amber-500/40 bg-amber-500/10 text-[10px] font-medium">
+                            <PopoverTrigger asChild>
+                              <button
+                                onClick={(e) => e.stopPropagation()}
+                                onPointerDown={(e) => e.stopPropagation()}
+                                className="flex items-center gap-1 cursor-pointer text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-100 transition-colors"
+                              >
+                                <GitBranchPlus className="w-3 h-3 shrink-0" />
+                                <span className="truncate max-w-[110px]">{ancestorTitle}</span>
+                              </button>
+                            </PopoverTrigger>
+                            {onRemoveAncestor && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onRemoveAncestor(conn.id); }}
+                                onPointerDown={(e) => e.stopPropagation()}
+                                className="opacity-0 group-hover/ancestor:opacity-100 hover:text-destructive transition-opacity text-amber-500/70 shrink-0"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                          <PopoverContent
+                            side="top"
+                            align="start"
+                            className="w-72 p-3 space-y-2"
+                            onClick={(e) => e.stopPropagation()}
+                            onPointerDown={(e) => e.stopPropagation()}
+                          >
+                            <div className="flex items-center gap-2">
+                              <Lightbulb className="w-4 h-4 text-amber-500 shrink-0" />
+                              <p className="text-sm font-semibold truncate">{conn.targetIdeaTitle || 'Idea'}</p>
+                            </div>
+                            {conn.targetIdeaCategory && (
+                              <span className="inline-block text-[10px] font-medium text-amber-700 dark:text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded px-1.5 py-0.5">
+                                {categoryLabels[conn.targetIdeaCategory] || conn.targetIdeaCategory}
+                              </span>
+                            )}
+                            {conn.label && (
+                              <div className="flex items-start gap-1.5">
+                                <MessageCircle className="w-3 h-3 text-muted-foreground shrink-0 mt-0.5" />
+                                <p className="text-xs text-foreground/80 italic">{conn.label}</p>
+                              </div>
+                            )}
+                            {conn.targetIdeaContent ? (
+                              <p className="text-xs text-muted-foreground whitespace-pre-wrap line-clamp-6">
+                                {conn.targetIdeaContent}
+                              </p>
+                            ) : (
+                              <p className="text-xs text-muted-foreground/50 italic">ไม่มีเนื้อหาเพิ่มเติม</p>
+                            )}
+                            {conn.targetIdeaNotes && conn.targetIdeaNotes.length > 0 && (
+                              <div className="pt-2 border-t border-border/60 space-y-1">
+                                <p className="text-[10px] font-semibold text-muted-foreground uppercase flex items-center gap-1">
+                                  <BookOpen className="w-3 h-3" /> Notes
+                                </p>
+                                {conn.targetIdeaNotes.map((note, idx) => (
+                                  <p key={idx} className="text-xs text-foreground/80 bg-yellow-500/10 border border-yellow-500/20 rounded px-2 py-1 whitespace-pre-wrap">
+                                    {note}
+                                  </p>
+                                ))}
+                              </div>
+                            )}
+                          </PopoverContent>
+                        </Popover>
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
-              {/* Scene Participants Panel (ผู้เข้าร่วมระดับไอเดีย) */}
+              {/* Others (ไม่มี label — loose items ที่ไม่ fit category ไหน) */}
+              {item.children?.some((c: any) => !['character', 'dummy_character', 'faction', 'dummy_faction', 'location', 'sticky-note'].includes(c.type)) && (
+                <div className="divide-y divide-border/40">
+                  {item.children
+                    .filter((c: any) => !['character', 'dummy_character', 'faction', 'dummy_faction', 'location', 'sticky-note'].includes(c.type))
+                    .map((child: any) => (
+                      <div key={child.id} className="flex items-center gap-1.5 py-1 text-xs group/item">
+                        <Lightbulb className="w-3 h-3 text-yellow-500 shrink-0" />
+                        <span className="truncate flex-1">{child.title}</span>
+                        {onRemoveChild && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onRemoveChild(child.id); }}
+                            className="opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-opacity shrink-0"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                </div>
+              )}
+
+              {/* Scene Participants Panel */}
               {onAddChild && sceneId && novelId && onDetailSaved && (
                 <div className="pt-1.5 border-t border-dashed flex justify-end">
                   <SceneParticipantsPanel
@@ -1441,9 +1423,10 @@ Sticky Notes: ${stickyNotes}`;
                 </div>
               )}
 
-              {/* Notes footer (idea only) — annotation รอง อยู่ท้ายการ์ด */}
-              {isContainer && onQuickAddNote && (
+              {/* HOW — Notes */}
+              {onQuickAddNote && (
                 <div className="space-y-1.5">
+                  <p className="text-[9px] uppercase font-bold tracking-widest text-muted-foreground/50">HOW</p>
                   {thisIdeaNotes.map((note) => {
                     const noteColor = note.noteKind || undefined;
                     return editingNoteId === note.id ? (
@@ -1477,7 +1460,6 @@ Sticky Notes: ${stickyNotes}`;
                         style={noteColor ? { borderColor: `${noteColor}4d`, background: `${noteColor}1a` } : undefined}
                         onClick={(e) => {
                           e.stopPropagation();
-                          // แก้ไข inline ตรงที่โน้ตนั้นเลย (ตัวแก้แทนที่ preview)
                           setEditingNoteId(note.id);
                           setQuickNote(note.notes || "");
                           setNoteBaseline(note.notes || "");
@@ -1493,8 +1475,6 @@ Sticky Notes: ${stickyNotes}`;
                       </div>
                     );
                   })}
-
-                  {/* สร้างใหม่: ตัวแก้ท้ายลิสต์ (เฉพาะตอนไม่ได้แก้โน้ตเดิม) */}
                   {editingNoteId === null && quickNoteOpen ? (
                     noteEditor
                   ) : !quickNoteOpen ? (

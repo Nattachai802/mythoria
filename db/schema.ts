@@ -2137,6 +2137,20 @@ export const aiUsageLog = pgTable("ai_usage_log", {
   featureIdx: index("ai_usage_feature_idx").on(table.feature, table.createdAt),
 }));
 
+/** heartbeat ต่อ (ผู้ใช้, ฟีเจอร์) — "กำลังทำงานอยู่ไหม" ไม่ใช่ log ประวัติ (นั่นคือ ai_usage_log)
+ *  แถวเดียวต่อ (userId, feature) ถูก upsert ทับซ้ำเรื่อยๆ — "active" ตัดสินตอนอ่านด้วย lastSeenAt
+ *  สดพอไหม (ACTIVE_STALE_MS ใน lib/ai-gateway.ts) ไม่ต้องมี job ลบทิ้ง */
+export const aiActiveRuns = pgTable("ai_active_runs", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  novelId: text("novel_id").references(() => novels.id, { onDelete: "set null" }),
+  feature: text("feature").notNull(),
+  startedAt: timestamp("started_at").defaultNow().notNull(), // รีเซ็ตเมื่อรอบเก่า stale ไปแล้ว
+  lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+}, (table) => ({
+  userFeatureUnique: uniqueIndex("ai_active_runs_user_feature_idx").on(table.userId, table.feature),
+}));
+
 export const aiFeaturesRelations = relations(aiFeatures, () => ({}));
 
 export const aiUsageLogRelations = relations(aiUsageLog, ({ one }) => ({
@@ -2144,10 +2158,34 @@ export const aiUsageLogRelations = relations(aiUsageLog, ({ one }) => ({
   novel: one(novels, { fields: [aiUsageLog.novelId], references: [novels.id] }),
 }));
 
+export const aiActiveRunsRelations = relations(aiActiveRuns, ({ one }) => ({
+  user: one(user, { fields: [aiActiveRuns.userId], references: [user.id] }),
+  novel: one(novels, { fields: [aiActiveRuns.novelId], references: [novels.id] }),
+}));
+
 export type AiFeature = typeof aiFeatures.$inferSelect;
 export type InsertAiFeature = typeof aiFeatures.$inferInsert;
 export type AiUsageLog = typeof aiUsageLog.$inferSelect;
 export type InsertAiUsageLog = typeof aiUsageLog.$inferInsert;
+export type AiActiveRun = typeof aiActiveRuns.$inferSelect;
+export type InsertAiActiveRun = typeof aiActiveRuns.$inferInsert;
+
+// ============================================
+// TONE PRESETS — user-defined scene tone labels
+// ============================================
+export const tonePresets = pgTable("tone_presets", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  label: text("label").notNull(),
+  color: text("color").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (table) => ({
+  userIdIdx: index("tone_presets_user_id_idx").on(table.userId),
+}));
+
+export type TonePreset = typeof tonePresets.$inferSelect;
 
 export type User = typeof user.$inferSelect;
 export type Novel = typeof novels.$inferSelect;
@@ -2330,4 +2368,8 @@ export const schema = {
   // AI Control Center
   aiFeatures,
   aiUsageLog,
+  aiActiveRuns,
+  aiActiveRunsRelations,
+  // Tone Presets
+  tonePresets,
 };

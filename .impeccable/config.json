@@ -1,0 +1,9 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [
+      "components/plot/playground/playground-board.tsx"
+    ],
+    "ignoreValues": []
+  }
+}

@@ -1,24 +1,16 @@
 import { PageWrapper } from "@/components/page-warpper";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
-import { AiFeatureCard } from "@/components/dashboard/ai-control/feature-card";
-import { getAiOverview } from "@/server/ai-control";
+import { LiveFeatureGrids } from "@/components/dashboard/ai-control/live-feature-grid";
+import { ModelMapSection } from "@/components/dashboard/ai-control/model-map-section";
+import { RecentRunsSection } from "@/components/dashboard/ai-control/recent-runs-section";
+import { getAiOverview, type AiFeatureView } from "@/server/ai-control";
 
 export const dynamic = "force-dynamic";
 
-const STATUS_STYLE: Record<string, string> = {
-    success: "text-emerald-600 dark:text-emerald-400",
-    error: "text-destructive",
-    blocked: "text-amber-600 dark:text-amber-400",
-};
+// ฟีเจอร์ที่ไม่มี step เรียก LLM ตรงจาก Next.js เลย (chain ว่าง, มีแต่ pythonModels)
+// ตรงกับสองกลุ่มที่ lib/ai-features.ts คอมเมนต์แยกไว้เองอยู่แล้ว
+const isPythonOnly = (f: AiFeatureView) => f.steps.length > 0 && f.steps.every((s) => s.order === "ภายใน Python");
 
 export default async function AiControlPage() {
     const data = await getAiOverview();
@@ -42,6 +34,8 @@ export default async function AiControlPage() {
     }
 
     const totalTokens = data.totalsToday.promptTokens + data.totalsToday.completionTokens;
+    const nextjsFeatures = data.features.filter((f) => !isPythonOnly(f));
+    const pythonFeatures = data.features.filter(isPythonOnly);
 
     return (
         <PageWrapper
@@ -91,133 +85,19 @@ export default async function AiControlPage() {
                     </Card>
                 </div>
 
-                {/* Model map — ฟังก์ชันไหนใช้ model อะไร */}
-                <section>
-                    <h2 className="text-sm font-medium mb-3">แผนผังโมเดล — ฟังก์ชันไหนใช้ AI ตัวไหน</h2>
-                    <Card>
-                        <CardContent className="p-0">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead className="w-56">ฟังก์ชัน</TableHead>
-                                        <TableHead className="w-28">ลำดับ</TableHead>
-                                        <TableHead className="w-24">Provider</TableHead>
-                                        <TableHead>Model</TableHead>
-                                        <TableHead className="w-20 text-right">Temp</TableHead>
-                                        <TableHead className="w-24 text-right">Max Tokens</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {data.features.flatMap((f) =>
-                                        f.steps.map((s, i) => (
-                                            <TableRow key={`${f.key}:${i}`} className={i > 0 ? "border-t-dashed" : ""}>
-                                                <TableCell className="text-xs font-medium">
-                                                    {i === 0 ? f.label : ""}
-                                                </TableCell>
-                                                <TableCell className="text-xs text-muted-foreground">{s.order}</TableCell>
-                                                <TableCell>
-                                                    <Badge
-                                                        variant="secondary"
-                                                        className={`text-[10px] font-mono ${
-                                                            s.provider === "groq"
-                                                                ? "bg-orange-500/15 text-orange-700 dark:text-orange-300"
-                                                                : s.provider === "typhoon"
-                                                                    ? "bg-sky-500/15 text-sky-700 dark:text-sky-300"
-                                                                    : s.provider === "gemini"
-                                                                        ? "bg-violet-500/15 text-violet-700 dark:text-violet-300"
-                                                                        : ""
-                                                        }`}
-                                                    >
-                                                        {s.provider}
-                                                    </Badge>
-                                                </TableCell>
-                                                <TableCell className="text-xs font-mono">{s.model}</TableCell>
-                                                <TableCell className="text-right text-xs tabular-nums text-muted-foreground">
-                                                    {s.temperature ?? "—"}
-                                                </TableCell>
-                                                <TableCell className="text-right text-xs tabular-nums text-muted-foreground">
-                                                    {s.maxTokens?.toLocaleString() ?? "—"}
-                                                </TableCell>
-                                            </TableRow>
-                                        )),
-                                    )}
-                                </TableBody>
-                            </Table>
-                        </CardContent>
-                    </Card>
-                    <p className="text-xs text-muted-foreground mt-2">
-                        &quot;สำรอง&quot; = fallback เมื่อตัวหลักล้ม (เดินอัตโนมัติที่ gateway) ·
-                        &quot;ภายใน Python&quot; = pythonservice เรียกเองข้างใน (gate ผ่าน gateway, execution ฝั่ง Python)
-                    </p>
-                </section>
+                {/* Feature status — แยกกลุ่มตาม registry เอง (lib/ai-features.ts): เรียก LLM ตรงจาก Next.js vs ผ่าน Python */}
+                <LiveFeatureGrids
+                    groups={[
+                        { heading: "สถานะฟีเจอร์ AI — เรียกตรงจาก Next.js", features: nextjsFeatures },
+                        { heading: "สถานะฟีเจอร์ AI — ผ่าน Python microservice", features: pythonFeatures },
+                    ]}
+                />
 
-                {/* Feature status */}
-                <section>
-                    <h2 className="text-sm font-medium mb-3">สถานะฟีเจอร์ AI ทั้งหมด</h2>
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                        {data.features.map((f) => (
-                            <AiFeatureCard key={f.key} feature={f} />
-                        ))}
-                    </div>
-                </section>
+                {/* Recent runs — สิ่งที่คนเปิดหน้านี้มาดูจริงๆ (อะไรพังบ้าง) เลยอยู่ก่อนแผนผังโมเดลที่เป็นแค่ของอ้างอิง */}
+                <RecentRunsSection runs={data.recentRuns} />
 
-                {/* Recent runs */}
-                <section>
-                    <h2 className="text-sm font-medium mb-3">AI runs ล่าสุด</h2>
-                    <Card>
-                        <CardContent className="p-0">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead className="w-36">ฟีเจอร์</TableHead>
-                                        <TableHead>Model</TableHead>
-                                        <TableHead className="w-20">สถานะ</TableHead>
-                                        <TableHead className="w-24 text-right">Tokens</TableHead>
-                                        <TableHead className="w-20 text-right">Latency</TableHead>
-                                        <TableHead className="w-32 text-right">เวลา</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {data.recentRuns.length === 0 && (
-                                        <TableRow>
-                                            <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                                                ยังไม่มีการเรียก AI — log จะปรากฏที่นี่หลังใช้งานฟีเจอร์ AI ใดๆ
-                                            </TableCell>
-                                        </TableRow>
-                                    )}
-                                    {data.recentRuns.map((r) => (
-                                        <TableRow key={r.id}>
-                                            <TableCell className="text-xs font-medium">{r.feature}</TableCell>
-                                            <TableCell className="text-xs font-mono text-muted-foreground truncate max-w-52">
-                                                {r.provider}/{r.model}
-                                                {r.errorDetail && (
-                                                    <span className="block text-destructive truncate max-w-52" title={r.errorDetail}>
-                                                        {r.errorDetail}
-                                                    </span>
-                                                )}
-                                            </TableCell>
-                                            <TableCell className={`text-xs ${STATUS_STYLE[r.status] ?? ""}`}>
-                                                {r.status}
-                                            </TableCell>
-                                            <TableCell className="text-right text-xs tabular-nums">
-                                                {(r.promptTokens + r.completionTokens).toLocaleString()}
-                                            </TableCell>
-                                            <TableCell className="text-right text-xs tabular-nums text-muted-foreground">
-                                                {r.latencyMs != null ? `${(r.latencyMs / 1000).toFixed(1)}s` : "—"}
-                                            </TableCell>
-                                            <TableCell className="text-right text-xs text-muted-foreground">
-                                                {new Date(r.createdAt).toLocaleTimeString("th-TH", {
-                                                    hour: "2-digit",
-                                                    minute: "2-digit",
-                                                })}
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </CardContent>
-                    </Card>
-                </section>
+                {/* Model map — อ้างอิงล้วน ไม่ใช่ของเช็คทุกครั้ง พับไว้เป็นค่าเริ่มต้น (ซ้ำกับป้าย provider/model บนการ์ดด้านบนอยู่แล้ว) */}
+                <ModelMapSection features={data.features} />
 
                 <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                     <Badge variant="outline" className="text-[10px]">hint</Badge>

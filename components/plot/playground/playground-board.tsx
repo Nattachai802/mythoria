@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils";
 import { snapSimultaneousBeats } from "@/lib/simultaneous-beats";
 import { labelAnchor } from "@/lib/link-label";
 import { buildSceneFormat, renderSceneMarkdown } from "@/lib/story-format";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface PlaygroundBoardProps {
     eventId: string;
@@ -48,6 +49,7 @@ interface PlaygroundBoardProps {
     threads?: ThreadWithBeats[];
     factions?: any[];
     boardChapters?: BoardChapter[]; // ตอนที่แบ่งไว้บนกระดานอื่นของนิยายเดียวกัน — ใช้อ้างอิงตอนตั้งชื่อ
+    tonePresets?: { id: string; label: string; color: string }[];
 }
 
 interface Lane {
@@ -763,6 +765,55 @@ function ThreadBindDialog({ cardTitle, threads, bound, onBind, onCreateAndBind, 
     );
 }
 
+// มือถือ: list ตามจังหวะ (เวลา) แทนกริดเลน×จังหวะ — ไม่มี drag/zoom/เส้นเชื่อม แค่ดู/แก้/เพิ่มการ์ด (เพิ่มผ่านปุ่ม "ไอเดียใหม่" ใน toolbar)
+function MobilePlotList({ items, lanes, beatCount, chapterRanges, renderCard }: {
+    items: any[];
+    lanes: Lane[];
+    beatCount: number;
+    chapterRanges: Array<{ id: string; name: string; startBeat: number; endBeat: number }>;
+    renderCard: (item: any, dragDisabled?: boolean) => React.ReactNode;
+}) {
+    if (items.length === 0) {
+        return (
+            <div className="flex-1 min-h-0 flex items-center justify-center p-6 text-center text-sm text-muted-foreground">
+                ยังไม่มีการ์ดในฉากนี้ — กด “ไอเดียใหม่” ด้านบนเพื่อเริ่ม
+            </div>
+        );
+    }
+    return (
+        <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-5">
+            {Array.from({ length: beatCount }).map((_, beatIndex) => {
+                const beatItems = items.filter(i => i.beatIndex === beatIndex);
+                if (beatItems.length === 0) return null;
+                const chapter = chapterRanges.find(c => beatIndex >= c.startBeat && beatIndex <= c.endBeat);
+                return (
+                    <div key={beatIndex} className="space-y-2.5">
+                        <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground font-technical">
+                            {chapter ? `${chapter.name} · ` : ""}จังหวะ {String(beatIndex + 1).padStart(2, "0")}
+                        </div>
+                        <div className="space-y-3">
+                            {lanes.map((lane, laneIndex) => {
+                                const laneItems = beatItems.filter(i => i.laneId === lane.id);
+                                if (laneItems.length === 0) return null;
+                                const laneColor = lane.color || LANE_COLORS[laneIndex % LANE_COLORS.length];
+                                return laneItems.map(item => (
+                                    <div key={item.id}>
+                                        <div className="flex items-center gap-1.5 mb-1">
+                                            <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: laneColor }} />
+                                            <span className="text-[10px] text-muted-foreground truncate">{lane.name}</span>
+                                        </div>
+                                        {renderCard(item, true)}
+                                    </div>
+                                ));
+                            })}
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
 export function PlaygroundBoard({
     eventId,
     novelId,
@@ -774,6 +825,7 @@ export function PlaygroundBoard({
     threads = [],
     factions = [],
     boardChapters = [],
+    tonePresets = [],
 }: PlaygroundBoardProps) {
     const [{ lanes, items: initialCardItems, chapters: initialChapters }] = useState(() => buildBoardState(initialItems));
     const [lanes_, setLanes] = useState<Lane[]>(lanes);
@@ -803,6 +855,7 @@ export function PlaygroundBoard({
     const [activeDragItem, setActiveDragItem] = useState<any>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const isMobile = useIsMobile();
     // ไอเดียใหม่จะวางที่จังหวะไหน: 'latest' = จังหวะล่าสุด (คอลัมน์ที่มีอยู่) | 'new' = จังหวะใหม่ (คอลัมน์ท้าย)
     const [newIdeaBeat, setNewIdeaBeat] = useState<'latest' | 'new'>('new');
     const [newIdeaLaneId, setNewIdeaLaneId] = useState<string>(''); // '' = เลนแรก
@@ -1598,23 +1651,28 @@ export function PlaygroundBoard({
 
             if (activeData.type === 'idea' && activeData.id) {
                 updateIdea(activeData.id, { isUsed: true });
-                setThreadSuggest({
-                    ideaTitle: activeData.title || "ไอเดียนี้",
-                    selectedThreadId: threads[0]?.id ?? "",
-                    newThreadTitle: activeData.title || "",
-                    mode: "pick",
-                    isLinking: false,
-                });
-                toast(
-                    <ThreadSuggestToast
-                        ideaTitle={activeData.title || "ไอเดียนี้"}
-                        threads={threads}
-                        novelId={novelId}
-                        eventId={eventId}
-                        onDismiss={() => toast.dismiss("thread-suggest")}
-                    />,
-                    { id: "thread-suggest", duration: 8000, unstyled: true, classNames: { toast: "w-full" } }
-                );
+                // แจ้งเตือนผูกปมเฉพาะตอนนิยายมีปมอยู่แล้ว — ถ้ายังไม่มีปมเลยสักเส้น ผู้เขียนใหม่ยังไม่รู้จัก
+                // "ปม" ด้วยซ้ำ การ popup ทันทีหลังวางการ์ดใบแรกจะกลายเป็นขวางจังหวะเฉยๆ
+                // (ผูกปมทำได้เสมออยู่แล้วผ่านเมนู 3 จุดของการ์ด "ผูกปมเรื่อง")
+                if (threadState.length > 0) {
+                    setThreadSuggest({
+                        ideaTitle: activeData.title || "ไอเดียนี้",
+                        selectedThreadId: threadState[0]?.id ?? "",
+                        newThreadTitle: activeData.title || "",
+                        mode: "pick",
+                        isLinking: false,
+                    });
+                    toast(
+                        <ThreadSuggestToast
+                            ideaTitle={activeData.title || "ไอเดียนี้"}
+                            threads={threadState}
+                            novelId={novelId}
+                            eventId={eventId}
+                            onDismiss={() => toast.dismiss("thread-suggest")}
+                        />,
+                        { id: "thread-suggest", duration: 8000, unstyled: true, classNames: { toast: "w-full" } }
+                    );
+                }
             }
         }
     };
@@ -1989,6 +2047,60 @@ export function PlaygroundBoard({
         return <ConnectionLine key={`ancestor-${conn.id}`} start={end} end={start} kind="ancestor" label={conn.label} />;
     });
 
+    // การ์ดหนึ่งใบ — ใช้ร่วมกันทั้งกริด desktop และ list มือถือ (dragDisabled ปิด drag/connect บนมือถือ)
+    const renderCard = (item: any, dragDisabled = false) => (
+        <DraggableCanvasItem
+            key={item.id}
+            item={item}
+            dragDisabled={dragDisabled}
+            onRemove={() => handleRemoveItem(item.id)}
+            onRemoveChild={(childId: string) => handleRemoveChild(item.id, childId)}
+            onLinkStart={handleStartLink}
+            onLinkComplete={linkingSourceId && linkingSourceId !== item.id ? handleCompleteLink : undefined}
+            isLinkingSource={linkingSourceId === item.id}
+            isConnectSource={connectingSourceId === item.id}
+            isConnectTarget={!!connectingSourceId && connectOverId === item.id}
+            elementDetails={elementDetailsMap}
+            onEditChild={handleEditChild}
+            ideaNotes={ideaNotes}
+            onQuickAddNote={handleQuickAddNote}
+            onDeleteNote={handleDeleteNote}
+            onReorderNotes={handleReorderNotes}
+            novelId={novelId}
+            onSetAncestor={item.type === 'idea' ? () => handleOpenAncestorDialog(item) : undefined}
+            ancestorConnections={item.type === 'idea' ? ancestorConnections
+                .filter(c => c.sourceIdeaId === (item.referenceId || item.id))
+                .map(c => {
+                    const targetIdea = ideas.find((idea: any) => idea.id === c.targetIdeaId);
+                    const targetNotes = ancestorIdeaNotesMap.get(c.targetIdeaId) || [];
+                    return {
+                        ...c,
+                        targetIdeaTitle: targetIdea?.title || null,
+                        targetIdeaContent: targetIdea?.content || null,
+                        targetIdeaCategory: targetIdea?.category || null,
+                        targetIdeaNotes: targetNotes.length > 0 ? targetNotes : undefined,
+                    };
+                }) : undefined}
+            onRemoveAncestor={item.type === 'idea' ? handleRemoveAncestor : undefined}
+            sceneId={eventId}
+            characters={characters}
+            novelDummyNames={novelDummyNames}
+            factions={factions}
+            ideas={ideas}
+            onAddChild={handleAddChild}
+            onUpdateChild={handleUpdateChild}
+            onPromoteDummy={handlePromoteDummy}
+            onDetailSaved={handleDetailSaved}
+            onSetColor={(c: string | null) => handleSetColor(item.id, c)}
+            tonePresets={tonePresets}
+            onSetKeyMoment={item.type === 'idea' ? (label: string | null) => handleSetKeyMoment(item.id, label) : undefined}
+            onSetNarration={item.type === 'idea' ? (v: boolean) => handleSetNarration(item.id, v) : undefined}
+            threadBeats={item.type === 'idea' ? (cardBeats.get(item.id) ?? []) : undefined}
+            onOpenThreadBind={item.type === 'idea' ? () => setThreadBindItem(item) : undefined}
+            onMeasureRef={registerItemRef}
+        />
+    );
+
     return (
         <DndContext
             id="plot-playground-board"
@@ -1999,7 +2111,8 @@ export function PlaygroundBoard({
             onDragEnd={handleDragEnd}
         >
             <div className="flex h-full">
-                {/* Sidebar */}
+                {/* Sidebar — เป็นแหล่งลาก ไม่มีบนมือถือ (ไม่มี drag บนมือถือ, เพิ่มการ์ดผ่านปุ่ม "ไอเดียใหม่" แทน) */}
+                {!isMobile && (
                 <div
                     className={`border-r bg-muted/10 overflow-hidden flex flex-col shrink-0 transition-[width] duration-300 ease-in-out ${sidebarCollapsed ? "w-9" : "w-60"}`}
                 >
@@ -2027,6 +2140,7 @@ export function PlaygroundBoard({
                         </div>
                     )}
                 </div>
+                )}
 
                 {/* Storyboard grid area */}
                 <div className="flex-1 min-w-0 relative bg-muted/30 min-h-[400px] flex flex-col">
@@ -2056,7 +2170,7 @@ export function PlaygroundBoard({
                     {/* Toolbar — relative+z-40 ทำให้เป็น stacking context ของตัวเอง อยู่เหนือ sticky header ของกริด (z-30)
                         เดิมมีแค่ "z-30" แบบ static เลยไม่มีผล เพราะ z-index ต้องมาคู่กับ position; backdrop-blur เองก็ดัน
                         สร้าง stacking context ใหม่โดยไม่ตั้งใจ ทำให้ panel ลูก (z-50) ถูกขังอยู่ต่ำกว่ากริดที่อยู่นอก context นั้น */}
-                    <div className="relative z-40 flex items-center gap-2 px-3 py-2 border-b bg-background/85 backdrop-blur">
+                    <div className="relative z-40 flex items-center gap-2 px-3 py-2 border-b bg-background/85 backdrop-blur overflow-x-auto">
                         <div className="relative">
                             <Button variant={showNavigator ? "secondary" : "ghost"} size="icon" className="h-8 w-8"
                                 onClick={() => setShowNavigator(!showNavigator)} aria-label="สารบัญ" title="สารบัญ">
@@ -2200,7 +2314,15 @@ export function PlaygroundBoard({
                         </DropdownMenu>
                     </div>
 
-                    {/* Grid viewport (scroll) */}
+                    {isMobile ? (
+                        <MobilePlotList
+                            items={items}
+                            lanes={lanes_}
+                            beatCount={beatCount}
+                            chapterRanges={chapterRanges}
+                            renderCard={renderCard}
+                        />
+                    ) : (
                     <div ref={viewportRef} id="canvas-viewport" className="flex-1 min-h-0 overflow-auto">
                         <div
                             ref={gridRef}
@@ -2321,56 +2443,7 @@ export function PlaygroundBoard({
                                                 }
                                                 onAddIdea={() => setDraftCell({ laneId: lane.id, beatIndex })}
                                             >
-                                                {cellItems.map(item => (
-                                                    <DraggableCanvasItem
-                                                        key={item.id}
-                                                        item={item}
-                                                        onRemove={() => handleRemoveItem(item.id)}
-                                                        onRemoveChild={(childId) => handleRemoveChild(item.id, childId)}
-                                                        onLinkStart={handleStartLink}
-                                                        onLinkComplete={linkingSourceId && linkingSourceId !== item.id ? handleCompleteLink : undefined}
-                                                        isLinkingSource={linkingSourceId === item.id}
-                                                        isConnectSource={connectingSourceId === item.id}
-                                                        isConnectTarget={!!connectingSourceId && connectOverId === item.id}
-                                                        elementDetails={elementDetailsMap}
-                                                        onEditChild={handleEditChild}
-                                                        ideaNotes={ideaNotes}
-                                                        onQuickAddNote={handleQuickAddNote}
-                                                        onDeleteNote={handleDeleteNote}
-                                                        onReorderNotes={handleReorderNotes}
-                                                        novelId={novelId}
-                                                        onSetAncestor={item.type === 'idea' ? () => handleOpenAncestorDialog(item) : undefined}
-                                                        ancestorConnections={item.type === 'idea' ? ancestorConnections
-                                                            .filter(c => c.sourceIdeaId === (item.referenceId || item.id))
-                                                            .map(c => {
-                                                                const targetIdea = ideas.find((idea: any) => idea.id === c.targetIdeaId);
-                                                                const targetNotes = ancestorIdeaNotesMap.get(c.targetIdeaId) || [];
-                                                                return {
-                                                                    ...c,
-                                                                    targetIdeaTitle: targetIdea?.title || null,
-                                                                    targetIdeaContent: targetIdea?.content || null,
-                                                                    targetIdeaCategory: targetIdea?.category || null,
-                                                                    targetIdeaNotes: targetNotes.length > 0 ? targetNotes : undefined,
-                                                                };
-                                                            }) : undefined}
-                                                        onRemoveAncestor={item.type === 'idea' ? handleRemoveAncestor : undefined}
-                                                        sceneId={eventId}
-                                                        characters={characters}
-                                                        novelDummyNames={novelDummyNames}
-                                                        factions={factions}
-                                                        ideas={ideas}
-                                                        onAddChild={handleAddChild}
-                                                        onUpdateChild={handleUpdateChild}
-                                                        onPromoteDummy={handlePromoteDummy}
-                                                        onDetailSaved={handleDetailSaved}
-                                                        onSetColor={(c) => handleSetColor(item.id, c)}
-                                                        onSetKeyMoment={item.type === 'idea' ? (label) => handleSetKeyMoment(item.id, label) : undefined}
-                                                        onSetNarration={item.type === 'idea' ? (v) => handleSetNarration(item.id, v) : undefined}
-                                                        threadBeats={item.type === 'idea' ? (cardBeats.get(item.id) ?? []) : undefined}
-                                                        onOpenThreadBind={item.type === 'idea' ? () => setThreadBindItem(item) : undefined}
-                                                        onMeasureRef={registerItemRef}
-                                                    />
-                                                ))}
+                                                {cellItems.map(item => renderCard(item))}
 
                                                 {/* สร้างไอเดีย inline: การ์ดร่าง → skeleton ระหว่างรอ → ปุ่ม + (โผล่ตอน hover ช่อง) */}
                                                 {creatingCell?.laneId === lane.id && creatingCell?.beatIndex === beatIndex ? (
@@ -2414,6 +2487,7 @@ export function PlaygroundBoard({
                             </svg>
                         </div>
                     </div>
+                    )}
                 </div>
             </div>
 
