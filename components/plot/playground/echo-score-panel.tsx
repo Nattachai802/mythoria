@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Sparkles, Loader2, RefreshCw } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
+import { Sparkles, Loader2, RefreshCw, Zap } from "lucide-react";
 import { runEchoScore } from "@/server/plot-analysis";
 import { setPlotFindingVerdict } from "@/server/plot-analysis";
-import type { EchoFinding } from "@/lib/echo-score";
+import { flagTurningPoints, type EchoFinding } from "@/lib/echo-score";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
@@ -27,6 +27,7 @@ export function EchoScorePanel({ novelId, sceneId, initialFindings }: EchoScoreP
     const [isPending, startTransition] = useTransition();
 
     const hasResults = findings.length > 0;
+    const turningPoints = useMemo(() => flagTurningPoints(findings), [findings]);
 
     const handleRun = () => {
         startTransition(async () => {
@@ -120,7 +121,7 @@ export function EchoScorePanel({ novelId, sceneId, initialFindings }: EchoScoreP
                                 margin: 0,
                             }}
                         >
-                            ใช้ AI · ~170 ครั้งต่อฉาก · Gemini 2.5 Flash
+                            ใช้ AI · ~2 ครั้ง/การ์ด · Gemini 2.5 Flash
                             {hasResults && " · กดอีกครั้งเพื่ออัปเดต"}
                         </p>
                         <Button
@@ -163,6 +164,7 @@ export function EchoScorePanel({ novelId, sceneId, initialFindings }: EchoScoreP
                                     finding={f}
                                     novelId={novelId}
                                     sceneId={sceneId}
+                                    isTurningPoint={turningPoints.has(f.cardCode)}
                                 />
                             ))}
                         </div>
@@ -179,9 +181,10 @@ interface EchoFindingRowProps {
     finding: EchoFinding;
     novelId: string;
     sceneId: string;
+    isTurningPoint?: boolean;
 }
 
-function EchoFindingRow({ finding, novelId, sceneId }: EchoFindingRowProps) {
+function EchoFindingRow({ finding, novelId, sceneId, isTurningPoint }: EchoFindingRowProps) {
     const { evidence, cardCode, cardTitle, hasIncomingLink } = finding;
     const [dismissed, setDismissed] = useState(false);
     const [isPending, startTransition] = useTransition();
@@ -237,9 +240,17 @@ function EchoFindingRow({ finding, novelId, sceneId }: EchoFindingRowProps) {
                         fontWeight: 500,
                         color: "var(--foreground)",
                         flex: 1,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 5,
                     }}
                 >
                     {cardTitle}
+                    {isTurningPoint && (
+                        <span title="จุดพลิกผัน — เดาได้ยากกว่าจังหวะอื่นในฉากนี้ผิดปกติ" style={{ display: "inline-flex", flexShrink: 0 }}>
+                            <Zap size={12} style={{ color: "var(--forge-gold)" }} />
+                        </span>
+                    )}
                 </span>
                 <span
                     style={{

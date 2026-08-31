@@ -238,15 +238,17 @@ async function logUsage(row: UsageRow, ctx: GateContext & { novelId?: string } =
 // Provider adapters
 // ============================================
 
-const OPENAI_COMPATIBLE_URLS: Record<"groq" | "typhoon", string> = {
+const OPENAI_COMPATIBLE_URLS: Record<"groq" | "typhoon" | "openrouter", string> = {
     groq: "https://api.groq.com/openai/v1/chat/completions",
     typhoon: "https://api.opentyphoon.ai/v1/chat/completions",
+    openrouter: "https://openrouter.ai/api/v1/chat/completions",
 };
 
 const PROVIDER_KEYS: Record<AiProvider, string | undefined> = {
     groq: process.env.GROQ_API_KEY,
     typhoon: process.env.TYPHOON_API_KEY,
     gemini: process.env.GEMINI_API_KEY,
+    openrouter: process.env.OPENROUTER_API_KEY,
     python: undefined,
 };
 
@@ -276,10 +278,12 @@ interface ChatRequest {
     maxTokens?: number;
     messages: Array<{ role: string; content: string }>;
     extraBody?: Record<string, unknown>;
+    /** บังคับให้ตอบ JSON ตาม schema นี้ที่ระดับ API ไม่ใช่แค่ขอด้วยคำพูดใน prompt — ลด parse failure ที่ต้นตอ */
+    responseSchema?: object;
 }
 
 async function chatOpenAiCompatible(
-    provider: "groq" | "typhoon",
+    provider: "groq" | "typhoon" | "openrouter",
     req: ChatRequest,
 ): Promise<ProviderReply> {
     const key = PROVIDER_KEYS[provider];
@@ -293,6 +297,9 @@ async function chatOpenAiCompatible(
             messages: req.messages,
             temperature: req.temperature,
             ...(req.maxTokens != null ? { max_tokens: req.maxTokens } : {}),
+            ...(req.responseSchema
+                ? { response_format: { type: "json_schema", json_schema: { name: "response", strict: true, schema: req.responseSchema } } }
+                : {}),
             ...(req.extraBody ?? {}),
         }),
     });
@@ -342,8 +349,18 @@ async function chatGemini(req: ChatRequest): Promise<ProviderReply> {
         contents: turns.map((t) => ({ role: t.role, parts: t.parts })),
         config: {
             temperature: req.temperature,
+            // Gemini 2.5 เปิด "thinking" มาโดย default และหักโควตาจาก maxOutputTokens เดียวกับคำตอบจริง —
+            // ไม่ปิดไว้ เจอเคสที่ thinking กินโควตาหมดก่อนตอบ (finishReason=MAX_TOKENS, ข้อความว่างเปล่า)
+            // ทั้งที่โจทย์ของทุกฟีเจอร์ในนี้ (สรุป/แปลง/ให้คะแนน) ไม่ได้ต้องการ step-by-step reasoning โผล่ในผลลัพธ์
+            thinkingConfig: { thinkingBudget: 0 },
             ...(req.maxTokens != null ? { maxOutputTokens: req.maxTokens } : {}),
             ...(systemParts.length ? { systemInstruction: systemParts.join("\n\n") } : {}),
+            // responseJsonSchema (ไม่ใช่ responseSchema) — รับ JSON Schema มาตรฐานตรงๆ
+            // เดียวกับที่ OpenAI-compatible ใช้ (chatOpenAiCompatible ด้านบน) ไม่ต้องแปลง type เป็น
+            // enum ตัวพิมพ์ใหญ่แบบ Google's Schema object เดิม — schema เดียวใช้ได้ทั้งสองฝั่ง
+            ...(req.responseSchema
+                ? { responseMimeType: "application/json", responseJsonSchema: req.responseSchema }
+                : {}),
         },
     });
 
@@ -390,6 +407,8 @@ export interface AiCallOptions extends GateContext {
     maxTokens?: number;
     /** passthrough เฉพาะ OpenAI-compatible (tools, response_format ฯลฯ) */
     extraBody?: Record<string, unknown>;
+    /** บังคับ JSON schema ที่ระดับ API — ใช้ได้ทั้ง gemini (responseSchema) และ OpenAI-compatible (response_format.json_schema) */
+    responseSchema?: object;
     novelId?: string;
     /** false = ไม่ mark provider cooldown เมื่อโดน rate limit (caller จัดการ retry เอง) — default true */
     useCooldown?: boolean;
@@ -417,7 +436,7 @@ async function executeStep(
         let reply: ProviderReply;
         if (step.provider === "gemini") {
             reply = await chatGemini(req);
-        } else if (step.provider === "groq" || step.provider === "typhoon") {
+        } else if (step.provider === "groq" || step.provider === "typhoon" || step.provider === "openrouter") {
             reply = await chatOpenAiCompatible(step.provider, req);
         } else {
             throw new Error(`${step.provider}: ไม่ใช่ LLM provider ที่ gateway เรียกเองได้`);
@@ -468,6 +487,7 @@ function buildChatRequest(step: AiProviderStep, options: AiCallOptions): ChatReq
         maxTokens: options.maxTokens ?? step.maxTokens,
         messages,
         extraBody: options.extraBody,
+        responseSchema: options.responseSchema,
     };
 }
 

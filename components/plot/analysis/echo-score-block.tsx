@@ -58,7 +58,7 @@ export function EchoScoreBlock({ novelId, spine, echoFindings }: EchoScoreBlockP
                         opacity: 0.6,
                     }}
                 >
-                    · ใช้ AI · ~170 ครั้งต่อฉาก
+                    · ใช้ AI · ~2 ครั้ง/การ์ด
                 </span>
             </div>
 

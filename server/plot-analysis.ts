@@ -10,7 +10,7 @@ import {
 } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { requireNovelAccess } from "@/lib/authz";
-import { buildSceneFormat, type SceneFormatInput } from "@/lib/story-format";
+import { buildSceneFormat, type SceneFormat, type SceneFormatInput } from "@/lib/story-format";
 import {
     analyzePlot,
     type PlotAnalysisReport,
@@ -20,6 +20,8 @@ import {
     ECHO_PROMPT_VERSION,
     ECHO_K,
     ECHO_MODEL,
+    ECHO_GUESS_SCHEMA,
+    ECHO_JUDGE_SCHEMA,
     buildPrefixText,
     buildCardText,
     hashEchoInput,
@@ -49,6 +51,69 @@ function parseCanvasData(canvasData: unknown): {
         (it: any) => it.type !== "lane" && it.type !== "group" && it.type !== "chapter",
     );
     return { items, lanes };
+}
+
+/**
+ * ดึง event หนึ่ง + threads/beats + sceneElementDetails ทั้งหมดที่ต้องใช้ → buildSceneFormat
+ * แยกออกมาจาก runEchoScore เพื่อให้ server/plot-recap.ts เรียกใช้ซ้ำได้ (สรุปฉากต้องการ
+ * SceneFormat ตัวเดียวกันเป๊ะ ไม่ใช่คำนวณใหม่คนละแบบ) — null = ไม่พบฉากนี้ในนิยายนี้
+ */
+export async function buildSceneFormatForEvent(novelId: string, sceneId: string): Promise<SceneFormat | null> {
+    const event = await db.query.timelineEvents.findFirst({
+        where: and(
+            eq(timelineEvents.id, sceneId),
+            eq(timelineEvents.novelId, novelId),
+        ),
+        columns: {
+            id: true,
+            title: true,
+            sceneGoal: true,
+            sceneConflict: true,
+            sceneOutcome: true,
+            causeKind: true,
+            causeNote: true,
+            description: true,
+            canvasData: true,
+        },
+    });
+
+    if (!event) return null;
+
+    const allThreads = await db.query.plotThreads.findMany({
+        where: eq(plotThreads.novelId, novelId),
+    });
+    const allBeats = allThreads.length > 0
+        ? await db.query.plotThreadBeats.findMany({
+            where: inArray(plotThreadBeats.threadId, allThreads.map(t => t.id)),
+        })
+        : [];
+
+    const threadsForFormat: SceneFormatInput["threads"] = allThreads.map(t => ({
+        id: t.id, title: t.title, status: t.status, color: t.color,
+        beats: allBeats.filter(b => b.threadId === t.id).map(b => ({
+            id: b.id, eventId: b.eventId, canvasItemId: b.canvasItemId, role: b.role,
+        })),
+    }));
+
+    const details = await db.query.sceneElementDetails.findMany({
+        where: eq(sceneElementDetails.sceneId, sceneId),
+        columns: { canvasItemId: true, action: true, goal: true, outcome: true },
+    });
+    const elementDetails = new Map<string, { action?: string | null; goal?: string | null; outcome?: string | null }>();
+    for (const d of details) {
+        if (d.canvasItemId) elementDetails.set(d.canvasItemId, { action: d.action, goal: d.goal, outcome: d.outcome });
+    }
+
+    const { items, lanes } = parseCanvasData(event.canvasData);
+    return buildSceneFormat({
+        event: {
+            id: event.id, title: event.title, sceneGoal: event.sceneGoal,
+            sceneConflict: event.sceneConflict, sceneOutcome: event.sceneOutcome,
+            causeKind: event.causeKind, causeNote: event.causeNote, description: event.description,
+        },
+        items, lanes, threads: threadsForFormat,
+        eventId: event.id, elementDetails, ideaNotes: [],
+    });
 }
 
 // ─── getPlotAnalysis ───────────────────────────────────────────────────────
@@ -273,65 +338,8 @@ export async function runEchoScore(
         }
         await requireNovelAccess(novelId);
 
-        // ── 1. ดึง event + canvasData ─────────────────────────────────────
-        const event = await db.query.timelineEvents.findFirst({
-            where: and(
-                eq(timelineEvents.id, sceneId),
-                eq(timelineEvents.novelId, novelId),
-            ),
-            columns: {
-                id: true,
-                title: true,
-                sceneGoal: true,
-                sceneConflict: true,
-                sceneOutcome: true,
-                causeKind: true,
-                causeNote: true,
-                description: true,
-                canvasData: true,
-            },
-        });
-
-        if (!event) return { success: false, error: "ไม่พบฉากนี้" };
-
-        // ── 2. ดึง threads + beats เพื่อ buildSceneFormat ─────────────────
-        const allThreads = await db.query.plotThreads.findMany({
-            where: eq(plotThreads.novelId, novelId),
-        });
-        const allBeats = allThreads.length > 0
-            ? await db.query.plotThreadBeats.findMany({
-                where: inArray(plotThreadBeats.threadId, allThreads.map(t => t.id)),
-            })
-            : [];
-
-        const threadsForFormat: SceneFormatInput["threads"] = allThreads.map(t => ({
-            id: t.id, title: t.title, status: t.status, color: t.color,
-            beats: allBeats.filter(b => b.threadId === t.id).map(b => ({
-                id: b.id, eventId: b.eventId, canvasItemId: b.canvasItemId, role: b.role,
-            })),
-        }));
-
-        // ── 3. ดึง sceneElementDetails ────────────────────────────────────
-        const details = await db.query.sceneElementDetails.findMany({
-            where: eq(sceneElementDetails.sceneId, sceneId),
-            columns: { canvasItemId: true, action: true, goal: true, outcome: true },
-        });
-        const elementDetails = new Map<string, { action?: string | null; goal?: string | null; outcome?: string | null }>();
-        for (const d of details) {
-            if (d.canvasItemId) elementDetails.set(d.canvasItemId, { action: d.action, goal: d.goal, outcome: d.outcome });
-        }
-
-        // ── 4. buildSceneFormat → beats ───────────────────────────────────
-        const { items, lanes } = parseCanvasData(event.canvasData);
-        const sceneFormat = buildSceneFormat({
-            event: {
-                id: event.id, title: event.title, sceneGoal: event.sceneGoal,
-                sceneConflict: event.sceneConflict, sceneOutcome: event.sceneOutcome,
-                causeKind: event.causeKind, causeNote: event.causeNote, description: event.description,
-            },
-            items, lanes, threads: threadsForFormat,
-            eventId: event.id, elementDetails, ideaNotes: [],
-        });
+        const sceneFormat = await buildSceneFormatForEvent(novelId, sceneId);
+        if (!sceneFormat) return { success: false, error: "ไม่พบฉากนี้" };
 
         const beats = sceneFormat.beats;
         const targets = filterEchoTargets(beats);
@@ -367,7 +375,7 @@ export async function runEchoScore(
         let skipped = 0;
 
         for (const beat of targets) {
-            const prefixText = buildPrefixText(beats, beat.beatIndex);
+            const prefixText = buildPrefixText(beats, beat.beatIndex, sceneFormat.cast);
             const cardText = buildCardText(beat);
             const inputHash = hashEchoInput(prefixText, cardText);
 
@@ -391,15 +399,22 @@ export async function runEchoScore(
             }
 
             // ── 6a. สุ่ม K เดา (ผ่าน AI Gateway — temp สูงให้เดาเอียง) ────
+            // usedModel ตามผลจริงจาก callAi (มี fallback chain — gemini ล้มแล้วร่วง typhoon ได้)
+            // ห้าม hardcode ค่าคงที่ ไม่งั้น evidence จะโกหกว่าใช้ gemini ทั้งที่ตอบมาจาก provider สำรอง
+            let usedModel: string = ECHO_MODEL;
             let guesses: string[] = [];
             try {
+                const guessPrompt = buildGuessPrompt(prefixText, ECHO_K);
                 const guessResp = await callAi({
                     feature: "echo-score",
-                    prompt: buildGuessPrompt(prefixText, ECHO_K),
+                    system: guessPrompt.system,
+                    prompt: guessPrompt.user,
+                    responseSchema: ECHO_GUESS_SCHEMA,
                     temperature: 1.0,
                     maxTokens: 512,
                     novelId,
                 });
+                usedModel = guessResp.model;
                 guesses = parseGuessResponse(guessResp.text) ?? [];
             } catch (err) {
                 if (err instanceof AiControlError) {
@@ -418,13 +433,17 @@ export async function runEchoScore(
             let hitCount = 0;
             let matched: number[] = [];
             try {
+                const judgePrompt = buildJudgePrompt(prefixText, cardText, guesses);
                 const judgeResp = await callAi({
                     feature: "echo-score",
-                    prompt: buildJudgePrompt(prefixText, cardText, guesses),
+                    system: judgePrompt.system,
+                    prompt: judgePrompt.user,
+                    responseSchema: ECHO_JUDGE_SCHEMA,
                     temperature: 0.0,
                     maxTokens: 128,
                     novelId,
                 });
+                usedModel = judgeResp.model; // ตัวตัดสินสุดท้าย — ใช้เป็น model ที่บันทึกถ้าสำเร็จ
                 const parsed = parseJudgeResponse(judgeResp.text);
                 if (parsed) {
                     hitCount = parsed.hits;
@@ -441,7 +460,7 @@ export async function runEchoScore(
                 hitCount,
                 guesses,
                 matched,
-                model: ECHO_MODEL,
+                model: usedModel,
                 promptVersion: ECHO_PROMPT_VERSION,
                 k: ECHO_K,
                 inputHash,

@@ -7,6 +7,7 @@ export const PROVIDER_STYLE: Record<string, string> = {
     groq: "bg-orange-500/15 text-orange-700 dark:text-orange-300",
     typhoon: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
     gemini: "bg-violet-500/15 text-violet-700 dark:text-violet-300",
+    openrouter: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
 };
 
 // "12s" / "1m 30s" จาก ISO timestamp ที่เริ่มทำงาน — สั้นพอไม่แย่งที่แถวโควตา

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo, Fragment } from "react";
+import { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo, useId, Fragment } from "react";
 import {
     DndContext,
     DragEndEvent,
@@ -131,7 +131,81 @@ function buildBoardState(initialItems: any[]): { lanes: Lane[]; items: any[]; ch
     return { lanes, items: cardItems, chapters };
 }
 
-// Red String Connection (ด้ายแดงแบบนักสืบ) — generalized ตามชนิดเส้น
+// หมุดปลายเส้น — สี่เหลี่ยมมนเลียนแบบรูสปรอกเก็ตของฟิล์ม ให้เข้าชุดกับการ์ดที่มี FilmSprockets/frame number
+function FilmPin({ x, y, size, fill, stroke }: { x: number; y: number; size: number; fill: string; stroke: string }) {
+    return <rect x={x - size / 2} y={y - size / 2} width={size} height={size} rx={1.5} fill={fill} stroke={stroke} strokeWidth="1" />;
+}
+
+// จุดกึ่งกลางตามความยาวจริงของเส้นหลายท่อน (polyline) + มุมของท่อนที่จุดนั้นตกอยู่ — ใช้หมุนป้ายสไปซ์ให้ขนานกับเส้น ณ จุดนั้น
+function polylineMidpoint(points: Array<{ x: number; y: number }>): { x: number; y: number; angleDeg: number } {
+    const segs = points.slice(1).map((p, i) => {
+        const a = points[i];
+        const dx = p.x - a.x, dy = p.y - a.y;
+        return { a, b: p, len: Math.sqrt(dx * dx + dy * dy) };
+    });
+    const total = segs.reduce((s, seg) => s + seg.len, 0);
+    let remaining = total / 2;
+    for (const seg of segs) {
+        if (remaining <= seg.len || seg === segs[segs.length - 1]) {
+            const t = seg.len > 0 ? remaining / seg.len : 0;
+            return {
+                x: seg.a.x + (seg.b.x - seg.a.x) * t,
+                y: seg.a.y + (seg.b.y - seg.a.y) * t,
+                angleDeg: Math.atan2(seg.b.y - seg.a.y, seg.b.x - seg.a.x) * (180 / Math.PI),
+            };
+        }
+        remaining -= seg.len;
+    }
+    return { x: points[0]?.x ?? 0, y: points[0]?.y ?? 0, angleDeg: 0 };
+}
+
+// เทปสไปซ์ (splice tape) — จุดต่อฟิล์มจริงของช่างตัดต่อ ลายทแยงเหลือง-ดำ วางกึ่งกลางเส้นจุดเดียว
+// ให้ตาโฟกัสจุดต่อจุดเดียวแทนจุดไข่ปลารกทั้งเส้น และเป็นภาพจำเฉพาะของงานตัดต่อฟิล์มที่จำได้ทันที
+function SpliceTape({ x, y, angleDeg }: { x: number; y: number; angleDeg: number }) {
+    const id = useId();
+    const w = 18, h = 8;
+    return (
+        <g transform={`translate(${x} ${y}) rotate(${angleDeg})`}>
+            <clipPath id={id}>
+                <rect x={-w / 2} y={-h / 2} width={w} height={h} rx="1.5" />
+            </clipPath>
+            <rect x={-w / 2} y={-h / 2} width={w} height={h} rx="1.5" fill="#18181b" stroke="#facc15" strokeWidth="0.75" />
+            <g clipPath={`url(#${id})`}>
+                {[-12, -6, 0, 6, 12].map(off => (
+                    <rect key={off} x={off - 1.5} y={-h} width="3" height={h * 2} fill="#facc15" transform={`rotate(35 ${off} 0)`} />
+                ))}
+            </g>
+        </g>
+    );
+}
+
+// ตัวเส้นเชื่อม — แถบฟิล์มเข้ม (steel-800 เหมือนแถบ FilmSprockets บนการ์ด) + รอยต่อสไปซ์กึ่งกลาง
+// แทนเส้นลวดสีเรียบ ๆ เดิม ให้เห็นเป็น "แถบฟิล์มจริง" ทอดเชื่อมสองเฟรม ไม่ใช่ด้ายผูกกระดานสืบสวน
+// สีของแต่ละชนิดเส้น (cfg.color) ยังคงอยู่ที่หมุด/หัวลูกศร/ป้ายชื่อ พอสำหรับแยกชนิดโดยไม่ทำให้แถบฟิล์มรก
+function FilmStripPath({ points }: { points: Array<{ x: number; y: number }> }) {
+    const d = points.map((p, i) => `${i ? "L" : "M"} ${p.x} ${p.y}`).join(" ");
+    const mid = polylineMidpoint(points);
+    return (
+        <>
+            <path d={d} stroke="var(--steel-800)" strokeWidth="6" strokeOpacity="0.9" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            <SpliceTape x={mid.x} y={mid.y} angleDeg={mid.angleDeg} />
+        </>
+    );
+}
+
+// ป้ายชื่อเส้นเชื่อม — ชิปพื้นเข้ม ตัวหนังสือ font-technical แบบเดียวกับเลขเฟรม/ป้าย Kodak บนแคนนิสเตอร์
+function LinkLabelTag({ x, y, text, color }: { x: number; y: number; text: string; color: string }) {
+    const w = text.length * 9;
+    return (
+        <g style={{ pointerEvents: 'none' }}>
+            <rect x={x - w / 2} y={y - 9} width={w} height={17} rx="2" fill="#18181b" stroke={color} strokeWidth="1" opacity="0.94" />
+            <text x={x} y={y + 3.5} textAnchor="middle" fontSize="10" fontWeight="600" fill={color}
+                style={{ fontFamily: 'var(--font-technical)', letterSpacing: '0.03em' }}>{text}</text>
+        </g>
+    );
+}
+
+// เส้นเชื่อมฟิล์ม (เดิมสไตล์ด้ายแดงแบบนักสืบ ปรับให้เข้าธีมฟิล์ม/เฟรมภาพยนตร์) — generalized ตามชนิดเส้น
 function ConnectionLine({ start, end, kind = "related", label, onClick }: {
     start: { x: number; y: number };
     end: { x: number; y: number };
@@ -174,19 +248,11 @@ function ConnectionLine({ start, end, kind = "related", label, onClick }: {
 
     return (
         <g>
-            {/* เส้นขอบขาวบางให้ตัดกับเนื้อหาการ์ดที่อยู่ข้างใต้ */}
-            <path d={pathD} stroke="var(--background)" strokeWidth="4" strokeOpacity="0.6" fill="none" strokeLinecap="round" />
-            <path d={pathD} stroke={cfg.color} strokeWidth="2" strokeOpacity="0.6" fill="none" strokeLinecap="round" />
+            <FilmStripPath points={[{ x: sX, y: sY }, { x: eX, y: eY }]} />
             <polygon points={`${eX},${eY} ${aX1},${aY1} ${aX2},${aY2}`} fill={cfg.color} fillOpacity="0.85" />
-            <circle cx={sX} cy={sY} r={length < 40 ? 2.5 : 4} fill={cfg.pinFill} stroke={cfg.pinStroke} strokeWidth="1" />
-            <circle cx={eX} cy={eY} r={length < 40 ? 2.5 : 4} fill={cfg.pinFill} stroke={cfg.pinStroke} strokeWidth="1" />
-            {displayLabel && (
-                <g style={{ pointerEvents: 'none' }}>
-                    <rect x={labelX - displayLabel.length * 4.5} y={labelY - 9} width={displayLabel.length * 9} height={17} rx="4"
-                        fill="white" stroke={cfg.color} strokeWidth="1" opacity="0.92" />
-                    <text x={labelX} y={labelY + 3.5} textAnchor="middle" fontSize="10" fill={cfg.color} fontWeight="600">{displayLabel}</text>
-                </g>
-            )}
+            <FilmPin x={sX} y={sY} size={length < 40 ? 5 : 7} fill={cfg.pinFill} stroke={cfg.pinStroke} />
+            <FilmPin x={eX} y={eY} size={length < 40 ? 5 : 7} fill={cfg.pinFill} stroke={cfg.pinStroke} />
+            {displayLabel && <LinkLabelTag x={labelX} y={labelY} text={displayLabel} color={cfg.color} />}
             {onClick && (
                 <path d={pathD} stroke="transparent" strokeWidth="16" fill="none"
                     style={{ pointerEvents: 'auto', cursor: 'pointer' }}
@@ -226,21 +292,10 @@ function OrthoLine({ points, kind = "related", label, hideLabel = false, onClick
 
     return (
         <g>
-            <path d={d} stroke="var(--background)" strokeWidth="4" strokeOpacity="0.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-            <path d={d} stroke={cfg.color} strokeWidth="2" strokeOpacity="0.7" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            <FilmStripPath points={points} />
             <polygon points={`${p2.x},${p2.y} ${a1x},${a1y} ${a2x},${a2y}`} fill={cfg.color} fillOpacity="0.85" />
-            <circle cx={start.x} cy={start.y} r={4} fill={cfg.pinFill} stroke={cfg.pinStroke} strokeWidth="1" />
-            {displayLabel && (() => {
-                const w = displayLabel.length * 9;
-                const ly = mid.y;
-                return (
-                    <g style={{ pointerEvents: "none" }}>
-                        <rect x={mid.x - w / 2} y={ly - 8} width={w} height={16} rx="4"
-                            fill="white" stroke={cfg.color} strokeWidth="1" opacity="0.92" />
-                        <text x={mid.x} y={ly + 3.5} textAnchor="middle" fontSize="10" fill={cfg.color} fontWeight="600">{displayLabel}</text>
-                    </g>
-                );
-            })()}
+            <FilmPin x={start.x} y={start.y} size={7} fill={cfg.pinFill} stroke={cfg.pinStroke} />
+            {displayLabel && <LinkLabelTag x={mid.x} y={mid.y} text={displayLabel} color={cfg.color} />}
             {onClick && (
                 <path d={d} stroke="transparent" strokeWidth="16" fill="none"
                     style={{ pointerEvents: "auto", cursor: "pointer" }}

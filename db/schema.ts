@@ -1507,6 +1507,27 @@ export const plotFindingsRelations = relations(plotFindings, ({ one }) => ({
   }),
 }));
 
+/**
+ * สรุปเนื้อหาจากโครงสร้างบนกระดานพล็อต (cast/threads/beats) — คนละตารางกับ plot_findings
+ * เพราะนั่นออกแบบมาสำหรับ "ธงที่ต้องยืนยัน" (มี verdict) recap เป็นสรุปข้อเท็จจริงล้วน ๆ
+ * subjectId คือ sceneId หรือ chapterId แล้วแต่ scope — ไม่ผูก FK ตายตัวเพราะชี้ได้สองตาราง
+ */
+export const plotRecaps = pgTable("plot_recaps", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  novelId: text("novel_id").notNull().references(() => novels.id, { onDelete: "cascade" }),
+  scope: text("scope").notNull(), // 'scene' | 'chapter'
+  subjectId: text("subject_id").notNull(), // sceneId หรือ chapterId ตาม scope
+  content: text("content").notNull(), // ย่อหน้าสรุป
+  model: text("model").notNull(),
+  promptVersion: text("prompt_version").notNull(),
+  inputHash: text("input_hash").notNull(), // เทียบก่อนยิงซ้ำ (เหมือน plot_findings.evidence.inputHash)
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().$onUpdate(() => new Date()).notNull(),
+}, (table) => ({
+  novelIdIdx: index("plot_recaps_novel_id_idx").on(table.novelId),
+  subjectUnique: uniqueIndex("plot_recaps_scope_subject_idx").on(table.novelId, table.scope, table.subjectId),
+}));
+
 // ============================================
 // RELATIONS
 // ============================================
@@ -2124,7 +2145,7 @@ export const aiUsageLog = pgTable("ai_usage_log", {
   userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
   novelId: text("novel_id").references(() => novels.id, { onDelete: "set null" }),
   feature: text("feature").notNull(), // key จาก AI_FEATURES registry
-  provider: text("provider").notNull(), // groq | typhoon | gemini | python
+  provider: text("provider").notNull(), // groq | typhoon | gemini | openrouter | python
   model: text("model").notNull(),
   status: text("status").notNull(), // success | error | blocked
   promptTokens: integer("prompt_tokens").default(0).notNull(),

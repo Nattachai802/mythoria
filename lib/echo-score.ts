@@ -9,13 +9,17 @@
  * อ้างอิง: plot-analysis-plan.md §Phase 2
  */
 
-import type { FormatBeat } from "./story-format";
+import type { FormatBeat, CastEntry } from "./story-format";
 import { createHash } from "crypto";
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
-export const ECHO_PROMPT_VERSION = "1";
-export const ECHO_K = 8;
+// v2: แยก persona เข้า system role, บังคับ JSON schema ที่ API แทนขอด้วยคำพูดอย่างเดียว,
+// จำกัดความยาวคำเดา, เลิกขอ hitCount จากโมเดล (คำนวณจาก matched.length แทน — กัน 2 ค่าขัดกันเอง)
+// เปลี่ยนความหมายของ field พอที่ผลเก่า (v1) ไม่ควรเทียบตรงกับผลใหม่ จึงขึ้นเวอร์ชัน
+export const ECHO_PROMPT_VERSION = "2";
+export const ECHO_K = 5; // ลดจาก 8 — ประหยัด token เล็กน้อย แลกความละเอียดที่ยอมรับได้ (K=3 หยาบเกินไป)
+export const ECHO_GUESS_MAX_WORDS = 15;
 export const ECHO_MODEL = "gemini-2.5-flash";
 
 // ─── Types ──────────────────────────────────────────────────────────────
@@ -51,35 +55,48 @@ export interface EchoFinding {
  *
  * กฎสำคัญ: การ์ดที่ beatIndex เดียวกันคือเกิดพร้อมกัน ห้ามอยู่ใน prefix ของกัน
  * (ถ้าใส่จะเป็นการบอกใบ้ด้วยเหตุการณ์ที่เกิดพร้อมกัน → echo สูงเกินจริงทุกใบ)
+ *
+ * cast (จาก buildSceneFormat) ใช้ย่อชื่อผู้ร่วมฉากที่โผล่ ≥2 การ์ดเป็น @A/@B ฯลฯ —
+ * ยืมรูปแบบเดียวกับ renderSceneMarkdown (docs/story-format-plan.md วัดไว้: ชื่อเต็ม ~5 โทเคน/ครั้ง
+ * เทียบ @A ~1 โทเคน) ชื่อที่โผล่ครั้งเดียวไม่มี alias ก็ยังเป็นชื่อเต็มตามเดิม ไม่มีอะไรแย่ลง
+ * ใส่ legend ครั้งเดียวบนสุดให้โมเดลรู้ว่า @A ย่อมาจากใคร — ไม่งั้น @A จะเป็นแค่โทเคนไร้ความหมาย
  */
-export function buildPrefixText(beats: FormatBeat[], targetBeatIndex: number): string {
+export function buildPrefixText(beats: FormatBeat[], targetBeatIndex: number, cast: CastEntry[] = []): string {
     const prefixBeats = beats
         .filter(b => b.beatIndex < targetBeatIndex && !b.isBoardNote)
         .sort((a, b) => a.beatIndex - b.beatIndex);
 
     if (prefixBeats.length === 0) return "";
 
-    return prefixBeats
+    const legend = cast
+        .filter((c): c is CastEntry & { alias: string } => !!c.alias)
+        .map(c => `${c.alias}=${c.name}`)
+        .join(", ");
+
+    const body = prefixBeats
         .map(b => {
             const parts: string[] = [`[${b.code}]`, b.title];
             if (b.content) parts.push(`— ${b.content}`);
             if (b.participants.length > 0) {
-                const names = b.participants.map(p => p.name).join(", ");
+                const names = b.participants.map(p => p.alias ?? p.name).join(", ");
                 parts.push(`(${names})`);
             }
             return parts.join(" ");
         })
         .join("\n");
+
+    return legend ? `ตัวย่อ: ${legend}\n${body}` : body;
 }
 
 /**
  * สร้างข้อความของการ์ดเป้าหมาย (ใช้ใน judge prompt + hash)
+ * ใช้ alias เดียวกับ buildPrefixText ได้เลย — legend ถูกประกาศไปแล้วใน prefixText ของ prompt เดียวกัน
  */
 export function buildCardText(beat: FormatBeat): string {
     const parts = [beat.title];
     if (beat.content) parts.push(beat.content);
     if (beat.participants.length > 0) {
-        parts.push(beat.participants.map(p => p.name).join(", "));
+        parts.push(beat.participants.map(p => p.alias ?? p.name).join(", "));
     }
     return parts.join(" — ");
 }
@@ -96,61 +113,69 @@ export function hashEchoInput(prefixText: string, cardText: string): string {
         .slice(0, 12);
 }
 
+// ─── JSON Schemas ───────────────────────────────────────────────────────
+// บังคับรูปแบบที่ระดับ API (Gemini responseJsonSchema / OpenAI-compatible response_format)
+// แทนที่จะขอด้วยคำพูดในเนื้อ prompt อย่างเดียว — กัน parse fail จากโมเดลใส่คำอธิบาย/markdown fence
+// แถมมาแทน parseGuessResponse/parseJudgeResponse ที่ยังคงเป็น fallback ไว้ชั้นสอง (กันเคส provider
+// ที่ไม่รองรับ schema จริง เช่น typhoon/openrouter ที่ยังไม่ยืนยัน)
+
+export const ECHO_GUESS_SCHEMA = {
+    type: "array",
+    items: { type: "string" },
+} as const;
+
+export const ECHO_JUDGE_SCHEMA = {
+    type: "object",
+    properties: {
+        matched: { type: "array", items: { type: "integer" } },
+    },
+    required: ["matched"],
+} as const;
+
 // ─── Prompts ────────────────────────────────────────────────────────────
+// แยก persona/กติกา/ฟอร์แมต (คงที่ทุกคอล) ไปไว้ system — เหลือแค่เนื้อฉากจริงใน user
+// เพื่อให้ role สื่อความหมายตรงตามหน้าที่ ไม่ใช่ยัดทุกอย่างเป็นข้อความก้อนเดียว
 
-/**
- * Prompt ขอให้ LLM สุ่มต่อว่า "ต่อไปน่าจะเกิดอะไร" K ครั้ง
- *
- * คืน JSON array of strings — แต่ละสตริงคือคำเดา 1 อัน
- */
-export function buildGuessPrompt(prefixText: string, k: number): string {
-    return `คุณเป็นผู้อ่านนิยายที่เพิ่งอ่านเหตุการณ์ต่อไปนี้:
-
----
-${prefixText}
----
-
-จินตนาการว่าเหตุการณ์ต่อไปที่น่าจะเกิดขึ้นคืออะไร
-สุ่มเดา ${k} ทางเลือกที่แตกต่างกัน แต่ละทางเลือกเป็นเหตุการณ์สั้นๆ 1 ประโยค
-
-ตอบเฉพาะ JSON array of strings เท่านั้น ไม่มีคำอื่น:
-["เดาที่ 1", "เดาที่ 2", ...]`;
+export interface EchoPrompt {
+    system: string;
+    user: string;
 }
 
-/**
- * Prompt ให้ LLM ตัดสินว่า guesses ใดตรงกับเหตุการณ์จริง
- *
- * คืน JSON { hits: number, matched: number[] }
- * - hits: จำนวนที่ตรง
- * - matched: index (0-based) ของคำเดาที่ตรง
- */
+/** สุ่มเดา K ทาง — คืน JSON array of strings (บังคับด้วย ECHO_GUESS_SCHEMA) */
+export function buildGuessPrompt(prefixText: string, k: number): EchoPrompt {
+    return {
+        system: `คุณเป็นผู้อ่านนิยายที่กำลังอ่านสด ยังไม่รู้เหตุการณ์ที่จะเกิดต่อไป
+หน้าที่ของคุณคือจินตนาการว่าเหตุการณ์ถัดไปที่น่าจะเกิดขึ้นคืออะไร
+
+กติกา:
+- สุ่มเดา ${k} ทางเลือกที่แตกต่างกันจริง ๆ (คนละแนวคิด ไม่ใช่แค่เปลี่ยนคำ)
+- แต่ละทางเลือกเป็นเหตุการณ์สั้น ไม่เกิน ${ECHO_GUESS_MAX_WORDS} คำ
+- ห้ามใส่คำนำหน้าเช่น "ข้อ 1", "เดาที่ 1", ตัวเลข หรือเครื่องหมายใด ๆ ในเนื้อความ — ให้เป็นประโยคเหตุการณ์ล้วน ๆ
+- ตอบเป็น JSON array of strings ตาม schema ที่กำหนดเท่านั้น`,
+        user: `บริบทก่อนหน้า:\n---\n${prefixText}\n---\n\nเหตุการณ์ถัดไปน่าจะเป็นอะไร`,
+    };
+}
+
+/** ตัดสินว่า guesses ใดตรงกับเหตุการณ์จริง — คืน JSON { matched: number[] } (บังคับด้วย ECHO_JUDGE_SCHEMA) */
 export function buildJudgePrompt(
     prefixText: string,
     cardText: string,
     guesses: string[],
-): string {
-    const guessLines = guesses
-        .map((g, i) => `${i}: "${g}"`)
-        .join("\n");
+): EchoPrompt {
+    const guessLines = guesses.map((g, i) => `${i}: "${g}"`).join("\n");
 
-    return `คุณเป็นผู้ตัดสินว่าคำเดาใดตรงกับเหตุการณ์จริงที่เกิดขึ้นในนิยาย
+    return {
+        system: `คุณเป็นกรรมการตัดสินว่าคำเดาข้อใด "ตรง" กับเหตุการณ์จริงที่เกิดขึ้นในนิยาย
 
-บริบทก่อนหน้า:
----
-${prefixText}
----
+เกณฑ์ตัดสิน:
+- ตรงตามความคิดหลัก (แนวคิด/การกระทำ/ผลลัพธ์) แม้ถ้อยคำต่างกันก็นับว่าตรง
+- ไม่ต้องตรงทุกรายละเอียด แค่แก่นเรื่องตรงก็พอ
+- คำเดาที่พูดถึงคนละเหตุการณ์ คนละสาเหตุ ถือว่าไม่ตรง แม้จะมีคำซ้ำกันบางคำ
 
-เหตุการณ์จริงที่เกิดขึ้น:
-"${cardText}"
-
-คำเดาทั้งหมด:
-${guessLines}
-
-คำเดาที่ "ตรง" คือคำเดาที่ผู้อ่านทั่วไปจะถือว่าทายถูกหรือเกือบถูก
-ไม่ต้องตรงทุกคำ แค่ตรงความคิดหลักก็นับ
-
-ตอบเฉพาะ JSON เท่านั้น ไม่มีคำอื่น:
-{"hits": <จำนวน>, "matched": [<index ที่ตรง>]}`;
+ตอบเป็น JSON ตาม schema ที่กำหนดเท่านั้น — ระบุ index (0-based) ของคำเดาที่ตรงใน "matched"
+ไม่ต้องนับจำนวนเอง ระบบจะนับจากความยาวของ matched`,
+        user: `บริบทก่อนหน้า:\n---\n${prefixText}\n---\n\nเหตุการณ์จริงที่เกิดขึ้น:\n"${cardText}"\n\nคำเดาทั้งหมด:\n${guessLines}`,
+    };
 }
 
 // ─── Validators ─────────────────────────────────────────────────────────
@@ -170,24 +195,52 @@ export function parseGuessResponse(raw: string): string[] | null {
     }
 }
 
-/** แปลง LLM output เป็น { hits, matched } */
+/**
+ * แปลง LLM output เป็น { hits, matched } — hits คำนวณจาก matched.length เสมอ
+ * (v1 เคยขอ hits จากโมเดลแยกต่างหาก แต่สองค่านี้ไม่การันตีว่าตรงกัน — ตัดออก ให้มีแหล่งความจริงเดียว)
+ */
 export function parseJudgeResponse(raw: string): { hits: number; matched: number[] } | null {
     try {
         const trimmed = raw.trim();
         const match = trimmed.match(/\{[\s\S]*\}/);
         if (!match) return null;
         const parsed = JSON.parse(match[0]);
-        if (
-            typeof parsed.hits !== "number" ||
-            !Array.isArray(parsed.matched)
-        ) return null;
-        return {
-            hits: parsed.hits,
-            matched: parsed.matched.filter((i: unknown) => typeof i === "number"),
-        };
+        if (!Array.isArray(parsed.matched)) return null;
+        const matched = parsed.matched.filter((i: unknown) => typeof i === "number");
+        return { hits: matched.length, matched };
     } catch {
         return null;
     }
+}
+
+// ─── Turning points ─────────────────────────────────────────────────────
+
+/**
+ * จุดพลิกผัน — การ์ดที่ hitCount ต่ำผิดปกติเทียบกับค่าเฉลี่ยของฉากเดียวกัน
+ *
+ * ไม่ใช่ AI ตัวใหม่ ไม่ยิงคอลเพิ่มแม้แต่ครั้งเดียว — แค่ตีความ hitCount ที่ Echo Score
+ * เก็บไว้ใน plot_findings อยู่แล้ว (ข้อมูลจ่ายเงินไปแล้ว) มองเป็น predictability curve
+ * ของทั้งฉาก แล้วชี้จุดที่ต่ำกว่าเพื่อนบ้านผิดปกติ (>= 1 stddev ใต้ค่าเฉลี่ย)
+ *
+ * "ต่ำ" ไม่ได้แปลว่า "ดี" หรือ "แย่" ในตัวมันเอง — แค่แปลว่าเดาได้ยากกว่าจังหวะอื่นในฉากนี้
+ * อาจเป็นจุดหักมุมตั้งใจ หรือเขียนกำกวมโดยไม่ตั้งใจก็ได้ ต้องดูเนื้อฉากประกอบ
+ *
+ * ต้องมีอย่างน้อย 3 การ์ดถึงจะคำนวณ stddev ได้อย่างมีความหมาย — ฉากสั้นกว่านั้นคืน set ว่าง
+ */
+export function flagTurningPoints(findings: EchoFinding[]): Set<string> {
+    const flagged = new Set<string>();
+    if (findings.length < 3) return flagged;
+
+    const hits = findings.map(f => f.evidence.hitCount);
+    const mean = hits.reduce((a, b) => a + b, 0) / hits.length;
+    const variance = hits.reduce((a, b) => a + (b - mean) ** 2, 0) / hits.length;
+    const stddev = Math.sqrt(variance);
+    if (stddev === 0) return flagged; // ทุกการ์ด hitCount เท่ากันหมด — ไม่มีอะไรผิดปกติ
+
+    findings.forEach(f => {
+        if (f.evidence.hitCount <= mean - stddev) flagged.add(f.cardCode);
+    });
+    return flagged;
 }
 
 // ─── Beat filter ────────────────────────────────────────────────────────

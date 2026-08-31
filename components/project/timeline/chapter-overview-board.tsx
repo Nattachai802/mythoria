@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ZoomIn, ZoomOut, Navigation, Download, Clapperboard, Target, Swords, TrendingUp, TrendingDown, Minus, Check, X, Clock, HelpCircle } from "lucide-react";
 import { toast } from "sonner";
 import type { ThreadWithBeats } from "@/server/plot-threads";
+import { ChapterRecapButton } from "./chapter-recap-panel";
 
 // ----------------------------------------------------------------------
 // Mini canvas poster — ชิ้นใน canvas ฉบับย่อ (อ่านอย่างเดียว)
@@ -129,12 +130,15 @@ function StoryboardFrame({ event, index, threadDots }: { event: any; index: numb
 // Main Board
 // ----------------------------------------------------------------------
 interface ChapterOverviewBoardProps {
+    novelId: string;
+    chapterId: string;
     chapterTitle: string;
     events: any[];
     threads?: ThreadWithBeats[];
+    initialChapterRecap?: string | null;
 }
 
-export function ChapterOverviewBoard({ chapterTitle, events, threads = [] }: ChapterOverviewBoardProps) {
+export function ChapterOverviewBoard({ novelId, chapterId, chapterTitle, events, threads = [], initialChapterRecap }: ChapterOverviewBoardProps) {
     const [zoom, setZoom] = useState(1);
     const [panOffset, setPanOffset] = useState({ x: 40, y: 40 });
     const [isPanning, setIsPanning] = useState(false);
@@ -221,10 +225,13 @@ export function ChapterOverviewBoard({ chapterTitle, events, threads = [] }: Cha
                         {events.length} scenes
                     </span>
                 </div>
-                <Button variant="outline" size="sm" onClick={handleExportAll}
-                    className="h-8 gap-1.5 chamfered-sm font-technical text-[9px] uppercase tracking-[0.08em] bg-transparent border-zinc-700 text-zinc-300 hover:text-zinc-100">
-                    <Download className="h-3.5 w-3.5" />export
-                </Button>
+                <div className="flex items-center gap-2">
+                    <ChapterRecapButton novelId={novelId} chapterId={chapterId} initialRecap={initialChapterRecap} />
+                    <Button variant="outline" size="sm" onClick={handleExportAll}
+                        className="h-8 gap-1.5 chamfered-sm font-technical text-[9px] uppercase tracking-[0.08em] bg-transparent border-zinc-700 text-zinc-300 hover:text-zinc-100">
+                        <Download className="h-3.5 w-3.5" />export
+                    </Button>
+                </div>
             </div>
 
             {/* Canvas */}

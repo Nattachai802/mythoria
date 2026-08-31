@@ -268,6 +268,25 @@
       0 12px);
 }
 
+/* Film-frame sprocket strip — idea cards on the Plot Playground (film reel look) */
+.film-sprockets {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 8px;
+  padding: 0 6px;
+  background: var(--steel-800);
+  flex-shrink: 0;
+}
+
+.film-sprockets span {
+  width: 4px;
+  height: 4px;
+  border-radius: 9999px;
+  background: var(--background);
+  flex-shrink: 0;
+}
+
 /* Genealogy / org-chart — top-down tree with pure-CSS connectors */
 .genealogy ul {
   display: flex;
@@ -442,6 +461,21 @@
 
 .animate-forge-pulse {
   animation: forge-pulse 2s ease-in-out infinite;
+}
+
+/* Marquee — ชื่อผู้ร่วมฉากไหลซ้ายไปขวาในการ์ดไอเดีย เมื่อยาวเกินพื้นที่ */
+@keyframes marquee-ltr {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.animate-marquee-ltr {
+  animation: marquee-ltr 8s linear infinite;
 }
 
 /* Progress Bar - Industrial diagonal stripes */

@@ -7,11 +7,13 @@ import { getNovelByIdSimple } from "@/server/novel";
 import { getThreadsByNovelId } from "@/server/plot-threads";
 import { getFactionsByNovelId } from "@/server/factions";
 import { getEchoFindings } from "@/server/plot-analysis";
+import { getSceneRecap } from "@/server/plot-recap";
 import { getTonePresets } from "@/server/tone-presets";
 import { PlaygroundBoard } from "@/components/plot/playground/playground-board";
 import { SceneNavigator } from "@/components/plot/playground/scene-navigator";
 import { SceneDramaticPanel } from "@/components/plot/playground/scene-dramatic-panel";
 import { EchoScorePanel } from "@/components/plot/playground/echo-score-panel";
+import { SceneRecapPanel } from "@/components/plot/playground/scene-recap-panel";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
 import { notFound } from "next/navigation";
 
@@ -31,7 +33,7 @@ export default async function PlotPlaygroundPage({
   const { action } = await searchParams;
 
   // Fetch all necessary data in parallel
-  const [eventRes, charactersRes, locationsRes, ideasRes, eventsRes, chaptersRes, novelRes, threadsRes, factionsRes, boardChaptersRes, echoRes, toneRes] = await Promise.all([
+  const [eventRes, charactersRes, locationsRes, ideasRes, eventsRes, chaptersRes, novelRes, threadsRes, factionsRes, boardChaptersRes, echoRes, toneRes, sceneRecap] = await Promise.all([
     getTimelineEventById(eventId),
     getCharactersByNovelId(novelId),
     getLocationsByNovelId(novelId),
@@ -44,6 +46,7 @@ export default async function PlotPlaygroundPage({
     getNovelBoardChapters(novelId),
     getEchoFindings(novelId, eventId),
     getTonePresets(),
+    getSceneRecap(novelId, eventId),
   ]);
 
   if (!eventRes.success || !eventRes.event) {
@@ -75,11 +78,16 @@ export default async function PlotPlaygroundPage({
           />
           <SceneDramaticPanel event={eventRes.event} characters={charactersRes.data || []} events={eventsRes.events || []} />
         </div>
-        <div style={{ paddingTop: 8 }}>
+        <div style={{ paddingTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
           <EchoScorePanel
             novelId={novelId}
             sceneId={eventId}
             initialFindings={initialEchoFindings}
+          />
+          <SceneRecapPanel
+            novelId={novelId}
+            sceneId={eventId}
+            initialRecap={sceneRecap}
           />
         </div>
       </div>

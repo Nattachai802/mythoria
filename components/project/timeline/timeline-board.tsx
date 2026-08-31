@@ -124,6 +124,9 @@ export function TimelineBoard({
 }: TimelineBoardProps) {
     const [events, setEvents] = useState<TimelineEvent[]>(initialEvents)
     const [epoch, setEpoch] = useState<Date | null>(timelineEpoch)
+
+    // useState's initializer only runs once — server refetch (router.refresh() after create/delete) needs this to reach the board
+    useEffect(() => { setEvents(initialEvents) }, [initialEvents])
     const [activeId, setActiveId] = useState<string | null>(null)
 
     // ── Filter / lens state ──
