@@ -7,6 +7,7 @@ import {
     plotThreadBeats,
     sceneElementDetails,
     plotFindings,
+    plotRecaps,
 } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { requireNovelAccess } from "@/lib/authz";
@@ -342,6 +343,51 @@ export async function listEchoTargets(
     }
 }
 
+/**
+ * สรุปฉากก่อนหน้าทั้งเรื่อง (เท่าที่มีอยู่แล้วใน plot_recaps) — ไม่เรียก AI ไม่สร้างสรุปใหม่
+ * ให้ guesser เห็นภาพรวมทั้งเรื่อง ไม่ใช่แค่ฉากนี้ (lib/echo-score.ts ECHO_PROMPT_VERSION v3)
+ *
+ * ไม่เรียกผ่าน getSceneRecap (server/plot-recap.ts) เพราะไฟล์นั้น import buildSceneFormatForEvent
+ * จากไฟล์นี้อยู่แล้ว — import กลับจะเกิด circular dependency ระหว่างสอง server action module
+ * จึง query ตรงเองแทน (สั้นพอที่ไม่คุ้มรื้อ boundary)
+ */
+async function getPriorScenesContext(
+    novelId: string,
+    sceneId: string,
+): Promise<{ contextText: string; covered: number; total: number }> {
+    const events = await db.query.timelineEvents.findMany({
+        where: eq(timelineEvents.novelId, novelId),
+        columns: { id: true, title: true, orderIndex: true },
+        orderBy: (e, { asc }) => [asc(e.orderIndex)],
+    });
+    const current = events.find(e => e.id === sceneId);
+    if (!current) return { contextText: "", covered: 0, total: 0 };
+
+    const priorEvents = events.filter(e => e.orderIndex < current.orderIndex);
+    if (priorEvents.length === 0) return { contextText: "", covered: 0, total: 0 };
+
+    const recaps = await db
+        .select({ subjectId: plotRecaps.subjectId, content: plotRecaps.content })
+        .from(plotRecaps)
+        .where(and(
+            eq(plotRecaps.novelId, novelId),
+            eq(plotRecaps.scope, "scene"),
+            inArray(plotRecaps.subjectId, priorEvents.map(e => e.id)),
+        ));
+    const recapById = new Map(recaps.map(r => [r.subjectId, r.content]));
+
+    const covered = priorEvents.filter(e => recapById.has(e.id)).length;
+    const contextText = priorEvents
+        .map((e, i) => {
+            const recap = recapById.get(e.id);
+            return recap ? `[ฉากที่ ${i + 1}] ${e.title}\n${recap}` : null;
+        })
+        .filter((s): s is string => !!s)
+        .join("\n\n");
+
+    return { contextText, covered, total: priorEvents.length };
+}
+
 export async function runEchoScore(
     novelId: string,
     sceneId: string,
@@ -368,6 +414,12 @@ export async function runEchoScore(
         if (targets.length === 0) {
             return { success: true, findings: [], skipped: 0 };
         }
+
+        // สรุปฉากก่อนหน้าทั้งเรื่อง — เหมือนกันทุกการ์ดในฉากนี้ ดึงครั้งเดียวพอ
+        const priorScenes = await getPriorScenesContext(novelId, sceneId);
+        const priorCoverage = priorScenes.total > 0
+            ? { covered: priorScenes.covered, total: priorScenes.total }
+            : undefined;
 
         // ── 5. ดึง echo findings เดิม (สำหรับ hash check) ─────────────────
         const existing = await db
@@ -398,7 +450,7 @@ export async function runEchoScore(
         for (const beat of targets) {
             const prefixText = buildPrefixText(beats, beat);
             const cardText = buildCardText(beat);
-            const inputHash = hashEchoInput(prefixText, cardText);
+            const inputHash = hashEchoInput(prefixText, cardText, priorScenes.contextText);
 
             // ข้ามถ้า hash เดิม — ไม่จ่ายค่า LLM ซ้ำ
             const old = existingByRef.get(beat.code);
@@ -444,7 +496,7 @@ export async function runEchoScore(
             let usedModel: string = ECHO_MODEL;
             let guesses: string[] = [];
             try {
-                const guessPrompt = buildGuessPrompt(prefixText, ECHO_K);
+                const guessPrompt = buildGuessPrompt(prefixText, ECHO_K, priorScenes.contextText);
                 const guessResp = await callAi({
                     feature: "echo-score",
                     system: guessPrompt.system,
@@ -511,6 +563,7 @@ export async function runEchoScore(
                 cast: sceneFormat.cast
                     .filter((c): c is typeof c & { alias: string } => !!c.alias)
                     .map(c => ({ alias: c.alias, name: c.name })),
+                priorContextCoverage: priorCoverage,
             };
 
             await db

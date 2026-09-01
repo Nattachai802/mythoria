@@ -100,7 +100,7 @@ function deAlias(text: string, cast?: { alias: string; name: string }[]): string
 }
 
 export function EchoGuessBadge({ finding }: EchoGuessBadgeProps) {
-    const { hitCount, k, guesses = [], matched = [], cast } = finding.evidence;
+    const { hitCount, k, guesses = [], matched = [], cast, priorContextCoverage } = finding.evidence;
     const ratio = k > 0 ? hitCount / k : 0;
 
     // กลาง (40–60%) ไม่ฟันธง — ไม่ต้องมี label กวนตา
@@ -151,6 +151,11 @@ export function EchoGuessBadge({ finding }: EchoGuessBadgeProps) {
                         ))}
                     </span>
                 </div>
+                {priorContextCoverage && priorContextCoverage.covered < priorContextCoverage.total && (
+                    <p className="mb-2 leading-snug opacity-70" style={{ fontSize: 10 }}>
+                        บริบทฉากก่อนหน้า: สรุปแล้ว {priorContextCoverage.covered}/{priorContextCoverage.total} ฉาก — ผลอาจไม่ครบ
+                    </p>
+                )}
                 {guesses.length > 0 && (
                     <div className="flex flex-col divide-y divide-primary-foreground/15 border-t border-primary-foreground/15">
                         {guesses.map((g, i) => (

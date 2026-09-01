@@ -12,7 +12,6 @@ import { getTonePresets } from "@/server/tone-presets";
 import { PlaygroundBoard } from "@/components/plot/playground/playground-board";
 import { SceneNavigator } from "@/components/plot/playground/scene-navigator";
 import { SceneDramaticPanel } from "@/components/plot/playground/scene-dramatic-panel";
-import { SceneRecapPanel } from "@/components/plot/playground/scene-recap-panel";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
 import { notFound } from "next/navigation";
 
@@ -77,13 +76,6 @@ export default async function PlotPlaygroundPage({
           />
           <SceneDramaticPanel event={eventRes.event} characters={charactersRes.data || []} events={eventsRes.events || []} />
         </div>
-        <div style={{ paddingTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
-          <SceneRecapPanel
-            novelId={novelId}
-            sceneId={eventId}
-            initialRecap={sceneRecap}
-          />
-        </div>
       </div>
 
       <div className="flex-1 overflow-hidden">
@@ -100,6 +92,7 @@ export default async function PlotPlaygroundPage({
           factions={factionsRes.data || []}
           tonePresets={toneRes.data || []}
           initialEchoFindings={initialEchoFindings}
+          initialSceneRecap={sceneRecap}
         />
       </div>
     </div>

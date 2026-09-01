@@ -16,8 +16,10 @@ import { createHash } from "crypto";
 
 // v2: แยก persona เข้า system role, บังคับ JSON schema ที่ API แทนขอด้วยคำพูดอย่างเดียว,
 // จำกัดความยาวคำเดา, เลิกขอ hitCount จากโมเดล (คำนวณจาก matched.length แทน — กัน 2 ค่าขัดกันเอง)
-// เปลี่ยนความหมายของ field พอที่ผลเก่า (v1) ไม่ควรเทียบตรงกับผลใหม่ จึงขึ้นเวอร์ชัน
-export const ECHO_PROMPT_VERSION = "2";
+// v3: guesser เห็นสรุปฉากก่อนหน้าทั้งเรื่องด้วย (ไม่ใช่แค่ prefix ในฉากเดียวกัน) — เดิมวัดแค่
+// "เดาง่ายในฉากนี้" ไม่ใช่ "เดาง่ายในสายตาคนอ่านที่อ่านมาแล้วทั้งเรื่อง" ตามที่ construct จริงต้องการ
+// เปลี่ยนความหมายของ field พอที่ผลเก่า (v1/v2) ไม่ควรเทียบตรงกับผลใหม่ จึงขึ้นเวอร์ชัน
+export const ECHO_PROMPT_VERSION = "3";
 export const ECHO_K = 5; // ลดจาก 8 — ประหยัด token เล็กน้อย แลกความละเอียดที่ยอมรับได้ (K=3 หยาบเกินไป)
 export const ECHO_GUESS_MAX_WORDS = 15;
 export const ECHO_MODEL = "gemini-2.5-flash";
@@ -38,6 +40,8 @@ export interface EchoEvidence {
     beatIndex?: number;
     hasIncomingLink?: boolean;
     cast?: { alias: string; name: string }[]; // @A/@B ฯลฯ ที่ใช้ตอนสร้าง prompt — ใช้แปลงกลับเป็นชื่อจริงตอนแสดงผล
+    // ความครอบคลุมของสรุปฉากก่อนหน้าที่ป้อนให้ guesser — undefined/total=0 = ฉากแรกของเรื่อง ไม่มีฉากก่อนหน้าให้ตรวจ
+    priorContextCoverage?: { covered: number; total: number };
 }
 
 export interface EchoFinding {
@@ -120,11 +124,12 @@ export function buildCardText(beat: FormatBeat): string {
 // ─── Hash ───────────────────────────────────────────────────────────────
 
 /**
- * SHA-256 สั้น 12 char — เทียบว่า prefix + card เปลี่ยนไปไหมก่อนเรียก LLM ซ้ำ
+ * SHA-256 สั้น 12 char — เทียบว่า prefix + card + สรุปฉากก่อนหน้าเปลี่ยนไปไหมก่อนเรียก LLM ซ้ำ
+ * (priorContext รวมเข้ามาด้วย — ถ้าฉากก่อนหน้าถูกสรุปใหม่ ต้องตรวจซ้ำ ไม่งั้น cache จะเก่าเงียบๆ)
  */
-export function hashEchoInput(prefixText: string, cardText: string): string {
+export function hashEchoInput(prefixText: string, cardText: string, priorContext: string = ""): string {
     return createHash("sha256")
-        .update(`${prefixText}|||${cardText}`)
+        .update(`${prefixText}|||${cardText}|||${priorContext}`)
         .digest("hex")
         .slice(0, 12);
 }
@@ -167,8 +172,16 @@ export interface EchoPrompt {
     user: string;
 }
 
-/** สุ่มเดา K ทาง — คืน JSON array of strings (บังคับด้วย ECHO_GUESS_SCHEMA) */
-export function buildGuessPrompt(prefixText: string, k: number): EchoPrompt {
+/**
+ * สุ่มเดา K ทาง — คืน JSON array of strings (บังคับด้วย ECHO_GUESS_SCHEMA)
+ *
+ * priorContext (ถ้ามี) = สรุปฉากก่อนหน้าทั้งเรื่อง (จาก plot_recaps ที่มีอยู่แล้วเท่านั้น — ไม่สร้างสด)
+ * แยกบล็อกชัดเจนจาก prefix ในฉากนี้ กัน AI สับสนระหว่าง "รู้มาก่อนแบบคร่าวๆ" กับ "จังหวะจ่อจะเดา"
+ */
+export function buildGuessPrompt(prefixText: string, k: number, priorContext: string = ""): EchoPrompt {
+    const priorBlock = priorContext
+        ? `เรื่องราวก่อนหน้านี้ (สรุปคร่าวๆ):\n---\n${priorContext}\n---\n\n`
+        : "";
     return {
         system: `คุณเป็นผู้อ่านนิยายที่กำลังอ่านสด ยังไม่รู้เหตุการณ์ที่จะเกิดต่อไป
 หน้าที่ของคุณคือจินตนาการว่าเหตุการณ์ถัดไปที่น่าจะเกิดขึ้นคืออะไร
@@ -177,8 +190,10 @@ export function buildGuessPrompt(prefixText: string, k: number): EchoPrompt {
 - สุ่มเดา ${k} ทางเลือกที่แตกต่างกันจริง ๆ (คนละแนวคิด ไม่ใช่แค่เปลี่ยนคำ)
 - แต่ละทางเลือกเป็นเหตุการณ์สั้น ไม่เกิน ${ECHO_GUESS_MAX_WORDS} คำ
 - ห้ามใส่คำนำหน้าเช่น "ข้อ 1", "เดาที่ 1", ตัวเลข หรือเครื่องหมายใด ๆ ในเนื้อความ — ให้เป็นประโยคเหตุการณ์ล้วน ๆ
+- ถ้ามี "เรื่องราวก่อนหน้านี้" ให้ใช้เป็นความรู้พื้นหลังประกอบการเดาด้วย (ผู้อ่านจริงจำเรื่องราวที่ผ่านมาได้)
+  แต่จุดที่ต้องเดาคือเหตุการณ์ถัดจาก "บริบทในฉากนี้" เท่านั้น
 - ตอบเป็น JSON array of strings ตาม schema ที่กำหนดเท่านั้น`,
-        user: `บริบทก่อนหน้า:\n---\n${prefixText}\n---\n\nเหตุการณ์ถัดไปน่าจะเป็นอะไร`,
+        user: `${priorBlock}บริบทในฉากนี้:\n---\n${prefixText}\n---\n\nเหตุการณ์ถัดไปน่าจะเป็นอะไร`,
     };
 }
 

@@ -16,7 +16,9 @@ import {
 import { ResourceSidebar } from "./resource-sidebar";
 import { CanvasItem, DraggableCanvasItem } from "./canvas-item";
 import { EchoScorePanel } from "./echo-score-panel";
+import { SceneRecapPanel } from "./scene-recap-panel";
 import type { EchoFinding } from "@/lib/echo-score";
+import type { CausalityVerdict } from "@/lib/plot-recap";
 import { type BoardChapter, updateTimelineCanvas, getNovelDummyParticipants } from "@/server/timeline";
 import { updateIdea, createIdea } from "@/server/idea"; // updateIdea: auto-reset isUsed flag
 import { getSceneElementDetails, getIdeaNotesForIdeas, promoteDummy, promoteDummyAllScenes } from "@/server/scene-element-details";
@@ -53,6 +55,7 @@ interface PlaygroundBoardProps {
     boardChapters?: BoardChapter[]; // ตอนที่แบ่งไว้บนกระดานอื่นของนิยายเดียวกัน — ใช้อ้างอิงตอนตั้งชื่อ
     tonePresets?: { id: string; label: string; color: string }[];
     initialEchoFindings?: EchoFinding[];
+    initialSceneRecap?: { recap: string; causality?: CausalityVerdict; causalityNote?: string } | null;
 }
 
 interface Lane {
@@ -885,6 +888,7 @@ export function PlaygroundBoard({
     boardChapters = [],
     tonePresets = [],
     initialEchoFindings = [],
+    initialSceneRecap = null,
 }: PlaygroundBoardProps) {
     const [{ lanes, items: initialCardItems, chapters: initialChapters }] = useState(() => buildBoardState(initialItems));
     const [lanes_, setLanes] = useState<Lane[]>(lanes);
@@ -2298,6 +2302,12 @@ export function PlaygroundBoard({
                             sceneId={eventId}
                             findingCount={echoFindings.length}
                             onFindingsChange={setEchoFindings}
+                        />
+
+                        <SceneRecapPanel
+                            novelId={novelId}
+                            sceneId={eventId}
+                            initialRecap={initialSceneRecap}
                         />
 
                         <div className="flex-1" />
