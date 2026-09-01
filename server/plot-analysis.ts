@@ -396,7 +396,7 @@ export async function runEchoScore(
         let skipped = 0;
 
         for (const beat of targets) {
-            const prefixText = buildPrefixText(beats, beat.beatIndex, sceneFormat.cast);
+            const prefixText = buildPrefixText(beats, beat);
             const cardText = buildCardText(beat);
             const inputHash = hashEchoInput(prefixText, cardText);
 
@@ -407,13 +407,32 @@ export async function runEchoScore(
                 // ดึงผลเก่ามาใส่ findings
                 const oldRow = existing.find(e => e.subjectRef === beat.code);
                 if (oldRow) {
+                    let oldEvidence = oldRow.evidence as EchoEvidence;
+                    // แถวเก่ากว่า v1.5.1 ไม่มี cast mapping — hash ตรงแปลว่า legend (และ cast ที่ใช้สร้าง legend) เหมือนเดิมทุกตัว
+                    // แปะ mapping ปัจจุบันเข้าไปได้เลยอย่างปลอดภัย พร้อม backfill ลง DB กันต้องมาเติมซ้ำทุกครั้ง
+                    if (!oldEvidence.cast) {
+                        oldEvidence = {
+                            ...oldEvidence,
+                            cast: sceneFormat.cast
+                                .filter((c): c is typeof c & { alias: string } => !!c.alias)
+                                .map(c => ({ alias: c.alias, name: c.name })),
+                        };
+                        await db
+                            .update(plotFindings)
+                            .set({ evidence: oldEvidence })
+                            .where(and(
+                                eq(plotFindings.novelId, novelId),
+                                eq(plotFindings.checkId, "echo"),
+                                eq(plotFindings.subjectRef, beat.code),
+                            ));
+                    }
                     findings.push({
                         cardCode: beat.code,
                         cardId: beat.id,
                         cardTitle: beat.title,
                         beatIndex: beat.beatIndex,
                         hasIncomingLink: beat.links.some(l => l.kind === "leads_to"),
-                        evidence: oldRow.evidence as EchoEvidence,
+                        evidence: oldEvidence,
                     });
                 }
                 continue;
@@ -452,7 +471,7 @@ export async function runEchoScore(
 
             // ── 6b. ตัดสินว่าตรงกี่ครั้ง (temp 0 เข้มงวด) ──────────────────
             let hitCount = 0;
-            let matched: number[] = [];
+            let matched: { index: number; reason: string }[] = [];
             try {
                 const judgePrompt = buildJudgePrompt(prefixText, cardText, guesses);
                 const judgeResp = await callAi({
@@ -461,7 +480,7 @@ export async function runEchoScore(
                     prompt: judgePrompt.user,
                     responseSchema: ECHO_JUDGE_SCHEMA,
                     temperature: 0.0,
-                    maxTokens: 128,
+                    maxTokens: 512, // เผื่อ reason ต่อข้อที่ตรง (เดิม 128 พอแค่ตอนตอบแค่ index เปล่าๆ)
                     novelId,
                 });
                 usedModel = judgeResp.model; // ตัวตัดสินสุดท้าย — ใช้เป็น model ที่บันทึกถ้าสำเร็จ
@@ -489,6 +508,9 @@ export async function runEchoScore(
                 cardTitle: beat.title,
                 beatIndex: beat.beatIndex,
                 hasIncomingLink: beat.links.some(l => l.kind === "leads_to"),
+                cast: sceneFormat.cast
+                    .filter((c): c is typeof c & { alias: string } => !!c.alias)
+                    .map(c => ({ alias: c.alias, name: c.name })),
             };
 
             await db

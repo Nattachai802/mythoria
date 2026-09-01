@@ -1,34 +1,32 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Sparkles, Loader2, RefreshCw, Zap } from "lucide-react";
 import { runEchoScore, listEchoTargets } from "@/server/plot-analysis";
 import { setPlotFindingVerdict } from "@/server/plot-analysis";
-import { flagTurningPoints, type EchoFinding } from "@/lib/echo-score";
+import { type EchoFinding } from "@/lib/echo-score";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 
 interface EchoScorePanelProps {
     novelId: string;
     sceneId: string;
-    initialFindings?: EchoFinding[];
+    findingCount: number;
+    onFindingsChange: (findings: EchoFinding[]) => void;
 }
 
 /**
- * Panel สำหรับหน้า scene board /plot/[eventId]
+ * ปุ่มเดียว — สั่งตรวจ Echo Score ทั้งฉาก ผลไปโผล่เป็น label เล็กบนการ์ดแต่ละใบ
+ * (ไม่มี panel สรุปแยกอีกต่อไป — ผู้เรียก (PlaygroundBoard) เก็บ findings แล้วผูกเข้าการ์ดผ่าน cardId)
  *
  * - มีปุ่ม "ตรวจฉากนี้" (opt-in, เสียเงิน)
- * - โหลดแล้ว: แสดงรายการ์ดพร้อม hitCount/K และคำเดา
- * - รองรับ hash skip (UI แสดง "(ผลเดิม)" ถ้าการ์ดไม่เปลี่ยน)
+ * - รองรับ hash skip (ข้ามการ์ดที่ไม่เปลี่ยนตั้งแต่รอบก่อน)
  */
-export function EchoScorePanel({ novelId, sceneId, initialFindings }: EchoScorePanelProps) {
-    const [findings, setFindings] = useState<EchoFinding[]>(initialFindings ?? []);
-    const [isOpen, setIsOpen] = useState(false);
+export function EchoScorePanel({ novelId, sceneId, findingCount, onFindingsChange }: EchoScorePanelProps) {
     const [isPending, startTransition] = useTransition();
     const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-
-    const hasResults = findings.length > 0;
-    const turningPoints = useMemo(() => flagTurningPoints(findings), [findings]);
+    const hasResults = findingCount > 0;
 
     // ยิงทีละการ์ด (reuse cardIds scoping ของ runEchoScore) แทนยิงรวดเดียวทั้งฉาก
     // เพื่อให้ผลแต่ละใบโผล่ทันทีที่เสร็จ แทนที่จะรอ spinner เดียวจนจบแล้วเทกองมาทีเดียว
@@ -52,7 +50,7 @@ export function EchoScorePanel({ novelId, sceneId, initialFindings }: EchoScoreP
                 }
                 if (result.findings.length > 0) nextFindings.push(result.findings[0]);
                 skippedCount += result.skipped;
-                setFindings([...nextFindings]);
+                onFindingsChange([...nextFindings]);
                 setProgress(p => (p ? { done: p.done + 1, total: p.total } : p));
             }
 
@@ -63,137 +61,121 @@ export function EchoScorePanel({ novelId, sceneId, initialFindings }: EchoScoreP
     };
 
     return (
-        <div
-            className="chamfered"
-            style={{
-                background: "var(--muted)",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-md)",
-                overflow: "hidden",
-            }}
+        <Button
+            id="echo-score-run-btn"
+            size="sm"
+            variant="ghost"
+            onClick={handleRun}
+            disabled={isPending}
+            className="h-8 gap-1.5 text-xs"
+            title="หาจังหวะที่เดาได้ (Echo Score) — ผลขึ้นเป็น label บนการ์ด"
         >
-            {/* Header — กดเพื่อ expand */}
-            <button
-                id="echo-score-panel-toggle"
-                onClick={() => setIsOpen(prev => !prev)}
-                className="w-full flex items-center justify-between gap-3 text-left transition-colors hover:bg-accent/50"
-                style={{ padding: "10px 16px" }}
-                aria-expanded={isOpen}
-            >
-                <div className="flex items-center gap-2">
-                    <Sparkles
-                        size={14}
-                        style={{ color: "var(--forge-gold)", flexShrink: 0 }}
-                    />
-                    <span
-                        style={{
-                            fontFamily: "var(--font-technical)",
-                            fontSize: 12,
-                            color: "var(--muted-foreground)",
-                            letterSpacing: "0.04em",
-                        }}
-                    >
-                        หาจังหวะที่เดาได้
-                    </span>
-                    <span
-                        style={{
-                            fontFamily: "var(--font-technical)",
-                            fontSize: 11,
-                            color: "var(--muted-foreground)",
-                            opacity: 0.7,
-                        }}
-                    >
-                        · {hasResults ? `${findings.length} การ์ด` : "ต่อการ์ด"}
-                    </span>
-                </div>
-                <span
-                    style={{
-                        fontSize: 11,
-                        color: "var(--muted-foreground)",
-                        transform: isOpen ? "rotate(180deg)" : undefined,
-                        transition: "transform 0.15s",
-                    }}
-                >
-                    ▾
-                </span>
-            </button>
-
-            {/* Body */}
-            {isOpen && (
-                <div
-                    style={{
-                        borderTop: "1px solid var(--border)",
-                        padding: "14px 16px",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 16,
-                    }}
-                >
-                    {/* Run button */}
-                    <div className="flex items-center justify-between gap-4 flex-wrap">
-                        <p
-                            style={{
-                                fontFamily: "var(--font-technical)",
-                                fontSize: 11,
-                                color: "var(--muted-foreground)",
-                                margin: 0,
-                            }}
-                        >
-                            {progress ? `กำลังตรวจ ${progress.done}/${progress.total} การ์ด…` : (
-                                <>
-                                    ใช้ AI · ~2 ครั้ง/การ์ด · Gemini 2.5 Flash
-                                    {hasResults && " · กดอีกครั้งเพื่ออัปเดต"}
-                                </>
-                            )}
-                        </p>
-                        <Button
-                            id="echo-score-run-btn"
-                            size="sm"
-                            variant="outline"
-                            onClick={handleRun}
-                            disabled={isPending}
-                            style={{ minHeight: 36, gap: 6 }}
-                        >
-                            {isPending ? (
-                                <Loader2 size={13} className="animate-spin" />
-                            ) : hasResults ? (
-                                <RefreshCw size={13} />
-                            ) : (
-                                <Sparkles size={13} />
-                            )}
-                            {progress
-                                ? `${progress.done}/${progress.total}`
-                                : hasResults
-                                    ? "ตรวจใหม่"
-                                    : "ตรวจฉากนี้"}
-                        </Button>
-                    </div>
-
-                    {/* Results */}
-                    {hasResults && (
-                        <div
-                            style={{
-                                display: "flex",
-                                flexDirection: "column",
-                                gap: 12,
-                                maxHeight: "60vh",
-                                overflowY: "auto",
-                            }}
-                        >
-                            {findings.map(f => (
-                                <EchoFindingRow
-                                    key={f.cardCode}
-                                    finding={f}
-                                    novelId={novelId}
-                                    sceneId={sceneId}
-                                    isTurningPoint={turningPoints.has(f.cardCode)}
-                                />
-                            ))}
-                        </div>
-                    )}
-                </div>
+            {isPending ? (
+                <Loader2 size={13} className="animate-spin" />
+            ) : hasResults ? (
+                <RefreshCw size={13} />
+            ) : (
+                <Sparkles size={13} />
             )}
-        </div>
+            {progress
+                ? `กำลังตรวจ ${progress.done}/${progress.total}`
+                : hasResults
+                    ? "ตรวจ Echo ใหม่"
+                    : "ตรวจ Echo Score"}
+        </Button>
+    );
+}
+
+// ─── EchoGuessBadge ─────────────────────────────────────────────────────
+// Label เล็กมุมขวาบนของการ์ด บอกว่าจังหวะนี้ "เดาง่าย/เดายาก" แค่ไหน (จาก hitCount/K)
+
+interface EchoGuessBadgeProps {
+    finding: EchoFinding;
+}
+
+// แปลง @A/@B ฯลฯ กลับเป็นชื่อจริง — ผู้อ่าน (นักเขียน) ไม่รู้จักตัวย่อที่ระบบใช้ตัดคำเรียก LLM
+function deAlias(text: string, cast?: { alias: string; name: string }[]): string {
+    if (!cast || cast.length === 0) return text;
+    return cast.reduce((out, c) => out.split(c.alias).join(c.name), text);
+}
+
+export function EchoGuessBadge({ finding }: EchoGuessBadgeProps) {
+    const { hitCount, k, guesses = [], matched = [], cast } = finding.evidence;
+    const ratio = k > 0 ? hitCount / k : 0;
+
+    // กลาง (40–60%) ไม่ฟันธง — ไม่ต้องมี label กวนตา
+    if (ratio > 0.4 && ratio < 0.6) return null;
+
+    const isEasy = ratio >= 0.6;
+    // เข้าธีม forge เดิม — ทองสำหรับ "ต้องระวัง" (เดาง่าย), เขียวมิ้นต์เย็นสำหรับ "ดีแล้ว" (เดายาก)
+    const dotColor = isEasy ? "var(--forge-amber)" : "oklch(0.65 0.14 165)";
+    const hitSet = new Set(matched.map(m => m.index));
+    const reasonOf = new Map(matched.map(m => [m.index, m.reason]));
+
+    return (
+        <Tooltip>
+            <TooltipTrigger asChild>
+                <span
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    className="inline-flex items-center gap-1 shrink-0 rounded-full border px-1.5 py-0.5 leading-none cursor-help"
+                    style={{
+                        borderColor: "var(--border)",
+                        fontFamily: "var(--font-technical)",
+                        fontSize: 9,
+                        letterSpacing: "0.02em",
+                        color: "var(--muted-foreground)",
+                    }}
+                >
+                    <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: dotColor }} />
+                    {isEasy ? "เดาง่าย" : "เดายาก"}
+                </span>
+            </TooltipTrigger>
+            <TooltipContent
+                className="max-w-80 px-3 py-2.5"
+                onPointerDownOutside={(e) => e.stopPropagation()}
+            >
+                <div className="flex items-center justify-between gap-3 mb-2">
+                    <span
+                        style={{ fontFamily: "var(--font-technical)", fontSize: 10, letterSpacing: "0.04em", opacity: 0.8 }}
+                    >
+                        ECHO SCORE · เดาถูก {hitCount}/{k}
+                    </span>
+                    <span className="flex items-center gap-[3px]" aria-hidden="true">
+                        {Array.from({ length: k }).map((_, i) => (
+                            <span
+                                key={i}
+                                className="h-1.5 w-1.5 rounded-full shrink-0"
+                                style={{ background: i < hitCount ? dotColor : "currentColor", opacity: i < hitCount ? 1 : 0.25 }}
+                            />
+                        ))}
+                    </span>
+                </div>
+                {guesses.length > 0 && (
+                    <div className="flex flex-col divide-y divide-primary-foreground/15 border-t border-primary-foreground/15">
+                        {guesses.map((g, i) => (
+                            <div key={i} className="flex items-start gap-2 py-1.5">
+                                <span
+                                    className="mt-[3px] h-1.5 w-1.5 rounded-full shrink-0"
+                                    style={{ background: hitSet.has(i) ? dotColor : "currentColor", opacity: hitSet.has(i) ? 1 : 0.25 }}
+                                    title={hitSet.has(i) ? "AI เดาข้อนี้ถูก" : "AI เดาข้อนี้ผิด"}
+                                />
+                                <div className="flex flex-col gap-0.5 min-w-0">
+                                    <span className="italic opacity-90 leading-snug" style={{ fontSize: 11 }}>
+                                        "{deAlias(g, cast)}"
+                                    </span>
+                                    {reasonOf.has(i) && (
+                                        <span className="opacity-70 leading-snug" style={{ fontSize: 10 }}>
+                                            → {deAlias(reasonOf.get(i)!, cast)}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </TooltipContent>
+        </Tooltip>
     );
 }
 
@@ -232,8 +214,8 @@ export function EchoFindingRow({ finding, novelId, sceneId, isTurningPoint }: Ec
         });
     };
 
-    // คำเดาที่แสดง: เฉพาะ 3 อันแรก
-    const displayGuesses = guesses.slice(0, 3);
+    // คำเดาที่แสดง: เฉพาะ 3 อันแรก แปลง @A/@B กลับเป็นชื่อจริงก่อนโชว์
+    const displayGuesses = guesses.slice(0, 3).map(g => deAlias(g, evidence.cast));
 
     return (
         <div

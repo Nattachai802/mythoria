@@ -15,6 +15,8 @@ import {
 } from "@dnd-kit/core";
 import { ResourceSidebar } from "./resource-sidebar";
 import { CanvasItem, DraggableCanvasItem } from "./canvas-item";
+import { EchoScorePanel } from "./echo-score-panel";
+import type { EchoFinding } from "@/lib/echo-score";
 import { type BoardChapter, updateTimelineCanvas, getNovelDummyParticipants } from "@/server/timeline";
 import { updateIdea, createIdea } from "@/server/idea"; // updateIdea: auto-reset isUsed flag
 import { getSceneElementDetails, getIdeaNotesForIdeas, promoteDummy, promoteDummyAllScenes } from "@/server/scene-element-details";
@@ -50,6 +52,7 @@ interface PlaygroundBoardProps {
     factions?: any[];
     boardChapters?: BoardChapter[]; // ตอนที่แบ่งไว้บนกระดานอื่นของนิยายเดียวกัน — ใช้อ้างอิงตอนตั้งชื่อ
     tonePresets?: { id: string; label: string; color: string }[];
+    initialEchoFindings?: EchoFinding[];
 }
 
 interface Lane {
@@ -881,11 +884,18 @@ export function PlaygroundBoard({
     factions = [],
     boardChapters = [],
     tonePresets = [],
+    initialEchoFindings = [],
 }: PlaygroundBoardProps) {
     const [{ lanes, items: initialCardItems, chapters: initialChapters }] = useState(() => buildBoardState(initialItems));
     const [lanes_, setLanes] = useState<Lane[]>(lanes);
     const [chapters, setChapters] = useState<Chapter[]>(initialChapters);
     const [items, setItems] = useState<any[]>(initialCardItems);
+    const [echoFindings, setEchoFindings] = useState<EchoFinding[]>(initialEchoFindings);
+    const echoByCardId = useMemo(() => new Map(echoFindings.map(f => [f.cardId, f])), [echoFindings]);
+    // การ์ด idea รันเฉพาะการ์ดตัวเองได้จาก dialog แยกจากปุ่ม "ตรวจ Echo ใหม่" ของทั้งบอร์ด — sync ผลกลับเข้า state เดียวกัน กัน badge ค้างผลเก่า
+    const handleEchoResult = useCallback((finding: EchoFinding) => {
+        setEchoFindings(prev => [...prev.filter(f => f.cardId !== finding.cardId), finding]);
+    }, []);
 
     /**
      * ตอนทั้งนิยายเรียงตามลำดับเรื่อง = ตอนของบอร์ดอื่น (จาก DB ตอนโหลดหน้า) + ตอนของบอร์ดนี้ (state สด)
@@ -2153,6 +2163,8 @@ export function PlaygroundBoard({
             threadBeats={item.type === 'idea' ? (cardBeats.get(item.id) ?? []) : undefined}
             onOpenThreadBind={item.type === 'idea' ? () => setThreadBindItem(item) : undefined}
             onMeasureRef={registerItemRef}
+            echoFinding={echoByCardId.get(item.id)}
+            onEchoResult={handleEchoResult}
         />
     );
 
@@ -2280,6 +2292,13 @@ export function PlaygroundBoard({
                         <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs" onClick={handleAddLane} title="เพิ่มเลนใหม่">
                             <Rows3 className="h-4 w-4" />เพิ่มเลน
                         </Button>
+
+                        <EchoScorePanel
+                            novelId={novelId}
+                            sceneId={eventId}
+                            findingCount={echoFindings.length}
+                            onFindingsChange={setEchoFindings}
+                        />
 
                         <div className="flex-1" />
 

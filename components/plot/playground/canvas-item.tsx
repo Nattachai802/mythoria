@@ -17,6 +17,8 @@ import { SceneElementDetails } from "@/db/schema";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { IdeaFilmCard } from "./idea-frame-dialog";
+import { EchoGuessBadge } from "./echo-score-panel";
+import type { EchoFinding } from "@/lib/echo-score";
 
 // สีโน้ต — ผู้ใช้เลือกสีเองจากพาเลตเดียวกับป้ายจัดกลุ่มการ์ด แทนชนิดตายตัว (tension/dialogue/question เดิม)
 // noteKind เก็บค่า hex สีตรงๆ, null = ทั่วไป (เหลืองเดิม)
@@ -59,8 +61,12 @@ export function DraggableCanvasItem({
   isConnectSource,
   isConnectTarget,
   dragDisabled,
+  echoFinding,
+  onEchoResult,
 }: {
   item: any;
+  echoFinding?: EchoFinding;
+  onEchoResult?: (finding: EchoFinding) => void;
   tonePresets?: { id: string; label: string; color: string }[];
   onRemove: () => void;
   onSetColor?: (color: string | null) => void;
@@ -206,6 +212,8 @@ export function DraggableCanvasItem({
         onSetNarration={onSetNarration}
         threadBeats={threadBeats}
         onOpenThreadBind={onOpenThreadBind}
+        echoFinding={echoFinding}
+        onEchoResult={onEchoResult}
       />
     </div>
   );
@@ -353,8 +361,12 @@ export function CanvasItem({
   onSetNarration,
   threadBeats,
   onOpenThreadBind,
+  echoFinding,
+  onEchoResult,
 }: {
   item: any;
+  echoFinding?: EchoFinding;
+  onEchoResult?: (finding: EchoFinding) => void;
   tonePresets?: { id: string; label: string; color: string }[];
   onSetColor?: (color: string | null) => void;
   onSetKeyMoment?: (label: string | null) => void;
@@ -431,6 +443,8 @@ export function CanvasItem({
         onSetNarration={onSetNarration}
         threadBeats={threadBeats}
         onOpenThreadBind={onOpenThreadBind}
+        sceneEchoFinding={echoFinding}
+        onEchoResult={onEchoResult}
       />
     );
   }
@@ -514,7 +528,8 @@ export function CanvasItem({
             </div>
 
             {/* Actions */}
-            <div className="flex flex-col gap-1 -mr-1 -mt-1">
+            <div className="flex items-center gap-1 -mr-1 -mt-1">
+              {echoFinding && <EchoGuessBadge finding={echoFinding} />}
               {/* Three-dot menu */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

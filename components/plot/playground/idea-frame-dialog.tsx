@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 import { mentionRangeAtCaret } from "@/lib/mentions";
 import { SceneElementDetails } from "@/db/schema";
 import { SceneParticipantsPanel } from "./scene-participants-panel";
-import { EchoFindingRow } from "./echo-score-panel";
+import { EchoGuessBadge } from "./echo-score-panel";
 import { runEchoScore } from "@/server/plot-analysis";
 import type { EchoFinding } from "@/lib/echo-score";
 
@@ -103,6 +103,8 @@ interface IdeaFilmCardProps {
   onSetNarration?: (isNarration: boolean) => void;
   threadBeats?: ThreadBeat[];
   onOpenThreadBind?: () => void;
+  sceneEchoFinding?: EchoFinding; // ผล Echo Score ของฉาก (จาก PlaygroundBoard) ผูกตาม cardId — ต่างจาก echoFinding state ด้านล่างที่ยิงเฉพาะการ์ดนี้ตอนเปิด dialog
+  onEchoResult?: (finding: EchoFinding) => void; // แจ้ง PlaygroundBoard เมื่อรัน Echo เฉพาะการ์ดนี้เสร็จ กัน badge มุมการ์ดกับผลใน dialog ไม่ตรงกัน
 }
 
 // การ์ดหน้าตา "เฟรมฟิล์ม" แบบย่อบน canvas — กดเพื่อเปิดรายละเอียดเต็มใน IdeaFrameDialog
@@ -113,6 +115,7 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
     onSetAncestor, ancestorConnections, onRemoveAncestor, sceneId, characters, novelDummyNames,
     factions, ideas, onAddChild, onUpdateChild, onPromoteDummy, onDetailSaved, onSetColor,
     tonePresets = [], onSetKeyMoment, onSetNarration, threadBeats, onOpenThreadBind,
+    sceneEchoFinding, onEchoResult,
   } = props;
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -172,6 +175,7 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
             <div className="flex items-center gap-1 shrink-0">
               {item.isNarration && <Quote className="w-3 h-3 text-amber-500" fill="currentColor" />}
               {isKeyMoment && <Star className="w-3.5 h-3.5 text-amber-400" fill="currentColor" />}
+              {sceneEchoFinding && <EchoGuessBadge finding={sceneEchoFinding} />}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -369,6 +373,7 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
         onOpenThreadBind={onOpenThreadBind}
         threadBeats={threadBeats}
         onCopy={copyToClipboard}
+        onEchoResult={onEchoResult}
       />
       </Popover>
     </div>
@@ -401,6 +406,7 @@ interface IdeaFrameDialogProps {
   onOpenThreadBind?: () => void;
   threadBeats?: ThreadBeat[];
   onCopy: () => void;
+  onEchoResult?: (finding: EchoFinding) => void;
 }
 
 // รายละเอียดเต็มของไอเดีย — ลอยข้างการ์ดแบบ hovercard (Popover) แทน dialog กลางจอ
@@ -410,6 +416,7 @@ function IdeaFrameDialog({
   onQuickAddNote, onDeleteNote, onReorderNotes, novelId, ancestorConnections, onRemoveAncestor,
   sceneId, characters, novelDummyNames, factions, ideas, onAddChild, onUpdateChild,
   onPromoteDummy, onDetailSaved, onSetKeyMoment, onOpenThreadBind, threadBeats, onCopy,
+  onEchoResult,
 }: IdeaFrameDialogProps) {
   const [quickNote, setQuickNote] = useState("");
   const [quickNoteOpen, setQuickNoteOpen] = useState(false);
@@ -435,6 +442,7 @@ function IdeaFrameDialog({
     if (result.findings.length === 0) { setEchoStatus('empty'); return; }
     setEchoFinding(result.findings[0]);
     setEchoStatus('idle');
+    onEchoResult?.(result.findings[0]); // sync ให้ badge มุมการ์ด (state ของ PlaygroundBoard) เห็นผลใหม่ด้วย
   };
 
   // @mention ในโน้ต — เฉพาะ character ที่เป็น children ของการ์ดนี้
@@ -788,7 +796,9 @@ function IdeaFrameDialog({
           {/* WHO — Characters + Factions รวมกัน */}
           {children.some((c: any) => ['character', 'dummy_character', 'faction', 'dummy_faction'].includes(c.type)) && (
             <div className="space-y-1">
-              <p className="text-[9px] uppercase font-bold tracking-widest text-muted-foreground/50">WHO</p>
+              <p className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground/80">
+                <Users className="w-3 h-3" /> ตัวละคร
+              </p>
               <div className="divide-y divide-border/40">
                 {children
                   .filter((c: any) => c.type === 'character' || c.type === 'dummy_character')
@@ -901,7 +911,9 @@ function IdeaFrameDialog({
           {/* WHERE — Locations */}
           {children.some((c: any) => c.type === 'location') && (
             <div className="space-y-1">
-              <p className="text-[9px] uppercase font-bold tracking-widest text-muted-foreground/50">WHERE</p>
+              <p className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground/80">
+                <MapPin className="w-3 h-3" /> สถานที่
+              </p>
               <div className="divide-y divide-border/40">
                 {children
                   .filter((c: any) => c.type === 'location')
@@ -938,7 +950,9 @@ function IdeaFrameDialog({
           {/* WHY — Ancestor Connections */}
           {ancestorConnections && ancestorConnections.length > 0 && (
             <div>
-              <p className="text-[9px] uppercase font-bold tracking-widest text-amber-500/60 mb-1">WHY</p>
+              <p className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-600/80 dark:text-amber-400/80 mb-1">
+                <GitBranchPlus className="w-3 h-3" /> ที่มา
+              </p>
               <div className="flex flex-wrap gap-1">
                 {ancestorConnections.map((conn) => {
                   const ancestorTitle = conn.label || conn.targetIdeaTitle || conn.targetIdeaId.slice(0, 8) + '...';
@@ -1039,7 +1053,9 @@ function IdeaFrameDialog({
           {/* HOW — Notes */}
           {onQuickAddNote && (
             <div className="space-y-1.5">
-              <p className="text-[9px] uppercase font-bold tracking-widest text-muted-foreground/50">HOW</p>
+              <p className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground/80">
+                <MessageCircle className="w-3 h-3" /> โน้ต
+              </p>
               {thisIdeaNotes.map((note) => {
                 const noteColor = note.noteKind || undefined;
                 return editingNoteId === note.id ? (
@@ -1065,11 +1081,9 @@ function IdeaFrameDialog({
                       setDraggedNoteId(null);
                     }}
                     className={cn(
-                      "group/note relative border-l-2 pl-2.5 pr-4 py-1 text-xs cursor-pointer transition-colors hover:bg-muted/40",
-                      !noteColor && "border-yellow-500/50",
+                      "group/note relative flex gap-2 rounded-md px-2.5 py-1.5 text-xs cursor-pointer transition-colors hover:bg-muted/50",
                       draggedNoteId === note.id && "opacity-40"
                     )}
-                    style={noteColor ? { borderColor: noteColor } : undefined}
                     onClick={() => {
                       setEditingNoteId(note.id);
                       setQuickNote(note.notes || "");
@@ -1079,7 +1093,11 @@ function IdeaFrameDialog({
                       setQuickNoteOpen(true);
                     }}
                   >
-                    <p className="text-foreground/90 whitespace-pre-wrap line-clamp-3 pr-4">{renderNoteMentions(note.notes || "")}</p>
+                    <span
+                      className="mt-1 h-1.5 w-1.5 rounded-full shrink-0"
+                      style={{ background: noteColor || "#eab308" }}
+                    />
+                    <p className="flex-1 min-w-0 text-foreground/90 whitespace-pre-wrap line-clamp-3 pr-4">{renderNoteMentions(note.notes || "")}</p>
                     <Pencil className="w-3 h-3 absolute top-1.5 right-1.5 text-muted-foreground opacity-0 group-hover/note:opacity-100 transition-opacity" />
                   </div>
                 );
@@ -1098,27 +1116,30 @@ function IdeaFrameDialog({
             </div>
           )}
 
-          {/* Echo Score เฉพาะการ์ดนี้ */}
+          {/* Echo Score เฉพาะการ์ดนี้ — แค่บอกว่าวิเคราะห์แล้ว รายละเอียดดูได้จาก badge มุมการ์ด (hover) */}
           {novelId && sceneId && (echoFinding || echoStatus !== 'idle') && (
-            <div className="space-y-1">
-              <p className="text-[9px] uppercase font-bold tracking-widest text-muted-foreground/50">หาจังหวะที่เดาได้</p>
+            <div className="flex items-center gap-1.5">
               {echoStatus === 'empty' ? (
                 <p className="text-xs text-muted-foreground/70 italic">การ์ดนี้ตรวจไม่ได้ (การ์ดแรกของฉาก หรือเป็นบอร์ดโน้ต)</p>
               ) : echoFinding ? (
-                <EchoFindingRow finding={echoFinding} novelId={novelId} sceneId={sceneId} isTurningPoint={false} />
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                  <span className="text-xs text-muted-foreground">วิเคราะห์ Echo Score แล้ว</span>
+                  <EchoGuessBadge finding={echoFinding} />
+                </>
               ) : null}
             </div>
           )}
 
-          {/* Footer */}
-          <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/60">
-            {getDetailPageUrl() ? (
-              <Link href={getDetailPageUrl()!} className="flex items-center gap-1 text-xs text-primary hover:underline">
-                <ExternalLink className="w-3 h-3" />
+          {/* Footer — แยกลิงก์กับปุ่มคนละแถว กันข้อความ "ดูรายละเอียดเต็ม" ถูกบีบจนตัดคำ 3 บรรทัดตอนพื้นที่แคบ */}
+          <div className="space-y-2 pt-2 border-t border-border/60">
+            {getDetailPageUrl() && (
+              <Link href={getDetailPageUrl()!} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                <ExternalLink className="w-3 h-3 shrink-0" />
                 ดูรายละเอียดเต็ม
               </Link>
-            ) : <span />}
-            <div className="flex items-center gap-2">
+            )}
+            <div className="flex items-center justify-end gap-2 flex-wrap">
               {novelId && sceneId && (
                 <Button type="button" size="sm" variant="outline" className="h-7 text-xs gap-1" title="หาจังหวะที่เดาได้ (การ์ดนี้)" disabled={echoStatus === 'pending'} onClick={runCardEcho}>
                   {echoStatus === 'pending' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}

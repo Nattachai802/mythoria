@@ -9,7 +9,7 @@
  * อ้างอิง: plot-analysis-plan.md §Phase 2
  */
 
-import type { FormatBeat, CastEntry } from "./story-format";
+import type { FormatBeat } from "./story-format";
 import { createHash } from "crypto";
 
 // ─── Constants ──────────────────────────────────────────────────────────
@@ -27,7 +27,7 @@ export const ECHO_MODEL = "gemini-2.5-flash";
 export interface EchoEvidence {
     hitCount: number;         // LLM ตัดสินว่าตรงกับการ์ดจริงกี่ครั้ง
     guesses: string[];        // ตัวคำเดาทั้ง K ครั้ง (แสดงใน UI)
-    matched: number[];        // index ของคำเดาที่ตรง (0-based)
+    matched: { index: number; reason: string }[]; // ข้อที่ตรง (0-based) + เหตุผลสั้นๆ ว่าทำไมตรง — ตรวจสอบย้อนหลังได้ว่า judge ตัดสินใจถูกไหม
     model: string;            // ชื่อโมเดลที่ใช้
     promptVersion: string;    // ECHO_PROMPT_VERSION
     k: number;                // K ที่ใช้จริง
@@ -37,6 +37,7 @@ export interface EchoEvidence {
     cardTitle?: string;
     beatIndex?: number;
     hasIncomingLink?: boolean;
+    cast?: { alias: string; name: string }[]; // @A/@B ฯลฯ ที่ใช้ตอนสร้าง prompt — ใช้แปลงกลับเป็นชื่อจริงตอนแสดงผล
 }
 
 export interface EchoFinding {
@@ -51,27 +52,42 @@ export interface EchoFinding {
 // ─── Prefix builder ─────────────────────────────────────────────────────
 
 /**
- * สร้างข้อความ prefix จากการ์ดที่ beatIndex น้อยกว่า targetBeatIndex
+ * สร้างข้อความ prefix จากการ์ดก่อนหน้าการ์ดเป้าหมาย
  *
- * กฎสำคัญ: การ์ดที่ beatIndex เดียวกันคือเกิดพร้อมกัน ห้ามอยู่ใน prefix ของกัน
- * (ถ้าใส่จะเป็นการบอกใบ้ด้วยเหตุการณ์ที่เกิดพร้อมกัน → echo สูงเกินจริงทุกใบ)
+ * กฎการเกิดพร้อมกัน (v3): ไม่ได้เดาจาก beatIndex เท่ากันอย่างเดียวอีกต่อไป — เช็คเส้นเชื่อมจริง
+ * - การ์ด beatIndex เท่ากัน แต่ผู้เขียน "ไม่ได้" ลากเส้นชนิด simultaneous ไว้ (ดู
+ *   lib/simultaneous-beats.ts) = แค่บังเอิญอยู่จังหวะเดียวกันบนกระดาน ไม่ใช่เกิดพร้อมกันจริง
+ *   → เอาเข้า prefix ได้ตามปกติ (เดิมตัดทิ้งหมด ทำให้ context บางเกินไปจนเดามั่ว)
+ * - การ์ด beatIndex เท่ากัน และมี link "simultaneous" เชื่อมกันจริง = เกิดพร้อมกันตามที่ผู้เขียนตั้งใจ
+ *   → ตัดออก (ใส่จะเป็นการบอกใบ้เหตุการณ์ที่เกิดพร้อมกัน → echo สูงเกินจริง)
+ * - ยกเว้นมี link "leads_to" ชี้จากการ์ดนั้นมาการ์ดเป้าหมายโดยตรง — แปลว่าผู้เขียนยืนยันเชิงเหตุ-ผล
+ *   ชัดเจนกว่า flag เกิดพร้อมกัน เอาเข้า prefix ได้ (เหตุต้องมาก่อนผล)
  *
- * cast (จาก buildSceneFormat) ใช้ย่อชื่อผู้ร่วมฉากที่โผล่ ≥2 การ์ดเป็น @A/@B ฯลฯ —
- * ยืมรูปแบบเดียวกับ renderSceneMarkdown (docs/story-format-plan.md วัดไว้: ชื่อเต็ม ~5 โทเคน/ครั้ง
- * เทียบ @A ~1 โทเคน) ชื่อที่โผล่ครั้งเดียวไม่มี alias ก็ยังเป็นชื่อเต็มตามเดิม ไม่มีอะไรแย่ลง
- * ใส่ legend ครั้งเดียวบนสุดให้โมเดลรู้ว่า @A ย่อมาจากใคร — ไม่งั้น @A จะเป็นแค่โทเคนไร้ความหมาย
+ * ตัวย่อ @A/@B ฯลฯ มาจาก buildSceneFormat (ย่อผู้ร่วมฉากทั้งเรื่องที่โผล่ ≥2 การ์ดขึ้นไป
+ * ยืมรูปแบบเดียวกับ renderSceneMarkdown — ชื่อเต็ม ~5 โทเคน/ครั้ง เทียบ @A ~1 โทเคน)
+ * แต่ legend ที่แปะใน prompt ต้องคำนวณจาก "คนที่โผล่ใน prefixBeats เท่านั้น" ห้ามใช้ cast
+ * ทั้งฉาก — ไม่งั้นชื่อตัวละคร/สถานที่ที่เพิ่งโผล่ทีหลัง targetBeat จะรั่วเข้าไปใน legend
+ * เท่ากับสปอยล์ล่วงหน้าว่า "เรื่องนี้มีตัวนี้อยู่ด้วยนะ" ก่อนเนื้อเรื่องจะพูดถึงจริง ทำให้ AI
+ * เดาแม่นขึ้นเพราะรู้ชื่อมาก่อน ไม่ใช่เพราะเนื้อเรื่องเดาง่ายจริง (ตัดค่า Echo Score ให้ผิดความหมาย)
  */
-export function buildPrefixText(beats: FormatBeat[], targetBeatIndex: number, cast: CastEntry[] = []): string {
-    const prefixBeats = beats
-        .filter(b => b.beatIndex < targetBeatIndex && !b.isBoardNote)
-        .sort((a, b) => a.beatIndex - b.beatIndex);
+export function buildPrefixText(beats: FormatBeat[], targetBeat: FormatBeat): string {
+    const prefixBeats = beats.filter(b => {
+        if (b.isBoardNote || b.code === targetBeat.code) return false;
+        if (b.beatIndex < targetBeat.beatIndex) return true;
+        if (b.beatIndex > targetBeat.beatIndex) return false;
+        // beatIndex เท่ากัน — ตัดเฉพาะที่ลิงก์ simultaneous ไว้จริง เว้นแต่มี leads_to ชี้มาการ์ดนี้ยืนยันลำดับเหตุ-ผล
+        const flaggedSimultaneous = targetBeat.simultaneousWith.includes(b.code);
+        const explicitCause = b.links.some(l => l.kind === "leads_to" && l.toCode === targetBeat.code);
+        return explicitCause || !flaggedSimultaneous;
+    });
+    // beats เข้ามาเรียงตาม beatIndex+เลนอยู่แล้วจากต้นทาง (buildSceneFormat) — filter ไม่ทำลำดับเสีย ไม่ต้อง sort ซ้ำ
 
     if (prefixBeats.length === 0) return "";
 
-    const legend = cast
-        .filter((c): c is CastEntry & { alias: string } => !!c.alias)
-        .map(c => `${c.alias}=${c.name}`)
-        .join(", ");
+    // legend เฉพาะคนที่โผล่จริงใน prefixBeats — ไม่ใช้ cast ทั้งฉาก (กันสปอยล์ชื่ออนาคต)
+    const aliasOf = new Map<string, string>();
+    prefixBeats.forEach(b => b.participants.forEach(p => { if (p.alias) aliasOf.set(p.alias, p.name); }));
+    const legend = [...aliasOf.entries()].map(([alias, name]) => `${alias}=${name}`).join(", ");
 
     const body = prefixBeats
         .map(b => {
@@ -127,7 +143,17 @@ export const ECHO_GUESS_SCHEMA = {
 export const ECHO_JUDGE_SCHEMA = {
     type: "object",
     properties: {
-        matched: { type: "array", items: { type: "integer" } },
+        matched: {
+            type: "array",
+            items: {
+                type: "object",
+                properties: {
+                    index: { type: "integer" },
+                    reason: { type: "string" },
+                },
+                required: ["index", "reason"],
+            },
+        },
     },
     required: ["matched"],
 } as const;
@@ -156,7 +182,7 @@ export function buildGuessPrompt(prefixText: string, k: number): EchoPrompt {
     };
 }
 
-/** ตัดสินว่า guesses ใดตรงกับเหตุการณ์จริง — คืน JSON { matched: number[] } (บังคับด้วย ECHO_JUDGE_SCHEMA) */
+/** ตัดสินว่า guesses ใดตรงกับเหตุการณ์จริง — คืน JSON { matched: { index, reason }[] } (บังคับด้วย ECHO_JUDGE_SCHEMA) */
 export function buildJudgePrompt(
     prefixText: string,
     cardText: string,
@@ -167,13 +193,15 @@ export function buildJudgePrompt(
     return {
         system: `คุณเป็นกรรมการตัดสินว่าคำเดาข้อใด "ตรง" กับเหตุการณ์จริงที่เกิดขึ้นในนิยาย
 
-เกณฑ์ตัดสิน:
-- ตรงตามความคิดหลัก (แนวคิด/การกระทำ/ผลลัพธ์) แม้ถ้อยคำต่างกันก็นับว่าตรง
-- ไม่ต้องตรงทุกรายละเอียด แค่แก่นเรื่องตรงก็พอ
-- คำเดาที่พูดถึงคนละเหตุการณ์ คนละสาเหตุ ถือว่าไม่ตรง แม้จะมีคำซ้ำกันบางคำ
+เกณฑ์ตัดสิน (เข้มงวด — ต้องตรงทั้งการกระทำหลักและผลลัพธ์ ไม่ใช่แค่หัวข้อ/บรรยากาศคล้ายกัน):
+- ถ้อยคำต่างกันได้ แต่ "ใครทำอะไร" และ "ผลที่ตามมา" ต้องเป็นเรื่องเดียวกันจริง ไม่ใช่แค่แนวคิด/หัวข้อคล้ายกัน
+- ตัวอย่างที่ไม่ตรง (ห้ามนับ): เหตุการณ์จริง "พระเอกเผชิญหน้าตัวร้ายแล้วแพ้" vs คำเดา "พระเอกเผชิญหน้าตัวร้ายแล้วชนะ" — ผลลัพธ์ตรงข้ามกัน ไม่ตรง
+- ตัวอย่างที่ไม่ตรง (ห้ามนับ): เหตุการณ์จริง "นางเอกหนีออกจากบ้าน" vs คำเดา "นางเอกทะเลาะกับพ่อ" — แค่หัวข้อความขัดแย้งในครอบครัวคล้ายกัน แต่คนละเหตุการณ์ คนละการกระทำ
+- คำเดาที่พูดถึงคนละเหตุการณ์ คนละสาเหตุ คนละผลลัพธ์ ถือว่าไม่ตรง แม้จะมีคำซ้ำกันบางคำหรือแนวโน้มใกล้เคียงกัน
+- อย่าให้ประโยชน์แห่งความสงสัยกับคำเดาที่คลุมเครือ — ถ้าไม่มั่นใจว่าตรงจริง ให้ตัดสินว่าไม่ตรง
 
-ตอบเป็น JSON ตาม schema ที่กำหนดเท่านั้น — ระบุ index (0-based) ของคำเดาที่ตรงใน "matched"
-ไม่ต้องนับจำนวนเอง ระบบจะนับจากความยาวของ matched`,
+ตอบเป็น JSON ตาม schema ที่กำหนดเท่านั้น — ใส่เฉพาะข้อที่ "ตรง" ลงใน "matched" แต่ละรายการมี index (0-based)
+และ reason (เหตุผลสั้นๆ 1 ประโยคว่าทำไมตรง) ข้อที่ไม่ตรงไม่ต้องใส่ ไม่ต้องนับจำนวนเอง ระบบจะนับจากความยาวของ matched`,
         user: `บริบทก่อนหน้า:\n---\n${prefixText}\n---\n\nเหตุการณ์จริงที่เกิดขึ้น:\n"${cardText}"\n\nคำเดาทั้งหมด:\n${guessLines}`,
     };
 }
@@ -199,14 +227,17 @@ export function parseGuessResponse(raw: string): string[] | null {
  * แปลง LLM output เป็น { hits, matched } — hits คำนวณจาก matched.length เสมอ
  * (v1 เคยขอ hits จากโมเดลแยกต่างหาก แต่สองค่านี้ไม่การันตีว่าตรงกัน — ตัดออก ให้มีแหล่งความจริงเดียว)
  */
-export function parseJudgeResponse(raw: string): { hits: number; matched: number[] } | null {
+export function parseJudgeResponse(raw: string): { hits: number; matched: { index: number; reason: string }[] } | null {
     try {
         const trimmed = raw.trim();
         const match = trimmed.match(/\{[\s\S]*\}/);
         if (!match) return null;
         const parsed = JSON.parse(match[0]);
         if (!Array.isArray(parsed.matched)) return null;
-        const matched = parsed.matched.filter((i: unknown) => typeof i === "number");
+        const matched = parsed.matched.filter(
+            (m: unknown): m is { index: number; reason: string } =>
+                !!m && typeof m === "object" && typeof (m as any).index === "number" && typeof (m as any).reason === "string",
+        );
         return { hits: matched.length, matched };
     } catch {
         return null;
