@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { Sparkles, Loader2, RefreshCw, Zap } from "lucide-react";
-import { runEchoScore } from "@/server/plot-analysis";
+import { runEchoScore, listEchoTargets } from "@/server/plot-analysis";
 import { setPlotFindingVerdict } from "@/server/plot-analysis";
 import { flagTurningPoints, type EchoFinding } from "@/lib/echo-score";
 import { Button } from "@/components/ui/button";
@@ -25,20 +25,40 @@ export function EchoScorePanel({ novelId, sceneId, initialFindings }: EchoScoreP
     const [findings, setFindings] = useState<EchoFinding[]>(initialFindings ?? []);
     const [isOpen, setIsOpen] = useState(false);
     const [isPending, startTransition] = useTransition();
+    const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
     const hasResults = findings.length > 0;
     const turningPoints = useMemo(() => flagTurningPoints(findings), [findings]);
 
+    // ยิงทีละการ์ด (reuse cardIds scoping ของ runEchoScore) แทนยิงรวดเดียวทั้งฉาก
+    // เพื่อให้ผลแต่ละใบโผล่ทันทีที่เสร็จ แทนที่จะรอ spinner เดียวจนจบแล้วเทกองมาทีเดียว
     const handleRun = () => {
         startTransition(async () => {
-            const result = await runEchoScore(novelId, sceneId);
-            if (result.success) {
-                setFindings(result.findings);
-                const skippedMsg = result.skipped > 0 ? ` (ข้าม ${result.skipped} การ์ดที่ไม่เปลี่ยน)` : "";
-                toast.success(`ตรวจเสร็จ ${result.findings.length} การ์ด${skippedMsg}`);
-            } else {
-                toast.error(result.error);
+            const listRes = await listEchoTargets(novelId, sceneId);
+            if (!listRes.success) { toast.error(listRes.error); return; }
+            const targets = listRes.targets;
+            if (targets.length === 0) { toast.success("ไม่มีการ์ดให้ตรวจในฉากนี้"); return; }
+
+            setProgress({ done: 0, total: targets.length });
+            const nextFindings: EchoFinding[] = [];
+            let skippedCount = 0;
+
+            for (const t of targets) {
+                const result = await runEchoScore(novelId, sceneId, [t.id]);
+                if (!result.success) {
+                    toast.error(result.error);
+                    setProgress(null);
+                    return;
+                }
+                if (result.findings.length > 0) nextFindings.push(result.findings[0]);
+                skippedCount += result.skipped;
+                setFindings([...nextFindings]);
+                setProgress(p => (p ? { done: p.done + 1, total: p.total } : p));
             }
+
+            setProgress(null);
+            const skippedMsg = skippedCount > 0 ? ` (ข้าม ${skippedCount} การ์ดที่ไม่เปลี่ยน)` : "";
+            toast.success(`ตรวจเสร็จ ${nextFindings.length} การ์ด${skippedMsg}`);
         });
     };
 
@@ -75,18 +95,16 @@ export function EchoScorePanel({ novelId, sceneId, initialFindings }: EchoScoreP
                     >
                         หาจังหวะที่เดาได้
                     </span>
-                    {hasResults && (
-                        <span
-                            style={{
-                                fontFamily: "var(--font-technical)",
-                                fontSize: 11,
-                                color: "var(--muted-foreground)",
-                                opacity: 0.7,
-                            }}
-                        >
-                            · {findings.length} การ์ด
-                        </span>
-                    )}
+                    <span
+                        style={{
+                            fontFamily: "var(--font-technical)",
+                            fontSize: 11,
+                            color: "var(--muted-foreground)",
+                            opacity: 0.7,
+                        }}
+                    >
+                        · {hasResults ? `${findings.length} การ์ด` : "ต่อการ์ด"}
+                    </span>
                 </div>
                 <span
                     style={{
@@ -121,8 +139,12 @@ export function EchoScorePanel({ novelId, sceneId, initialFindings }: EchoScoreP
                                 margin: 0,
                             }}
                         >
-                            ใช้ AI · ~2 ครั้ง/การ์ด · Gemini 2.5 Flash
-                            {hasResults && " · กดอีกครั้งเพื่ออัปเดต"}
+                            {progress ? `กำลังตรวจ ${progress.done}/${progress.total} การ์ด…` : (
+                                <>
+                                    ใช้ AI · ~2 ครั้ง/การ์ด · Gemini 2.5 Flash
+                                    {hasResults && " · กดอีกครั้งเพื่ออัปเดต"}
+                                </>
+                            )}
                         </p>
                         <Button
                             id="echo-score-run-btn"
@@ -139,8 +161,8 @@ export function EchoScorePanel({ novelId, sceneId, initialFindings }: EchoScoreP
                             ) : (
                                 <Sparkles size={13} />
                             )}
-                            {isPending
-                                ? "กำลังตรวจ…"
+                            {progress
+                                ? `${progress.done}/${progress.total}`
                                 : hasResults
                                     ? "ตรวจใหม่"
                                     : "ตรวจฉากนี้"}
@@ -154,8 +176,8 @@ export function EchoScorePanel({ novelId, sceneId, initialFindings }: EchoScoreP
                                 display: "flex",
                                 flexDirection: "column",
                                 gap: 12,
-                                opacity: isPending ? 0.4 : 1,
-                                transition: "opacity 0.2s",
+                                maxHeight: "60vh",
+                                overflowY: "auto",
                             }}
                         >
                             {findings.map(f => (
@@ -184,7 +206,7 @@ interface EchoFindingRowProps {
     isTurningPoint?: boolean;
 }
 
-function EchoFindingRow({ finding, novelId, sceneId, isTurningPoint }: EchoFindingRowProps) {
+export function EchoFindingRow({ finding, novelId, sceneId, isTurningPoint }: EchoFindingRowProps) {
     const { evidence, cardCode, cardTitle, hasIncomingLink } = finding;
     const [dismissed, setDismissed] = useState(false);
     const [isPending, startTransition] = useTransition();

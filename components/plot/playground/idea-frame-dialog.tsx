@@ -15,7 +15,7 @@ import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/compon
 import {
   Users, MapPin, X, Link as LinkIcon, Pencil, ExternalLink, Copy,
   GitBranchPlus, Shield, Check, MoreVertical, Loader2, Star, MessageCircle,
-  BookOpen, Quote, StickyNote as StickyNoteIcon, Lightbulb,
+  BookOpen, Quote, StickyNote as StickyNoteIcon, Lightbulb, Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -23,6 +23,9 @@ import { cn } from "@/lib/utils";
 import { mentionRangeAtCaret } from "@/lib/mentions";
 import { SceneElementDetails } from "@/db/schema";
 import { SceneParticipantsPanel } from "./scene-participants-panel";
+import { EchoFindingRow } from "./echo-score-panel";
+import { runEchoScore } from "@/server/plot-analysis";
+import type { EchoFinding } from "@/lib/echo-score";
 
 // ป้ายสีจัดกลุ่มโน้ต — เดิมอยู่ใน canvas-item.tsx ย้ายมาที่นี่เพราะใช้เฉพาะระบบโน้ตของ idea
 const CARD_COLORS = ["#f59e0b", "#fb923c", "#f43f5e", "#a78bfa", "#6366f1", "#22d3ee", "#34d399", "#facc15", "#e879f9", "#94a3b8"];
@@ -420,6 +423,19 @@ function IdeaFrameDialog({
   const [draggedNoteId, setDraggedNoteId] = useState<string | null>(null);
   const [editingKeyMoment, setEditingKeyMoment] = useState(false);
   const [keyMomentDraft, setKeyMomentDraft] = useState(item.keyMomentLabel || "");
+
+  // Echo Score เฉพาะการ์ดนี้ — scope เดียวกับ EchoScorePanel แต่ยิงแค่การ์ดเดียว
+  const [echoFinding, setEchoFinding] = useState<EchoFinding | null>(null);
+  const [echoStatus, setEchoStatus] = useState<'idle' | 'pending' | 'empty' | 'error'>('idle');
+  const runCardEcho = async () => {
+    if (!novelId || !sceneId) return;
+    setEchoStatus('pending');
+    const result = await runEchoScore(novelId, sceneId, [item.id]);
+    if (!result.success) { setEchoStatus('error'); toast.error(result.error); return; }
+    if (result.findings.length === 0) { setEchoStatus('empty'); return; }
+    setEchoFinding(result.findings[0]);
+    setEchoStatus('idle');
+  };
 
   // @mention ในโน้ต — เฉพาะ character ที่เป็น children ของการ์ดนี้
   const quickNoteRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1049,11 +1065,11 @@ function IdeaFrameDialog({
                       setDraggedNoteId(null);
                     }}
                     className={cn(
-                      "group/note relative rounded-md border px-2 py-1.5 text-xs cursor-pointer transition-colors",
-                      !noteColor && "border-yellow-500/25 bg-yellow-500/10 hover:bg-yellow-500/15",
+                      "group/note relative border-l-2 pl-2.5 pr-4 py-1 text-xs cursor-pointer transition-colors hover:bg-muted/40",
+                      !noteColor && "border-yellow-500/50",
                       draggedNoteId === note.id && "opacity-40"
                     )}
-                    style={noteColor ? { borderColor: `${noteColor}4d`, background: `${noteColor}1a` } : undefined}
+                    style={noteColor ? { borderColor: noteColor } : undefined}
                     onClick={() => {
                       setEditingNoteId(note.id);
                       setQuickNote(note.notes || "");
@@ -1082,6 +1098,18 @@ function IdeaFrameDialog({
             </div>
           )}
 
+          {/* Echo Score เฉพาะการ์ดนี้ */}
+          {novelId && sceneId && (echoFinding || echoStatus !== 'idle') && (
+            <div className="space-y-1">
+              <p className="text-[9px] uppercase font-bold tracking-widest text-muted-foreground/50">หาจังหวะที่เดาได้</p>
+              {echoStatus === 'empty' ? (
+                <p className="text-xs text-muted-foreground/70 italic">การ์ดนี้ตรวจไม่ได้ (การ์ดแรกของฉาก หรือเป็นบอร์ดโน้ต)</p>
+              ) : echoFinding ? (
+                <EchoFindingRow finding={echoFinding} novelId={novelId} sceneId={sceneId} isTurningPoint={false} />
+              ) : null}
+            </div>
+          )}
+
           {/* Footer */}
           <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/60">
             {getDetailPageUrl() ? (
@@ -1091,6 +1119,12 @@ function IdeaFrameDialog({
               </Link>
             ) : <span />}
             <div className="flex items-center gap-2">
+              {novelId && sceneId && (
+                <Button type="button" size="sm" variant="outline" className="h-7 text-xs gap-1" title="หาจังหวะที่เดาได้ (การ์ดนี้)" disabled={echoStatus === 'pending'} onClick={runCardEcho}>
+                  {echoStatus === 'pending' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                  ตรวจการ์ดนี้
+                </Button>
+              )}
               <Button type="button" size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={onCopy}>
                 <Copy className="w-3 h-3" /> คัดลอกข้อมูล
               </Button>

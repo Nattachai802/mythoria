@@ -323,9 +323,29 @@ export async function setPlotFindingVerdict(
  *    c. เรียก LLM ตัดสินว่าตรงกี่ครั้ง
  *    d. upsert plot_findings (checkId="echo")
  */
+/** รายชื่อการ์ดที่ตรวจ Echo Score ได้ในฉากนี้ — ไม่เรียก AI ใช้สำหรับแสดงความคืบหน้าตอนตรวจทีละใบ */
+export async function listEchoTargets(
+    novelId: string,
+    sceneId: string,
+): Promise<
+    | { success: true; targets: { id: string; code: string; title: string }[] }
+    | { success: false; error: string }
+> {
+    try {
+        await requireNovelAccess(novelId);
+        const sceneFormat = await buildSceneFormatForEvent(novelId, sceneId);
+        if (!sceneFormat) return { success: false, error: "ไม่พบฉากนี้" };
+        const targets = filterEchoTargets(sceneFormat.beats);
+        return { success: true, targets: targets.map(t => ({ id: t.id, code: t.code, title: t.title })) };
+    } catch (e) {
+        return { success: false, error: e instanceof Error ? e.message : "เกิดข้อผิดพลาด" };
+    }
+}
+
 export async function runEchoScore(
     novelId: string,
     sceneId: string,
+    cardIds?: string[],
 ): Promise<
     | { success: true; findings: EchoFinding[]; skipped: number }
     | { success: false; error: string }
@@ -342,7 +362,8 @@ export async function runEchoScore(
         if (!sceneFormat) return { success: false, error: "ไม่พบฉากนี้" };
 
         const beats = sceneFormat.beats;
-        const targets = filterEchoTargets(beats);
+        const allTargets = filterEchoTargets(beats);
+        const targets = cardIds ? allTargets.filter(b => cardIds.includes(b.id)) : allTargets;
 
         if (targets.length === 0) {
             return { success: true, findings: [], skipped: 0 };
