@@ -317,8 +317,10 @@ export const timelineEvents = pgTable("timeline_events", {
   eventType: text("event_type").default("scene"), // scene, action, dialogue, flashback, revelation, emotional, transition
   isCompleted: boolean("is_completed").default(false),
   // Scene dramatic fields (D1) — โครงฉากดราม่า
-  sceneGoal: text("scene_goal"),             // เป้าหมายของฉาก: ตัวละครต้องการอะไร
-  sceneConflict: text("scene_conflict"),     // อุปสรรค: อะไรขวาง
+  sceneType: text("scene_type"),             // setup | action | reaction | climax | resolution — null = ฉากเก่า ถือเป็น action
+  sceneTone: text("scene_tone"),             // โทนที่ตั้งใจไว้สั้นๆ (เช่น "ตึงเครียด") — ลด token ตอน AI เดา ไม่ต้องอนุมานทุกครั้ง
+  sceneGoal: text("scene_goal"),             // field1 ทั่วไป — ความหมายเปลี่ยนตาม sceneType (Goal/Hook/Reaction/Ultimate Test/Aftermath)
+  sceneConflict: text("scene_conflict"),     // field2 ทั่วไป — ความหมายเปลี่ยนตาม sceneType (Conflict/Context/Dilemma/Value Turn/New Normal)
   sceneOutcome: text("scene_outcome"),       // ผลลัพธ์: success | failure | ongoing | unknown
   valueShift: integer("value_shift"),        // ทิศ/ความเข้มของการเปลี่ยนค่า −5…+5 (ป้อน tension curve A2)
   povCharacterId: text("pov_character_id").references(() => characters.id, { onDelete: "set null" }), // ฉากนี้เล่าผ่านสายตาใคร (P1)

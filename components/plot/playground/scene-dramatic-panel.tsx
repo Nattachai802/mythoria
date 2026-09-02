@@ -9,13 +9,51 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
     Target, Swords, Drama, Loader2, TrendingUp, TrendingDown, Minus, HelpCircle,
-    CheckCircle2, XCircle, Clock, Eye, GitCommitHorizontal, CalendarClock,
+    CheckCircle2, XCircle, Clock, Eye, GitCommitHorizontal, CalendarClock, Sparkles,
 } from "lucide-react"
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
+import { suggestSceneType } from "@/server/scene-type-suggest"
+
+// Unified Scene Framework (Swain + McKee + Syd Field) — 5 ประเภทฉาก
+// field1/field2 reuse คอลัมน์ sceneGoal/sceneConflict เดิม แค่เปลี่ยนความหมาย/label ตามประเภท
+const SCENE_TYPES = {
+    setup: {
+        label: "ปูพื้น/ให้ข้อมูล",
+        field1Label: "Hook — จุดดึงดูด", field1Placeholder: "อะไรดึงคนอ่านเข้าฉากนี้",
+        field2Label: "Context — บริบท/สถานะเดิม", field2Placeholder: "กฎ/สถานะปัจจุบันที่ต้องรู้ก่อนฉากนี้",
+        outcomeMode: "off" as const,
+    },
+    action: {
+        label: "รุกฆาต/เผชิญอุปสรรค",
+        field1Label: "เป้าหมาย (Goal)", field1Placeholder: "ตัวละครต้องการอะไรในฉากนี้",
+        field2Label: "อุปสรรค (Conflict)", field2Placeholder: "อะไรขวางไม่ให้สำเร็จ",
+        outcomeMode: "optional" as const,
+    },
+    reaction: {
+        label: "รับแรงกระแทก/เตรียมการ",
+        field1Label: "ปฏิกิริยา (Reaction)", field1Placeholder: "ตัวละครรู้สึก/ตอบสนองอย่างไร",
+        field2Label: "ทางตัน+การตัดสินใจ (Dilemma)", field2Placeholder: "ทางเลือกใหม่ที่ต้องชั่งใจ นำไปสู่อะไร",
+        outcomeMode: "optional" as const,
+    },
+    climax: {
+        label: "แตกหัก/พลิกผัน",
+        field1Label: "บททดสอบสูงสุด (Ultimate Test)", field1Placeholder: "อุปสรรค/ความกลัวที่ใหญ่ที่สุด",
+        field2Label: "คุณค่าที่พลิกผัน (Value Turn)", field2Placeholder: "สถานะเปลี่ยนจากอะไรเป็นอะไร",
+        outcomeMode: "required" as const,
+    },
+    resolution: {
+        label: "คลี่คลาย/สรุปผล",
+        field1Label: "ผลลัพธ์หลังพายุ (Aftermath)", field1Placeholder: "ใครอยู่ ใครตาย ใครได้อะไร",
+        field2Label: "สมดุลใหม่ (New Normal)", field2Placeholder: "โลก/ตัวละครเปลี่ยนไปจากตอนต้นอย่างไร",
+        outcomeMode: "optional" as const,
+    },
+} as const
+
+type SceneType = keyof typeof SCENE_TYPES
 
 // outcome → ทิศของ value-shift
 const OUTCOMES = [
@@ -62,6 +100,8 @@ export function SceneDramaticPanel({ event, characters = [], events = [] }: Prop
     const [open, setOpen] = useState(false)
     const [isPending, startTransition] = useTransition()
 
+    const [sceneType, setSceneType] = useState<SceneType>((event.sceneType as SceneType) || "action")
+    const [sceneTone, setSceneTone] = useState(event.sceneTone ?? "")
     const [goal, setGoal] = useState(event.sceneGoal ?? "")
     const [conflict, setConflict] = useState(event.sceneConflict ?? "")
     const initial = decodeShift(event.valueShift ?? null, event.sceneOutcome ?? null)
@@ -72,9 +112,12 @@ export function SceneDramaticPanel({ event, characters = [], events = [] }: Prop
     const [causeEventId, setCauseEventId] = useState(event.causeEventId ?? "none")
     const [causeNote, setCauseNote] = useState(event.causeNote ?? "")
     const [eventDate, setEventDate] = useState(event.eventDate ?? "")
+    const [isSuggesting, setIsSuggesting] = useState(false)
 
     useEffect(() => {
         if (open) {
+            setSceneType((event.sceneType as SceneType) || "action")
+            setSceneTone(event.sceneTone ?? "")
             setGoal(event.sceneGoal ?? "")
             setConflict(event.sceneConflict ?? "")
             const d = decodeShift(event.valueShift ?? null, event.sceneOutcome ?? null)
@@ -90,10 +133,13 @@ export function SceneDramaticPanel({ event, characters = [], events = [] }: Prop
 
     const shift = computeShift(outcome, mag)
     const hasData = event.sceneGoal || event.sceneConflict || event.sceneOutcome || event.valueShift != null || event.povCharacterId
+    const typeConfig = SCENE_TYPES[sceneType]
 
     const handleSave = () => {
         startTransition(async () => {
             const res = await updateTimelineEvent(event.id, {
+                sceneType,
+                sceneTone: sceneTone.trim() || null,
                 sceneGoal: goal.trim() || null,
                 sceneConflict: conflict.trim() || null,
                 sceneOutcome: outcome,
@@ -111,6 +157,25 @@ export function SceneDramaticPanel({ event, characters = [], events = [] }: Prop
             } else {
                 toast.error("บันทึกไม่สำเร็จ")
             }
+        })
+    }
+
+    // AI prefill — แค่เติมฟอร์ม ไม่ save เอง คนต้องกด "บันทึกโครงฉาก" เองถึงจะมีผลจริง
+    const handleAiSuggest = () => {
+        setIsSuggesting(true)
+        startTransition(async () => {
+            const res = await suggestSceneType(event.id, event.novelId)
+            setIsSuggesting(false)
+            if (!res.success) {
+                toast.error(res.error || "แนะนำไม่สำเร็จ")
+                return
+            }
+            const d = res.data
+            setSceneType(d.sceneType)
+            setGoal(d.field1)
+            setConflict(d.field2)
+            if (d.outcome) setOutcome(d.outcome)
+            toast.success("AI แนะนำแล้ว — ตรวจก่อนกดบันทึก")
         })
     }
 
@@ -141,10 +206,46 @@ export function SceneDramaticPanel({ event, characters = [], events = [] }: Prop
                 {/* Header */}
                 <div className="flex items-center gap-2 px-3 py-2 bg-zinc-900 border-b border-zinc-700/60">
                     <Drama className="h-3.5 w-3.5 text-[var(--forge-amber)]" />
-                    <span className="font-technical text-[10px] uppercase tracking-widest text-zinc-300">โครงฉากดราม่า</span>
+                    <span className="font-technical text-[10px] uppercase tracking-widest text-zinc-300 flex-1">โครงฉากดราม่า</span>
+                    <Button
+                        variant="ghost" size="sm"
+                        className="h-6 px-1.5 gap-1 text-[10px] text-zinc-400 hover:text-[var(--forge-amber)]"
+                        disabled={isSuggesting || isPending}
+                        onClick={handleAiSuggest}
+                        title="ให้ AI ช่วยเดา — แค่เติมฟอร์ม ไม่ save เอง"
+                    >
+                        {isSuggesting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                        AI ช่วยเดา
+                    </Button>
                 </div>
 
                 <div className="p-3 space-y-3">
+                    {/* ประเภทฉาก (Unified Scene Framework) */}
+                    <div className="space-y-1">
+                        <label className="text-[11px] font-medium text-muted-foreground">ประเภทฉาก</label>
+                        <Select value={sceneType} onValueChange={v => setSceneType(v as SceneType)}>
+                            <SelectTrigger className="h-8 text-xs chamfered-sm">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {Object.entries(SCENE_TYPES).map(([k, v]) => (
+                                    <SelectItem key={k} value={k}>{v.label}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* โทน */}
+                    <div className="space-y-1">
+                        <label className="text-[11px] font-medium text-muted-foreground">โทนของฉาก</label>
+                        <Input
+                            value={sceneTone}
+                            onChange={e => setSceneTone(e.target.value)}
+                            placeholder={'เช่น "ตึงเครียด", "ผ่อนคลาย-ตลก"'}
+                            className="h-8 text-xs chamfered-sm"
+                        />
+                    </div>
+
                     {/* POV (P1) — ฉากนี้เล่าผ่านสายตาใคร */}
                     <div className="space-y-1">
                         <label className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
@@ -231,35 +332,45 @@ export function SceneDramaticPanel({ event, characters = [], events = [] }: Prop
                         )}
                     </div>
 
-                    {/* Goal */}
+                    {/* field1 — label เปลี่ยนตามประเภทฉาก */}
                     <div className="space-y-1">
                         <label className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-                            <Target className="h-3 w-3" />เป้าหมายของฉาก
+                            <Target className="h-3 w-3" />{typeConfig.field1Label}
                         </label>
                         <Input
                             value={goal}
                             onChange={e => setGoal(e.target.value)}
-                            placeholder="ตัวละครต้องการอะไรในฉากนี้"
+                            placeholder={typeConfig.field1Placeholder}
                             className="h-8 text-xs chamfered-sm"
                         />
                     </div>
 
-                    {/* Conflict */}
+                    {/* field2 — label เปลี่ยนตามประเภทฉาก */}
                     <div className="space-y-1">
                         <label className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-                            <Swords className="h-3 w-3" />อุปสรรค
+                            <Swords className="h-3 w-3" />{typeConfig.field2Label}
                         </label>
                         <Input
                             value={conflict}
                             onChange={e => setConflict(e.target.value)}
-                            placeholder="อะไรขวางไม่ให้สำเร็จ"
+                            placeholder={typeConfig.field2Placeholder}
                             className="h-8 text-xs chamfered-sm"
                         />
                     </div>
 
-                    {/* Outcome */}
+                    {/* Outcome — ปิดสำหรับ setup, เตือนถ้ายังไม่กรอกสำหรับ climax */}
+                    {typeConfig.outcomeMode !== "off" && (
+                    <>
                     <div className="space-y-1.5">
-                        <label className="text-[11px] font-medium text-muted-foreground">ผลลัพธ์ — ฉากจบแล้วสถานการณ์</label>
+                        <label className={cn(
+                            "text-[11px] font-medium",
+                            typeConfig.outcomeMode === "required" && outcome === "unknown"
+                                ? "text-[var(--forge-amber)]"
+                                : "text-muted-foreground"
+                        )}>
+                            ผลลัพธ์ — ฉากจบแล้วสถานการณ์
+                            {typeConfig.outcomeMode === "required" && outcome === "unknown" && " (ฉากแตกหักควรมี value turn ชัดเจน)"}
+                        </label>
                         <div className="grid grid-cols-2 gap-1.5">
                             {OUTCOMES.map(o => {
                                 const Icon = o.icon
@@ -312,6 +423,8 @@ export function SceneDramaticPanel({ event, characters = [], events = [] }: Prop
                             {shift > 0 ? `+${shift}` : shift}
                         </span>
                     </div>
+                    </>
+                    )}
 
                     <Button size="sm" className="w-full h-8 chamfered-sm" disabled={isPending} onClick={handleSave}>
                         {isPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : null}

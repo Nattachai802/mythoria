@@ -17,21 +17,14 @@
  */
 import { config } from "dotenv";
 config({ path: ".env" });
+import { getRealBeatSets } from "./real-echo-samples";
 
 const MODEL = "google/gemini-2.5-flash"; // เปลี่ยนได้ถ้าอยากเทียบ tokenizer ของโมเดลอื่น
 
-// เนื้อหาความหมายเดียวกัน — ชุด "prefix ยาว (6 การ์ด)" จาก compare-echo-models.ts
-const BEATS = [
-    { code: "C01", title: "อัศวินเข้าเฝ้า", content: "คุกเข่าต่อหน้ากษัตริย์ ขอพระราชทานกองทัพไปปราบศัตรูชายแดน", who: ["อัศวิน", "กษัตริย์"] },
-    { code: "C02", title: "กษัตริย์ลังเล", content: "เล่าว่าเคยเสียทหารไปกับสงครามครั้งก่อนมามาก ไม่อยากเสี่ยงอีก", who: ["กษัตริย์"] },
-    { code: "C03", title: "อัศวินสาบาน", content: "เอาชีวิตเป็นประกัน กษัตริย์จึงยอมอนุมัติกองทัพ", who: ["อัศวิน", "กษัตริย์"] },
-    { code: "C04", title: "ออกเดินทาง", content: "กองทัพเคลื่อนพลออกจากเมืองหลวงมุ่งหน้าชายแดน", who: ["อัศวิน"] },
-    { code: "C05", title: "พบผู้ลี้ภัย", content: "ชาวบ้านเล่าว่าศัตรูมีจำนวนมากกว่าที่คาด", who: ["อัศวิน"] },
-    { code: "C06", title: "ตั้งค่ายพัก", content: "อัศวินสั่งลาดตระเวนรอบค่ายก่อนพลบค่ำ", who: ["อัศวิน"] },
-];
+type Beat = { code: string; title: string; content: string; who: string[] };
 
 // ─── Format candidates — ทุกฟังก์ชันรับ BEATS ชุดเดียวกัน คืน string เดียวยัดเป็น user content ──
-const FORMATS: Record<string, (beats: typeof BEATS) => string> = {
+const FORMATS: Record<string, (beats: Beat[]) => string> = {
     "1. ปัจจุบัน (bracket + dash)": (beats) =>
         beats.map(b => `[${b.code}] ${b.title} — ${b.content} (${b.who.join(", ")})`).join("\n"),
 
@@ -67,24 +60,31 @@ async function countTokens(userContent: string): Promise<number> {
 
 async function main() {
     console.log(`โมเดลที่ใช้นับ token: ${MODEL}\n`);
-    const results: { name: string; text: string; tokens: number }[] = [];
 
-    for (const [name, fmt] of Object.entries(FORMATS)) {
-        const text = fmt(BEATS);
-        const tokens = await countTokens(text);
-        results.push({ name, text, tokens });
-        console.log(`── ${name} ──`);
-        console.log(text);
-        console.log(`→ ${tokens} tokens (${text.length} chars, ${(tokens / text.length).toFixed(2)} token/char)\n`);
-    }
+    const beatSets = await getRealBeatSets(3);
+    if (beatSets.length === 0) throw new Error("ไม่พบฉากจริงที่มี beat >= 2 ใบใน DB");
 
-    const baseline = results[0].tokens;
-    console.log(`=== สรุป (baseline = ${results[0].name}) ===`);
-    for (const r of results) {
-        const diff = r.tokens - baseline;
-        const pct = baseline > 0 ? (diff / baseline) * 100 : 0;
-        const diffStr = diff === 0 ? "" : `${diff > 0 ? "+" : ""}${diff} (${pct.toFixed(1)}%)`;
-        console.log(`${r.name.padEnd(35)} ${String(r.tokens).padStart(5)} tokens  ${diffStr}`);
+    for (const set of beatSets) {
+        console.log(`\n########## ${set.name} (${set.beats.length} การ์ด) ##########`);
+        const results: { name: string; text: string; tokens: number }[] = [];
+
+        for (const [name, fmt] of Object.entries(FORMATS)) {
+            const text = fmt(set.beats);
+            const tokens = await countTokens(text);
+            results.push({ name, text, tokens });
+            console.log(`── ${name} ──`);
+            console.log(text);
+            console.log(`→ ${tokens} tokens (${text.length} chars, ${(tokens / text.length).toFixed(2)} token/char)\n`);
+        }
+
+        const baseline = results[0].tokens;
+        console.log(`=== สรุป ${set.name} (baseline = ${results[0].name}) ===`);
+        for (const r of results) {
+            const diff = r.tokens - baseline;
+            const pct = baseline > 0 ? (diff / baseline) * 100 : 0;
+            const diffStr = diff === 0 ? "" : `${diff > 0 ? "+" : ""}${diff} (${pct.toFixed(1)}%)`;
+            console.log(`${r.name.padEnd(35)} ${String(r.tokens).padStart(5)} tokens  ${diffStr}`);
+        }
     }
 }
 

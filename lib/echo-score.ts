@@ -93,13 +93,14 @@ export function buildPrefixText(beats: FormatBeat[], targetBeat: FormatBeat): st
     prefixBeats.forEach(b => b.participants.forEach(p => { if (p.alias) aliasOf.set(p.alias, p.name); }));
     const legend = [...aliasOf.entries()].map(([alias, name]) => `${alias}=${name}`).join(", ");
 
+    // format ตัด glue chars ([]/—/()/,) เหลือเว้นวรรคล้วน — วัดจริงกิน token น้อยกว่า
+    // format เดิม ~13-16% (ดู scripts/compare-thai-formats.ts, รันกับฉากจริงจาก DB แล้ว)
     const body = prefixBeats
         .map(b => {
-            const parts: string[] = [`[${b.code}]`, b.title];
-            if (b.content) parts.push(`— ${b.content}`);
+            const parts: string[] = [b.code, b.title];
+            if (b.content) parts.push(b.content);
             if (b.participants.length > 0) {
-                const names = b.participants.map(p => p.alias ?? p.name).join(", ");
-                parts.push(`(${names})`);
+                parts.push(b.participants.map(p => p.alias ?? p.name).join(" "));
             }
             return parts.join(" ");
         })
@@ -116,9 +117,9 @@ export function buildCardText(beat: FormatBeat): string {
     const parts = [beat.title];
     if (beat.content) parts.push(beat.content);
     if (beat.participants.length > 0) {
-        parts.push(beat.participants.map(p => p.alias ?? p.name).join(", "));
+        parts.push(beat.participants.map(p => p.alias ?? p.name).join(" "));
     }
-    return parts.join(" — ");
+    return parts.join(" ");
 }
 
 // ─── Hash ───────────────────────────────────────────────────────────────

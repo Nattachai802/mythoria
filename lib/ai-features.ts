@@ -31,10 +31,8 @@ export interface AiFeatureDef {
 const TYPHOON_MODEL = "typhoon-v2.5-30b-a3b-instruct"; // มาตรฐานเดียวทั้งแอป (เดิม Python ใช้ v2.1 ไม่ตรงกัน)
 const GROQ_MODEL = "llama-3.3-70b-versatile"; // llama-4-scout ถูกปลดระวาง คืน 404
 const GEMINI_MODEL = "gemini-2.5-flash";
-// ช่องเดียวสำหรับเปลี่ยนโมเดลที่ยิงผ่าน OpenRouter ทั้งแอป — ยังไม่ผูกกับ feature ไหน (ลงทะเบียน provider ไว้ก่อน)
+// ช่องเดียวสำหรับเปลี่ยนโมเดลที่ยิงผ่าน OpenRouter ทั้งแอป — ตอนนี้ใช้เป็นตัวหลักของ echo-score
 export const OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct";
-// กำลังทดสอบเทียบกับ Gemini สำหรับ echo-score โดยเฉพาะ (ดู scripts/compare-echo-models.ts) — ยังไม่ยืนยันคุณภาพ
-export const DEEPSEEK_MODEL = "deepseek/deepseek-v3.2";
 
 export const AI_FEATURES: Record<string, AiFeatureDef> = {
     // ---- LLM ฝั่ง Next.js ----
@@ -96,14 +94,25 @@ export const AI_FEATURES: Record<string, AiFeatureDef> = {
         key: "echo-score",
         label: "Echo Score (ทายพล็อต)",
         description: "ให้ AI ทายทิศทางเนื้อเรื่องแล้วตัดสินความคาดเดาได้",
-        // gemini ล้ม/โดน rate limit → ร่วง typhoon (คู่เดียวกับ character-state-extractor ที่ต้องการ JSON เข้มงวดเหมือนกัน)
-        // deepseek อยู่ท้ายสุด — last-resort เท่านั้น (ยังไม่ผ่านการทดสอบคุณภาพ/ความแม่น JSON จริง)
-        // เอาไว้ให้ scripts/compare-echo-models.ts เรียกผ่าน callAiProvider() มาเทียบกับ gemini ก่อนตัดสินใจเลื่อนขึ้น
+        // เทียบผ่าน scripts/compare-echo-models.ts กับ sample จริงจาก DB (15 case) — llama ผ่าน
+        // OpenRouter parse 100%, referee hits เท่า gemini/deepseek/gpt-4o-mini (0.7/5), confidence
+        // สูงสุดในกลุ่ม (0.81), ราคาถูกกว่า gemini 2.5 flash ~3 เท่า → ขึ้นเป็นตัวหลัก
+        // gemini/typhoon เป็น fallback เดิม — deepseek/openrouter ตัดออก (llama มาแทนที่ตรงนี้)
         // temperature ที่นี่เป็นแค่ default ของ registry — server/plot-analysis.ts ส่ง temperature ทับทุกครั้งอยู่แล้ว (1.0 guess / 0.0 judge)
         chain: [
+            { provider: "openrouter", model: OPENROUTER_MODEL, temperature: 1.0 },
             { provider: "gemini", model: GEMINI_MODEL, temperature: 1.0 },
             { provider: "typhoon", model: TYPHOON_MODEL, temperature: 1.0 },
-            { provider: "openrouter", model: DEEPSEEK_MODEL, temperature: 1.0 },
+        ],
+        defaultDailyLimit: 100,
+    },
+    "scene-type-suggest": {
+        key: "scene-type-suggest",
+        label: "แนะนำประเภทฉาก+โครงดราม่า",
+        description: "เดา sceneType (Unified Scene Framework) และฟิลด์ตามประเภทจากโครงฉากที่มีอยู่",
+        chain: [
+            { provider: "groq", model: GROQ_MODEL, temperature: 0.3, maxTokens: 400 },
+            { provider: "typhoon", model: TYPHOON_MODEL, temperature: 0.3, maxTokens: 400 },
         ],
         defaultDailyLimit: 100,
     },
