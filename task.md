@@ -203,6 +203,43 @@ DropdownMenuItem แล้ว เหลือไว้แค่ไอคอน�
 
 ---
 
+## 8. Echo Score — ทดลอง format ประหยัด token + โมเดลถูกกว่า (2026-09-02)
+
+สองวัตถุประสงค์คู่กัน: (1) หา format ข้อความไทยที่ป้อนให้โมเดลแล้วกิน token
+น้อยที่สุด (2) หาโมเดลถูกกว่า `gemini-2.5-flash` ที่ยัง "เข้าใจแก่นเรื่องจริง ๆ"
+ไม่ใช่แค่ parse JSON ผ่าน
+
+**เขียนสคริปต์แล้ว ยังไม่ได้รันจริง** (มีค่าใช้จ่ายจริงทุกครั้งที่รัน):
+
+- `scripts/compare-echo-models.ts` (objective 2) — แก้จากของเดิม: รวมทุก
+  candidate ยิงผ่าน OpenRouter เส้นทางเดียว (ตัด direct-Gemini SDK ทิ้ง — เครื่อง
+  dev นี้ไม่มี `GEMINI_API_KEY`/`TYPHOON_API_KEY` ใน `.env` เลย ตาม fallback chain
+  จริงของ `echo-score` ใน `lib/ai-features.ts:103` ก็ตกไปที่ deepseek ผ่าน
+  OpenRouter อยู่แล้วตอนนี้ ไม่ใช่ gemini ตามที่ค่าคงที่บอก) ใส่ Gemini เข้าไปเป็น
+  candidate ผ่าน OpenRouter (`google/gemini-2.5-flash`) แทน เพิ่ม **referee
+  model** (`anthropic/claude-sonnet-4.5` — เช็ค slug ยังใช้ได้ก่อนรัน) ตัดสินซ้ำ
+  แบบไม่รู้ว่าเดามาจากโมเดลไหน แยกจาก self-judge เดิม กัน bias ที่โมเดลตัดสิน
+  เข้าข้างตัวเอง — ตารางสรุปโชว์ self hits/K คู่กับ referee hits/K พร้อม flag
+  `⚠ self>>referee`
+
+- `scripts/compare-thai-formats.ts` (objective 1, ไฟล์ใหม่) — เนื้อหาความหมาย
+  เดียวกัน (ชุด "prefix ยาว" เดียวกับสคริปต์แรก) เทียบ 5 format: ปัจจุบัน
+  (bracket+dash) / ตัดวงเล็บ-ขีด / ตัดวรรคในคำไทย / คั่นด้วย `|` / key ย่อแบบ
+  YAML วัด `prompt_tokens` จริงจาก API (`max_tokens=1` ประหยัดต้นทุนทดลอง)
+  ไม่เดาด้วย tokenizer ท้องถิ่นเพราะแต่ละ provider tokenize ไทยต่างกันมาก
+
+**ต้องรอทำต่อ:**
+1. รันทั้งสองสคริปต์จริง (`npx tsx scripts/compare-echo-models.ts` /
+   `npx tsx scripts/compare-thai-formats.ts`) — ยังไม่ได้กดเพราะเสียเงินจริง
+2. ถ้า format ไหนชนะเรื่อง token ต้องเอาไปวัดคุณภาพซ้ำผ่าน
+   compare-echo-models.ts ก่อน ไม่ตัดสินจากตัวเลข token อย่างเดียว (เขียนเตือนไว้
+   ในคอมเมนต์หัวไฟล์แล้ว)
+3. ถ้าเลือกโมเดล/format ใหม่ได้ ต้องแก้จริงที่ `lib/echo-score.ts`
+   (`buildPrefixText`/`buildCardText`) และ `lib/ai-features.ts` (`chain` ของ
+   `echo-score`) — ยังไม่ได้แตะโค้ด production เลย
+
+---
+
 ## นอกขอบเขต
 
 - **อย่ารัน `drizzle-kit generate` + `db:migrate`** — `migrations/` ค้างอยู่นาน

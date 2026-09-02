@@ -1,23 +1,31 @@
 /**
- * เทียบ Gemini 2.5 Flash vs 5 candidate จาก OpenRouter สำหรับงาน Echo Score โดยเฉพาะ
+ * เทียบโมเดลผู้เดา (candidate) สำหรับงาน Echo Score โดยเฉพาะ — objective 2 จาก session ทดสอบ:
+ * หาโมเดลที่ถูกกว่าโดยยัง "เข้าใจแก่นเรื่องจริง ๆ" ไม่ใช่แค่ JSON parse ผ่าน
  * -----------------------------------------------------------------------
- * เป้าหมาย: หาโมเดลที่ราคาถูกกว่าโดยผลลัพธ์ (JSON ใช้ได้, guesses อ่านรู้เรื่อง, judge สมเหตุผล)
- * ไม่เปลี่ยนไปมาก — ยังไม่ตัดสินใจเลื่อนใครขึ้นเป็นตัวหลักใน lib/ai-features.ts
  *
- * v2: prompt แบบใหม่ที่แยก system/user + บังคับ JSON schema ที่ API แทนขอด้วยคำพูดอย่างเดียว
+ * v3: ยิงทุก candidate ผ่าน OpenRouter เท่านั้น (รวม Gemini ด้วย) — เครื่องนี้ไม่มี
+ * GEMINI_API_KEY/TYPHOON_API_KEY ใน .env เลย เดินตาม fallback chain จริงของ echo-score
+ * ([ai-features.ts:103](../lib/ai-features.ts)) ก็ตกไปที่ openrouter/deepseek อยู่ดี — เรียก
+ * Gemini ผ่าน OpenRouter แทน direct Google API เพื่อเทียบใต้ transport เดียวกันหมด ตัดโค้ด
+ * สองพาธ (GoogleGenAI SDK + OpenAI-compatible) เหลือพาธเดียว
+ *
+ * เพิ่ม "referee judge" — ทุก candidate เดางานเดาของตัวเอง (self-judge, ตัวเลขต้นทุน/latency จริง
+ * ถ้าจะเอาโมเดลนี้ขึ้น production) แต่ยังมี **โมเดลกลางตัวเดียว (REFEREE_MODEL) ตัดสินซ้ำแบบไม่รู้ว่า
+ * เดามาจากโมเดลไหน** ให้คะแนนความเข้าใจที่ไม่มี bias ของแต่ละโมเดลตัดสินเข้าข้างตัวเอง — ต้นทุน referee
+ * ไม่นับรวมในต้นทุน/การ์ดของ candidate เพราะเป็นค่าใช้จ่ายของการทดลองครั้งนี้ ไม่ใช่ของ production จริง
+ *
+ * เกณฑ์อ่านผล: ถ้า self hits >> referee hits แปลว่าโมเดลนั้น "ปล่อยผ่านให้ตัวเองง่าย" ไม่ใช่โมเดลที่แย่กว่า
+ * ตัวอื่นเสมอไป — ดูช่องว่างนี้ประกอบ ไม่ใช่ดูแค่ self hits เพียว ๆ
  *
  * เรียก provider ตรง ๆ ไม่ผ่าน lib/ai-gateway.ts เพราะไฟล์นั้น import "server-only"
- * (บล็อกไม่ให้รันนอก Next.js) — สคริปต์นี้จึงยิง SDK/HTTP เองแบบย่อ ซ้ำ logic
- * ของ chatGemini/chatOpenAiCompatible เล็กน้อย ยอมรับได้เพราะเป็นสคริปต์ทดสอบครั้งเดียว
- * ไม่ใช่โค้ด production — ห้ามเอา pattern นี้ไปใช้ในแอปจริง
+ * (บล็อกไม่ให้รันนอก Next.js) — สคริปต์นี้จึงยิง HTTP เองแบบย่อ ซ้ำ logic ของ
+ * chatOpenAiCompatible เล็กน้อย ยอมรับได้เพราะเป็นสคริปต์ทดสอบครั้งเดียว ไม่ใช่โค้ด production
  *
  *   npx tsx scripts/compare-echo-models.ts
  */
 import { config } from "dotenv";
-import { GoogleGenAI } from "@google/genai";
 import {
     ECHO_K,
-    ECHO_MODEL,
     ECHO_GUESS_SCHEMA,
     ECHO_JUDGE_SCHEMA,
     buildGuessPrompt,
@@ -29,15 +37,21 @@ import {
 
 config({ path: ".env" });
 
-// ─── Candidates — slug + ราคาที่เช็คจาก openrouter.ai ตอนเสนอ (ยืนยันวันนี้ อาจเปลี่ยนได้ไว) ──
+// ─── Candidates — slug + ราคาที่เช็คจาก openrouter.ai ตอนเขียนสคริปต์นี้ (ยืนยันวันนี้
+// อาจเปลี่ยนได้ไว โดยเฉพาะแถว Gemini ที่แปลงมาจากราคา direct API — เช็คราคาจริงบน
+// openrouter.ai/models ก่อนเชื่อตัวเลขนี้) ──────────────────────────────────────────
 const CANDIDATES = [
+    { label: "Gemini 2.5 Flash", model: "google/gemini-2.5-flash", inPerM: 0.30, outPerM: 2.50 },
     { label: "Qwen3.5-Flash", model: "qwen/qwen3.5-flash-02-23", inPerM: 0.065, outPerM: 0.26 },
     { label: "Mistral Small 3.2", model: "mistralai/mistral-small-3.2-24b-instruct", inPerM: 0.075, outPerM: 0.20 },
     { label: "DeepSeek V3.2", model: "deepseek/deepseek-v3.2", inPerM: 0.21, outPerM: 0.31 },
     { label: "GLM-4.5-Air", model: "z-ai/glm-4.5-air", inPerM: 0.13, outPerM: 0.85 },
     { label: "MiniMax M2", model: "minimax/minimax-m2", inPerM: 0.255, outPerM: 1.02 },
 ];
-const GEMINI_PRICE = { inPerM: 0.30, outPerM: 2.50 };
+
+// โมเดลกลางตัดสิน — ตั้งใจเลือกให้แรง+คนละตระกูลจาก candidate ส่วนใหญ่ กัน family bias
+// เช็ค slug จริงบน openrouter.ai ก่อนรัน อาจเปลี่ยนชื่อ/เลิกให้บริการได้
+const REFEREE_MODEL = "anthropic/claude-sonnet-4.5";
 
 // ─── ตัวอย่างทดสอบ — จำลองจากจังหวะนิยายจริง ไม่ต้องต่อ DB ───────────────
 const CASES = [
@@ -67,35 +81,22 @@ interface ProviderResult {
     guesses: string[];
     guessLatencyMs: number;
     guessParsedOk: boolean;
-    hits: number | null;
-    matched: number[];
+    // self-judge — โมเดลเดียวกับที่เดา ตัดสินเอง (ตัวเลขจริงถ้าเอาโมเดลนี้ขึ้น production)
+    selfHits: number | null;
+    selfMatched: number[];
     judgeLatencyMs: number;
     judgeParsedOk: boolean;
-    inTokens: number;
+    // referee-judge — REFEREE_MODEL ตัดสินแบบไม่รู้ว่าเดามาจากโมเดลไหน (de-biased)
+    refHits: number | null;
+    refMatched: number[];
+    refLatencyMs: number;
+    refParsedOk: boolean;
+    inTokens: number;  // เฉพาะ guess call ของ candidate เอง — ต้นทุน production จริง
     outTokens: number;
     error?: string;
 }
 
 type Chat = (p: EchoPrompt, temperature: number, maxTokens: number, schema: object) => Promise<{ text: string; inTokens: number; outTokens: number }>;
-
-async function chatGeminiRaw(p: EchoPrompt, temperature: number, maxTokens: number, schema: object) {
-    const key = process.env.GEMINI_API_KEY;
-    if (!key) throw new Error("GEMINI_API_KEY not set");
-    const ai = new GoogleGenAI({ apiKey: key });
-    const res = await ai.models.generateContent({
-        model: ECHO_MODEL,
-        contents: [{ role: "user", parts: [{ text: p.user }] }],
-        config: {
-            temperature, maxOutputTokens: maxTokens,
-            thinkingConfig: { thinkingBudget: 0 },
-            systemInstruction: p.system,
-            responseMimeType: "application/json",
-            responseJsonSchema: schema,
-        },
-    });
-    const u = res.usageMetadata;
-    return { text: res.text?.trim() ?? "", inTokens: u?.promptTokenCount ?? 0, outTokens: u?.candidatesTokenCount ?? 0 };
-}
 
 function makeOpenRouterChat(model: string): Chat {
     return async (p, temperature, maxTokens, schema) => {
@@ -122,10 +123,11 @@ function makeOpenRouterChat(model: string): Chat {
     };
 }
 
-async function runOne(chat: Chat, prefixText: string, cardText: string): Promise<ProviderResult> {
+async function runOne(chat: Chat, refereeChat: Chat, prefixText: string, cardText: string): Promise<ProviderResult> {
     const result: ProviderResult = {
         guesses: [], guessLatencyMs: 0, guessParsedOk: false,
-        hits: null, matched: [], judgeLatencyMs: 0, judgeParsedOk: false,
+        selfHits: null, selfMatched: [], judgeLatencyMs: 0, judgeParsedOk: false,
+        refHits: null, refMatched: [], refLatencyMs: 0, refParsedOk: false,
         inTokens: 0, outTokens: 0,
     };
     try {
@@ -144,18 +146,31 @@ async function runOne(chat: Chat, prefixText: string, cardText: string): Promise
         }
 
         const judgePrompt = buildJudgePrompt(prefixText, cardText, guesses);
+
+        // self-judge — ต้นทุน/latency จริงถ้าโมเดลนี้ตัดสินงานตัวเองใน production
         const t1 = Date.now();
-        const j = await chat(judgePrompt, 0.0, 128, ECHO_JUDGE_SCHEMA);
+        const j = await chat(judgePrompt, 0.0, 512, ECHO_JUDGE_SCHEMA);
         result.judgeLatencyMs = Date.now() - t1;
         result.inTokens += j.inTokens;
         result.outTokens += j.outTokens;
-        const judged = parseJudgeResponse(j.text);
-        result.judgeParsedOk = judged !== null;
-        if (judged) {
-            result.hits = judged.hits;
-            result.matched = judged.matched;
+        const selfJudged = parseJudgeResponse(j.text);
+        result.judgeParsedOk = selfJudged !== null;
+        if (selfJudged) {
+            result.selfHits = selfJudged.hits;
+            result.selfMatched = selfJudged.matched.map(m => m.index);
         } else {
-            result.error = `judge parse failed — raw: ${j.text.slice(0, 1500)}`;
+            result.error = `self-judge parse failed — raw: ${j.text.slice(0, 1500)}`;
+        }
+
+        // referee-judge — ค่าใช้จ่ายของการทดลองนี้เท่านั้น ไม่นับใน inTokens/outTokens ของ candidate
+        const t2 = Date.now();
+        const rj = await refereeChat(judgePrompt, 0.0, 512, ECHO_JUDGE_SCHEMA);
+        result.refLatencyMs = Date.now() - t2;
+        const refJudged = parseJudgeResponse(rj.text);
+        result.refParsedOk = refJudged !== null;
+        if (refJudged) {
+            result.refHits = refJudged.hits;
+            result.refMatched = refJudged.matched.map(m => m.index);
         }
     } catch (e) {
         result.error = e instanceof Error ? e.message : String(e);
@@ -168,8 +183,9 @@ function printResult(label: string, r: ProviderResult) {
     if (r.error) console.log(`  ⚠ ${r.error}`);
     console.log(`  guess: ${r.guessParsedOk ? "OK" : "PARSE FAIL"} (${r.guessLatencyMs}ms, ${r.guesses.length} เดา)`);
     r.guesses.forEach((g, i) => console.log(`    ${i}: ${g}`));
-    console.log(`  judge: ${r.judgeParsedOk ? "OK" : "PARSE FAIL"} (${r.judgeLatencyMs}ms) → hits=${r.hits} matched=[${r.matched.join(",")}]`);
-    console.log(`  tokens: in=${r.inTokens} out=${r.outTokens}`);
+    console.log(`  self-judge:    ${r.judgeParsedOk ? "OK" : "PARSE FAIL"} (${r.judgeLatencyMs}ms) → hits=${r.selfHits} matched=[${r.selfMatched.join(",")}]`);
+    console.log(`  referee-judge: ${r.refParsedOk ? "OK" : "PARSE FAIL"} (${r.refLatencyMs}ms) → hits=${r.refHits} matched=[${r.refMatched.join(",")}]`);
+    console.log(`  tokens (guess+self-judge เท่านั้น): in=${r.inTokens} out=${r.outTokens}`);
 }
 
 function costPerCard(inTokens: number, outTokens: number, inPerM: number, outPerM: number): number {
@@ -177,35 +193,40 @@ function costPerCard(inTokens: number, outTokens: number, inPerM: number, outPer
 }
 
 async function main() {
+    const refereeChat = makeOpenRouterChat(REFEREE_MODEL);
     const allResults: Record<string, ProviderResult[]> = {};
-    const contenders = [
-        { label: `Gemini (${ECHO_MODEL})`, chat: chatGeminiRaw, price: GEMINI_PRICE },
-        ...CANDIDATES.map(c => ({ label: c.label, chat: makeOpenRouterChat(c.model), price: c })),
-    ];
 
     for (const c of CASES) {
         console.log(`\n=== ${c.name} ===`);
         console.log(`เหตุการณ์จริง: "${c.cardText}"`);
 
-        for (const cand of contenders) {
-            const r = await runOne(cand.chat, c.prefixText, c.cardText);
+        for (const cand of CANDIDATES) {
+            const r = await runOne(makeOpenRouterChat(cand.model), refereeChat, c.prefixText, c.cardText);
             printResult(cand.label, r);
             (allResults[cand.label] ??= []).push(r);
         }
     }
 
-    // ─── สรุปราคา/ความสำเร็จรวมทุกเคส ───────────────────────────────────
+    // ─── สรุปราคา/ความสำเร็จ/ช่องว่าง self vs referee รวมทุกเคส ─────────────
     console.log(`\n\n=== สรุป ===`);
-    console.log(`${"โมเดล".padEnd(22)} ${"parse OK".padEnd(10)} ${"latency เฉลี่ย".padEnd(16)} ต้นทุน/การ์ด (บาท ≈ ×36)`);
-    for (const cand of contenders) {
+    console.log(
+        `${"โมเดล".padEnd(20)} ${"parse OK".padEnd(9)} ${"self hits/K".padEnd(13)} ${"referee hits/K".padEnd(16)} ${"latency".padEnd(10)} ต้นทุน/การ์ด (บาท ≈ ×36)`
+    );
+    for (const cand of CANDIDATES) {
         const results = allResults[cand.label] ?? [];
         const okCount = results.filter(r => r.guessParsedOk && r.judgeParsedOk).length;
+        const validSelf = results.filter(r => r.selfHits !== null);
+        const validRef = results.filter(r => r.refHits !== null);
+        const avgSelfHits = validSelf.reduce((s, r) => s + (r.selfHits ?? 0), 0) / (validSelf.length || 1);
+        const avgRefHits = validRef.reduce((s, r) => s + (r.refHits ?? 0), 0) / (validRef.length || 1);
         const avgLatency = results.reduce((s, r) => s + r.guessLatencyMs + r.judgeLatencyMs, 0) / results.length;
-        const avgCostUsd = results.reduce((s, r) => s + costPerCard(r.inTokens, r.outTokens, cand.price.inPerM, cand.price.outPerM), 0) / results.length;
+        const avgCostUsd = results.reduce((s, r) => s + costPerCard(r.inTokens, r.outTokens, cand.inPerM, cand.outPerM), 0) / results.length;
+        const gapFlag = avgSelfHits - avgRefHits >= 1 ? " ⚠ self>>referee" : "";
         console.log(
-            `${cand.label.padEnd(22)} ${`${okCount}/${results.length}`.padEnd(10)} ${`${avgLatency.toFixed(0)}ms`.padEnd(16)} $${avgCostUsd.toFixed(6)} (≈฿${(avgCostUsd * 36).toFixed(4)})`
+            `${cand.label.padEnd(20)} ${`${okCount}/${results.length}`.padEnd(9)} ${`${avgSelfHits.toFixed(1)}/${ECHO_K}`.padEnd(13)} ${`${avgRefHits.toFixed(1)}/${ECHO_K}`.padEnd(16)} ${`${avgLatency.toFixed(0)}ms`.padEnd(10)} $${avgCostUsd.toFixed(6)} (≈฿${(avgCostUsd * 36).toFixed(4)})${gapFlag}`
         );
     }
+    console.log(`\nreferee: ${REFEREE_MODEL} (ต้นทุน referee ไม่รวมในตาราง — เป็นค่าใช้จ่ายของการทดลองนี้เท่านั้น)`);
 }
 
 main().catch((e) => {
