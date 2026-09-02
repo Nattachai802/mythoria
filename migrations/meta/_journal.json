@@ -120,6 +120,20 @@
       "when": 1788347690399,
       "tag": "0016_naive_sinister_six",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788363733646,
+      "tag": "0017_silky_thaddeus_ross",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788370523588,
+      "tag": "0018_chemical_kingpin",
+      "breakpoints": true
     }
   ]
 }

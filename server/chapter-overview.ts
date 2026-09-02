@@ -1,7 +1,7 @@
 "use server"
 
 import { db } from "@/db/drizzle";
-import { timelineEvents, sceneElementDetails } from "@/db/schema"
+import { timelineEvents, sceneElementDetails, ideas } from "@/db/schema"
 import { eq, asc, inArray } from "drizzle-orm"
 
 export async function getChapterOverview(chapterId: string) {
@@ -20,10 +20,40 @@ export async function getChapterOverview(chapterId: string) {
             });
         }
 
-        // Attach details to each event
+        // การ์ดไอเดีย (ฉากย่อย) ในแต่ละฉาก อยู่ใน canvasData (JSONB) — เก็บ referenceId ไว้
+        // ค่า pacing/sceneType จริงอยู่ที่ ideas table ไม่ได้ฝังใน canvasData เลยต้อง join เพิ่ม
+        // (pattern เดียวกับ sceneElementDetails ด้านบน — query ครั้งเดียวรวมทุกฉาก)
+        const ideaRefsByEvent = new Map<string, { referenceId: string; beatIndex: number }[]>();
+        const allReferenceIds = new Set<string>();
+        for (const event of events) {
+            const canvasItems: any[] = Array.isArray(event.canvasData) ? (event.canvasData as any[]) : [];
+            const refs = canvasItems
+                .filter(it => it?.type === "idea" && it?.referenceId)
+                .map(it => ({ referenceId: it.referenceId as string, beatIndex: it.beatIndex ?? 0 }));
+            ideaRefsByEvent.set(event.id, refs);
+            refs.forEach(r => allReferenceIds.add(r.referenceId));
+        }
+
+        let ideaById = new Map<string, { id: string; title: string; pacing: number | null; sceneType: string | null }>();
+        if (allReferenceIds.size > 0) {
+            const ideaRows = await db.query.ideas.findMany({
+                where: inArray(ideas.id, Array.from(allReferenceIds)),
+                columns: { id: true, title: true, pacing: true, sceneType: true },
+            });
+            ideaById = new Map(ideaRows.map(i => [i.id, i]));
+        }
+
+        // Attach details + sub-beats (การ์ดไอเดีย เรียงตาม beatIndex) ให้แต่ละ event
         const eventsWithDetails = events.map(event => ({
             ...event,
             elementDetails: allDetails.filter(d => d.sceneId === event.id),
+            subBeats: (ideaRefsByEvent.get(event.id) ?? [])
+                .map(r => {
+                    const idea = ideaById.get(r.referenceId);
+                    return idea ? { id: idea.id, title: idea.title, pacing: idea.pacing, sceneType: idea.sceneType, beatIndex: r.beatIndex } : null;
+                })
+                .filter((b): b is { id: string; title: string; pacing: number | null; sceneType: string | null; beatIndex: number } => b !== null)
+                .sort((a, b) => a.beatIndex - b.beatIndex),
         }));
 
         return { success: true, events: eventsWithDetails }

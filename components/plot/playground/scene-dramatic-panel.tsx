@@ -7,9 +7,10 @@ import { updateTimelineEvent } from "@/server/timeline"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Slider } from "@/components/ui/slider"
 import {
     Target, Swords, Drama, Loader2, TrendingUp, TrendingDown, Minus, HelpCircle,
-    CheckCircle2, XCircle, Clock, Eye, GitCommitHorizontal, CalendarClock, Sparkles,
+    CheckCircle2, XCircle, Clock, Eye, GitCommitHorizontal, CalendarClock, Sparkles, Gauge,
 } from "lucide-react"
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -17,70 +18,11 @@ import {
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { suggestSceneType } from "@/server/scene-type-suggest"
+import { SCENE_TYPES, OUTCOMES, INTENSITIES, PACING_MIN, PACING_MAX, pacingLabel, computeShift, decodeShift, type SceneType } from "@/lib/scene-dramatic"
 
-// Unified Scene Framework (Swain + McKee + Syd Field) — 5 ประเภทฉาก
-// field1/field2 reuse คอลัมน์ sceneGoal/sceneConflict เดิม แค่เปลี่ยนความหมาย/label ตามประเภท
-const SCENE_TYPES = {
-    setup: {
-        label: "ปูพื้น/ให้ข้อมูล",
-        field1Label: "Hook — จุดดึงดูด", field1Placeholder: "อะไรดึงคนอ่านเข้าฉากนี้",
-        field2Label: "Context — บริบท/สถานะเดิม", field2Placeholder: "กฎ/สถานะปัจจุบันที่ต้องรู้ก่อนฉากนี้",
-        outcomeMode: "off" as const,
-    },
-    action: {
-        label: "รุกฆาต/เผชิญอุปสรรค",
-        field1Label: "เป้าหมาย (Goal)", field1Placeholder: "ตัวละครต้องการอะไรในฉากนี้",
-        field2Label: "อุปสรรค (Conflict)", field2Placeholder: "อะไรขวางไม่ให้สำเร็จ",
-        outcomeMode: "optional" as const,
-    },
-    reaction: {
-        label: "รับแรงกระแทก/เตรียมการ",
-        field1Label: "ปฏิกิริยา (Reaction)", field1Placeholder: "ตัวละครรู้สึก/ตอบสนองอย่างไร",
-        field2Label: "ทางตัน+การตัดสินใจ (Dilemma)", field2Placeholder: "ทางเลือกใหม่ที่ต้องชั่งใจ นำไปสู่อะไร",
-        outcomeMode: "optional" as const,
-    },
-    climax: {
-        label: "แตกหัก/พลิกผัน",
-        field1Label: "บททดสอบสูงสุด (Ultimate Test)", field1Placeholder: "อุปสรรค/ความกลัวที่ใหญ่ที่สุด",
-        field2Label: "คุณค่าที่พลิกผัน (Value Turn)", field2Placeholder: "สถานะเปลี่ยนจากอะไรเป็นอะไร",
-        outcomeMode: "required" as const,
-    },
-    resolution: {
-        label: "คลี่คลาย/สรุปผล",
-        field1Label: "ผลลัพธ์หลังพายุ (Aftermath)", field1Placeholder: "ใครอยู่ ใครตาย ใครได้อะไร",
-        field2Label: "สมดุลใหม่ (New Normal)", field2Placeholder: "โลก/ตัวละครเปลี่ยนไปจากตอนต้นอย่างไร",
-        outcomeMode: "optional" as const,
-    },
-} as const
-
-type SceneType = keyof typeof SCENE_TYPES
-
-// outcome → ทิศของ value-shift
-const OUTCOMES = [
-    { value: "success", label: "ดีขึ้น", icon: CheckCircle2, sign: 1, cls: "text-emerald-500" },
-    { value: "failure", label: "แย่ลง", icon: XCircle, sign: -1, cls: "text-red-500" },
-    { value: "ongoing", label: "คาราคาซัง", icon: Clock, sign: 0, cls: "text-amber-500" },
-    { value: "unknown", label: "ยังไม่ชัด", icon: HelpCircle, sign: 0, cls: "text-muted-foreground" },
-] as const
-
-// ความเข้ม → magnitude
-const INTENSITIES = [
-    { label: "เบา", mag: 2 },
-    { label: "กลาง", mag: 3 },
-    { label: "หนัก", mag: 5 },
-] as const
-
-function computeShift(outcome: string, mag: number): number {
-    const o = OUTCOMES.find(o => o.value === outcome)
-    if (!o) return 0
-    return o.sign * mag
-}
-
-// แปลง valueShift กลับเป็น outcome+mag เพื่อ pre-fill (เดาจากเครื่องหมาย)
-function decodeShift(shift: number | null, storedOutcome: string | null): { outcome: string; mag: number } {
-    const outcome = storedOutcome || (shift == null ? "unknown" : shift > 0 ? "success" : shift < 0 ? "failure" : "ongoing")
-    const mag = shift == null ? 3 : Math.min(5, Math.max(2, Math.abs(shift) || 3))
-    return { outcome, mag }
+// ไอคอนต่อ outcome — แยกไว้ในไฟล์นี้เพราะ lib/scene-dramatic.ts เป็น pure data ไม่มี React
+const OUTCOME_ICONS: Record<string, typeof CheckCircle2> = {
+    success: CheckCircle2, failure: XCircle, ongoing: Clock, unknown: HelpCircle,
 }
 
 interface Props {
@@ -102,6 +44,7 @@ export function SceneDramaticPanel({ event, characters = [], events = [] }: Prop
 
     const [sceneType, setSceneType] = useState<SceneType>((event.sceneType as SceneType) || "action")
     const [sceneTone, setSceneTone] = useState(event.sceneTone ?? "")
+    const [pacing, setPacing] = useState(event.pacing ?? 5)
     const [goal, setGoal] = useState(event.sceneGoal ?? "")
     const [conflict, setConflict] = useState(event.sceneConflict ?? "")
     const initial = decodeShift(event.valueShift ?? null, event.sceneOutcome ?? null)
@@ -118,6 +61,7 @@ export function SceneDramaticPanel({ event, characters = [], events = [] }: Prop
         if (open) {
             setSceneType((event.sceneType as SceneType) || "action")
             setSceneTone(event.sceneTone ?? "")
+            setPacing(event.pacing ?? 5)
             setGoal(event.sceneGoal ?? "")
             setConflict(event.sceneConflict ?? "")
             const d = decodeShift(event.valueShift ?? null, event.sceneOutcome ?? null)
@@ -140,6 +84,7 @@ export function SceneDramaticPanel({ event, characters = [], events = [] }: Prop
             const res = await updateTimelineEvent(event.id, {
                 sceneType,
                 sceneTone: sceneTone.trim() || null,
+                pacing,
                 sceneGoal: goal.trim() || null,
                 sceneConflict: conflict.trim() || null,
                 sceneOutcome: outcome,
@@ -175,6 +120,7 @@ export function SceneDramaticPanel({ event, characters = [], events = [] }: Prop
             setGoal(d.field1)
             setConflict(d.field2)
             if (d.outcome) setOutcome(d.outcome)
+            if (d.pacing != null) setPacing(d.pacing)
             toast.success("AI แนะนำแล้ว — ตรวจก่อนกดบันทึก")
         })
     }
@@ -219,32 +165,51 @@ export function SceneDramaticPanel({ event, characters = [], events = [] }: Prop
                     </Button>
                 </div>
 
-                <div className="p-3 space-y-3">
-                    {/* ประเภทฉาก (Unified Scene Framework) */}
-                    <div className="space-y-1">
-                        <label className="text-[11px] font-medium text-muted-foreground">ประเภทฉาก</label>
-                        <Select value={sceneType} onValueChange={v => setSceneType(v as SceneType)}>
-                            <SelectTrigger className="h-8 text-xs chamfered-sm">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {Object.entries(SCENE_TYPES).map(([k, v]) => (
-                                    <SelectItem key={k} value={k}>{v.label}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                <div className="p-3 space-y-4 max-h-[min(70vh,600px)] overflow-y-auto">
+                    {/* ประเภทฉาก + โทน — กรอบเรื่อง จัดกลุ่มเดียวกัน วางคู่กันแทนสองแถวเต็มความกว้าง */}
+                    <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                            <label className="text-[11px] font-medium text-muted-foreground">ประเภทฉาก</label>
+                            <Select value={sceneType} onValueChange={v => setSceneType(v as SceneType)}>
+                                <SelectTrigger className="h-8 text-xs chamfered-sm">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {Object.entries(SCENE_TYPES).map(([k, v]) => (
+                                        <SelectItem key={k} value={k}>{v.label}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[11px] font-medium text-muted-foreground">โทนของฉาก</label>
+                            <Input
+                                value={sceneTone}
+                                onChange={e => setSceneTone(e.target.value)}
+                                placeholder={'เช่น "ตึงเครียด"'}
+                                className="h-8 text-xs chamfered-sm"
+                            />
+                        </div>
                     </div>
 
-                    {/* โทน */}
-                    <div className="space-y-1">
-                        <label className="text-[11px] font-medium text-muted-foreground">โทนของฉาก</label>
-                        <Input
-                            value={sceneTone}
-                            onChange={e => setSceneTone(e.target.value)}
-                            placeholder={'เช่น "ตึงเครียด", "ผ่อนคลาย-ตลก"'}
-                            className="h-8 text-xs chamfered-sm"
+                    {/* จังหวะการเล่า (pacing) — คนละมิติจาก outcome/valueShift (ทิศสถานการณ์) */}
+                    <div className="space-y-1.5">
+                        <label className="flex items-center justify-between text-[11px] font-medium text-muted-foreground">
+                            <span className="flex items-center gap-1.5"><Gauge className="h-3 w-3" />จังหวะการเล่า</span>
+                            <span className="text-[var(--forge-amber)] font-technical tabular-nums">{pacing}/10 · {pacingLabel(pacing)}</span>
+                        </label>
+                        <Slider
+                            min={PACING_MIN} max={PACING_MAX} step={1}
+                            value={[pacing]}
+                            onValueChange={([v]) => setPacing(v)}
                         />
+                        <div className="flex justify-between text-[9px] text-muted-foreground/70 font-technical">
+                            <span>ผ่อน — เล่าเร็ว</span>
+                            <span>เร่ง — ลงรายละเอียด</span>
+                        </div>
                     </div>
+
+                    <div className="h-px bg-border/50" />
 
                     {/* POV (P1) — ฉากนี้เล่าผ่านสายตาใคร */}
                     <div className="space-y-1">
@@ -332,6 +297,8 @@ export function SceneDramaticPanel({ event, characters = [], events = [] }: Prop
                         )}
                     </div>
 
+                    <div className="h-px bg-border/50" />
+
                     {/* field1 — label เปลี่ยนตามประเภทฉาก */}
                     <div className="space-y-1">
                         <label className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
@@ -373,7 +340,7 @@ export function SceneDramaticPanel({ event, characters = [], events = [] }: Prop
                         </label>
                         <div className="grid grid-cols-2 gap-1.5">
                             {OUTCOMES.map(o => {
-                                const Icon = o.icon
+                                const Icon = OUTCOME_ICONS[o.value]
                                 const active = outcome === o.value
                                 return (
                                     <button

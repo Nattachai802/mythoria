@@ -16,6 +16,7 @@ import {
   Users, MapPin, X, Link as LinkIcon, Pencil, ExternalLink, Copy,
   GitBranchPlus, Shield, Check, MoreVertical, Loader2, Star, MessageCircle,
   BookOpen, Quote, StickyNote as StickyNoteIcon, Lightbulb, Sparkles,
+  Swords, RotateCcw, Flame, CheckCircle2,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -23,9 +24,16 @@ import { cn } from "@/lib/utils";
 import { mentionRangeAtCaret } from "@/lib/mentions";
 import { SceneElementDetails } from "@/db/schema";
 import { SceneParticipantsPanel } from "./scene-participants-panel";
+import { IdeaDramaticPanel } from "./idea-dramatic-panel";
 import { EchoGuessBadge } from "./echo-score-panel";
 import { runEchoScore } from "@/server/plot-analysis";
 import type { EchoFinding } from "@/lib/echo-score";
+import { SCENE_TYPES } from "@/lib/scene-dramatic";
+
+// ไอคอนย่อบนการ์ดที่ย่อ — บอกประเภทฉาก (Unified Scene Framework) ให้เห็นทั้งบอร์ดโดยไม่ต้องเปิดทีละใบ
+const SCENE_TYPE_ICONS: Record<string, typeof BookOpen> = {
+  setup: BookOpen, action: Swords, reaction: RotateCcw, climax: Flame, resolution: CheckCircle2,
+};
 
 // ป้ายสีจัดกลุ่มโน้ต — เดิมอยู่ใน canvas-item.tsx ย้ายมาที่นี่เพราะใช้เฉพาะระบบโน้ตของ idea
 const CARD_COLORS = ["#f59e0b", "#fb923c", "#f43f5e", "#a78bfa", "#6366f1", "#22d3ee", "#34d399", "#facc15", "#e879f9", "#94a3b8"];
@@ -98,6 +106,7 @@ interface IdeaFilmCardProps {
   onPromoteDummy?: (dummy: any, realId: string, scope?: "scene" | "all") => void;
   onDetailSaved?: (detail: SceneElementDetails) => void;
   onSetColor?: (color: string | null) => void;
+  onSetSceneDrama?: (patch: Record<string, unknown>) => void;
   tonePresets?: { id: string; label: string; color: string }[];
   onSetKeyMoment?: (label: string | null) => void;
   onSetNarration?: (isNarration: boolean) => void;
@@ -114,6 +123,7 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
     elementDetails, onEditChild, ideaNotes, onQuickAddNote, onDeleteNote, onReorderNotes, novelId,
     onSetAncestor, ancestorConnections, onRemoveAncestor, sceneId, characters, novelDummyNames,
     factions, ideas, onAddChild, onUpdateChild, onPromoteDummy, onDetailSaved, onSetColor,
+    onSetSceneDrama,
     tonePresets = [], onSetKeyMoment, onSetNarration, threadBeats, onOpenThreadBind,
     sceneEchoFinding, onEchoResult,
   } = props;
@@ -175,6 +185,14 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
             <div className="flex items-center gap-1 shrink-0">
               {item.isNarration && <Quote className="w-3 h-3 text-amber-500" fill="currentColor" />}
               {isKeyMoment && <Star className="w-3.5 h-3.5 text-amber-400" fill="currentColor" />}
+              {item.sceneType && SCENE_TYPE_ICONS[item.sceneType] && (() => {
+                const SceneTypeIcon = SCENE_TYPE_ICONS[item.sceneType];
+                return (
+                  <span title={SCENE_TYPES[item.sceneType as keyof typeof SCENE_TYPES]?.label} className="flex items-center">
+                    <SceneTypeIcon className="w-3 h-3 text-muted-foreground" />
+                  </span>
+                );
+              })()}
               {sceneEchoFinding && <EchoGuessBadge finding={sceneEchoFinding} />}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -370,6 +388,7 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
         onPromoteDummy={onPromoteDummy}
         onDetailSaved={onDetailSaved}
         onSetKeyMoment={onSetKeyMoment}
+        onSetSceneDrama={onSetSceneDrama}
         onOpenThreadBind={onOpenThreadBind}
         threadBeats={threadBeats}
         onCopy={copyToClipboard}
@@ -403,6 +422,7 @@ interface IdeaFrameDialogProps {
   onPromoteDummy?: (dummy: any, realId: string, scope?: "scene" | "all") => void;
   onDetailSaved?: (detail: SceneElementDetails) => void;
   onSetKeyMoment?: (label: string | null) => void;
+  onSetSceneDrama?: (patch: Record<string, unknown>) => void;
   onOpenThreadBind?: () => void;
   threadBeats?: ThreadBeat[];
   onCopy: () => void;
@@ -415,7 +435,7 @@ function IdeaFrameDialog({
   onClose, item, elementDetails, onEditChild, onRemoveChild, ideaNotes,
   onQuickAddNote, onDeleteNote, onReorderNotes, novelId, ancestorConnections, onRemoveAncestor,
   sceneId, characters, novelDummyNames, factions, ideas, onAddChild, onUpdateChild,
-  onPromoteDummy, onDetailSaved, onSetKeyMoment, onOpenThreadBind, threadBeats, onCopy,
+  onPromoteDummy, onDetailSaved, onSetKeyMoment, onSetSceneDrama, onOpenThreadBind, threadBeats, onCopy,
   onEchoResult,
 }: IdeaFrameDialogProps) {
   const [quickNote, setQuickNote] = useState("");
@@ -1131,26 +1151,40 @@ function IdeaFrameDialog({
             </div>
           )}
 
-          {/* Footer — แยกลิงก์กับปุ่มคนละแถว กันข้อความ "ดูรายละเอียดเต็ม" ถูกบีบจนตัดคำ 3 บรรทัดตอนพื้นที่แคบ */}
-          <div className="space-y-2 pt-2 border-t border-border/60">
+          {/* Footer — ระนาบเดียวกันทั้งหมด (ลิงก์+ปุ่ม) แถวเดียว, whitespace-nowrap กันลิงก์ตัดคำเป็น 3 บรรทัด
+              ตอนพื้นที่แคบ — flex-wrap ที่แถวทำให้ตกไปทั้งชิ้นเป็นบรรทัดใหม่แทน ไม่ตัดคำกลางประโยค */}
+          <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-border/60">
             {getDetailPageUrl() && (
-              <Link href={getDetailPageUrl()!} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+              <Link href={getDetailPageUrl()!} className="inline-flex items-center gap-1 text-xs text-primary hover:underline whitespace-nowrap">
                 <ExternalLink className="w-3 h-3 shrink-0" />
                 ดูรายละเอียดเต็ม
               </Link>
             )}
-            <div className="flex items-center justify-end gap-2 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap ml-auto">
+              {item.referenceId && (
+                <IdeaDramaticPanel
+                  ideaId={item.referenceId}
+                  sceneType={item.sceneType}
+                  sceneTone={item.sceneTone}
+                  sceneGoal={item.sceneGoal}
+                  sceneConflict={item.sceneConflict}
+                  sceneOutcome={item.sceneOutcome}
+                  valueShift={item.valueShift}
+                  pacing={item.pacing}
+                  onSaved={onSetSceneDrama}
+                />
+              )}
               {novelId && sceneId && (
-                <Button type="button" size="sm" variant="outline" className="h-7 text-xs gap-1" title="หาจังหวะที่เดาได้ (การ์ดนี้)" disabled={echoStatus === 'pending'} onClick={runCardEcho}>
+                <Button type="button" size="sm" variant="ghost" className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground" title="หาจังหวะที่เดาได้ (การ์ดนี้)" disabled={echoStatus === 'pending'} onClick={runCardEcho}>
                   {echoStatus === 'pending' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                  ตรวจการ์ดนี้
+                  ตรวจ
                 </Button>
               )}
-              <Button type="button" size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={onCopy}>
-                <Copy className="w-3 h-3" /> คัดลอกข้อมูล
+              <Button type="button" size="sm" variant="ghost" className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground" onClick={onCopy}>
+                <Copy className="w-3 h-3" /> คัดลอก
               </Button>
-              <Button type="button" size="sm" className="h-7 text-xs" onClick={onClose}>
-                ปิด
+              <Button type="button" size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="ปิด" onClick={onClose}>
+                <X className="w-3.5 h-3.5" />
               </Button>
             </div>
           </div>

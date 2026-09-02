@@ -53,6 +53,7 @@ export function DraggableCanvasItem({
   onPromoteDummy,
   onDetailSaved,
   onSetColor,
+  onSetSceneDrama,
   onSetKeyMoment,
   onSetNarration,
   threadBeats,
@@ -70,6 +71,7 @@ export function DraggableCanvasItem({
   tonePresets?: { id: string; label: string; color: string }[];
   onRemove: () => void;
   onSetColor?: (color: string | null) => void;
+  onSetSceneDrama?: (patch: Record<string, unknown>) => void;
   onSetKeyMoment?: (label: string | null) => void;
   onSetNarration?: (isNarration: boolean) => void;
   threadBeats?: Array<{ beatId: string; threadId: string; title: string; color: string | null; role: string }>;
@@ -207,6 +209,7 @@ export function DraggableCanvasItem({
         onPromoteDummy={onPromoteDummy}
         onDetailSaved={onDetailSaved}
         onSetColor={onSetColor}
+        onSetSceneDrama={onSetSceneDrama}
         tonePresets={tonePresets}
         onSetKeyMoment={onSetKeyMoment}
         onSetNarration={onSetNarration}
@@ -356,6 +359,7 @@ export function CanvasItem({
   onPromoteDummy,
   onDetailSaved,
   onSetColor,
+  onSetSceneDrama,
   tonePresets = [],
   onSetKeyMoment,
   onSetNarration,
@@ -369,6 +373,7 @@ export function CanvasItem({
   onEchoResult?: (finding: EchoFinding) => void;
   tonePresets?: { id: string; label: string; color: string }[];
   onSetColor?: (color: string | null) => void;
+  onSetSceneDrama?: (patch: Record<string, unknown>) => void;
   onSetKeyMoment?: (label: string | null) => void;
   onSetNarration?: (isNarration: boolean) => void;
   threadBeats?: Array<{ beatId: string; threadId: string; title: string; color: string | null; role: string }>;
@@ -438,6 +443,7 @@ export function CanvasItem({
         onPromoteDummy={onPromoteDummy}
         onDetailSaved={onDetailSaved}
         onSetColor={onSetColor}
+        onSetSceneDrama={onSetSceneDrama}
         tonePresets={tonePresets}
         onSetKeyMoment={onSetKeyMoment}
         onSetNarration={onSetNarration}

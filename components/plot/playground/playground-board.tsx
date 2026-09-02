@@ -97,7 +97,12 @@ import { normalizeLink, LINK_KINDS, type CanvasLink } from "@/lib/link-kinds";
 export { normalizeLink, LINK_KINDS, type CanvasLink };
 
 // ---- Migration: ฉากเก่า (x,y อิสระ) -> lane + beatIndex ----
-function buildBoardState(initialItems: any[]): { lanes: Lane[]; items: any[]; chapters: Chapter[] } {
+// field โครงฉากดราม่าของการ์ดไอเดีย — อยู่ที่ ideas table (แหล่งจริง) ไม่ใช่ canvasData
+// (ต่างจาก color/keyMomentLabel/isNarration ที่เป็น canvas-only) merge เข้า item ตอน build
+// state ครั้งแรก ให้ popover เห็นค่าล่าสุดโดยไม่ต้อง query ซ้ำต่อการ์ด
+const SCENE_DRAMA_FIELDS = ["sceneType", "sceneTone", "pacing", "sceneGoal", "sceneConflict", "sceneOutcome", "valueShift"] as const;
+
+function buildBoardState(initialItems: any[], ideasList: any[] = []): { lanes: Lane[]; items: any[]; chapters: Chapter[] } {
     const laneItems = initialItems.filter((i: any) => i.type === 'lane');
     let lanes: Lane[] = laneItems
         .map((l: any) => ({ id: l.id, name: l.name || 'เลน', orderIndex: l.orderIndex ?? 0, color: l.color }))
@@ -134,6 +139,17 @@ function buildBoardState(initialItems: any[]): { lanes: Lane[]; items: any[]; ch
     if (lanes.length === 0) {
         lanes = [{ id: crypto.randomUUID(), name: 'ทั่วไป', orderIndex: 0 }];
     }
+
+    const ideaById = new Map(ideasList.map((i: any) => [i.id, i]));
+    cardItems = cardItems.map((it: any) => {
+        if (it.type !== 'idea' || !it.referenceId) return it;
+        const idea = ideaById.get(it.referenceId);
+        if (!idea) return it;
+        const drama: Record<string, unknown> = {};
+        for (const f of SCENE_DRAMA_FIELDS) drama[f] = idea[f] ?? null;
+        return { ...it, ...drama };
+    });
+
     return { lanes, items: cardItems, chapters };
 }
 
@@ -890,7 +906,7 @@ export function PlaygroundBoard({
     initialEchoFindings = [],
     initialSceneRecap = null,
 }: PlaygroundBoardProps) {
-    const [{ lanes, items: initialCardItems, chapters: initialChapters }] = useState(() => buildBoardState(initialItems));
+    const [{ lanes, items: initialCardItems, chapters: initialChapters }] = useState(() => buildBoardState(initialItems, ideas));
     const [lanes_, setLanes] = useState<Lane[]>(lanes);
     const [chapters, setChapters] = useState<Chapter[]>(initialChapters);
     const [items, setItems] = useState<any[]>(initialCardItems);
@@ -1750,6 +1766,12 @@ export function PlaygroundBoard({
         setItems(prev => prev.map(item => item.id === id ? { ...item, color } : item));
     };
 
+    // โครงฉากดราม่าของการ์ดไอเดีย — patch เข้า item ทันทีหลัง IdeaDramaticPanel เซฟสำเร็จ
+    // (ค่าจริงอยู่ที่ ideas table แล้ว ตรงนี้แค่ sync ให้ canvas ไม่ค้างค่าเก่าจนกว่าจะ reload)
+    const handleSetSceneDrama = (id: string, patch: Record<string, unknown>) => {
+        setItems(prev => prev.map(item => item.id === id ? { ...item, ...patch } : item));
+    };
+
     // เหตุการณ์สำคัญ (mock) — เก็บ label ใน canvas node, auto-save เดิมจัดการต่อ
     const handleSetKeyMoment = (id: string, label: string | null) => {
         setItems(prev => prev.map(item => item.id === id ? { ...item, keyMomentLabel: label } : item));
@@ -2161,6 +2183,7 @@ export function PlaygroundBoard({
             onPromoteDummy={handlePromoteDummy}
             onDetailSaved={handleDetailSaved}
             onSetColor={(c: string | null) => handleSetColor(item.id, c)}
+            onSetSceneDrama={(patch: Record<string, unknown>) => handleSetSceneDrama(item.id, patch)}
             tonePresets={tonePresets}
             onSetKeyMoment={item.type === 'idea' ? (label: string | null) => handleSetKeyMoment(item.id, label) : undefined}
             onSetNarration={item.type === 'idea' ? (v: boolean) => handleSetNarration(item.id, v) : undefined}

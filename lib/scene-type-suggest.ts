@@ -22,6 +22,7 @@ export interface SceneTypeSuggestResponse {
     field1: string;
     field2: string;
     outcome?: "success" | "failure" | "ongoing" | "unknown";
+    pacing?: number; // 1 (ผ่อน/เร็ว) – 10 (เร่ง/ลงรายละเอียด) — คนละมิติจาก outcome
 }
 
 export const SCENE_TYPE_SUGGEST_SCHEMA = {
@@ -31,8 +32,9 @@ export const SCENE_TYPE_SUGGEST_SCHEMA = {
         field1: { type: "string" },
         field2: { type: "string" },
         outcome: { type: "string", enum: ["success", "failure", "ongoing", "unknown"] },
+        pacing: { type: "integer", minimum: 1, maximum: 10 },
     },
-    required: ["sceneType", "field1", "field2"],
+    required: ["sceneType", "field1", "field2", "pacing"],
 } as const;
 
 export function buildSceneTypeSuggestPrompt(format: SceneFormat): SceneTypeSuggestPrompt {
@@ -47,6 +49,11 @@ export function buildSceneTypeSuggestPrompt(format: SceneFormat): SceneTypeSugge
 
 อ่านโครงฉากที่ให้มา (เอกสารกระดานพล็อตรายฉาก) แล้วเดาว่าฉากนี้เป็นประเภทไหน พร้อมเติมค่า field1/field2
 ที่เหมาะกับประเภทนั้น ถ้าฉากมี goal/conflict/outcome เดิมอยู่แล้วให้ใช้เป็นฐาน ไม่ต้องแต่งเรื่องใหม่
+
+เดา "pacing" (จังหวะการเล่า) เป็นตัวเลข 1-10 ด้วย — คนละมิติจาก outcome (ทิศสถานการณ์):
+เลขต่ำ (1-3) = ฉากควรเล่าเร็ว/ผ่อน/สรุปสั้น, เลขกลาง (4-7) = จังหวะคงที่, เลขสูง (8-10) = ควรเล่าเด่น
+ลงรายละเอียดเต็มที่ (เช่นฉาก climax มักได้เลขสูง, ฉาก setup/transition มักได้เลขต่ำ)
+
 ตอบสั้น กระชับ ภาษาไทย ห้ามใส่ markdown/bullet ตอบเป็น JSON ตาม schema ที่กำหนดเท่านั้น`,
         user: renderSceneMarkdown(format),
     };
@@ -62,7 +69,10 @@ export function parseSceneTypeSuggestResponse(raw: string): SceneTypeSuggestResp
         const outcome = typeof parsed.outcome === "string" && ["success", "failure", "ongoing", "unknown"].includes(parsed.outcome)
             ? parsed.outcome
             : undefined;
-        return { sceneType: parsed.sceneType, field1: parsed.field1, field2: parsed.field2, outcome };
+        const pacing = typeof parsed.pacing === "number" && Number.isFinite(parsed.pacing)
+            ? Math.min(10, Math.max(1, Math.round(parsed.pacing)))
+            : undefined;
+        return { sceneType: parsed.sceneType, field1: parsed.field1, field2: parsed.field2, outcome, pacing };
     } catch {
         return null;
     }

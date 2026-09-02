@@ -232,6 +232,13 @@ export async function updateIdea(
         isArchived: boolean;
         isDetected: boolean;
         connectedIdeaIds: string[];
+        sceneType: string | null;
+        sceneTone: string | null;
+        sceneGoal: string | null;
+        sceneConflict: string | null;
+        sceneOutcome: string | null;
+        valueShift: number | null;
+        pacing: number | null;
     }>
 ) {
     try {

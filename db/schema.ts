@@ -323,6 +323,7 @@ export const timelineEvents = pgTable("timeline_events", {
   sceneConflict: text("scene_conflict"),     // field2 ทั่วไป — ความหมายเปลี่ยนตาม sceneType (Conflict/Context/Dilemma/Value Turn/New Normal)
   sceneOutcome: text("scene_outcome"),       // ผลลัพธ์: success | failure | ongoing | unknown
   valueShift: integer("value_shift"),        // ทิศ/ความเข้มของการเปลี่ยนค่า −5…+5 (ป้อน tension curve A2)
+  pacing: integer("pacing"),                 // จังหวะการเล่า 1 (ช้า) – 10 (เร็ว) — คนละมิติกับ valueShift (ทิศสถานการณ์)
   povCharacterId: text("pov_character_id").references(() => characters.id, { onDelete: "set null" }), // ฉากนี้เล่าผ่านสายตาใคร (P1)
   storyTimeIndex: integer("story_time_index"), // ลำดับเวลาจริงในโลกเรื่อง (P3) — null = ยังไม่จัด; eventDate เป็นแค่ป้ายแสดง
   storyDate: integer("story_date"), // วันที่ N นับจาก novels.timelineEpoch (P3 Phase A) — ใช้คำนวณ gap/timeskip ได้
@@ -644,6 +645,16 @@ export const ideas = pgTable("ideas", {
   // Tags & Categories
   category: text("category").default("general"), // "plot", "character", "worldbuilding", "subplot", "general"
   tags: jsonb("tags"),
+
+  // Scene dramatic fields — idea card = ฉากย่อยภายใน playground (Unified Scene Framework)
+  // ชื่อคอลัมน์ตรงกับ timelineEvents เพื่อ reuse config เดียวกัน (lib/scene-dramatic.ts)
+  sceneType: text("scene_type"),         // setup | action | reaction | climax | resolution
+  sceneTone: text("scene_tone"),
+  sceneGoal: text("scene_goal"),         // field1 — ความหมายเปลี่ยนตาม sceneType
+  sceneConflict: text("scene_conflict"), // field2 — ความหมายเปลี่ยนตาม sceneType
+  sceneOutcome: text("scene_outcome"),   // success | failure | ongoing | unknown
+  valueShift: integer("value_shift"),    // −5…+5
+  pacing: integer("pacing"),             // จังหวะการเล่า 1 (ช้า) – 10 (เร็ว)
 
   // Optional links (soft links, ไม่กระทบ word count)
   linkedChapterId: text("linked_chapter_id").references(() => chapters.id, { onDelete: "set null" }),
