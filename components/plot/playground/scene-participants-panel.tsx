@@ -18,7 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { upsertSceneElementDetail, deleteSceneElementDetail } from "@/server/scene-element-details"
-import { getNovelDummyParticipants, type SceneDummies } from "@/server/timeline"
+import { getNovelDummyParticipants, getNearbyParticipants, type SceneDummies, type NearbyParticipants } from "@/server/timeline"
 import { SceneElementDetails } from "@/db/schema"
 import { CharacterThroughLine } from "./character-through-line"
 
@@ -79,18 +79,61 @@ export function SceneParticipantsPanel({
         getNovelDummyParticipants(novelId).then(res => { if (res.success) setDummyScenes(res.data) })
     }, [open, novelId])
 
-    const handleAdd = () => {
+    // ผู้เข้าร่วมที่ควรเสนอให้กดเร็ว — 2 ฉากก่อนหน้ามาก่อน แล้วค่อยความถี่ทั้งเล่ม
+    const [nearby, setNearby] = useState<NearbyParticipants>({ recentIds: [], recentDummyTitles: [], frequentIds: [] })
+    useEffect(() => {
+        if (!open) return
+        getNearbyParticipants(novelId, sceneId).then(res => { if (res.success) setNearby(res.data) })
+    }, [open, novelId, sceneId])
+
+    // จัดอันดับสองชั้น: อยู่ใน 2 ฉากก่อนหน้า (ใกล้สุดก่อน) → ใช้บ่อยทั้งเล่ม → ที่เหลือ
+    // เติมด้วยตัวที่ยังไม่เคยใช้จนครบ 8 เพื่อให้นิยายใหม่ที่ยังไม่มีสถิติไม่เจอแถวว่าง
+    const quickPicks = (() => {
+        if (isDummyType) return []
+        const list = partType === "character" ? characters : factions
+        const recent = new Map(nearby.recentIds.map((id, i) => [id, i]))
+        const frequent = new Map(nearby.frequentIds.map((id, i) => [id, i]))
+        const rank = (id: string) =>
+            recent.has(id) ? recent.get(id)! : 1000 + (frequent.get(id) ?? 999)
+        return [...list]
+            .sort((a, b) => rank(a.id) - rank(b.id))
+            .slice(0, 8)
+            .map(e => ({ ...e, isRecent: recent.has(e.id) }))
+    })()
+
+    // dummy นับคนละทาง — elementId ของ dummy เป็น uuid ใหม่ทุกครั้งที่กดเพิ่ม นับจากตารางไม่ได้
+    // ต้องนับจาก "ชื่อ" ว่าโผล่ในกี่ฉาก (dummyScenes เก็บชื่อไม่ซ้ำต่อฉากมาให้แล้ว)
+    const dummyQuickPicks = (() => {
+        if (!isDummyType) return []
+        const uses = new Map<string, number>()
+        for (const s of dummyScenes) {
+            for (const d of s.dummies) {
+                if (d.type !== partType) continue
+                uses.set(d.title, (uses.get(d.title) ?? 0) + 1)
+            }
+        }
+        const recent = new Map(nearby.recentDummyTitles.map((t, i) => [t, i]))
+        return [...uses.entries()]
+            .map(([title, scenes]) => ({ title, scenes, isRecent: recent.has(title) }))
+            .sort((a, b) =>
+                (recent.get(a.title) ?? 1000 + (999 - a.scenes)) - (recent.get(b.title) ?? 1000 + (999 - b.scenes))
+                || a.title.localeCompare(b.title))
+            .slice(0, 8)
+    })()
+
+    const handleAdd = (entity?: { id: string; name: string }) => {
         let title = ""
         let referenceId: string | null = null
         if (!isDummyType) {
-            if (!selectedEntityId) {
+            const pickedId = entity?.id ?? selectedEntityId
+            if (!pickedId) {
                 toast.error("กรุณาเลือกตัวละครหรือกลุ่มฝ่าย")
                 return
             }
             const list = partType === "character" ? characters : factions
-            title = list.find(e => e.id === selectedEntityId)?.name || ""
-            referenceId = selectedEntityId
-            if (participants.some((p: any) => p.referenceId === selectedEntityId)) {
+            title = entity?.name ?? list.find(e => e.id === pickedId)?.name ?? ""
+            referenceId = pickedId
+            if (participants.some((p: any) => p.referenceId === pickedId)) {
                 toast.error("มีผู้เข้าร่วมนี้ในไอเดียแล้ว")
                 return
             }
@@ -300,6 +343,76 @@ export function SceneParticipantsPanel({
                             </div>
                         </div>
 
+                        {/* ชิปกดเร็วของ dummy — นับตามชื่อว่าเคยโผล่ในกี่ฉาก (ดู dummyQuickPicks) */}
+                        {dummyQuickPicks.length > 0 && (
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-technical text-muted-foreground uppercase">
+                                    ชื่อชั่วคราวที่ใช้บ่อย
+                                </label>
+                                <div className="flex flex-wrap gap-1">
+                                    {dummyQuickPicks.map(d => {
+                                        const already = participants.some((p: any) => p.title === d.title)
+                                        return (
+                                            <button
+                                                key={d.title}
+                                                type="button"
+                                                disabled={already || isPending}
+                                                onClick={() => handleAddMany([d.title])}
+                                                title={already
+                                                    ? "อยู่ในไอเดียนี้แล้ว"
+                                                    : `เพิ่ม ${d.title}${d.isRecent ? " · อยู่ในฉากก่อนหน้า" : ""} (เคยใช้ ${d.scenes} ฉาก)`}
+                                                className={cn(
+                                                    "chamfered-sm border px-1.5 py-0.5 text-[10px] max-w-[110px] truncate transition-colors",
+                                                    already
+                                                        ? "border-border/40 bg-muted/30 text-muted-foreground/50 cursor-default"
+                                                        : d.isRecent
+                                                            ? "border-dashed border-[var(--forge-amber)]/50 bg-amber-500/5 text-foreground hover:border-[var(--forge-amber)] hover:text-[var(--forge-amber)]"
+                                                            : "border-dashed border-border bg-muted/20 hover:border-[var(--forge-amber)] hover:text-[var(--forge-amber)]"
+                                                )}
+                                            >
+                                                {already ? "✓ " : "+ "}{d.title}
+                                            </button>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ชิปกดเร็ว — ใช้บ่อยอยู่ซ้ายสุด กดครั้งเดียวเพิ่มเลยด้วยบทบาท/action ที่ตั้งไว้ในฟอร์ม */}
+                        {quickPicks.length > 0 && (
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-technical text-muted-foreground uppercase">
+                                    {partType === "character" ? "ตัวละครที่ใช้บ่อย" : "กลุ่มฝ่ายที่ใช้บ่อย"}
+                                </label>
+                                <div className="flex flex-wrap gap-1">
+                                    {quickPicks.map(e => {
+                                        const already = participants.some((p: any) => p.referenceId === e.id)
+                                        return (
+                                            <button
+                                                key={e.id}
+                                                type="button"
+                                                disabled={already || isPending}
+                                                onClick={() => handleAdd({ id: e.id, name: e.name })}
+                                                title={already
+                                                    ? "อยู่ในไอเดียนี้แล้ว"
+                                                    : `เพิ่ม ${e.name} เข้าไอเดีย${e.isRecent ? " · อยู่ในฉากก่อนหน้า" : ""}`}
+                                                className={cn(
+                                                    "chamfered-sm border px-1.5 py-0.5 text-[10px] max-w-[110px] truncate transition-colors",
+                                                    already
+                                                        ? "border-border/40 bg-muted/30 text-muted-foreground/50 cursor-default"
+                                                        : e.isRecent
+                                                            ? "border-[var(--forge-amber)]/50 bg-amber-500/5 text-foreground hover:border-[var(--forge-amber)] hover:text-[var(--forge-amber)]"
+                                                            : "border-border bg-card hover:border-[var(--forge-amber)] hover:text-[var(--forge-amber)]"
+                                                )}
+                                            >
+                                                {already ? "✓ " : "+ "}{e.name}
+                                            </button>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
                         <div className="space-y-1">
                             <label className="text-[9px] font-technical text-muted-foreground uppercase">ชื่อผู้ร่วมไอเดีย</label>
                             {!isDummyType ? (
@@ -342,7 +455,7 @@ export function SceneParticipantsPanel({
                             />
                         </div>
 
-                        <Button size="sm" className="w-full h-7 gap-1 chamfered-sm text-xs" onClick={handleAdd} disabled={isPending}>
+                        <Button size="sm" className="w-full h-7 gap-1 chamfered-sm text-xs" onClick={() => handleAdd()} disabled={isPending}>
                             {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                             เพิ่มเข้าไอเดีย
                         </Button>

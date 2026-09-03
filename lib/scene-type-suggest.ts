@@ -6,8 +6,6 @@
  * server/scene-type-suggest.ts ผลลัพธ์ไม่ persist ลง DB (แค่คำแนะนำชั่วคราว คนต้องกดบันทึกเอง)
  */
 
-import type { SceneFormat } from "./story-format";
-import { renderSceneMarkdown } from "./story-format";
 
 export const SCENE_TYPE_VALUES = ["setup", "action", "reaction", "climax", "resolution"] as const;
 export type SuggestedSceneType = (typeof SCENE_TYPE_VALUES)[number];
@@ -37,7 +35,8 @@ export const SCENE_TYPE_SUGGEST_SCHEMA = {
     required: ["sceneType", "field1", "field2", "pacing"],
 } as const;
 
-export function buildSceneTypeSuggestPrompt(format: SceneFormat): SceneTypeSuggestPrompt {
+/** contextText = ผลจาก getPlotContext (level "full" — markdown ทั้งฉาก) */
+export function buildSceneTypeSuggestPrompt(contextText: string): SceneTypeSuggestPrompt {
     return {
         system: `คุณช่วยนักเขียนจัดหมวดฉากตาม "Unified Scene Framework" (รวมทฤษฎี Dwight V. Swain, Robert McKee, Syd Field) มี 5 ประเภท:
 
@@ -55,7 +54,7 @@ export function buildSceneTypeSuggestPrompt(format: SceneFormat): SceneTypeSugge
 ลงรายละเอียดเต็มที่ (เช่นฉาก climax มักได้เลขสูง, ฉาก setup/transition มักได้เลขต่ำ)
 
 ตอบสั้น กระชับ ภาษาไทย ห้ามใส่ markdown/bullet ตอบเป็น JSON ตาม schema ที่กำหนดเท่านั้น`,
-        user: renderSceneMarkdown(format),
+        user: contextText,
     };
 }
 

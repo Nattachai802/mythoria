@@ -7,7 +7,6 @@
  */
 
 import { createHash } from "crypto";
-import { renderSceneMarkdown, type SceneFormat } from "./story-format";
 
 // v2: สรุปฉากตอบเป็น JSON (recap + causality) แทนข้อความล้วน — อ่าน context เดียวกัน (ทั้งฉาก)
 // ได้ผลตรวจความสมเหตุผลของเหตุ-ผลมาพร้อมกันโดยไม่ต้องยิงคอลเพิ่ม (causeKind/causeNote เป็นฟิลด์
@@ -77,7 +76,7 @@ export function parseSceneRecapResponse(raw: string): SceneRecapResponse | null 
  * (ออกแบบมาให้ LLM อ่านอยู่แล้ว มี alias/รหัสการ์ด/ตารางปมครบ ไม่ต้องปั้นใหม่ — ถ้าฉากตั้ง
  * causeKind/causeNote ไว้ frontmatter จะมีบรรทัด "ต่อจากฉากก่อน: ..." ให้โมเดลเห็นด้วยในตัว)
  */
-export function buildSceneRecapPrompt(format: SceneFormat): RecapPrompt {
+export function buildSceneRecapPrompt(contextText: string): RecapPrompt {
     return {
         system: `คุณเป็นผู้ช่วยสรุปโครงเรื่องให้นักเขียนอ่านเร็ว ๆ ทำ 2 งานพร้อมกันจากเอกสารเดียวกัน:
 
@@ -98,7 +97,7 @@ export function buildSceneRecapPrompt(format: SceneFormat): RecapPrompt {
 - note อธิบายสั้น ๆ 1 ประโยคว่าทำไมถึงตัดสินแบบนั้น
 
 ตอบเป็น JSON ตาม schema ที่กำหนดเท่านั้น`,
-        user: renderSceneMarkdown(format),
+        user: contextText,
     };
 }
 

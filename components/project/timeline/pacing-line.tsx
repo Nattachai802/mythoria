@@ -7,7 +7,10 @@ import { POSITIONAL_STRUCTURES } from "./structure-overlay";
 import { CHAPTER_ARC_TEMPLATES } from "@/lib/chapter-arc-templates";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles, Loader2 } from "lucide-react";
+import { suggestScenePacing } from "@/server/pacing-ai-suggest";
+import type { PacingSuggestion } from "@/lib/pacing-ai-suggest";
+import { toast } from "sonner";
 
 // รวมสองแหล่งให้เป็นรูปเดียวกัน — ทฤษฎีมีชื่อ (Save the Cat ฯลฯ, pos = % ทั้งเล่ม)
 // กับ pattern สังเกตทั่วไปที่เราสังเคราะห์เอง (pos = % ในบทเดียว) ห้ามปนกันจนดูเหมือนมาจากแหล่งเดียวกัน
@@ -28,7 +31,7 @@ const ALL_STRUCTURES: NormalizedStructure[] = [
 const CHART_H = 320;
 const PAD_Y = 24;
 const STRUCT_BAND_H = 40; // แถบอ้างอิงโครงเรื่องมาตรฐาน — แสดงเฉพาะเลือกไว้
-const LABEL_BAND_H = 60; // แถบชื่อการ์ดย่อย (หมุนเอียง กันชนกัน)
+const LABEL_BAND_H = 16; // padding ล่างเล็กน้อย — ชื่อเปลี่ยนไปโชว์เป็น tooltip ตอน hover แล้ว ไม่ต้องเผื่อที่เขียนป้ายอีก
 
 interface SubBeat {
     id: string;
@@ -38,6 +41,7 @@ interface SubBeat {
 }
 
 interface PacingPoint {
+    id: string;
     x: number;
     pacing: number | null;
     title: string;
@@ -58,11 +62,40 @@ function findStructureById(id: string) {
 
 // แสดงทีละฉาก (ข้อมูลเยอะไปตอนอัดทั้งบทในจอเดียว) — จุดฉากใหญ่ + การ์ดไอเดีย/ฉากย่อยในฉากนั้นเท่านั้น
 // เลื่อนฉากด้วยปุ่ม ก่อนหน้า/ถัดไป — เส้นอ้างอิงโครงเรื่องมาตรฐานยังเทียบได้ (คำนวณตำแหน่ง % ของฉากนี้ในภาพรวมทั้งบท)
-export function PacingLine({ events }: { events: any[] }) {
+interface HoverInfo {
+    x: number; y: number; title: string; pacing: number | null; isScene: boolean;
+    isAi?: boolean; reason?: string; confidence?: number | null;
+}
+
+interface PacingLineProps {
+    events: any[];
+    novelId?: string;
+    chapterId?: string;
+    chapterTitle?: string;
+}
+
+export function PacingLine({ events, novelId, chapterId, chapterTitle }: PacingLineProps) {
     const [structureId, setStructureId] = useState<string>("none");
     const [index, setIndex] = useState(0);
+    const [hover, setHover] = useState<HoverInfo | null>(null);
+    const [aiPacing, setAiPacing] = useState<Record<string, PacingSuggestion> | null>(null);
+    const [aiLoading, setAiLoading] = useState(false);
     const currentIndex = Math.min(index, Math.max(events.length - 1, 0));
     const event = events[currentIndex];
+
+    // ยิงทีละฉากตามที่เปิดดูอยู่ ไม่ persist ผลลง DB — แค่วาดเทียบชั่วคราว
+    // ผลสะสมข้ามฉาก (merge ไม่ทับ) เดินดูฉากก่อนหน้าแล้วเส้นปะที่เคยขอไว้ยังอยู่
+    const handleAiSuggest = async () => {
+        if (!novelId || !event?.id || aiLoading) return;
+        setAiLoading(true);
+        try {
+            const res = await suggestScenePacing(event.id, novelId, chapterTitle);
+            if (res.success) setAiPacing(prev => ({ ...prev, ...res.data }));
+            else toast.error(res.error);
+        } finally {
+            setAiLoading(false);
+        }
+    };
 
     const containerRef = useRef<HTMLDivElement>(null);
     const [containerWidth, setContainerWidth] = useState(0);
@@ -75,6 +108,9 @@ export function PacingLine({ events }: { events: any[] }) {
     }, []);
 
     // ปุ่มลูกศรซ้าย/ขวาเลื่อนฉาก — ข้ามถ้าโฟกัสอยู่ในช่องกรอกข้อมูล/select กันชนกับการพิมพ์/เลือกค่า
+    // เปลี่ยนฉากแล้วเคลียร์ tooltip ค้าง กันชี้ไปจุดฉากเก่า
+    useEffect(() => { setHover(null); }, [currentIndex]);
+
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
             const tag = (e.target as HTMLElement)?.tagName;
@@ -91,6 +127,7 @@ export function PacingLine({ events }: { events: any[] }) {
         const subBeats: SubBeat[] = Array.isArray(event?.subBeats) ? event.subBeats : [];
         const segments = subBeats.length + 1; // 1 ช่องสำหรับฉากใหญ่ + N สำหรับ sub-beat
         pts.push({
+            id: event?.id,
             x: 0,
             pacing: typeof event?.pacing === "number" ? event.pacing : null,
             title: event?.title || `ฉาก ${currentIndex + 1}`,
@@ -98,6 +135,7 @@ export function PacingLine({ events }: { events: any[] }) {
         });
         subBeats.forEach((b, k) => {
             pts.push({
+                id: b.id,
                 x: ((k + 1) / segments) * CARD_WIDTH,
                 pacing: typeof b.pacing === "number" ? b.pacing : null,
                 title: b.title || "การ์ดไอเดีย",
@@ -127,6 +165,31 @@ export function PacingLine({ events }: { events: any[] }) {
         if (current.length > 0) runs.push(current);
         return runs;
     }, [points]);
+
+    // เส้นปะ AI — เทียบตำแหน่ง x เดียวกับเส้นจริง ใช้คะแนนจาก aiPacing (ยิงครั้งเดียวทั้งบท ไม่ persist)
+    const aiPoints = useMemo(
+        () => points.map(p => {
+            const s = aiPacing?.[p.id];
+            return { ...p, pacing: s?.pacing ?? null, reason: s?.reason ?? "", confidence: s?.confidence ?? null };
+        }),
+        [points, aiPacing]
+    );
+    const aiSegments = useMemo(() => {
+        type AiPoint = PacingPoint & { reason: string; confidence: number | null };
+        const runs: AiPoint[][] = [];
+        let current: AiPoint[] = [];
+        for (const p of aiPoints) {
+            if (p.pacing == null) {
+                if (current.length > 0) runs.push(current);
+                current = [];
+            } else {
+                current.push(p);
+            }
+        }
+        if (current.length > 0) runs.push(current);
+        return runs;
+    }, [aiPoints]);
+    const hasAiData = aiPoints.some(p => p.pacing != null);
 
     const hasAnyData = points.some(p => p.pacing != null);
     const structure = findStructureById(structureId);
@@ -163,7 +226,23 @@ export function PacingLine({ events }: { events: any[] }) {
                         <ChevronRight className="h-4 w-4" />
                     </Button>
                 </div>
-                <h3 className="font-display font-semibold text-base text-zinc-900 truncate flex-1 min-w-0">{event?.title}</h3>
+                <div className="flex-1 min-w-0 font-technical text-[11px] uppercase tracking-widest text-zinc-400 select-none">
+                    ชี้ที่จุดเพื่อดูชื่อฉาก/การ์ด
+                </div>
+                {hasAiData && (
+                    <div className="flex items-center gap-1.5 shrink-0 font-technical text-[10px] uppercase tracking-wider text-zinc-400 select-none">
+                        <span className="inline-block w-3 h-0.5 bg-[var(--forge-amber)]" />จริง
+                        <span className="inline-block w-3 h-0.5 border-t-2 border-dashed border-zinc-400 ml-1.5" />AI
+                    </div>
+                )}
+                {novelId && event?.id && (
+                    <Button variant="outline" size="sm" onClick={handleAiSuggest} disabled={aiLoading}
+                        title="ให้ AI ให้คะแนนจังหวะเฉพาะฉากที่เปิดอยู่"
+                        className="h-9 gap-1.5 chamfered-sm font-technical text-[9px] uppercase tracking-[0.08em] shrink-0">
+                        {aiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                        AI คิดจังหวะฉากนี้
+                    </Button>
+                )}
                 <Select value={structureId} onValueChange={setStructureId}>
                     <SelectTrigger className="h-9 text-[12px] w-auto gap-1.5 px-3 border-zinc-300 text-zinc-600 shrink-0">
                         <SelectValue placeholder="เทียบกับโครงเรื่อง…" />
@@ -233,7 +312,10 @@ export function PacingLine({ events }: { events: any[] }) {
                             const p = run[0];
                             return (
                                 <circle key={si} cx={p.x} cy={chartTop + toY(p.pacing!)} r={p.isScene ? 5 : 3}
-                                    fill="var(--forge-amber)" stroke="#fff" strokeWidth={2} />
+                                    fill="var(--forge-amber)" stroke="#fff" strokeWidth={2}
+                                    className="cursor-pointer"
+                                    onMouseEnter={() => setHover({ x: p.x, y: chartTop + toY(p.pacing!), title: p.title, pacing: p.pacing, isScene: p.isScene })}
+                                    onMouseLeave={() => setHover(null)} />
                             );
                         }
                         const d = run.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${chartTop + toY(p.pacing!)}`).join(" ");
@@ -242,36 +324,72 @@ export function PacingLine({ events }: { events: any[] }) {
                                 <path d={d} fill="none" stroke="var(--forge-amber)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
                                 {run.map((p, i) => (
                                     <circle key={i} cx={p.x} cy={chartTop + toY(p.pacing!)} r={p.isScene ? 5 : 3}
-                                        fill="var(--forge-amber)" stroke="#fff" strokeWidth={2}>
-                                        <title>{`${p.title} · ${p.pacing}/10 · ${pacingLabel(p.pacing)}`}</title>
-                                    </circle>
+                                        fill="var(--forge-amber)" stroke="#fff" strokeWidth={2}
+                                        className="cursor-pointer"
+                                        onMouseEnter={() => setHover({ x: p.x, y: chartTop + toY(p.pacing!), title: p.title, pacing: p.pacing, isScene: p.isScene })}
+                                        onMouseLeave={() => setHover(null)} />
                                 ))}
                             </g>
                         );
                     })}
 
+                    {/* เส้นปะ AI ช่วยคิด — ทับเส้นจริงเพื่อเทียบ ไม่กระทบข้อมูลจริง */}
+                    {aiSegments.map((run, si) => (
+                        <g key={`ai-${si}`}>
+                            {run.length > 1 && (
+                                <path
+                                    d={run.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${chartTop + toY(p.pacing!)}`).join(" ")}
+                                    fill="none" stroke="#a1a1aa" strokeWidth={2} strokeDasharray="5 4" strokeLinecap="round" strokeLinejoin="round"
+                                />
+                            )}
+                            {run.map((p, i) => (
+                                // จุดจางลงตามความมั่นใจ — เดาแบบไม่มั่นใจไม่ควรดูหนักแน่นเท่าเดาที่มั่นใจ
+                                <circle key={i} cx={p.x} cy={chartTop + toY(p.pacing!)} r={p.isScene ? 4 : 2.5}
+                                    fill="#fff" stroke="#71717a" strokeWidth={2} className="cursor-pointer"
+                                    strokeOpacity={p.confidence == null ? 1 : 0.35 + p.confidence * 0.65}
+                                    onMouseEnter={() => setHover({
+                                        x: p.x, y: chartTop + toY(p.pacing!), title: p.title, pacing: p.pacing,
+                                        isScene: p.isScene, isAi: true, reason: p.reason, confidence: p.confidence,
+                                    })}
+                                    onMouseLeave={() => setHover(null)} />
+                            ))}
+                        </g>
+                    ))}
+
                     {/* จุดที่ยังไม่ตั้งจังหวะ — วงกลวงจาง ไม่มีเส้นลากผ่าน */}
                     {points.filter(p => p.pacing == null).map((p, i) => (
                         <circle key={`empty-${i}`} cx={p.x} cy={chartTop + toY((PACING_MIN + PACING_MAX) / 2)} r={p.isScene ? 4 : 2.5}
-                            fill="none" stroke="#a1a1aa" strokeWidth={1.5}>
-                            <title>{`${p.title} · ยังไม่ตั้งจังหวะ`}</title>
-                        </circle>
-                    ))}
-
-                    {/* ชื่อการ์ดย่อย — หมุนเอียงใต้จุด (ชื่อฉากใหญ่ขึ้นแสดงในหัวข้อด้านบนแล้ว ไม่ต้องซ้ำ) */}
-                    {points.filter(p => !p.isScene).map((p, i) => (
-                        <text
-                            key={`label-${i}`}
-                            x={p.x} y={chartTop + CHART_H + 12}
-                            fontSize={10}
-                            fill="#71717a"
-                            textAnchor="end"
-                            transform={`rotate(-40 ${p.x} ${chartTop + CHART_H + 12})`}
-                        >
-                            {truncate(p.title, 18)}
-                        </text>
+                            fill="none" stroke="#a1a1aa" strokeWidth={1.5}
+                            className="cursor-pointer"
+                            onMouseEnter={() => setHover({ x: p.x, y: chartTop + toY((PACING_MIN + PACING_MAX) / 2), title: p.title, pacing: null, isScene: p.isScene })}
+                            onMouseLeave={() => setHover(null)} />
                     ))}
                 </svg>
+
+                {/* Tooltip ลอย — โผล่เมื่อ hover จุดเท่านั้น ไม่ค้างแสดงชื่อฉากตลอดเวลา */}
+                {hover && (
+                    <div
+                        className="absolute z-20 pointer-events-none chamfered-sm bg-zinc-900 text-white px-2.5 py-1.5 shadow-lg"
+                        style={{
+                            left: hover.x + 16,
+                            top: hover.y + 16,
+                            transform: hover.x > totalWidth - 140 ? "translateX(-100%)" : undefined,
+                        }}
+                    >
+                        <div className="font-display font-semibold text-[12px] leading-tight whitespace-nowrap">
+                            {truncate(hover.title, 32)}
+                        </div>
+                        <div className="font-technical text-[10px] uppercase tracking-wider text-zinc-300 mt-0.5">
+                            {hover.isAi ? "AI แนะนำ" : hover.isScene ? "ฉากใหญ่" : "การ์ดไอเดีย"} · {hover.pacing != null ? `${hover.pacing}/10 · ${pacingLabel(hover.pacing)}` : "ยังไม่ตั้งจังหวะ"}
+                            {hover.isAi && hover.confidence != null && ` · มั่นใจ ${Math.round(hover.confidence * 100)}%`}
+                        </div>
+                        {hover.isAi && hover.reason && (
+                            <div className="text-[11px] leading-snug text-zinc-200 mt-1.5 max-w-[260px] whitespace-normal border-t border-zinc-700 pt-1.5">
+                                {hover.reason}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );

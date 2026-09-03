@@ -116,6 +116,16 @@ export const AI_FEATURES: Record<string, AiFeatureDef> = {
         ],
         defaultDailyLimit: 100,
     },
+    "pacing-ai-suggest": {
+        key: "pacing-ai-suggest",
+        label: "AI ช่วยคิดจังหวะทั้งบท",
+        description: "ให้คะแนน pacing 1-10 ทุกฉาก+การ์ดไอเดียในบทเดียว ยิงครั้งเดียวเห็นบริบทรวม แสดงเป็นเส้นปะเทียบ",
+        chain: [
+            { provider: "groq", model: GROQ_MODEL, temperature: 0.3, maxTokens: 2000 },
+            { provider: "typhoon", model: TYPHOON_MODEL, temperature: 0.3, maxTokens: 2000 },
+        ],
+        defaultDailyLimit: 40,
+    },
     "character-state-extractor": {
         key: "character-state-extractor",
         label: "สกัดสถานะตัวละคร",

@@ -83,7 +83,7 @@ export function ChapterOverviewBoard({ novelId, chapterId, chapterTitle, events,
                         ยังไม่มีฉากในบทนี้
                     </div>
                 ) : (
-                    <PacingLine events={events} />
+                    <PacingLine events={events} novelId={novelId} chapterId={chapterId} chapterTitle={chapterTitle} />
                 )}
             </div>
         </div>

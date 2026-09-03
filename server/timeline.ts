@@ -1,8 +1,8 @@
 "use server"
 
 import { db } from "@/db/drizzle";
-import { timelineEvents, InsertTimelineEvent } from "@/db/schema"
-import { eq, and, asc, inArray } from "drizzle-orm"
+import { timelineEvents, sceneElementDetails, InsertTimelineEvent } from "@/db/schema"
+import { eq, and, asc, desc, lt, inArray, count } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { requireNovelAccess } from "@/lib/authz"
 
@@ -180,6 +180,96 @@ export async function getNovelDummyParticipants(novelId: string) {
     } catch (error) {
         console.error("getNovelDummyParticipants error:", error);
         return { success: false, data: [] as SceneDummies[] };
+    }
+}
+
+/** กี่ฉากก่อนหน้าที่ถือว่า "ใกล้ตัว" — ตัวละครในฉากติดกันมีโอกาสโผล่ต่อสูงสุด */
+const NEARBY_SCENE_WINDOW = 2;
+
+export type NearbyParticipants = {
+    /** ตัวจริงที่อยู่ใน N ฉากก่อนหน้า — เรียงจากฉากใกล้สุดก่อน */
+    recentIds: string[];
+    /** ชื่อ dummy ที่อยู่ใน N ฉากก่อนหน้า — เรียงจากฉากใกล้สุดก่อน */
+    recentDummyTitles: string[];
+    /** ตัวจริงที่ใช้บ่อยทั้งเล่ม เรียงมาก→น้อย (ใช้เติมท้ายเมื่อฉากก่อนหน้ามีไม่พอ) */
+    frequentIds: string[];
+};
+
+const EMPTY_NEARBY: NearbyParticipants = { recentIds: [], recentDummyTitles: [], frequentIds: [] };
+
+/**
+ * ผู้เข้าร่วมที่ควรเสนอให้กดเร็ว — สองชั้น: ฉากก่อนหน้าใกล้ ๆ มาก่อน แล้วค่อยความถี่ทั้งเล่ม
+ *
+ * ตัวจริงนับจาก scene_element_details (แถวเกิดตอน "ผูกผู้เข้าร่วมเข้าการ์ด" จริง = สัญญาณการใช้งาน
+ * ส่วน canvasData มีของค้างจากการลาก/ลบที่ไม่ได้ล้าง) — แต่ dummy นับจากตารางนั้นไม่ได้เพราะ
+ * elementId ของมันเป็น uuid ใหม่ทุกครั้งที่กดเพิ่ม ต้องอ่านชื่อจาก canvasData แทน
+ */
+export async function getNearbyParticipants(novelId: string, sceneId: string) {
+    try {
+        await requireNovelAccess(novelId);
+
+        const current = await db.query.timelineEvents.findFirst({
+            where: and(eq(timelineEvents.id, sceneId), eq(timelineEvents.novelId, novelId)),
+            columns: { orderIndex: true },
+        });
+
+        // ฉากก่อนหน้า N ฉาก เรียงจากใกล้สุดก่อน — ฉากแรกของเรื่องจะไม่มีเลย ปล่อยว่างได้
+        const prevScenes = current
+            ? await db.query.timelineEvents.findMany({
+                where: and(
+                    eq(timelineEvents.novelId, novelId),
+                    lt(timelineEvents.orderIndex, current.orderIndex),
+                ),
+                columns: { id: true, canvasData: true },
+                orderBy: [desc(timelineEvents.orderIndex)],
+                limit: NEARBY_SCENE_WINDOW,
+            })
+            : [];
+
+        const recentIds: string[] = [];
+        const recentDummyTitles: string[] = [];
+        if (prevScenes.length > 0) {
+            const details = await db
+                .select({ sceneId: sceneElementDetails.sceneId, elementId: sceneElementDetails.elementId })
+                .from(sceneElementDetails)
+                .where(and(
+                    eq(sceneElementDetails.novelId, novelId),
+                    inArray(sceneElementDetails.sceneId, prevScenes.map(s => s.id)),
+                    inArray(sceneElementDetails.elementType, ["character", "faction"]),
+                ));
+
+            // วนตามลำดับฉาก (ใกล้สุดก่อน) เพื่อให้ผลลัพธ์เรียงตามความใกล้ ไม่ใช่ลำดับที่ DB คืนมา
+            for (const scene of prevScenes) {
+                for (const d of details) {
+                    if (d.sceneId === scene.id && !recentIds.includes(d.elementId)) recentIds.push(d.elementId);
+                }
+                for (const item of ((scene.canvasData as any[]) || [])) {
+                    for (const ch of (item?.children || [])) {
+                        const isDummy = ch?.type === "dummy_character" || ch?.type === "dummy_faction";
+                        if (isDummy && ch.title && !recentDummyTitles.includes(ch.title)) recentDummyTitles.push(ch.title);
+                    }
+                }
+            }
+        }
+
+        const frequent = await db
+            .select({ elementId: sceneElementDetails.elementId, uses: count() })
+            .from(sceneElementDetails)
+            .where(and(
+                eq(sceneElementDetails.novelId, novelId),
+                inArray(sceneElementDetails.elementType, ["character", "faction"]),
+            ))
+            .groupBy(sceneElementDetails.elementId)
+            .orderBy(desc(count()))
+            .limit(30);
+
+        return {
+            success: true,
+            data: { recentIds, recentDummyTitles, frequentIds: frequent.map(f => f.elementId) },
+        };
+    } catch (error) {
+        console.error("getNearbyParticipants error:", error);
+        return { success: false, data: EMPTY_NEARBY };
     }
 }
 

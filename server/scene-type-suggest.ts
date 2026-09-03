@@ -8,7 +8,7 @@ import {
     SCENE_TYPE_SUGGEST_SCHEMA,
     type SceneTypeSuggestResponse,
 } from "@/lib/scene-type-suggest";
-import { buildSceneFormatForEvent } from "./plot-analysis";
+import { getPlotContext } from "./plot-context";
 
 type SuggestResult =
     | { success: true; data: SceneTypeSuggestResponse }
@@ -21,10 +21,10 @@ export async function suggestSceneType(sceneId: string, novelId: string): Promis
         await assertAiAllowed("scene-type-suggest");
         await requireNovelAccess(novelId);
 
-        const format = await buildSceneFormatForEvent(novelId, sceneId);
-        if (!format) return { success: false, error: "ไม่พบฉากนี้" };
+        const ctx = await getPlotContext({ consumer: "scene-type-suggest", novelId, subjectId: sceneId });
+        if (ctx.sceneCount === 0) return { success: false, error: "ไม่พบฉากนี้" };
 
-        const prompt = buildSceneTypeSuggestPrompt(format);
+        const prompt = buildSceneTypeSuggestPrompt(ctx.text);
         const resp = await callAi({
             feature: "scene-type-suggest",
             system: prompt.system,

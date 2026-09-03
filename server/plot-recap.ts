@@ -15,7 +15,7 @@ import {
     type CausalityVerdict,
 } from "@/lib/plot-recap";
 import { callAi, assertAiAllowed, AiControlError } from "@/lib/ai-gateway";
-import { buildSceneFormatForEvent } from "./plot-analysis";
+import { getPlotContext } from "./plot-context";
 
 type RecapResult =
     | { success: true; recap: string; title?: string; skipped: boolean; causality?: CausalityVerdict; causalityNote?: string }
@@ -96,10 +96,11 @@ export async function runSceneRecap(novelId: string, sceneId: string): Promise<R
         await assertAiAllowed("plot-scene-recap");
         await requireNovelAccess(novelId);
 
-        const format = await buildSceneFormatForEvent(novelId, sceneId);
-        if (!format) return { success: false, error: "ไม่พบฉากนี้" };
+        const ctx = await getPlotContext({ consumer: "plot-scene-recap", novelId, subjectId: sceneId });
+        if (!ctx.format) return { success: false, error: "ไม่พบฉากนี้" };
+        const format = ctx.format;
 
-        const prompt = buildSceneRecapPrompt(format);
+        const prompt = buildSceneRecapPrompt(ctx.text);
         const inputHash = hashRecapInput(prompt.user);
 
         const [existing] = await db

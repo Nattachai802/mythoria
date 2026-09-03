@@ -34,11 +34,13 @@ export async function getChapterOverview(chapterId: string) {
             refs.forEach(r => allReferenceIds.add(r.referenceId));
         }
 
-        let ideaById = new Map<string, { id: string; title: string; pacing: number | null; sceneType: string | null }>();
+        // content/sceneGoal/sceneConflict/sceneOutcome เพิ่มมาไว้ให้ AI pacing suggest ใช้ตัดสิน (ดู lib/pacing-ai-suggest.ts)
+        type IdeaBrief = { id: string; title: string; pacing: number | null; sceneType: string | null; content: string | null; sceneGoal: string | null; sceneConflict: string | null; sceneOutcome: string | null };
+        let ideaById = new Map<string, IdeaBrief>();
         if (allReferenceIds.size > 0) {
             const ideaRows = await db.query.ideas.findMany({
                 where: inArray(ideas.id, Array.from(allReferenceIds)),
-                columns: { id: true, title: true, pacing: true, sceneType: true },
+                columns: { id: true, title: true, pacing: true, sceneType: true, content: true, sceneGoal: true, sceneConflict: true, sceneOutcome: true },
             });
             ideaById = new Map(ideaRows.map(i => [i.id, i]));
         }
@@ -50,9 +52,9 @@ export async function getChapterOverview(chapterId: string) {
             subBeats: (ideaRefsByEvent.get(event.id) ?? [])
                 .map(r => {
                     const idea = ideaById.get(r.referenceId);
-                    return idea ? { id: idea.id, title: idea.title, pacing: idea.pacing, sceneType: idea.sceneType, beatIndex: r.beatIndex } : null;
+                    return idea ? { ...idea, beatIndex: r.beatIndex } : null;
                 })
-                .filter((b): b is { id: string; title: string; pacing: number | null; sceneType: string | null; beatIndex: number } => b !== null)
+                .filter((b): b is IdeaBrief & { beatIndex: number } => b !== null)
                 .sort((a, b) => a.beatIndex - b.beatIndex),
         }));
 
