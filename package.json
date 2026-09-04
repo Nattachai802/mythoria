@@ -1,6 +1,6 @@
 {
   "name": "mythoria",
-  "version": "0.5.3",
+  "version": "2.3.1",
   "private": true,
   "scripts": {
     "dev": "npm run dev:full",
