@@ -1,6 +1,6 @@
 {
   "name": "mythoria",
-  "version": "2.3.1",
+  "version": "2.4.0",
   "private": true,
   "scripts": {
     "dev": "npm run dev:full",
@@ -22,7 +22,8 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "check": "cross-env TZ=Asia/Bangkok node --experimental-strip-types lib/story-date.check.ts && node --experimental-strip-types lib/invite-rules.check.ts && node --experimental-strip-types lib/travel-map.check.ts && node --experimental-strip-types lib/oauth-state.check.ts && node --experimental-strip-types lib/trash.check.ts && node --experimental-strip-types lib/chapter-report.check.ts && node --experimental-strip-types lib/plot-context.check.ts",
+    "check": "cross-env TZ=Asia/Bangkok node --experimental-strip-types lib/story-date.check.ts && node --experimental-strip-types lib/invite-rules.check.ts && node --experimental-strip-types lib/travel-map.check.ts && node --experimental-strip-types lib/oauth-state.check.ts && node --experimental-strip-types lib/trash.check.ts && node --experimental-strip-types lib/chapter-report.check.ts && node --experimental-strip-types lib/plot-context.check.ts && node --experimental-strip-types lib/changelog.check.ts",
+    "changelog": "node --experimental-strip-types scripts/gen-changelog.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",

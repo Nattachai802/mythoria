@@ -4,7 +4,9 @@
 
 **Mythoria** คือแพลตฟอร์มเขียนนิยายยุคใหม่ที่รวมพลัง Project Management + AI อัจฉริยะ + World Building เข้าไว้ในที่เดียว ออกแบบมาสำหรับนักเขียนที่ต้องการเครื่องมือจริงจัง ไม่ใช่แค่ Text Editor ทั่วไป
 
-> **Current Version: `v2.3.1`** — Echo Score v2 (fallback chain Gemini→Typhoon→OpenRouter, บังคับ JSON schema ที่ API, ใช้ alias ลด token, K 8→5, ตัวตรวจจุดพลิกผังฟรีจากข้อมูลเดิม) · **Plot Recap + Causality Check** ใหม่ (สรุปฉาก/บท และตรวจความสมเหตุผลของเหตุ-ผลในคอลเดียวกัน) · แก้บั๊ก Gemini `thinkingConfig` ที่เคยกินโควตาฟรีทุกฟีเจอร์ · การ์ดไอเดียเปลี่ยนจาก Dialog เป็น Popover เทียบได้หลายใบพร้อมกัน · เส้นเชื่อมกระดานพล็อตสไตล์ filmstrip
+> **Current Version: `v2.4.0`** — **จังหวะการเล่า (Pacing)** ตั้งได้ทั้งระดับฉากและการ์ดไอเดีย · **เส้นจังหวะรายฉาก** บนหน้าภาพรวมบท เทียบกับโครงเรื่องมาตรฐานได้ · **AI ช่วยคิดจังหวะ** ให้คะแนนเองพร้อมเหตุผลและความมั่นใจ วาดเป็นเส้นปะเทียบ · **Unified Scene Framework** จัดประเภทฉาก 5 แบบ · **ชิปตัวละครที่ใช้บ่อย** ในแผงผู้เข้าร่วม · **Plot Context** ประตูกลางป้อนบริบทพล็อตให้ AI
+>
+> ประวัติเวอร์ชันทั้งหมดดูที่ [CHANGELOG.md](CHANGELOG.md) — แก้ที่ `lib/changelog.ts` แล้วรัน `npm run changelog`
 >
 > **v2.3** — Launch readiness: invite-only signup, guest demo mode, data isolation ครบทุก server action, Python service auth · Story Codex ยุบรวมเข้า World Graph · Stylometry #5 (POS n-gram + emotional arc) · **AI Control Center** (gateway เดียว + CLI `npm run ai` + board)
 

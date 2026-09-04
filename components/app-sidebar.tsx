@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useEffect, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import {
   BookOpenText,
@@ -11,7 +12,10 @@ import {
   ChevronsUpDown,
   Trash2,
   Bot,
+  History,
 } from "lucide-react"
+import { CURRENT_VERSION } from "@/lib/changelog"
+import { readSeenVersion } from "@/lib/changelog-seen"
 
 import {
   Sidebar,
@@ -43,13 +47,32 @@ const navItems = [
   { title: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { title: "AI Control", href: "/dashboard/ai-control", icon: Bot },
   { title: "ถังขยะ", href: "/dashboard/trash", icon: Trash2 },
+  { title: "มีอะไรใหม่", href: "/dashboard/changelog", icon: History },
   { title: "Settings", href: "/dashboard/settings", icon: Settings },
 ]
+
+/** จุดแดงบนเมนู "มีอะไรใหม่" — ขึ้นเมื่อยังไม่เคยเปิดอ่านรุ่นปัจจุบัน */
+function useHasUnreadChangelog() {
+  const [unread, setUnread] = useState(false)
+  useEffect(() => {
+    const sync = () => setUnread(readSeenVersion() !== CURRENT_VERSION)
+    sync()
+    // storage = เปลี่ยนจากแท็บอื่น · event ของเราเอง = เปลี่ยนในแท็บนี้ (storage ไม่ยิงให้แท็บที่เขียน)
+    window.addEventListener("storage", sync)
+    window.addEventListener("mythoria:changelog-seen", sync)
+    return () => {
+      window.removeEventListener("storage", sync)
+      window.removeEventListener("mythoria:changelog-seen", sync)
+    }
+  }, [])
+  return unread
+}
 
 export function AppSidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const { data: session } = authClient.useSession()
+  const hasUnreadChangelog = useHasUnreadChangelog()
 
   const handleLogout = async () => {
     await authClient.signOut()
@@ -93,6 +116,12 @@ export function AppSidebar() {
                   <Link href={item.href}>
                     <item.icon />
                     <span>{item.title}</span>
+                    {item.href === "/dashboard/changelog" && hasUnreadChangelog && (
+                      <span
+                        className="ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--forge-amber)]"
+                        title={`มีรุ่นใหม่ v${CURRENT_VERSION} ที่ยังไม่ได้อ่าน`}
+                      />
+                    )}
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
