@@ -214,10 +214,11 @@ interface UsageRow {
     errorDetail?: string;
 }
 
-async function logUsage(row: UsageRow, ctx: GateContext & { novelId?: string } = {}) {
+/** คืน id ของแถวที่บันทึก — ผู้เรียกเก็บไว้เผื่อต้อง update ทีหลัง (ดู logParseFailure) · null = บันทึกไม่สำเร็จ */
+async function logUsage(row: UsageRow, ctx: GateContext & { novelId?: string } = {}): Promise<string | null> {
     try {
         const userId = await resolveUserId(ctx.userId);
-        await db.insert(aiUsageLog).values({
+        const [inserted] = await db.insert(aiUsageLog).values({
             userId: userId ?? null,
             novelId: ctx.novelId ?? null,
             feature: row.feature,
@@ -228,9 +229,31 @@ async function logUsage(row: UsageRow, ctx: GateContext & { novelId?: string } =
             completionTokens: row.completionTokens ?? 0,
             latencyMs: row.latencyMs ?? null,
             errorDetail: row.errorDetail?.slice(0, 300) ?? null,
-        });
+        }).returning({ id: aiUsageLog.id });
+        return inserted?.id ?? null;
     } catch (e) {
         console.error("[ai-gateway] logUsage failed:", e instanceof Error ? e.message : e);
+        return null;
+    }
+}
+
+/** ยาวสุดที่ยอมเก็บ — พอให้เห็นว่าโมเดลพ่นรูปอะไรมา โดยไม่ทำให้ตารางบวม */
+const RAW_RESPONSE_MAX = 4000;
+
+/**
+ * provider ตอบกลับมาแล้ว แต่ผู้เรียก parse ไม่ผ่าน — เก็บคำตอบดิบไว้ดีบัก
+ *
+ * update แถวเดิม ไม่ insert ใหม่: countTodayRuns() นับโควตาจาก "จำนวนแถว" ที่ status != blocked
+ * ถ้าแทรกแถวเพิ่มจะหักโควตาผู้ใช้ซ้ำสองครั้งทั้งที่ยิง provider ไปครั้งเดียว
+ */
+export async function logParseFailure(logId: string | null | undefined, raw: string) {
+    if (!logId) return;
+    try {
+        await db.update(aiUsageLog)
+            .set({ status: "parse_error", rawResponse: raw.slice(0, RAW_RESPONSE_MAX) })
+            .where(eq(aiUsageLog.id, logId));
+    } catch (e) {
+        console.error("[ai-gateway] logParseFailure failed:", e instanceof Error ? e.message : e);
     }
 }
 
@@ -418,6 +441,8 @@ export interface AiCallResult extends ProviderReply {
     provider: AiProvider;
     model: string;
     latencyMs: number;
+    /** id แถวใน ai_usage_log — ส่งกลับให้ logParseFailure() ตอนอ่านคำตอบไม่ออก · null = บันทึก log ไม่สำเร็จ */
+    logId?: string | null;
 }
 
 type AiCallContext = GateContext & { novelId?: string };
@@ -443,7 +468,7 @@ async function executeStep(
         }
 
         const latencyMs = Date.now() - startedAt;
-        await logUsage(
+        const logId = await logUsage(
             {
                 feature: featureKey,
                 provider: step.provider,
@@ -456,7 +481,7 @@ async function executeStep(
             ctx,
         );
 
-        return { ...reply, provider: step.provider, model: step.model, latencyMs };
+        return { ...reply, provider: step.provider, model: step.model, latencyMs, logId };
     } catch (e) {
         const detail = e instanceof Error ? e.message : String(e);
         console.error(`[ai-gateway:${featureKey}] ${detail}`);

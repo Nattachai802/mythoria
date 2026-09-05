@@ -1,7 +1,7 @@
 "use server";
 
 import { requireNovelAccess } from "@/lib/authz";
-import { callAi, assertAiAllowed, AiControlError } from "@/lib/ai-gateway";
+import { callAi, assertAiAllowed, AiControlError, logParseFailure } from "@/lib/ai-gateway";
 import {
     buildPacingAiSuggestPrompt,
     parsePacingAiSuggestResponse,
@@ -40,8 +40,8 @@ export async function suggestScenePacing(sceneId: string, novelId: string, chapt
         });
         const parsed = parsePacingAiSuggestResponse(resp.text);
         if (!parsed) {
-            // พิมพ์ของจริงออกมา — ไม่งั้นดีบักรูปผลลัพธ์ที่โมเดลพ่นมาไม่ได้เลย
-            console.error(`[PacingAiSuggest] parse ไม่ผ่าน · model=${resp.model} · raw=`, resp.text?.slice(0, 1500));
+            // เก็บคำตอบดิบไว้ในแถวเดิมของ ai_usage_log — console หายเมื่อปิด dev server
+            await logParseFailure(resp.logId, resp.text);
             return { success: false, error: "แนะนำไม่สำเร็จ (รูปแบบผลลัพธ์ผิดพลาด)" };
         }
 

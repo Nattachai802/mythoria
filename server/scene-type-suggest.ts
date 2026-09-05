@@ -1,7 +1,7 @@
 "use server";
 
 import { requireNovelAccess } from "@/lib/authz";
-import { callAi, assertAiAllowed, AiControlError } from "@/lib/ai-gateway";
+import { callAi, assertAiAllowed, AiControlError, logParseFailure } from "@/lib/ai-gateway";
 import {
     buildSceneTypeSuggestPrompt,
     parseSceneTypeSuggestResponse,
@@ -33,7 +33,10 @@ export async function suggestSceneType(sceneId: string, novelId: string): Promis
             novelId,
         });
         const parsed = parseSceneTypeSuggestResponse(resp.text);
-        if (!parsed) return { success: false, error: "แนะนำไม่สำเร็จ (รูปแบบผลลัพธ์ผิดพลาด)" };
+        if (!parsed) {
+            await logParseFailure(resp.logId, resp.text);
+            return { success: false, error: "แนะนำไม่สำเร็จ (รูปแบบผลลัพธ์ผิดพลาด)" };
+        }
 
         return { success: true, data: parsed };
     } catch (err) {

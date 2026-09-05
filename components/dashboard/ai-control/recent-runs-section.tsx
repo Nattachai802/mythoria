@@ -18,6 +18,8 @@ const STATUS_STYLE: Record<string, string> = {
     success: "text-emerald-600 dark:text-emerald-400",
     error: "text-destructive",
     blocked: "text-amber-600 dark:text-amber-400",
+    // provider ตอบมาแล้วแต่ฝั่งเราอ่านไม่ออก — คนละเรื่องกับ error (ยิงสำเร็จ เสีย token ไปแล้ว)
+    parse_error: "text-orange-600 dark:text-orange-400",
 };
 
 const VISIBLE_DEFAULT = 10;
@@ -67,6 +69,15 @@ export function RecentRunsSection({ runs }: { runs: AiOverviewData["recentRuns"]
                                         {r.errorDetail && (
                                             <span className="block text-destructive truncate max-w-52" title={r.errorDetail}>
                                                 {r.errorDetail}
+                                            </span>
+                                        )}
+                                        {/* คำตอบดิบตอนอ่านไม่ออก — ชี้เพื่อดูเต็ม ไม่กางในตารางเพราะยาวได้ถึง 4000 ตัวอักษร */}
+                                        {r.rawResponse && (
+                                            <span
+                                                className="block text-orange-600 dark:text-orange-400 truncate max-w-52 cursor-help"
+                                                title={r.rawResponse}
+                                            >
+                                                คำตอบดิบ: {r.rawResponse}
                                             </span>
                                         )}
                                     </TableCell>

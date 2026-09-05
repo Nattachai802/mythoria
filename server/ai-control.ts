@@ -55,6 +55,8 @@ export interface AiOverviewData {
         completionTokens: number;
         latencyMs: number | null;
         errorDetail: string | null;
+        /** คำตอบดิบจากโมเดล — มีเฉพาะแถวที่ status = "parse_error" */
+        rawResponse: string | null;
         createdAt: string;
     }>;
 }
@@ -102,6 +104,7 @@ export async function getAiOverview(): Promise<AiOverviewData> {
                     completionTokens: aiUsageLog.completionTokens,
                     latencyMs: aiUsageLog.latencyMs,
                     errorDetail: aiUsageLog.errorDetail,
+                    rawResponse: aiUsageLog.rawResponse, // มีเฉพาะแถว parse_error
                     createdAt: aiUsageLog.createdAt,
                 })
                 .from(aiUsageLog)

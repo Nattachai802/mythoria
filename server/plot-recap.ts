@@ -14,7 +14,7 @@ import {
     type SceneRecapEntry,
     type CausalityVerdict,
 } from "@/lib/plot-recap";
-import { callAi, assertAiAllowed, AiControlError } from "@/lib/ai-gateway";
+import { callAi, assertAiAllowed, AiControlError, logParseFailure } from "@/lib/ai-gateway";
 import { getPlotContext } from "./plot-context";
 
 type RecapResult =
@@ -129,7 +129,10 @@ export async function runSceneRecap(novelId: string, sceneId: string): Promise<R
             novelId,
         });
         const parsed = parseSceneRecapResponse(resp.text);
-        if (!parsed) return { success: false, error: "สรุปฉากไม่สำเร็จ (รูปแบบผลลัพธ์ผิดพลาด)" };
+        if (!parsed) {
+            await logParseFailure(resp.logId, resp.text);
+            return { success: false, error: "สรุปฉากไม่สำเร็จ (รูปแบบผลลัพธ์ผิดพลาด)" };
+        }
 
         const content = parsed.recap.trim();
 
