@@ -29,7 +29,12 @@ export interface AiFeatureDef {
 }
 
 const TYPHOON_MODEL = "typhoon-v2.5-30b-a3b-instruct"; // มาตรฐานเดียวทั้งแอป (เดิม Python ใช้ v2.1 ไม่ตรงกัน)
-const GROQ_MODEL = "llama-3.3-70b-versatile"; // llama-4-scout ถูกปลดระวาง คืน 404
+// ประวัติช่องนี้: llama-4-scout ปลดระวาง → llama-3.3-70b-versatile ย้ายไปเป็น enterprise (คืน 404)
+// → qwen3.8-27b (2026-09-05) · เลือกจากการยิงจริงทุกตัวที่ org เปิดสิทธิ์ไว้: มีแค่ qwen3.8-27b
+// กับ gpt-oss-20b ที่รองรับ response_format json_schema strict ซึ่งทุกฟีเจอร์ในแอปพึ่งอยู่
+// (gpt-oss-120b / qwen3.6-27b ยิงผ่านแต่ตอบไม่ตรง schema คืน 400 · compound-mini ไม่รองรับเลย)
+// qwen3.8 เร็วกว่า (432ms vs 711ms) และใช้ token น้อยกว่ามากในเทสต์เดียวกัน (84 vs 398)
+const GROQ_MODEL = "qwen/qwen3.8-27b";
 const GEMINI_MODEL = "gemini-2.5-flash";
 // ช่องเดียวสำหรับเปลี่ยนโมเดลที่ยิงผ่าน OpenRouter ทั้งแอป — ตอนนี้ใช้เป็นตัวหลักของ echo-score
 export const OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct";

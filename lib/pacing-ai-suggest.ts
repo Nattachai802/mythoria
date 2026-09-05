@@ -104,6 +104,18 @@ function toConfidence(v: unknown): number | null {
 
 const toReason = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, 300) : "");
 
+/** อ่านค่าจาก object หนึ่งจุด — ใช้ร่วมกันทั้งรูป array และรูป map ที่ value เป็น object
+ *  รับชื่อ key สำรองด้วย เพราะโมเดลตั้งชื่อเองบ่อยเวลาไม่เคารพ schema · null = ไม่มี pacing = ทิ้งแถว */
+function readSuggestion(row: Record<string, unknown>): PacingSuggestion | null {
+    const pacing = toPacing(row.pacing ?? row.value ?? row.score);
+    if (pacing === null) return null;
+    return {
+        pacing,
+        reason: toReason(row.reason ?? row.why ?? row.note),
+        confidence: toConfidence(row.confidence ?? row.conf),
+    };
+}
+
 /**
  * รับได้หลายรูปที่โมเดลชอบตอบ (schema ไม่ได้บังคับได้ทุก provider — typhoon เป็น fallback ที่หลุดบ่อย):
  *   {"items":[{"id":"x","pacing":7,...}]} · [{"id":"x","pacing":7}] · {"x":7} · {"scores":[...]}
@@ -130,17 +142,21 @@ export function parsePacingAiSuggestResponse(raw: string): Map<string, PacingSug
         for (const it of list) {
             if (!it || typeof it !== "object") continue;
             const row = it as Record<string, unknown>;
-            const pacing = toPacing(row.pacing ?? row.value ?? row.score);
-            if (typeof row.id !== "string" || pacing === null) continue;
-            map.set(row.id, {
-                pacing,
-                reason: toReason(row.reason ?? row.why ?? row.note),
-                confidence: toConfidence(row.confidence ?? row.conf),
-            });
+            if (typeof row.id !== "string") continue;
+            const s = readSuggestion(row);
+            if (s) map.set(row.id, s);
         }
     } else {
-        // รูป map ตรง ๆ: {"<id>": 7} — ไม่มีที่ให้ใส่เหตุผล/ความมั่นใจ
+        // รูป map — id เป็น key ของ object:
+        //   {"<id>": 7}                                   ค่าเป็นเลขล้วน ไม่มีเหตุผล/ความมั่นใจ
+        //   {"<id>": {pacing, reason, confidence}}         ค่าเป็น object ครบทุกฟิลด์
+        // แบบหลังคือรูปที่ typhoon ตอบมาจริง (ยืนยันจาก raw_response ใน ai_usage_log)
         for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+            if (v && typeof v === "object" && !Array.isArray(v)) {
+                const s = readSuggestion(v as Record<string, unknown>);
+                if (s) map.set(k, s);
+                continue;
+            }
             const pacing = toPacing(v);
             if (pacing !== null) map.set(k, { pacing, reason: "", confidence: null });
         }
