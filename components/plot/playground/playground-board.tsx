@@ -44,6 +44,22 @@ import { labelAnchor } from "@/lib/link-label";
 import { buildSceneFormat, renderSceneMarkdown } from "@/lib/story-format";
 import { useIsMobile } from "@/hooks/use-mobile";
 
+// KeyboardSensor ตัวเดิมกิน Space ที่ bubble ขึ้นมาจากช่องพิมพ์ในการ์ด (เช่นโน้ตของไอเดีย)
+// เพราะ dnd-kit จะข้าม guard ของตัวเองเมื่อ activatorNode เป็น null แล้ว preventDefault ทิ้ง
+// กันไว้ที่ sensor ที่เดียว ดีกว่าไล่ใส่ stopPropagation ทุก input
+class TypingSafeKeyboardSensor extends KeyboardSensor {
+    static activators = [{
+        eventName: "onKeyDown" as const,
+        handler: (event: any, args: any, ctx: any) => {
+            const target = event.target as HTMLElement | null;
+            if (target?.isContentEditable || target?.closest?.("input, textarea, select, [contenteditable='true']")) {
+                return false;
+            }
+            return (KeyboardSensor as any).activators[0].handler(event, args, ctx);
+        },
+    }];
+}
+
 interface PlaygroundBoardProps {
     eventId: string;
     novelId: string;
@@ -1461,7 +1477,7 @@ export function PlaygroundBoard({
             },
         }),
         // ลากด้วยคีย์บอร์ดได้ (Space/Enter จับ, ลูกศรเลื่อน) — ไม่งั้นฟีเจอร์หลักใช้ได้เฉพาะเมาส์
-        useSensor(KeyboardSensor)
+        useSensor(TypingSafeKeyboardSensor)
     );
 
     const handleRemoveChild = (parentId: string, childId: string) => {
