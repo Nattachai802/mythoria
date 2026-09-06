@@ -49,6 +49,8 @@ export function DraggableCanvasItem({
   factions,
   powers,
   items,
+  entities,
+  worldSystems,
   ideas,
   onAddChild,
   onUpdateChild,
@@ -100,6 +102,8 @@ export function DraggableCanvasItem({
   factions?: any[];
   powers?: any[];
   items?: any[];
+  entities?: any[];
+  worldSystems?: any[];
   ideas?: any[];
   onAddChild?: (ideaId: string, child: any) => void;
   onUpdateChild?: (parentId: string, childId: string, patch: any) => void;
@@ -209,6 +213,8 @@ export function DraggableCanvasItem({
         factions={factions}
         powers={powers}
         items={items}
+        entities={entities}
+        worldSystems={worldSystems}
         ideas={ideas}
         onAddChild={onAddChild}
         onUpdateChild={onUpdateChild}
@@ -361,6 +367,8 @@ export function CanvasItem({
   factions,
   powers,
   items,
+  entities,
+  worldSystems,
   ideas,
   onAddChild,
   onUpdateChild,
@@ -410,6 +418,8 @@ export function CanvasItem({
   factions?: any[];
   powers?: any[];
   items?: any[];
+  entities?: any[];
+  worldSystems?: any[];
   ideas?: any[];
   onAddChild?: (ideaId: string, child: any) => void;
   onUpdateChild?: (parentId: string, childId: string, patch: any) => void;
@@ -449,6 +459,8 @@ export function CanvasItem({
         factions={factions}
         powers={powers}
         items={items}
+        entities={entities}
+        worldSystems={worldSystems}
         ideas={ideas}
         onAddChild={onAddChild}
         onUpdateChild={onUpdateChild}

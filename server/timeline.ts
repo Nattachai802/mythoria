@@ -5,6 +5,7 @@ import { timelineEvents, sceneElementDetails, InsertTimelineEvent } from "@/db/s
 import { eq, and, asc, desc, lt, inArray, count } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { requireNovelAccess } from "@/lib/authz"
+import { PARTICIPANT_KEYS } from "@/lib/participant-types"
 
 
 
@@ -187,7 +188,7 @@ export async function getNovelDummyParticipants(novelId: string) {
 const NEARBY_SCENE_WINDOW = 2;
 
 export type NearbyParticipants = {
-    /** ตัวจริง (ตัวละคร/ฝ่าย/พลัง/ของ) ที่อยู่ใน N ฉากก่อนหน้า — เรียงจากฉากใกล้สุดก่อน */
+    /** ผู้ร่วมฉากชนิดจริง (ทุกชนิดใน PARTICIPANT_KEYS) ที่อยู่ใน N ฉากก่อนหน้า — เรียงจากฉากใกล้สุดก่อน */
     recentIds: string[];
     /** ชื่อ dummy ที่อยู่ใน N ฉากก่อนหน้า — เรียงจากฉากใกล้สุดก่อน */
     recentDummyTitles: string[];
@@ -235,7 +236,7 @@ export async function getNearbyParticipants(novelId: string, sceneId: string) {
                 .where(and(
                     eq(sceneElementDetails.novelId, novelId),
                     inArray(sceneElementDetails.sceneId, prevScenes.map(s => s.id)),
-                    inArray(sceneElementDetails.elementType, ["character", "faction", "power", "item"]),
+                    inArray(sceneElementDetails.elementType, PARTICIPANT_KEYS as unknown as string[]),
                 ));
 
             // วนตามลำดับฉาก (ใกล้สุดก่อน) เพื่อให้ผลลัพธ์เรียงตามความใกล้ ไม่ใช่ลำดับที่ DB คืนมา
@@ -257,7 +258,7 @@ export async function getNearbyParticipants(novelId: string, sceneId: string) {
             .from(sceneElementDetails)
             .where(and(
                 eq(sceneElementDetails.novelId, novelId),
-                inArray(sceneElementDetails.elementType, ["character", "faction", "power", "item"]),
+                inArray(sceneElementDetails.elementType, PARTICIPANT_KEYS as unknown as string[]),
             ))
             .groupBy(sceneElementDetails.elementId)
             .orderBy(desc(count()))

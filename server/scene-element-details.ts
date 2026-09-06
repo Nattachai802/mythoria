@@ -4,10 +4,19 @@ import { db } from "@/db/drizzle";
 import { sceneElementDetails, timelineEvents, InsertSceneElementDetails, SceneElementDetails } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { PARTICIPANT_TYPES } from "@/lib/participant-types"
 
 /**
  * Get all element details for a scene
  */
+/**
+ * ชนิดของ element ที่ผูกเข้าฉากได้ — ผู้ร่วมฉากมาจาก registry (lib/participant-types.ts)
+ * เพิ่มชนิดใหม่ที่ registry แล้วที่นี่ตามอัตโนมัติ ไม่ต้องไล่แก้
+ *
+ * location = สถานที่ (ไม่ใช่ผู้ร่วมฉาก ผูกคนละทาง) · idea_note = โน้ตบนการ์ด (หนึ่งการ์ดมีได้หลายโน้ต)
+ */
+export type SceneElementType = (typeof PARTICIPANT_TYPES)[number] | "location" | "idea_note";
+
 export async function getSceneElementDetails(sceneId: string) {
     try {
         const details = await db.query.sceneElementDetails.findMany({
@@ -25,7 +34,7 @@ export async function getSceneElementDetails(sceneId: string) {
  */
 export async function getElementDetail(
     sceneId: string,
-    elementType: "character" | "location" | "faction" | "power" | "item" | "dummy_character" | "dummy_faction" | "idea_note",
+    elementType: SceneElementType,
     elementId: string,
     canvasItemId?: string
 ) {
@@ -57,7 +66,7 @@ export async function getElementDetail(
 export async function upsertSceneElementDetail(data: {
     id?: string;
     sceneId: string;
-    elementType: "character" | "location" | "faction" | "power" | "item" | "dummy_character" | "dummy_faction" | "idea_note";
+    elementType: SceneElementType;
     elementId: string;
     canvasItemId?: string;
     action?: string;

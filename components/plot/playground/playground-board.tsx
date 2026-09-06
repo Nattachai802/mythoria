@@ -9,11 +9,12 @@ import {
     useSensor,
     useSensors,
     PointerSensor,
+    KeyboardSensor,
     DragStartEvent,
     pointerWithin,
     DragOverlay,
 } from "@dnd-kit/core";
-import { ResourceSidebar } from "./resource-sidebar";
+import { ResourceSidebar, ResourceChip } from "./resource-sidebar";
 import { CanvasItem, DraggableCanvasItem } from "./canvas-item";
 import { EchoScorePanel } from "./echo-score-panel";
 import { BeatCoachPanel } from "./beat-coach-panel";
@@ -56,6 +57,8 @@ interface PlaygroundBoardProps {
     powers?: any[];
     /** สิ่งของในนิยาย (ตาราง items) — alias เป็น worldItems ตอนรับ เพราะ items ในไฟล์นี้คือการ์ดบนแคนวาส */
     items?: any[];
+    entities?: any[];
+    worldSystems?: any[];
     boardChapters?: BoardChapter[]; // ตอนที่แบ่งไว้บนกระดานอื่นของนิยายเดียวกัน — ใช้อ้างอิงตอนตั้งชื่อ
     tonePresets?: { id: string; label: string; color: string }[];
     initialEchoFindings?: EchoFinding[];
@@ -907,6 +910,8 @@ export function PlaygroundBoard({
     factions = [],
     powers = [],
     items: worldItems = [],
+    entities = [],
+    worldSystems = [],
     boardChapters = [],
     tonePresets = [],
     initialEchoFindings = [],
@@ -1454,7 +1459,9 @@ export function PlaygroundBoard({
                 distance: 8,
                 shouldActivate: (event: any) => !linkingSourceId && event.button === 0,
             },
-        })
+        }),
+        // ลากด้วยคีย์บอร์ดได้ (Space/Enter จับ, ลูกศรเลื่อน) — ไม่งั้นฟีเจอร์หลักใช้ได้เฉพาะเมาส์
+        useSensor(KeyboardSensor)
     );
 
     const handleRemoveChild = (parentId: string, childId: string) => {
@@ -2185,6 +2192,8 @@ export function PlaygroundBoard({
             factions={factions}
             powers={powers}
             items={worldItems}
+            entities={entities}
+            worldSystems={worldSystems}
             ideas={ideas}
             onAddChild={handleAddChild}
             onUpdateChild={handleUpdateChild}
@@ -2239,6 +2248,8 @@ export function PlaygroundBoard({
                                 factions={factions}
                                 powers={powers}
                                 items={worldItems}
+                                entities={entities}
+                                worldSystems={worldSystems}
                                 onCollapse={() => setSidebarCollapsed(true)}
                             />
                         </div>
@@ -2620,7 +2631,12 @@ export function PlaygroundBoard({
 
             {/* Drag Overlay */}
             <DragOverlay dropAnimation={null}>
-                {activeDragItem ? <CanvasItem item={activeDragItem} isOverlay /> : null}
+                {activeDragItem
+                    ? activeDragItem.from === 'sidebar'
+                        // ของจาก sidebar ยังไม่ใช่การ์ดบนกระดาน — ให้ลากติดมือเป็นชิ้นเดิม ไม่ใช่การ์ดเต็มใบ
+                        ? <ResourceChip type={activeDragItem.type} title={activeDragItem.title} data={activeDragItem} overlay />
+                        : <CanvasItem item={activeDragItem} isOverlay />
+                    : null}
             </DragOverlay>
 
             {/* Scene Element Detail Edit Dialog */}

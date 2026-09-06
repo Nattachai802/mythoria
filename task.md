@@ -329,10 +329,14 @@ AI สแกนเนื้อจริงหา setup ที่ลืมเฉ�
 `server/scene-element-details.ts` (type union) + `lib/story-format.ts` (TYPE_LABEL) +
 `server/timeline.ts` (getNearbyParticipants)
 
-**ยังไม่คุ้มทำ registry ตอนนี้** — 4 ชนิดยังไล่ไหว แต่ถ้ามีชนิดที่ 5 (เช่น lore ตาม B2)
-ควรยุบเป็นตารางประกาศเดียวก่อน แบบเดียวกับ AI_FEATURES / PLOT_CONTEXT_CONSUMERS
-คือประกาศ { key, label, icon, colorClass, source, actionLabel, placeholder } ที่เดียว
-แล้วให้ทุกจุดอ่านจากตารางนั้น
+**ทำแล้ว (2026-09-05)** — พอถึงชนิดที่ 5-6 (สัตว์/ภูต และระบบโลก) จึงยุบเป็น
+`lib/participant-types.ts` ตามที่วางไว้ · sidebar / แผงผู้เข้าร่วม / type union ฝั่ง server /
+`getNearbyParticipants` อ่านจาก registry เดียวหมดแล้ว มีเทสต์ที่ `lib/participant-types.check.ts`
+กันไม่ให้ key เดิมหาย (ข้อมูลใน `scene_element_details.element_type` อ้างค่าพวกนี้อยู่)
+
+**เพิ่มชนิดที่ 7 ตอนนี้ = แก้ 2 จุด**: หนึ่งแถวใน registry + โหลดข้อมูลที่
+`plot/[eventId]/page.tsx` แล้วส่ง prop ต่อ (chain ยังต้องส่ง prop ผ่าน 3 ชั้นอยู่ —
+ถ้าอยากตัดตรงนี้ด้วยต้องเปลี่ยนเป็น context ซึ่งยังไม่คุ้ม)
 
 ระวัง: prop ชื่อ `items` ชนกับ state `items` ใน playground-board (การ์ดบนแคนวาส)
 ตอนนี้ alias เป็น `worldItems` ไว้ — ถ้าทำ registry ต้องคิดชื่อให้ชัดกว่านี้
