@@ -100,6 +100,8 @@ interface IdeaFilmCardProps {
   characters?: any[];
   novelDummyNames?: string[];
   factions?: any[];
+  powers?: any[];
+  items?: any[];
   ideas?: any[];
   onAddChild?: (ideaId: string, child: any) => void;
   onUpdateChild?: (parentId: string, childId: string, patch: any) => void;
@@ -122,7 +124,7 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
     item, onRemove, onRemoveChild, isDragging, isOverlay, isOver, isLinkingSource, onLinkStart,
     elementDetails, onEditChild, ideaNotes, onQuickAddNote, onDeleteNote, onReorderNotes, novelId,
     onSetAncestor, ancestorConnections, onRemoveAncestor, sceneId, characters, novelDummyNames,
-    factions, ideas, onAddChild, onUpdateChild, onPromoteDummy, onDetailSaved, onSetColor,
+    factions, powers, items, ideas, onAddChild, onUpdateChild, onPromoteDummy, onDetailSaved, onSetColor,
     onSetSceneDrama,
     tonePresets = [], onSetKeyMoment, onSetNarration, threadBeats, onOpenThreadBind,
     sceneEchoFinding, onEchoResult,
@@ -382,6 +384,8 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
         characters={characters}
         novelDummyNames={novelDummyNames}
         factions={factions}
+        powers={powers}
+        items={items}
         ideas={ideas}
         onAddChild={onAddChild}
         onUpdateChild={onUpdateChild}
@@ -416,6 +420,8 @@ interface IdeaFrameDialogProps {
   characters?: any[];
   novelDummyNames?: string[];
   factions?: any[];
+  powers?: any[];
+  items?: any[];
   ideas?: any[];
   onAddChild?: (ideaId: string, child: any) => void;
   onUpdateChild?: (parentId: string, childId: string, patch: any) => void;
@@ -434,7 +440,7 @@ interface IdeaFrameDialogProps {
 function IdeaFrameDialog({
   onClose, item, elementDetails, onEditChild, onRemoveChild, ideaNotes,
   onQuickAddNote, onDeleteNote, onReorderNotes, novelId, ancestorConnections, onRemoveAncestor,
-  sceneId, characters, novelDummyNames, factions, ideas, onAddChild, onUpdateChild,
+  sceneId, characters, novelDummyNames, factions, powers, items, ideas, onAddChild, onUpdateChild,
   onPromoteDummy, onDetailSaved, onSetKeyMoment, onSetSceneDrama, onOpenThreadBind, threadBeats, onCopy,
   onEchoResult,
 }: IdeaFrameDialogProps) {
@@ -1061,6 +1067,8 @@ function IdeaFrameDialog({
                 novelId={novelId}
                 characters={characters || []}
                 factions={factions || []}
+                powers={powers || []}
+                items={items || []}
                 elementDetails={elementDetails}
                 onAddChild={onAddChild}
                 onPromoteDummy={onPromoteDummy}

@@ -49,6 +49,11 @@ export const PLOT_CONTEXT_CONSUMERS: Record<string, PlotContextConsumer> = {
         scope: "scene", level: "full",
         why: "ฉากเดียว ไม่แพง และต้องเห็นรายละเอียดการ์ดเพื่อจัดประเภท",
     },
+    "beat-coach": {
+        scope: "scene", level: "digest",
+        why: "ดูจังหวะภายในฉากเดียว ต้องเห็นค่าที่ผู้ใช้ตั้งไว้ด้วยเพื่อไม่เดาทับของเดิม",
+        // ไม่ตั้ง hideUserPacing — ต่างจาก pacing-ai-suggest ตรงที่ตัวนี้ "เติมช่องว่าง" ไม่ใช่ "ให้ความเห็นที่สอง"
+    },
     "pacing-ai-suggest": {
         scope: "scene", level: "recap",
         why: "ให้คะแนนทีละฉากตามที่ผู้ใช้กดดูอยู่ — digest สั้น + recap เสริมความหมายฟรี",

@@ -25,7 +25,7 @@ export async function getSceneElementDetails(sceneId: string) {
  */
 export async function getElementDetail(
     sceneId: string,
-    elementType: "character" | "location" | "faction" | "dummy_character" | "dummy_faction" | "idea_note",
+    elementType: "character" | "location" | "faction" | "power" | "item" | "dummy_character" | "dummy_faction" | "idea_note",
     elementId: string,
     canvasItemId?: string
 ) {
@@ -57,7 +57,7 @@ export async function getElementDetail(
 export async function upsertSceneElementDetail(data: {
     id?: string;
     sceneId: string;
-    elementType: "character" | "location" | "faction" | "dummy_character" | "dummy_faction" | "idea_note";
+    elementType: "character" | "location" | "faction" | "power" | "item" | "dummy_character" | "dummy_faction" | "idea_note";
     elementId: string;
     canvasItemId?: string;
     action?: string;

@@ -12,7 +12,7 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import {
-    Users, User, Trash2, Plus, Check, Shield, Loader2, Route, UserCheck, UsersRound, ChevronLeft,
+    Users, User, Trash2, Plus, Check, Shield, Zap, Gem, Loader2, Route, UserCheck, UsersRound, ChevronLeft,
 } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
@@ -29,7 +29,7 @@ export const ROLES = [
     { value: "victim", label: "ผู้รับเคราะห์/เหยื่อ", cls: "text-purple-500 bg-purple-500/10 border-purple-500/20" },
 ]
 
-const PARTICIPANT_TYPES = ["character", "faction", "dummy_character", "dummy_faction"]
+const PARTICIPANT_TYPES = ["character", "faction", "power", "item", "dummy_character", "dummy_faction"]
 
 interface Props {
     ideaItem: any // canvas item ที่เป็น idea (มี children)
@@ -37,6 +37,8 @@ interface Props {
     novelId: string
     characters: any[]
     factions: any[]
+    powers?: any[]
+    items?: any[]
     elementDetails?: Map<string, SceneElementDetails>
     onAddChild: (ideaId: string, child: any) => void
     onPromoteDummy?: (dummy: any, realId: string, scope?: "scene" | "all") => void
@@ -49,14 +51,14 @@ const detailKey = (ideaId: string, child: any) =>
     `${ideaId}-${child.type}-${child.referenceId || child.refId || child.id}`
 
 export function SceneParticipantsPanel({
-    ideaItem, sceneId, novelId, characters, factions,
+    ideaItem, sceneId, novelId, characters, factions, powers = [], items = [],
     elementDetails, onAddChild, onPromoteDummy, onRemoveChild, onDetailSaved,
 }: Props) {
     const [open, setOpen] = useState(false)
     const [isPending, startTransition] = useTransition()
 
     // Add form
-    const [partType, setPartType] = useState<"character" | "faction" | "dummy_character" | "dummy_faction">("character")
+    const [partType, setPartType] = useState<"character" | "faction" | "power" | "item" | "dummy_character" | "dummy_faction">("character")
     const [selectedEntityId, setSelectedEntityId] = useState("")
     const [dummyName, setDummyName] = useState("")
     const [action, setAction] = useState("")
@@ -68,6 +70,9 @@ export function SceneParticipantsPanel({
 
     // Through-line viewer (B)
     const [throughLine, setThroughLine] = useState<{ type: "character" | "faction"; id: string; name: string } | null>(null)
+
+    // รายการให้เลือกตามชนิดที่เลือกอยู่ — ที่เดียว กันหลุดเวลาเพิ่มชนิดใหม่
+    const entityList = (t: string) => (t === "character" ? characters : t === "faction" ? factions : t === "item" ? items : powers)
 
     const participants = (ideaItem.children || []).filter((c: any) => PARTICIPANT_TYPES.includes(c.type))
     const isDummyType = partType === "dummy_character" || partType === "dummy_faction"
@@ -90,7 +95,7 @@ export function SceneParticipantsPanel({
     // เติมด้วยตัวที่ยังไม่เคยใช้จนครบ 8 เพื่อให้นิยายใหม่ที่ยังไม่มีสถิติไม่เจอแถวว่าง
     const quickPicks = (() => {
         if (isDummyType) return []
-        const list = partType === "character" ? characters : factions
+        const list = entityList(partType)
         const recent = new Map(nearby.recentIds.map((id, i) => [id, i]))
         const frequent = new Map(nearby.frequentIds.map((id, i) => [id, i]))
         const rank = (id: string) =>
@@ -127,10 +132,10 @@ export function SceneParticipantsPanel({
         if (!isDummyType) {
             const pickedId = entity?.id ?? selectedEntityId
             if (!pickedId) {
-                toast.error("กรุณาเลือกตัวละครหรือกลุ่มฝ่าย")
+                toast.error("กรุณาเลือกรายการก่อน")
                 return
             }
-            const list = partType === "character" ? characters : factions
+            const list = entityList(partType)
             title = entity?.name ?? list.find(e => e.id === pickedId)?.name ?? ""
             referenceId = pickedId
             if (participants.some((p: any) => p.referenceId === pickedId)) {
@@ -322,6 +327,8 @@ export function SceneParticipantsPanel({
                                     <SelectContent>
                                         <SelectItem value="character">ตัวละครจริง</SelectItem>
                                         <SelectItem value="faction">กลุ่มฝ่ายจริง</SelectItem>
+                                        <SelectItem value="power">พลัง</SelectItem>
+                                        <SelectItem value="item">สิ่งของ</SelectItem>
                                         <SelectItem value="dummy_character">ตัวละครชั่วคราว (Dummy)</SelectItem>
                                         <SelectItem value="dummy_faction">กลุ่มฝ่ายชั่วคราว (Dummy)</SelectItem>
                                     </SelectContent>
@@ -382,7 +389,7 @@ export function SceneParticipantsPanel({
                         {quickPicks.length > 0 && (
                             <div className="space-y-1">
                                 <label className="text-[9px] font-technical text-muted-foreground uppercase">
-                                    {partType === "character" ? "ตัวละครที่ใช้บ่อย" : "กลุ่มฝ่ายที่ใช้บ่อย"}
+                                    {partType === "character" ? "ตัวละครที่ใช้บ่อย" : partType === "power" ? "พลังที่ใช้บ่อย" : partType === "item" ? "สิ่งของที่ใช้บ่อย" : "กลุ่มฝ่ายที่ใช้บ่อย"}
                                 </label>
                                 <div className="flex flex-wrap gap-1">
                                     {quickPicks.map(e => {
@@ -418,10 +425,10 @@ export function SceneParticipantsPanel({
                             {!isDummyType ? (
                                 <Select value={selectedEntityId} onValueChange={setSelectedEntityId}>
                                     <SelectTrigger className="h-7 text-xs border-steel-800">
-                                        <SelectValue placeholder={partType === "character" ? "เลือกตัวละคร..." : "เลือกกลุ่มฝ่าย..."} />
+                                        <SelectValue placeholder={partType === "character" ? "เลือกตัวละคร..." : partType === "power" ? "เลือกพลัง..." : partType === "item" ? "เลือกสิ่งของ..." : "เลือกกลุ่มฝ่าย..."} />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {(partType === "character" ? characters : factions).map(e => (
+                                        {entityList(partType).map(e => (
                                             <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
                                         ))}
                                     </SelectContent>
@@ -446,11 +453,11 @@ export function SceneParticipantsPanel({
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-[9px] font-technical text-muted-foreground uppercase">ทำอะไรในซีนนี้</label>
+                            <label className="text-[9px] font-technical text-muted-foreground uppercase">{partType === "power" || partType === "item" ? "ใช้ยังไงในซีนนี้" : "ทำอะไรในซีนนี้"}</label>
                             <Input
                                 value={action}
                                 onChange={e => setAction(e.target.value)}
-                                placeholder="เช่น ลอบโจมตีเพื่อชิงหลักฐาน แต่ถูกจับได้"
+                                placeholder={partType === "power" ? "เช่น ปลดผนึกชั้นสอง แลกกับพลังชีวิต" : partType === "item" ? "เช่น ถูกขโมยไประหว่างชุลมุน" : "เช่น ลอบโจมตีเพื่อชิงหลักฐาน แต่ถูกจับได้"}
                                 className="h-7 text-xs chamfered-sm"
                             />
                         </div>
@@ -479,7 +486,9 @@ export function SceneParticipantsPanel({
                                     const currentRole = ROLES.find(r => r.value === (detail?.role || child.role)) || ROLES[0]
                                     const isDummy = child.type === "dummy_character" || child.type === "dummy_faction"
                                     const isFaction = child.type === "faction" || child.type === "dummy_faction"
-                                    const TypeIcon = isFaction ? Shield : User
+                                    const isPower = child.type === "power"
+                                    const isItem = child.type === "item"
+                                    const TypeIcon = isPower ? Zap : isItem ? Gem : isFaction ? Shield : User
 
                                     return (
                                         <div
@@ -491,7 +500,7 @@ export function SceneParticipantsPanel({
                                         >
                                             <div className="flex items-center justify-between gap-2 mb-1.5">
                                                 <div className="flex items-center gap-1.5 min-w-0">
-                                                    <TypeIcon className={cn("w-3.5 h-3.5 shrink-0", isDummy ? "text-muted-foreground" : isFaction ? "text-emerald-500" : "text-blue-500")} />
+                                                    <TypeIcon className={cn("w-3.5 h-3.5 shrink-0", isDummy ? "text-muted-foreground" : isPower ? "text-purple-500" : isItem ? "text-cyan-600" : isFaction ? "text-emerald-500" : "text-blue-500")} />
                                                     <span className="font-semibold text-foreground truncate">
                                                         {child.title}
                                                         {isDummy && <span className="text-[8px] text-muted-foreground ml-1">(Dummy)</span>}

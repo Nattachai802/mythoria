@@ -319,6 +319,26 @@ AI สแกนเนื้อจริงหา setup ที่ลืมเฉ�
 
 ---
 
+## 10. ชนิดผู้ร่วมฉากเริ่มซ้ำ pattern (2026-09-05)
+
+ตอนนี้มี 4 ชนิดที่ใช้ pattern เดียวกันเป๊ะบนกระดานพล็อต: ตัวละคร / ฝ่าย / พลัง / สิ่งของ
+(ยังไม่นับ dummy อีกสองตัว) การเพิ่มแต่ละชนิดต้องไล่แก้ ~7 ไฟล์เหมือนกันทุกครั้ง:
+
+`plot/[eventId]/page.tsx` (โหลดข้อมูล) → `playground-board` → `canvas-item` →
+`idea-frame-dialog` → `scene-participants-panel` (ชนิด/ป้าย/ไอคอน/ชิปใช้บ่อย) +
+`server/scene-element-details.ts` (type union) + `lib/story-format.ts` (TYPE_LABEL) +
+`server/timeline.ts` (getNearbyParticipants)
+
+**ยังไม่คุ้มทำ registry ตอนนี้** — 4 ชนิดยังไล่ไหว แต่ถ้ามีชนิดที่ 5 (เช่น lore ตาม B2)
+ควรยุบเป็นตารางประกาศเดียวก่อน แบบเดียวกับ AI_FEATURES / PLOT_CONTEXT_CONSUMERS
+คือประกาศ { key, label, icon, colorClass, source, actionLabel, placeholder } ที่เดียว
+แล้วให้ทุกจุดอ่านจากตารางนั้น
+
+ระวัง: prop ชื่อ `items` ชนกับ state `items` ใน playground-board (การ์ดบนแคนวาส)
+ตอนนี้ alias เป็น `worldItems` ไว้ — ถ้าทำ registry ต้องคิดชื่อให้ชัดกว่านี้
+
+---
+
 ## นอกขอบเขต
 
 - **อย่ารัน `drizzle-kit generate` + `db:migrate`** — `migrations/` ค้างอยู่นาน

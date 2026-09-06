@@ -3,7 +3,7 @@
 import { useDraggable } from "@dnd-kit/core";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
-import { User, MapPin, Lightbulb, Search, Filter, X, Shield, PanelLeftClose } from "lucide-react";
+import { User, MapPin, Lightbulb, Search, Filter, X, Shield, Zap, Gem, PanelLeftClose } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
@@ -15,6 +15,8 @@ interface ResourceSidebarProps {
   locations: any[];
   ideas: any[];
   factions?: any[];
+  powers?: any[];
+  items?: any[];
   onCollapse?: () => void;
 }
 
@@ -23,16 +25,18 @@ export function ResourceSidebar({
   locations,
   ideas,
   factions = [],
+  powers = [],
+  items = [],
   onCollapse,
 }: ResourceSidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
 
   // Filter Logic
-  const filterItems = (items: any[], type: 'character' | 'location' | 'idea' | 'faction') => {
+  const filterItems = (items: any[], type: 'character' | 'location' | 'idea' | 'faction' | 'power' | 'item') => {
     return items.filter(item => {
       // 1. Text Search
-      const resourceName = type === 'character' || type === 'location' || type === 'faction' ? item.name : item.title;
+      const resourceName = type === 'idea' ? item.title : item.name; // มีแต่ idea ที่ใช้ title
       const matchesSearch = resourceName?.toLowerCase().includes(searchQuery.toLowerCase()) || false;
 
       // 2. Role Filter (Only for characters)
@@ -52,6 +56,8 @@ export function ResourceSidebar({
 
   const filteredCharacters = filterItems(characters, 'character');
   const filteredLocations = filterItems(locations, 'location');
+  const filteredPowers = filterItems(powers, 'power');
+  const filteredItems = filterItems(items, 'item');
   const filteredIdeas = filterItems(ideas, 'idea');
   const filteredFactions = filterItems(factions, 'faction');
 
@@ -69,10 +75,12 @@ export function ResourceSidebar({
         <div className="px-2 pt-2 pb-0 space-y-2">
           {/* Tabs */}
           <div className="flex items-center gap-1">
-          <TabsList className="flex-1 grid grid-cols-4 h-9">
+          <TabsList className="flex-1 grid grid-cols-6 h-9">
             <TabsTrigger value="characters" title="ตัวละคร"><User className="w-4 h-4" /></TabsTrigger>
             <TabsTrigger value="factions" title="ฝ่าย"><Shield className="w-4 h-4" /></TabsTrigger>
             <TabsTrigger value="locations" title="สถานที่"><MapPin className="w-4 h-4" /></TabsTrigger>
+            <TabsTrigger value="powers" title="พลัง"><Zap className="w-4 h-4" /></TabsTrigger>
+            <TabsTrigger value="items" title="สิ่งของ"><Gem className="w-4 h-4" /></TabsTrigger>
             <TabsTrigger value="ideas" title="ไอเดีย"><Lightbulb className="w-4 h-4" /></TabsTrigger>
           </TabsList>
           {onCollapse && (
@@ -184,6 +192,38 @@ export function ResourceSidebar({
           </ScrollArea>
         </TabsContent>
 
+        <TabsContent value="powers" className="flex-1 p-0 m-0 overflow-hidden">
+          <ScrollArea className="h-full px-2 py-2">
+            <div className="space-y-1.5">
+              {filteredPowers.map(power => (
+                <DraggableResource
+                  key={power.id}
+                  id={power.id}
+                  type="power"
+                  title={power.name}
+                  data={power}
+                />
+              ))}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+        <TabsContent value="items" className="flex-1 p-0 m-0 overflow-hidden">
+          <ScrollArea className="h-full px-2 py-2">
+            <div className="space-y-1.5">
+              {filteredItems.map(it => (
+                <DraggableResource
+                  key={it.id}
+                  id={it.id}
+                  type="item"
+                  title={it.name}
+                  data={it}
+                />
+              ))}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
         <TabsContent value="ideas" className="flex-1 p-0 m-0 overflow-hidden">
           {/* Tag/Category filters for ideas could go here in future */}
           <ScrollArea className="h-full px-2 py-2">
@@ -274,6 +314,8 @@ function DraggableResource({ id, type, title, data }: any) {
         {type === "character" && <User className="w-3.5 h-3.5" />}
         {type === "faction" && <Shield className="w-3.5 h-3.5" />}
         {type === "location" && <MapPin className="w-3.5 h-3.5" />}
+        {type === "power" && <Zap className="w-3.5 h-3.5 text-purple-500" />}
+        {type === "item" && <Gem className="w-3.5 h-3.5 text-cyan-600" />}
         {type === "idea" && <Lightbulb className="w-3.5 h-3.5" />}
       </div>
       <span className="truncate text-xs font-medium text-foreground/90 flex-1">{title}</span>

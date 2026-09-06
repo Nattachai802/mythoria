@@ -131,6 +131,16 @@ export const AI_FEATURES: Record<string, AiFeatureDef> = {
         ],
         defaultDailyLimit: 40,
     },
+    "beat-coach": {
+        key: "beat-coach",
+        label: "ผู้ช่วยดูจังหวะในฉาก",
+        description: "อ่านจังหวะการ์ดในฉาก เดาค่าที่ผู้ใช้ยังไม่ได้กรอก + เสนอว่าจังหวะถัดไปควรเป็นแบบไหน",
+        chain: [
+            { provider: "groq", model: GROQ_MODEL, temperature: 0.3, maxTokens: 1500 },
+            { provider: "typhoon", model: TYPHOON_MODEL, temperature: 0.3, maxTokens: 1500 },
+        ],
+        defaultDailyLimit: 100,
+    },
     "character-state-extractor": {
         key: "character-state-extractor",
         label: "สกัดสถานะตัวละคร",

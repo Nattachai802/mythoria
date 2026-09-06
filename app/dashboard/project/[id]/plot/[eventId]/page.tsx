@@ -6,6 +6,8 @@ import { getChapters } from "@/server/chapter";
 import { getNovelByIdSimple } from "@/server/novel";
 import { getThreadsByNovelId } from "@/server/plot-threads";
 import { getFactionsByNovelId } from "@/server/factions";
+import { getPowersByNovelId } from "@/server/power";
+import { getItemsByNovelId } from "@/server/items";
 import { getEchoFindings } from "@/server/plot-analysis";
 import { getSceneRecap } from "@/server/plot-recap";
 import { getTonePresets } from "@/server/tone-presets";
@@ -31,7 +33,7 @@ export default async function PlotPlaygroundPage({
   const { action } = await searchParams;
 
   // Fetch all necessary data in parallel
-  const [eventRes, charactersRes, locationsRes, ideasRes, eventsRes, chaptersRes, novelRes, threadsRes, factionsRes, boardChaptersRes, echoRes, toneRes, sceneRecap] = await Promise.all([
+  const [eventRes, charactersRes, locationsRes, ideasRes, eventsRes, chaptersRes, novelRes, threadsRes, factionsRes, boardChaptersRes, echoRes, toneRes, sceneRecap, powersRes, itemsRes] = await Promise.all([
     getTimelineEventById(eventId),
     getCharactersByNovelId(novelId),
     getLocationsByNovelId(novelId),
@@ -45,6 +47,8 @@ export default async function PlotPlaygroundPage({
     getEchoFindings(novelId, eventId),
     getTonePresets(),
     getSceneRecap(novelId, eventId),
+    getPowersByNovelId(novelId),
+    getItemsByNovelId(novelId),
   ]);
 
   if (!eventRes.success || !eventRes.event) {
@@ -90,6 +94,8 @@ export default async function PlotPlaygroundPage({
           ideas={ideasRes.data || []}
           threads={threadsRes.data || []}
           factions={factionsRes.data || []}
+          powers={powersRes.data || []}
+          items={itemsRes.data || []}
           tonePresets={toneRes.data || []}
           initialEchoFindings={initialEchoFindings}
           initialSceneRecap={sceneRecap}

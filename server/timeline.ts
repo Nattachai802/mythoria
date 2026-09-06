@@ -187,7 +187,7 @@ export async function getNovelDummyParticipants(novelId: string) {
 const NEARBY_SCENE_WINDOW = 2;
 
 export type NearbyParticipants = {
-    /** ตัวจริงที่อยู่ใน N ฉากก่อนหน้า — เรียงจากฉากใกล้สุดก่อน */
+    /** ตัวจริง (ตัวละคร/ฝ่าย/พลัง/ของ) ที่อยู่ใน N ฉากก่อนหน้า — เรียงจากฉากใกล้สุดก่อน */
     recentIds: string[];
     /** ชื่อ dummy ที่อยู่ใน N ฉากก่อนหน้า — เรียงจากฉากใกล้สุดก่อน */
     recentDummyTitles: string[];
@@ -235,7 +235,7 @@ export async function getNearbyParticipants(novelId: string, sceneId: string) {
                 .where(and(
                     eq(sceneElementDetails.novelId, novelId),
                     inArray(sceneElementDetails.sceneId, prevScenes.map(s => s.id)),
-                    inArray(sceneElementDetails.elementType, ["character", "faction"]),
+                    inArray(sceneElementDetails.elementType, ["character", "faction", "power", "item"]),
                 ));
 
             // วนตามลำดับฉาก (ใกล้สุดก่อน) เพื่อให้ผลลัพธ์เรียงตามความใกล้ ไม่ใช่ลำดับที่ DB คืนมา
@@ -257,7 +257,7 @@ export async function getNearbyParticipants(novelId: string, sceneId: string) {
             .from(sceneElementDetails)
             .where(and(
                 eq(sceneElementDetails.novelId, novelId),
-                inArray(sceneElementDetails.elementType, ["character", "faction"]),
+                inArray(sceneElementDetails.elementType, ["character", "faction", "power", "item"]),
             ))
             .groupBy(sceneElementDetails.elementId)
             .orderBy(desc(count()))

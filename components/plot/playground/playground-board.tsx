@@ -16,6 +16,7 @@ import {
 import { ResourceSidebar } from "./resource-sidebar";
 import { CanvasItem, DraggableCanvasItem } from "./canvas-item";
 import { EchoScorePanel } from "./echo-score-panel";
+import { BeatCoachPanel } from "./beat-coach-panel";
 import { SceneRecapPanel } from "./scene-recap-panel";
 import type { EchoFinding } from "@/lib/echo-score";
 import type { CausalityVerdict } from "@/lib/plot-recap";
@@ -52,6 +53,9 @@ interface PlaygroundBoardProps {
     ideas: any[];
     threads?: ThreadWithBeats[];
     factions?: any[];
+    powers?: any[];
+    /** สิ่งของในนิยาย (ตาราง items) — alias เป็น worldItems ตอนรับ เพราะ items ในไฟล์นี้คือการ์ดบนแคนวาส */
+    items?: any[];
     boardChapters?: BoardChapter[]; // ตอนที่แบ่งไว้บนกระดานอื่นของนิยายเดียวกัน — ใช้อ้างอิงตอนตั้งชื่อ
     tonePresets?: { id: string; label: string; color: string }[];
     initialEchoFindings?: EchoFinding[];
@@ -901,6 +905,8 @@ export function PlaygroundBoard({
     ideas,
     threads = [],
     factions = [],
+    powers = [],
+    items: worldItems = [],
     boardChapters = [],
     tonePresets = [],
     initialEchoFindings = [],
@@ -2177,6 +2183,8 @@ export function PlaygroundBoard({
             characters={characters}
             novelDummyNames={novelDummyNames}
             factions={factions}
+            powers={powers}
+            items={worldItems}
             ideas={ideas}
             onAddChild={handleAddChild}
             onUpdateChild={handleUpdateChild}
@@ -2229,6 +2237,8 @@ export function PlaygroundBoard({
                                 locations={locations}
                                 ideas={ideas}
                                 factions={factions}
+                                powers={powers}
+                                items={worldItems}
                                 onCollapse={() => setSidebarCollapsed(true)}
                             />
                         </div>
@@ -2331,6 +2341,16 @@ export function PlaygroundBoard({
                             novelId={novelId}
                             sceneId={eventId}
                             initialRecap={initialSceneRecap}
+                        />
+
+                        {/* ผู้ช่วยดูจังหวะ — อ่านจาก items ใน state ตรง ๆ (pacing ถูก merge จาก ideas ตอน build แล้ว)
+                            นับเฉพาะการ์ดเหตุการณ์: โน้ต/กลุ่มไม่ใช่จังหวะการเล่า */}
+                        <BeatCoachPanel
+                            novelId={novelId}
+                            sceneId={eventId}
+                            cards={items
+                                .filter((it: any) => it.type === "idea")
+                                .map((it: any) => ({ id: it.referenceId || it.id, beatIndex: it.beatIndex ?? 0, pacing: typeof it.pacing === "number" ? it.pacing : null }))}
                         />
 
                         <div className="flex-1" />

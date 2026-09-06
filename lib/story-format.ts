@@ -108,6 +108,8 @@ const TYPE_LABEL: Record<string, string> = {
     building: "สถานที่",
     location: "สถานที่",
     faction: "กลุ่ม",
+    power: "พลัง",
+    item: "ของ/สิ่งของ",
     idea: "ไอเดีย",
     group: "กลุ่มการ์ด",
     "sticky-note": "โน้ต",

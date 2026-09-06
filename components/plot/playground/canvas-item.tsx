@@ -47,6 +47,8 @@ export function DraggableCanvasItem({
   characters,
   novelDummyNames,
   factions,
+  powers,
+  items,
   ideas,
   onAddChild,
   onUpdateChild,
@@ -96,6 +98,8 @@ export function DraggableCanvasItem({
   characters?: any[];
   novelDummyNames?: string[];
   factions?: any[];
+  powers?: any[];
+  items?: any[];
   ideas?: any[];
   onAddChild?: (ideaId: string, child: any) => void;
   onUpdateChild?: (parentId: string, childId: string, patch: any) => void;
@@ -203,6 +207,8 @@ export function DraggableCanvasItem({
         characters={characters}
         novelDummyNames={novelDummyNames}
         factions={factions}
+        powers={powers}
+        items={items}
         ideas={ideas}
         onAddChild={onAddChild}
         onUpdateChild={onUpdateChild}
@@ -353,6 +359,8 @@ export function CanvasItem({
   characters,
   novelDummyNames,
   factions,
+  powers,
+  items,
   ideas,
   onAddChild,
   onUpdateChild,
@@ -400,6 +408,8 @@ export function CanvasItem({
   characters?: any[];
   novelDummyNames?: string[];
   factions?: any[];
+  powers?: any[];
+  items?: any[];
   ideas?: any[];
   onAddChild?: (ideaId: string, child: any) => void;
   onUpdateChild?: (parentId: string, childId: string, patch: any) => void;
@@ -437,6 +447,8 @@ export function CanvasItem({
         characters={characters}
         novelDummyNames={novelDummyNames}
         factions={factions}
+        powers={powers}
+        items={items}
         ideas={ideas}
         onAddChild={onAddChild}
         onUpdateChild={onUpdateChild}
