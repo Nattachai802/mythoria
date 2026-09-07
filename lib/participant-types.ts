@@ -124,3 +124,25 @@ export function flattenSystemEntries(
     }
     return out;
 }
+
+// ─── การผูกกันเป็นชั้น (P-nest) ────────────────────────────────────────
+// children ของการ์ดไอเดียเดิมเป็นลิสต์แบน เพิ่มอะไรก็ต่อท้ายไปเรื่อย ๆ
+// ทั้งที่ของพวกนี้มีความสัมพันธ์กันจริง: ตัวละครสังกัดฝ่าย, ของมีคนถือ, พลังมีคนใช้
+// ผูกด้วยมือผ่าน children[].parentChildId (เก็บใน canvasData ไม่มีตารางใหม่)
+
+/** ชนิดที่ "รับลูก" ได้ → รับลูกชนิดไหนได้บ้าง (dummy ใช้กฎเดียวกับตัวจริง) */
+export const CAN_CONTAIN: Record<string, string[]> = {
+    faction: ["character", "faction", "entity", "power", "item", "system"],
+    location: ["character", "faction", "entity", "item", "power", "system"],
+    character: ["power", "item", "entity", "system"],
+    entity: ["power", "item", "system"],
+};
+
+/** dummy_character → character (กฎผูกไม่แยก dummy กับตัวจริง) */
+export const baseParticipantType = (type: string) =>
+    type === "dummy_character" ? "character" : type === "dummy_faction" ? "faction" : type;
+
+/** ผูก child ไว้ใต้ parent ได้ไหม — ดูเฉพาะชนิด ไม่รวมเรื่องผูกวน */
+export function canContainChild(parentType: string, childType: string): boolean {
+    return (CAN_CONTAIN[baseParticipantType(parentType)] ?? []).includes(baseParticipantType(childType));
+}

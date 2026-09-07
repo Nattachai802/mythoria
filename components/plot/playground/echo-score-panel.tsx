@@ -67,7 +67,7 @@ export function EchoScorePanel({ novelId, sceneId, findingCount, onFindingsChang
             variant="ghost"
             onClick={handleRun}
             disabled={isPending}
-            className="h-8 gap-1.5 text-xs"
+            className="h-8 gap-1.5 text-xs pointer-coarse:h-11"
             title="หาจังหวะที่เดาได้ (Echo Score) — ผลขึ้นเป็น label บนการ์ด"
         >
             {isPending ? (

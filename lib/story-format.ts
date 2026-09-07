@@ -11,11 +11,13 @@
  */
 
 import { normalizeLink, LINK_KINDS, type CanvasLink } from "./link-kinds";
+import { resolveNesting, type NestWorld } from "./participant-nest";
 
 // ─── Version ───────────────────────────────────────────────────────────
 export const FORMAT_VERSION = "1";
 
 // ─── Types ─────────────────────────────────────────────────────────────
+
 
 export interface CastEntry {
     alias: string | null;   // "@A" หรือ null ถ้าโผล่ครั้งเดียว
@@ -31,6 +33,10 @@ export interface BeatParticipant {
     action?: string | null;
     goal?: string | null;
     outcome?: string | null;
+    /** ชั้นในโครง 0 = บนสุด (P-nest) */
+    depth?: number;
+    /** ความสัมพันธ์กับตัวแม่ — "สังกัด" / "ถือ" / "ใช้" / null = ผูกเอง */
+    relation?: string | null;
 }
 
 export interface ThreadTouch {
@@ -175,7 +181,7 @@ export interface SceneFormatInput {
         laneId: string;
         isNarration?: boolean;
         keyMomentLabel?: string | null;
-        children?: Array<{ id: string; referenceId?: string; title: string; type: string }>;
+        children?: Array<{ id: string; referenceId?: string; title: string; type: string; parentChildId?: string | null }>;
         links?: unknown[];
     }>;
     lanes: Array<{ id: string; name: string }>;
@@ -189,12 +195,14 @@ export interface SceneFormatInput {
     eventId: string;
     elementDetails: Map<string, { action?: string | null; goal?: string | null; outcome?: string | null }>;
     ideaNotes: Array<{ canvasItemId?: string | null; notes?: string | null }>;
+    /** ความสัมพันธ์จากตารางโลก ใช้อนุมานโครงชั้น — ไม่ส่งมา = นับเฉพาะที่ผู้ใช้ผูกเอง */
+    nestWorld?: NestWorld;
 }
 
 // ─── buildSceneFormat ──────────────────────────────────────────────────
 
 export function buildSceneFormat(input: SceneFormatInput): SceneFormat {
-    const { event, items, lanes, threads, eventId, elementDetails, ideaNotes } = input;
+    const { event, items, lanes, threads, eventId, elementDetails, ideaNotes, nestWorld } = input;
 
     const laneName = new Map(lanes.map(l => [l.id, l.name]));
     const laneOrder = new Map(lanes.map((l, i) => [l.id, i]));
@@ -274,7 +282,9 @@ export function buildSceneFormat(input: SceneFormatInput): SceneFormat {
 
         // participants
         const kids = (item.children ?? []) as any[];
-        const participants: BeatParticipant[] = kids.map(c => {
+        // เรียงตามโครงชั้น (P-nest) แทนลำดับที่เพิ่ม — LLM จะได้อ่านออกว่าใครถือของใคร
+        const nest = resolveNesting(kids, nestWorld ?? {});
+        const toParticipant = (c: any, depth: number, relation: string | null): BeatParticipant => {
             const det = elementDetails.get(`${item.id}-${c.type}-${c.referenceId || c.id}`);
             return {
                 alias: aliasOf.get(castKey(c)) ?? null,
@@ -283,8 +293,18 @@ export function buildSceneFormat(input: SceneFormatInput): SceneFormat {
                 action: det?.action ?? null,
                 goal: det?.goal ?? null,
                 outcome: det?.outcome ? (OUTCOME_LABEL[det.outcome] ?? det.outcome) : null,
+                depth,
+                relation,
             };
-        });
+        };
+        const participants: BeatParticipant[] = [];
+        const walk = (parentId: string | null, depth: number) => {
+            kids.filter(c => (nest.get(c.id)?.parentId ?? null) === parentId).forEach(c => {
+                participants.push(toParticipant(c, depth, nest.get(c.id)?.label ?? null));
+                walk(c.id, depth + 1);
+            });
+        };
+        walk(null, 0);
 
         // links
         const rawLinks = (item.links ?? []).map(normalizeLink)
@@ -462,7 +482,9 @@ export function renderSceneMarkdown(format: SceneFormat): string {
                     p.outcome && `ผล: ${p.outcome}`,
                 ].filter(Boolean);
                 const who = p.alias ?? p.name;
-                L.push(`- ${p.type} — ${who}${bits.length ? ` · ${bits.join(" · ")}` : ""}`);
+                const pad = "  ".repeat(p.depth ?? 0);
+                const rel = p.relation ? `${p.relation}: ` : "";
+                L.push(`${pad}- ${rel}${p.type} — ${who}${bits.length ? ` · ${bits.join(" · ")}` : ""}`);
             });
         }
 

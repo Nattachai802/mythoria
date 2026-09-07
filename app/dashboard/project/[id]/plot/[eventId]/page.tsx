@@ -13,10 +13,9 @@ import { getWorldSystemsByNovelId } from "@/server/world-systems";
 import { getEchoFindings } from "@/server/plot-analysis";
 import { getSceneRecap } from "@/server/plot-recap";
 import { getTonePresets } from "@/server/tone-presets";
+import { getParticipantLinks } from "@/server/participant-links";
 import { PlaygroundBoard } from "@/components/plot/playground/playground-board";
 import { SceneNavigator } from "@/components/plot/playground/scene-navigator";
-import { SceneDramaticPanel } from "@/components/plot/playground/scene-dramatic-panel";
-import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
 import { notFound } from "next/navigation";
 
 interface PlotPlaygroundPageProps {
@@ -35,7 +34,7 @@ export default async function PlotPlaygroundPage({
   const { action } = await searchParams;
 
   // Fetch all necessary data in parallel
-  const [eventRes, charactersRes, locationsRes, ideasRes, eventsRes, chaptersRes, novelRes, threadsRes, factionsRes, boardChaptersRes, echoRes, toneRes, sceneRecap, powersRes, itemsRes, entitiesRes, systemsRes] = await Promise.all([
+  const [eventRes, charactersRes, locationsRes, ideasRes, eventsRes, chaptersRes, novelRes, threadsRes, factionsRes, boardChaptersRes, echoRes, toneRes, sceneRecap, powersRes, itemsRes, entitiesRes, systemsRes, participantLinks] = await Promise.all([
     getTimelineEventById(eventId),
     getCharactersByNovelId(novelId),
     getLocationsByNovelId(novelId),
@@ -53,6 +52,7 @@ export default async function PlotPlaygroundPage({
     getItemsByNovelId(novelId),
     getEntitiesByNovelId(novelId),
     getWorldSystemsByNovelId(novelId),
+    getParticipantLinks(novelId),
   ]);
 
   if (!eventRes.success || !eventRes.event) {
@@ -66,24 +66,18 @@ export default async function PlotPlaygroundPage({
 
   return (
     <div className="h-[calc(100vh-4rem)] overflow-hidden flex flex-col">
-      <div className="border-b bg-background p-4 flex flex-col gap-2">
-        <ProjectBreadcrumb
+      {/* header แถวเดียว — SceneNavigator มีปุ่มย้อนกลับในตัวอยู่แล้ว ไม่ต้องมี breadcrumb เต็มซ้ำอีกชั้น
+          โครงฉากดราม่าย้ายไปอยู่ในทูลบาร์กระดาน เพราะเป็นข้อมูลอ้างอิง ไม่ใช่ของที่ต้องเห็นตลอด */}
+      <div className="border-b bg-background px-4 py-2 flex items-center gap-3">
+        <SceneNavigator
           novelId={novelId}
-          novelTitle={novelTitle}
-          items={[
-            { label: "Plot Board", href: `/dashboard/project/${novelId}/plot` },
-            { label: eventRes.event.title }
-          ]}
+          currentEvent={eventRes.event}
+          events={eventsRes.events || []}
+          chapters={chaptersRes.chapters || []}
         />
-        <div className="flex items-center gap-2 flex-wrap">
-          <SceneNavigator
-            novelId={novelId}
-            currentEvent={eventRes.event}
-            events={eventsRes.events || []}
-            chapters={chaptersRes.chapters || []}
-          />
-          <SceneDramaticPanel event={eventRes.event} characters={charactersRes.data || []} events={eventsRes.events || []} />
-        </div>
+        <span className="truncate text-xs text-muted-foreground" title={novelTitle}>
+          {novelTitle}
+        </span>
       </div>
 
       <div className="flex-1 overflow-hidden">
@@ -91,10 +85,10 @@ export default async function PlotPlaygroundPage({
           eventId={eventId}
           novelId={novelId}
           event={eventRes.event}
+          sceneEvents={eventsRes.events || []}
           initialItems={initialCanvasData as any[]}
           boardChapters={boardChaptersRes.data || []}
           characters={charactersRes.data || []}
-          locations={locationsRes.data || []}
           ideas={ideasRes.data || []}
           threads={threadsRes.data || []}
           factions={factionsRes.data || []}
@@ -104,6 +98,7 @@ export default async function PlotPlaygroundPage({
           worldSystems={systemsRes.data || []}
           tonePresets={toneRes.data || []}
           initialEchoFindings={initialEchoFindings}
+          participantLinks={participantLinks}
           initialSceneRecap={sceneRecap}
         />
       </div>

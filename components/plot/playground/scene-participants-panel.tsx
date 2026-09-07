@@ -12,19 +12,18 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import {
-    Users, User, Trash2, Plus, Check, Shield, Zap, Gem, PawPrint, Layers, Loader2, Route, UserCheck, UsersRound, ChevronLeft,
+    Users, User, Plus, Check, Shield, Loader2, UserCheck, UsersRound, ChevronLeft,
 } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
-import { upsertSceneElementDetail, deleteSceneElementDetail } from "@/server/scene-element-details"
+import { upsertSceneElementDetail } from "@/server/scene-element-details"
 import { getNovelDummyParticipants, getNearbyParticipants, type SceneDummies, type NearbyParticipants } from "@/server/timeline"
 import {
     PARTICIPANT_KINDS, PARTICIPANT_KEYS, PARTICIPANT_TYPES, kindOf, isDummyType as isDummyKind,
     flattenSystemEntries, type ParticipantKindKey,
 } from "@/lib/participant-types"
 import { SceneElementDetails } from "@/db/schema"
-import { CharacterThroughLine } from "./character-through-line"
 
 export const ROLES = [
     { value: "protagonist", label: "ตัวหลัก/ผู้ร่วมมือ", cls: "text-amber-500 bg-amber-500/10 border-amber-500/20" },
@@ -33,8 +32,6 @@ export const ROLES = [
     { value: "victim", label: "ผู้รับเคราะห์/เหยื่อ", cls: "text-purple-500 bg-purple-500/10 border-purple-500/20" },
 ]
 
-/** map ชื่อไอคอนใน registry → component (registry ไม่ผูกกับ lucide เอง) */
-const ICONS: Record<string, typeof User> = { User, Shield, Zap, Gem, PawPrint, Layers }
 
 interface Props {
     ideaItem: any // canvas item ที่เป็น idea (มี children)
@@ -46,20 +43,13 @@ interface Props {
     items?: any[]
     entities?: any[]
     worldSystems?: any[]
-    elementDetails?: Map<string, SceneElementDetails>
     onAddChild: (ideaId: string, child: any) => void
-    onPromoteDummy?: (dummy: any, realId: string, scope?: "scene" | "all") => void
-    onRemoveChild: (childId: string) => void
     onDetailSaved: (detail: SceneElementDetails) => void
 }
 
-// key format ต้องตรงกับ playground-board: canvasItemId-elementType-elementId
-const detailKey = (ideaId: string, child: any) =>
-    `${ideaId}-${child.type}-${child.referenceId || child.refId || child.id}`
-
 export function SceneParticipantsPanel({
     ideaItem, sceneId, novelId, characters, factions, powers = [], items = [], entities = [], worldSystems = [],
-    elementDetails, onAddChild, onPromoteDummy, onRemoveChild, onDetailSaved,
+    onAddChild, onDetailSaved,
 }: Props) {
     const [open, setOpen] = useState(false)
     const [isPending, startTransition] = useTransition()
@@ -71,12 +61,7 @@ export function SceneParticipantsPanel({
     const [action, setAction] = useState("")
     const [role, setRole] = useState("protagonist")
 
-    // Inline edit
-    const [editingChildId, setEditingChildId] = useState<string | null>(null)
-    const [editForm, setEditForm] = useState({ action: "", role: "protagonist" })
 
-    // Through-line viewer (B)
-    const [throughLine, setThroughLine] = useState<{ type: "character" | "faction"; id: string; name: string } | null>(null)
 
     // รายการให้เลือกตามชนิดที่เลือกอยู่ — ที่เดียว กันหลุดเวลาเพิ่มชนิดใหม่
     // แหล่งข้อมูลของแต่ละชนิด — ที่เดียว เพิ่มชนิดใหม่แก้ตรงนี้จุดเดียว
@@ -244,99 +229,52 @@ export function SceneParticipantsPanel({
         })
     }
 
-    const handleDelete = (child: any) => {
-        startTransition(async () => {
-            onRemoveChild(child.id)
-            const detail = elementDetails?.get(detailKey(ideaItem.id, child))
-            if (detail) {
-                await deleteSceneElementDetail(detail.id, novelId, sceneId)
-            }
-            toast.success("ลบผู้เข้าร่วมแล้ว")
-        })
-    }
-
-    const startEdit = (child: any) => {
-        const detail = elementDetails?.get(detailKey(ideaItem.id, child))
-        setEditingChildId(child.id)
-        setEditForm({
-            action: detail?.action || "",
-            role: detail?.role || child.role || "protagonist",
-        })
-    }
-
-    const saveEdit = (child: any) => {
-        startTransition(async () => {
-            const detail = elementDetails?.get(detailKey(ideaItem.id, child))
-            const res = await upsertSceneElementDetail({
-                id: detail?.id,
-                sceneId,
-                elementType: child.type,
-                elementId: child.referenceId || child.refId || child.id,
-                canvasItemId: ideaItem.id,
-                action: editForm.action.trim() || undefined,
-                role: editForm.role,
-                // คงค่า field ที่ panel นี้ไม่ได้แก้ (แก้ผ่าน dialog ดินสอ)
-                how: detail?.how || undefined,
-                goal: detail?.goal || undefined,
-                outcome: detail?.outcome || undefined,
-                notes: detail?.notes || undefined,
-                novelId,
-            })
-            if (res.success && res.data) {
-                onDetailSaved(res.data)
-                setEditingChildId(null)
-                toast.success("อัปเดตข้อมูลผู้เข้าร่วมแล้ว")
-            } else {
-                toast.error("อัปเดตไม่สำเร็จ")
-            }
-        })
-    }
-
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
-                <Button
-                    variant="ghost"
-                    size="sm"
+                <button
+                    type="button"
+                    aria-label="เพิ่มตัวละคร / กลุ่มฝ่าย / พลัง / ของ เข้าไอเดียนี้"
                     className={cn(
-                        "h-5 px-1 text-[8px] font-technical uppercase gap-0.5 shrink-0",
-                        participants.length > 0
-                            ? "text-[var(--forge-amber)] hover:text-[var(--forge-amber)]"
-                            : "text-muted-foreground hover:text-primary"
+                        // เข้าชุดกับปุ่ม "เพิ่มโน้ต" ในไดอะล็อกเดียวกัน — เส้นประ เต็มความกว้าง มีป้ายกำกับ
+                        // (เดิมเป็นปุ่มไอคอนสี่เหลี่ยมลอยเดี่ยว ไม่มีป้าย เดาไม่ออกว่ากดแล้วเพิ่มอะไร)
+                        "flex w-full items-center justify-center gap-1 rounded-md border border-dashed px-2 py-1.5 text-xs transition-colors min-h-[34px] pointer-coarse:min-h-[44px]",
+                        "border-[var(--forge-amber)]/30 text-[var(--forge-amber)]/80 hover:border-[var(--forge-amber)]/50 hover:bg-amber-500/5 hover:text-[var(--forge-amber)]"
                     )}
                     onClick={(e) => e.stopPropagation()}
                     onPointerDown={(e) => e.stopPropagation()}
                 >
-                    <Users className="w-2.5 h-2.5" />
-                    ผู้เข้าร่วม ({participants.length})
-                </Button>
+                    <Plus className="w-3 h-3" />
+                    {participants.length > 0 ? `เพิ่มผู้เข้าร่วม (${participants.length})` : "เพิ่มผู้เข้าร่วม"}
+                </button>
             </PopoverTrigger>
             <PopoverContent
-                className="w-[300px] p-0 overflow-hidden"
+                // ตัวไดอะล็อกไอเดียเป็นแผงชิดขอบขวา — ออกซ้ายจึงไม่บังตัวเอง
+                // ถ้าซ้ายไม่พอ Radix พลิกไปขวาเองอัตโนมัติ
+                side="left"
                 align="start"
+                sideOffset={8}
+                className="w-[340px] p-0 overflow-hidden flex flex-col max-h-[var(--radix-popover-content-available-height)]"
+                collisionPadding={12}
                 onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="flex items-center gap-2 px-2.5 py-1.5 bg-zinc-900 border-b border-zinc-700/60">
+                <div className="shrink-0 flex items-center gap-2 px-2.5 py-1.5 bg-zinc-900 border-b border-zinc-700/60">
                     <Users className="h-3 w-3 text-[var(--forge-amber)]" />
                     <span className="font-technical text-[9px] uppercase tracking-widest text-zinc-300 truncate">
-                        ผู้เข้าร่วม: {ideaItem.title}
+                        เพิ่มผู้เข้าร่วม: {ideaItem.title}
                     </span>
                 </div>
 
-                <div className="p-2 space-y-2.5 max-h-[65vh] overflow-y-auto">
+                <div className="p-2 space-y-2.5 flex-1 min-h-0 overflow-y-auto">
                     {/* Add Form */}
                     <div className="bg-muted/30 p-2 rounded border border-border/40 space-y-1.5">
-                        <span className="text-[9px] uppercase tracking-wide text-muted-foreground font-technical font-semibold flex items-center gap-1">
-                            <Plus className="w-3 h-3 text-[var(--forge-amber)]" /> เพิ่มผู้ร่วมไอเดีย
-                        </span>
 
                         <div className="grid grid-cols-2 gap-2">
                             <div className="space-y-1 min-w-0">
-                                <label className="text-[9px] font-technical text-muted-foreground uppercase">ประเภท</label>
                                 <Select value={partType} onValueChange={(v: any) => { setPartType(v); setSelectedEntityId("") }}>
-                                    <SelectTrigger className="h-7 w-full text-xs border-steel-800 [&>span]:truncate">
+                                    <SelectTrigger className="h-8 w-full text-xs border-steel-800 [&>span]:truncate">
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -350,9 +288,8 @@ export function SceneParticipantsPanel({
                             </div>
 
                             <div className="space-y-1 min-w-0">
-                                <label className="text-[9px] font-technical text-muted-foreground uppercase">บทบาท</label>
                                 <Select value={role} onValueChange={setRole}>
-                                    <SelectTrigger className="h-7 w-full text-xs border-steel-800 [&>span]:truncate">
+                                    <SelectTrigger className="h-8 w-full text-xs border-steel-800 [&>span]:truncate">
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -367,7 +304,7 @@ export function SceneParticipantsPanel({
                         {/* ชิปกดเร็วของ dummy — นับตามชื่อว่าเคยโผล่ในกี่ฉาก (ดู dummyQuickPicks) */}
                         {dummyQuickPicks.length > 0 && (
                             <div className="space-y-1">
-                                <label className="text-[9px] font-technical text-muted-foreground uppercase">
+                                <label className="text-[10px] font-technical text-muted-foreground uppercase">
                                     ชื่อชั่วคราวที่ใช้บ่อย
                                 </label>
                                 <div className="flex flex-wrap gap-1">
@@ -383,7 +320,7 @@ export function SceneParticipantsPanel({
                                                     ? "อยู่ในไอเดียนี้แล้ว"
                                                     : `เพิ่ม ${d.title}${d.isRecent ? " · อยู่ในฉากก่อนหน้า" : ""} (เคยใช้ ${d.scenes} ฉาก)`}
                                                 className={cn(
-                                                    "chamfered-sm border px-1.5 py-0.5 text-[10px] max-w-[110px] truncate transition-colors",
+                                                    "chamfered-sm border px-2 py-1 text-[11px] max-w-[150px] inline-flex items-center gap-1 min-h-[26px] transition-colors",
                                                     already
                                                         ? "border-border/40 bg-muted/30 text-muted-foreground/50 cursor-default"
                                                         : d.isRecent
@@ -391,7 +328,8 @@ export function SceneParticipantsPanel({
                                                             : "border-dashed border-border bg-muted/20 hover:border-[var(--forge-amber)] hover:text-[var(--forge-amber)]"
                                                 )}
                                             >
-                                                {already ? "✓ " : "+ "}{d.title}
+                                                {already ? <Check className="w-2.5 h-2.5 shrink-0" /> : <Plus className="w-2.5 h-2.5 shrink-0" />}
+                                                <span className="truncate">{d.title}</span>
                                             </button>
                                         )
                                     })}
@@ -402,7 +340,7 @@ export function SceneParticipantsPanel({
                         {/* ชิปกดเร็ว — ใช้บ่อยอยู่ซ้ายสุด กดครั้งเดียวเพิ่มเลยด้วยบทบาท/action ที่ตั้งไว้ในฟอร์ม */}
                         {quickPicks.length > 0 && (
                             <div className="space-y-1">
-                                <label className="text-[9px] font-technical text-muted-foreground uppercase">
+                                <label className="text-[10px] font-technical text-muted-foreground uppercase">
                                     {cfg?.quickPickLabel ?? "ใช้บ่อย"}
                                 </label>
                                 <div className="flex flex-wrap gap-1">
@@ -418,7 +356,7 @@ export function SceneParticipantsPanel({
                                                     ? "อยู่ในไอเดียนี้แล้ว"
                                                     : `เพิ่ม ${e.name} เข้าไอเดีย${e.isRecent ? " · อยู่ในฉากก่อนหน้า" : ""}`}
                                                 className={cn(
-                                                    "chamfered-sm border px-1.5 py-0.5 text-[10px] max-w-[110px] truncate transition-colors",
+                                                    "chamfered-sm border px-2 py-1 text-[11px] max-w-[150px] inline-flex items-center gap-1 min-h-[26px] transition-colors",
                                                     already
                                                         ? "border-border/40 bg-muted/30 text-muted-foreground/50 cursor-default"
                                                         : e.isRecent
@@ -426,7 +364,8 @@ export function SceneParticipantsPanel({
                                                             : "border-border bg-card hover:border-[var(--forge-amber)] hover:text-[var(--forge-amber)]"
                                                 )}
                                             >
-                                                {already ? "✓ " : "+ "}{e.name}
+                                                {already ? <Check className="w-2.5 h-2.5 shrink-0" /> : <Plus className="w-2.5 h-2.5 shrink-0" />}
+                                                <span className="truncate">{e.name}</span>
                                             </button>
                                         )
                                     })}
@@ -435,10 +374,10 @@ export function SceneParticipantsPanel({
                         )}
 
                         <div className="space-y-1">
-                            <label className="text-[9px] font-technical text-muted-foreground uppercase">ชื่อผู้ร่วมไอเดีย</label>
+                            <label className="text-[10px] font-technical text-muted-foreground uppercase">ชื่อผู้ร่วมไอเดีย</label>
                             {!isDummyType ? (
                                 <Select value={selectedEntityId} onValueChange={setSelectedEntityId}>
-                                    <SelectTrigger className="h-7 text-xs border-steel-800">
+                                    <SelectTrigger className="h-8 text-xs border-steel-800">
                                         <SelectValue placeholder={cfg?.pickPlaceholder ?? "เลือก..."} />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -453,7 +392,7 @@ export function SceneParticipantsPanel({
                                         value={dummyName}
                                         onChange={e => setDummyName(e.target.value)}
                                         placeholder={partType === "dummy_character" ? "เช่น ทหารยาม, ชายสวมผ้าคลุม" : "เช่น กองกำลังไม่ทราบชื่อ"}
-                                        className="h-7 text-xs chamfered-sm flex-1"
+                                        className="h-8 text-xs chamfered-sm flex-1"
                                     />
                                     <ReuseDummyPicker
                                         scenes={dummyScenes}
@@ -467,162 +406,23 @@ export function SceneParticipantsPanel({
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-[9px] font-technical text-muted-foreground uppercase">{cfg?.actionLabel ?? "ทำอะไรในซีนนี้"}</label>
+                            <label className="text-[10px] font-technical text-muted-foreground uppercase">{cfg?.actionLabel ?? "ทำอะไรในซีนนี้"}</label>
                             <Input
                                 value={action}
                                 onChange={e => setAction(e.target.value)}
                                 placeholder={cfg?.actionPlaceholder ?? ""}
-                                className="h-7 text-xs chamfered-sm"
+                                className="h-8 text-xs chamfered-sm"
                             />
                         </div>
 
-                        <Button size="sm" className="w-full h-7 gap-1 chamfered-sm text-xs" onClick={() => handleAdd()} disabled={isPending}>
+                        <Button size="sm" variant="outline" className="w-full h-8 gap-1 chamfered-sm text-xs" onClick={() => handleAdd()} disabled={isPending}>
                             {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                             เพิ่มเข้าไอเดีย
                         </Button>
                     </div>
 
-                    {/* Participants List */}
-                    <div className="space-y-2">
-                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-technical font-semibold">
-                            รายชื่อผู้เข้าร่วม ({participants.length})
-                        </span>
-
-                        {participants.length === 0 ? (
-                            <p className="text-xs text-muted-foreground text-center py-6 bg-muted/10 rounded border border-dashed border-border/40">
-                                ยังไม่มีผู้เข้าร่วมในไอเดียนี้
-                            </p>
-                        ) : (
-                            <div className="space-y-2">
-                                {participants.map((child: any) => {
-                                    const detail = elementDetails?.get(detailKey(ideaItem.id, child))
-                                    const isEditing = editingChildId === child.id
-                                    const currentRole = ROLES.find(r => r.value === (detail?.role || child.role)) || ROLES[0]
-                                    const isDummy = child.type === "dummy_character" || child.type === "dummy_faction"
-                                    const isFaction = child.type === "faction" || child.type === "dummy_faction"
-                                    const childKind = kindOf(child.type)
-                                    const TypeIcon = childKind ? (ICONS[childKind.icon] ?? User) : (isFaction ? Shield : User)
-
-                                    return (
-                                        <div
-                                            key={child.id}
-                                            className={cn(
-                                                "p-2.5 rounded border text-xs relative group transition-colors",
-                                                isDummy ? "border-dashed border-border bg-muted/40" : "border-border bg-card"
-                                            )}
-                                        >
-                                            <div className="flex items-center justify-between gap-2 mb-1.5">
-                                                <div className="flex items-center gap-1.5 min-w-0">
-                                                    <TypeIcon className={cn("w-3.5 h-3.5 shrink-0", isDummy ? "text-muted-foreground" : childKind?.color ?? "text-blue-500")} />
-                                                    <span className="font-semibold text-foreground truncate">
-                                                        {child.title}
-                                                        {isDummy && <span className="text-[8px] text-muted-foreground ml-1">(Dummy)</span>}
-                                                    </span>
-                                                </div>
-
-                                                <div className="flex items-center gap-1 shrink-0">
-                                                    <span className={cn("px-1.5 py-0.5 rounded-[3px] text-[8px] font-technical uppercase border tracking-wider", currentRole.cls)}>
-                                                        {currentRole.label}
-                                                    </span>
-                                                    {!isDummy && child.referenceId && (
-                                                        <button
-                                                            onClick={() => setThroughLine({
-                                                                type: isFaction ? "faction" : "character",
-                                                                id: child.referenceId,
-                                                                name: child.title,
-                                                            })}
-                                                            className="text-muted-foreground hover:text-[var(--forge-amber)] p-0.5 transition-colors opacity-0 group-hover:opacity-100"
-                                                            title="ดูเส้นเรื่องข้ามฉาก"
-                                                        >
-                                                            <Route className="w-3.5 h-3.5" />
-                                                        </button>
-                                                    )}
-                                                    {isDummy && onPromoteDummy && (
-                                                        <PromoteDummyButton
-                                                            dummy={child}
-                                                            characters={characters}
-                                                            factions={factions}
-                                                            onPromote={onPromoteDummy}
-                                                        />
-                                                    )}
-                                                    <button
-                                                        onClick={() => handleDelete(child)}
-                                                        className="text-muted-foreground hover:text-red-500 p-0.5 transition-colors opacity-0 group-hover:opacity-100"
-                                                        title="ลบ"
-                                                    >
-                                                        <Trash2 className="w-3.5 h-3.5" />
-                                                    </button>
-                                                </div>
-                                            </div>
-
-                                            {isEditing ? (
-                                                <div className="space-y-2 mt-2 pt-2 border-t border-border/40">
-                                                    <div className="space-y-1">
-                                                        <label className="text-[8px] font-technical text-muted-foreground uppercase">ทำอะไรในซีนนี้</label>
-                                                        <Input
-                                                            value={editForm.action}
-                                                            onChange={e => setEditForm({ ...editForm, action: e.target.value })}
-                                                            placeholder="เช่น ลอบโจมตีเพื่อชิงหลักฐาน แต่ถูกจับได้"
-                                                            className="h-6 text-xs py-0 px-1 border-steel-800"
-                                                        />
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <label className="text-[8px] font-technical text-muted-foreground uppercase">บทบาท</label>
-                                                        <Select value={editForm.role} onValueChange={v => setEditForm({ ...editForm, role: v })}>
-                                                            <SelectTrigger className="h-6 text-xs border-steel-800">
-                                                                <SelectValue />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                {ROLES.map(r => (
-                                                                    <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
-                                                                ))}
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </div>
-                                                    <div className="flex justify-end gap-1.5">
-                                                        <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={() => setEditingChildId(null)}>
-                                                            ยกเลิก
-                                                        </Button>
-                                                        <Button size="sm" className="h-6 text-[10px] gap-0.5" onClick={() => saveEdit(child)} disabled={isPending}>
-                                                            <Check className="w-3 h-3" /> บันทึก
-                                                        </Button>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <div
-                                                    className="text-[11px] text-muted-foreground space-y-1 mt-1 cursor-pointer hover:bg-muted/10 p-1 rounded transition-colors"
-                                                    onClick={() => startEdit(child)}
-                                                    title="คลิกเพื่อแก้ไข"
-                                                >
-                                                    {detail?.action ? (
-                                                        <div>{detail.action}</div>
-                                                    ) : (
-                                                        <span className="text-[10px] italic text-muted-foreground/60">
-                                                            คลิกเพื่อเพิ่มว่าทำอะไรในซีนนี้...
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    )
-                                })}
-                            </div>
-                        )}
-                    </div>
                 </div>
             </PopoverContent>
-
-            {throughLine && (
-                <CharacterThroughLine
-                    open={!!throughLine}
-                    onOpenChange={(o) => !o && setThroughLine(null)}
-                    novelId={novelId}
-                    elementType={throughLine.type}
-                    elementId={throughLine.id}
-                    elementName={throughLine.name}
-                    currentSceneId={sceneId}
-                />
-            )}
         </Popover>
     )
 }
@@ -776,7 +576,7 @@ function ReuseDummyPicker({ scenes, partType, currentSceneId, existingTitles, on
 }
 
 // ปุ่มแปลง dummy → ตัวจริง: เลือกตัวละคร/กลุ่มฝ่ายจริงที่มีอยู่ แล้วแปลงทั้งฉาก
-function PromoteDummyButton({ dummy, characters, factions, onPromote }: {
+export function PromoteDummyButton({ dummy, characters, factions, onPromote }: {
     dummy: any
     characters: any[]
     factions: any[]
@@ -792,8 +592,11 @@ function PromoteDummyButton({ dummy, characters, factions, onPromote }: {
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
                 <button
-                    className="text-muted-foreground hover:text-emerald-500 p-0.5 transition-colors opacity-0 group-hover:opacity-100"
-                    title="แปลงเป็นตัวจริง"
+                    // แสดงตลอด ไม่ซ่อนหลัง hover — เป็นทางเดียวที่แปลง dummy เป็นตัวจริงได้
+                    // (และ group ของแถวในไดอะล็อกไอเดียชื่อ group/item ใช้ group-hover: เฉย ๆ ไม่ติด)
+                    className="shrink-0 rounded p-0.5 text-emerald-600/70 hover:bg-emerald-500/10 hover:text-emerald-500 transition-colors"
+                    title="แปลงเป็นตัวละคร/กลุ่มฝ่ายจริง"
+                    aria-label="แปลงเป็นตัวจริง"
                 >
                     <UserCheck className="w-3.5 h-3.5" />
                 </button>

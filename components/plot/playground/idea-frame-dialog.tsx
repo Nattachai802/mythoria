@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,14 +16,17 @@ import {
   Users, MapPin, X, Link as LinkIcon, Pencil, ExternalLink, Copy,
   GitBranchPlus, Shield, Check, MoreVertical, Loader2, Star, MessageCircle,
   BookOpen, Quote, StickyNote as StickyNoteIcon, Lightbulb, Sparkles,
-  Swords, RotateCcw, Flame, CheckCircle2,
+  Swords, RotateCcw, Flame, CheckCircle2, Route, GripVertical, CornerDownRight, Zap, Gem, PawPrint, Layers, User,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { mentionRangeAtCaret } from "@/lib/mentions";
 import { SceneElementDetails } from "@/db/schema";
-import { SceneParticipantsPanel } from "./scene-participants-panel";
+import { SceneParticipantsPanel, PromoteDummyButton } from "./scene-participants-panel";
+import { kindOf, canContainChild } from "@/lib/participant-types";
+import { resolveNesting, NEST_TOP } from "@/lib/participant-nest";
+import { CharacterThroughLine } from "./character-through-line";
 import { IdeaDramaticPanel } from "./idea-dramatic-panel";
 import { EchoGuessBadge } from "./echo-score-panel";
 import { runEchoScore } from "@/server/plot-analysis";
@@ -45,6 +48,9 @@ const ROLE_META: Record<string, { label: string; text: string; dot: string }> = 
   witness: { label: 'ผู้เห็นเหตุ', text: 'text-blue-600 dark:text-blue-400', dot: 'bg-blue-500' },
   victim: { label: 'เหยื่อ', text: 'text-purple-600 dark:text-purple-400', dot: 'bg-purple-500' },
 };
+// ไอคอนตามชนิดผู้ร่วมฉาก — registry เก็บชื่อไอคอนเป็น string ฝั่ง UI map เอง
+const NODE_ICONS: Record<string, typeof User> = { User, Shield, Zap, Gem, PawPrint, Layers };
+
 const roleMeta = (role?: string) => ROLE_META[(role || 'protagonist').toLowerCase()] ?? ROLE_META.protagonist;
 
 const frameNumber = (item: any) => `#${String((item.beatIndex ?? 0) + 1).padStart(3, "0")}`;
@@ -104,6 +110,7 @@ interface IdeaFilmCardProps {
   items?: any[];
   entities?: any[];
   worldSystems?: any[];
+  participantLinks?: { charFactions?: any[]; charPowers?: any[] };
   ideas?: any[];
   onAddChild?: (ideaId: string, child: any) => void;
   onUpdateChild?: (parentId: string, childId: string, patch: any) => void;
@@ -113,6 +120,7 @@ interface IdeaFilmCardProps {
   onSetSceneDrama?: (patch: Record<string, unknown>) => void;
   tonePresets?: { id: string; label: string; color: string }[];
   onSetKeyMoment?: (label: string | null) => void;
+  onRenameIdea?: (title: string) => void;
   onSetNarration?: (isNarration: boolean) => void;
   threadBeats?: ThreadBeat[];
   onOpenThreadBind?: () => void;
@@ -126,9 +134,9 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
     item, onRemove, onRemoveChild, isDragging, isOverlay, isOver, isLinkingSource, onLinkStart,
     elementDetails, onEditChild, ideaNotes, onQuickAddNote, onDeleteNote, onReorderNotes, novelId,
     onSetAncestor, ancestorConnections, onRemoveAncestor, sceneId, characters, novelDummyNames,
-    factions, powers, items, entities, worldSystems, ideas, onAddChild, onUpdateChild, onPromoteDummy, onDetailSaved, onSetColor,
+    factions, powers, items, entities, worldSystems, participantLinks, ideas, onAddChild, onUpdateChild, onPromoteDummy, onDetailSaved, onSetColor,
     onSetSceneDrama,
-    tonePresets = [], onSetKeyMoment, onSetNarration, threadBeats, onOpenThreadBind,
+    tonePresets = [], onSetKeyMoment, onRenameIdea, onSetNarration, threadBeats, onOpenThreadBind,
     sceneEchoFinding, onEchoResult,
   } = props;
 
@@ -138,7 +146,26 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
   const widthClass = isOverlay ? 'w-72' : 'w-full';
 
   const children = item.children || [];
-  const peopleNames = children.filter((c: any) => ['character', 'dummy_character', 'faction', 'dummy_faction'].includes(c.type)).map((c: any) => c.title);
+  // ชื่อคน/ฝ่ายบนการ์ดย่อ — สะท้อนโครงชั้นแบบย่อ "ฝ่าย › สมาชิก" แทนลิสต์แบน
+  // ไม่ทำเป็นต้นไม้จริงเพราะการ์ดกว้าง 280px เยื้องแล้วอ่านไม่ออก (P-nest)
+  const peopleNames = (() => {
+    const PEOPLE = ['character', 'dummy_character', 'faction', 'dummy_faction'];
+    const kids = children.filter((c: any) => c.type !== 'sticky-note');
+    const links = resolveNesting(kids, {
+      charFactions: participantLinks?.charFactions,
+      charPowers: participantLinks?.charPowers,
+      items: items as any[],
+      powers: powers as any[],
+    });
+    const people = kids.filter((c: any) => PEOPLE.includes(c.type));
+    const parentOf = (c: any) => links.get(c.id)?.parentId ?? null;
+    return people
+      .filter((c: any) => !people.some((p: any) => p.id === parentOf(c)))
+      .map((c: any) => {
+        const under = people.filter((k: any) => parentOf(k) === c.id).map((k: any) => k.title);
+        return under.length > 0 ? `${c.title} › ${under.join(', ')}` : c.title;
+      });
+  })();
   const locationCount = children.filter((c: any) => c.type === 'location').length;
   const stickyChildren = children.filter((c: any) => c.type === 'sticky-note');
   const thisIdeaNotes = (ideaNotes || [])
@@ -390,12 +417,14 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
         items={items}
         entities={entities}
         worldSystems={worldSystems}
+        participantLinks={participantLinks}
         ideas={ideas}
         onAddChild={onAddChild}
         onUpdateChild={onUpdateChild}
         onPromoteDummy={onPromoteDummy}
         onDetailSaved={onDetailSaved}
         onSetKeyMoment={onSetKeyMoment}
+        onRenameIdea={onRenameIdea}
         onSetSceneDrama={onSetSceneDrama}
         onOpenThreadBind={onOpenThreadBind}
         threadBeats={threadBeats}
@@ -428,12 +457,14 @@ interface IdeaFrameDialogProps {
   items?: any[];
   entities?: any[];
   worldSystems?: any[];
+  participantLinks?: { charFactions?: any[]; charPowers?: any[] };
   ideas?: any[];
   onAddChild?: (ideaId: string, child: any) => void;
   onUpdateChild?: (parentId: string, childId: string, patch: any) => void;
   onPromoteDummy?: (dummy: any, realId: string, scope?: "scene" | "all") => void;
   onDetailSaved?: (detail: SceneElementDetails) => void;
   onSetKeyMoment?: (label: string | null) => void;
+  onRenameIdea?: (title: string) => void;
   onSetSceneDrama?: (patch: Record<string, unknown>) => void;
   onOpenThreadBind?: () => void;
   threadBeats?: ThreadBeat[];
@@ -446,8 +477,8 @@ interface IdeaFrameDialogProps {
 function IdeaFrameDialog({
   onClose, item, elementDetails, onEditChild, onRemoveChild, ideaNotes,
   onQuickAddNote, onDeleteNote, onReorderNotes, novelId, ancestorConnections, onRemoveAncestor,
-  sceneId, characters, novelDummyNames, factions, powers, items, entities, worldSystems, ideas, onAddChild, onUpdateChild,
-  onPromoteDummy, onDetailSaved, onSetKeyMoment, onSetSceneDrama, onOpenThreadBind, threadBeats, onCopy,
+  sceneId, characters, novelDummyNames, factions, powers, items, entities, worldSystems, participantLinks, ideas, onAddChild, onUpdateChild,
+  onPromoteDummy, onDetailSaved, onSetKeyMoment, onRenameIdea, onSetSceneDrama, onOpenThreadBind, threadBeats, onCopy,
   onEchoResult,
 }: IdeaFrameDialogProps) {
   const [quickNote, setQuickNote] = useState("");
@@ -460,6 +491,65 @@ function IdeaFrameDialog({
   const [confirmDeleteNote, setConfirmDeleteNote] = useState(false);
   const [confirmDiscardNote, setConfirmDiscardNote] = useState(false);
   const [draggedNoteId, setDraggedNoteId] = useState<string | null>(null);
+  // ดูเส้นเรื่องข้ามฉาก — เดิมอยู่ใน popover ผู้เข้าร่วม ย้ายมาที่แถวรายชื่อในไดอะล็อกนี้
+  const [throughLine, setThroughLine] = useState<{ type: "character" | "faction"; id: string; name: string } | null>(null);
+
+  // ลากแผงไปวางที่อื่นได้ — เปิดการ์ดสองใบพร้อมกันแล้วมันทับกัน อ่านเทียบไม่ได้
+  // offset ทับบน transform ของ Radix (Radix จัดตำแหน่งที่ wrapper ชั้นนอก ตัวนี้อยู่ชั้นใน จึงไม่ตีกัน)
+  // ponytail: ตำแหน่งอยู่ใน state ของแผง ปิดแล้วรีเซ็ต — ถ้าอยากให้จำ ค่อยยกไปเก็บที่ canvasData
+  // พอเริ่มลาก ตัดแผงออกจากกล่องจัดตำแหน่งของ Radix ไปเลย: จำพิกัดบนจอ ณ ตอนนั้น
+  // แล้วสลับเป็น position:fixed — เนื้อแผงหลุดจาก flow กล่องนอกจึงยุบเหลือ 0x0
+  // (แค่ปิด pointer-events ไม่พอ กล่องยังกางค้างทับการ์ดใบข้าง ๆ จนกดไม่ได้)
+  const [floatAt, setFloatAt] = useState<{ left: number; top: number } | null>(null);
+  const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
+  const dragFrom = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
+  const startDrag = (e: React.PointerEvent) => {
+    // เว้นของที่กดได้ในแถวหัว (ปุ่มปิด, ช่องแก้ชื่อ, ชื่อที่กดเพื่อแก้)
+    if ((e.target as HTMLElement).closest("button,input,[data-no-drag]")) return;
+    if (!floatAt && contentRef.current) {
+      const r = contentRef.current.getBoundingClientRect();
+      setFloatAt({ left: r.left, top: r.top });
+    }
+    const cur = dragPos ?? { x: 0, y: 0 };
+    dragFrom.current = { sx: e.clientX, sy: e.clientY, ox: cur.x, oy: cur.y };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    e.stopPropagation(); // กันกระดานเอาไปใช้ลากการ์ด
+  };
+  const onDrag = (e: React.PointerEvent) => {
+    const d = dragFrom.current;
+    if (!d || !floatAt) return;
+    // กันลากหลุดจอจนหาไม่เจอ — เหลือหัวแผงให้จับกลับได้เสมอ
+    const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
+    const nx = d.ox + e.clientX - d.sx;
+    const ny = d.oy + e.clientY - d.sy;
+    setDragPos({
+      x: clamp(nx, -floatAt.left + 8, window.innerWidth - floatAt.left - 80),
+      y: clamp(ny, -floatAt.top + 8, window.innerHeight - floatAt.top - 60),
+    });
+  };
+  // Radix จัดตำแหน่งที่ div ครอบชั้นนอก (popper wrapper) ส่วนเราขยับแต่เนื้อในด้วย transform
+  // ผลคือ wrapper ยังกินพื้นที่กล่องเดิมค้างไว้ ทับการ์ดใบข้าง ๆ จนกดไม่ได้แม้ลากแผงหนีไปแล้ว
+  // ปิด pointer-events ที่ wrapper แล้วเปิดคืนเฉพาะเนื้อใน — กล่องผีเลยโปร่งให้คลิกทะลุ
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const wrapper = contentRef.current?.parentElement;
+    if (wrapper) wrapper.style.pointerEvents = "none";
+  }, []);
+
+  const endDrag = (e: React.PointerEvent) => {
+    if (!dragFrom.current) return;
+    dragFrom.current = null;
+    e.currentTarget.releasePointerCapture(e.pointerId);
+  };
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(item.title ?? "");
+  const commitTitle = () => {
+    const clean = titleDraft.trim();
+    setEditingTitle(false);
+    if (!clean || clean === item.title) { setTitleDraft(item.title ?? ""); return; }
+    onRenameIdea?.(clean);
+  };
+
   const [editingKeyMoment, setEditingKeyMoment] = useState(false);
   const [keyMomentDraft, setKeyMomentDraft] = useState(item.keyMomentLabel || "");
 
@@ -727,6 +817,236 @@ function IdeaFrameDialog({
     .sort((a, b) => (a.noteOrder ?? 0) - (b.noteOrder ?? 0));
 
   const children = item.children || [];
+  // ── โครงชั้นของ children (P-nest) ─────────────────────────────────────
+  // ผูกด้วยมือผ่าน children[].parentChildId — ชี้ไปที่ child ตัวอื่นในการ์ดเดียวกัน
+  // parent ที่หายไปแล้ว (ถูกลบ) ถือว่าไม่ผูก เพื่อไม่ให้ลูกหายไปจากจอ
+  const treeKids = children.filter((c: any) => c.type !== 'sticky-note');
+  // ผูกเอง (bind) ชนะการอนุมานจากตารางโลก (infer) เสมอ — ดู lib/participant-nest.ts
+  const nestLinks = resolveNesting(treeKids, {
+    charFactions: participantLinks?.charFactions,
+    charPowers: participantLinks?.charPowers,
+    items: items as any[],
+    powers: powers as any[],
+  });
+  const linkOf = (c: any) => nestLinks.get(c.id) ?? null;
+  const parentIdOf = (c: any) => linkOf(c)?.parentId ?? null;
+  const childrenOf = (id: string | null) => treeKids.filter((c: any) => parentIdOf(c) === id);
+  const treeRoots = childrenOf(null);
+  /** nodeId อยู่ใต้ maybeAncestorId อยู่แล้วหรือเปล่า — กันผูกวน */
+  const isUnder = (nodeId: string, maybeAncestorId: string): boolean => {
+    let cur: any = treeKids.find((c: any) => c.id === nodeId);
+    const seen = new Set<string>();
+    while (cur && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      const pid = parentIdOf(cur);
+      if (!pid) return false;
+      if (pid === maybeAncestorId) return true;
+      cur = treeKids.find((c: any) => c.id === pid);
+    }
+    return false;
+  };
+  const parentOptions = (child: any) => treeKids.filter((p: any) =>
+    p.id !== child.id && canContainChild(p.type, child.type) && !isUnder(p.id, child.id));
+  // null = สั่งให้อยู่ระดับบนสุด (ไม่ใช่ "ยังไม่ตั้ง" ไม่งั้นการอนุมานจะดึงกลับที่เดิม)
+  // undefined = ล้างค่า กลับไปใช้การอนุมาน
+  const bindTo = (child: any, parentId: string | null | undefined) =>
+    onUpdateChild?.(item.id, child.id, { parentChildId: parentId === null ? NEST_TOP : parentId ?? null });
+
+  /** ปุ่มเลือกว่า "อยู่ใต้ใคร" — ใช้ dropdown ไม่ใช่ลาก เพราะแผงแคบ 315px ลากแล้วหย่อนผิดง่าย */
+  const BindButton = ({ child }: { child: any }) => {
+    const opts = parentOptions(child);
+    const link = linkOf(child);
+    const bound = link?.source === 'bind' ? link.parentId : null;
+    if (!onUpdateChild || (opts.length === 0 && !link)) return null;
+    return (
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            className={cn(
+              "shrink-0 rounded p-0.5 transition-colors",
+              bound ? "text-[var(--forge-amber)]/80 hover:text-[var(--forge-amber)]"
+                    : "opacity-0 group-hover/item:opacity-100 text-muted-foreground hover:text-foreground"
+            )}
+            title={bound ? "ผูกเองไว้ใต้รายการอื่น — กดเพื่อเปลี่ยน"
+              : link ? "อนุมานจากข้อมูลในคลัง — กดเพื่อผูกเอง"
+              : "ผูกไว้ใต้..."}
+          >
+            <CornerDownRight className="w-3 h-3" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-52 p-1" onClick={(e) => e.stopPropagation()}>
+          <p className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground/70 font-technical">
+            ผูก “{child.title}” ไว้ใต้
+          </p>
+          <button
+            onClick={() => bindTo(child, null)}
+            className={cn("w-full text-left px-2 py-1.5 text-xs rounded hover:bg-muted transition-colors",
+              !link && "text-[var(--forge-amber)]")}
+          >
+            ไม่ผูก (ระดับบนสุด)
+          </button>
+          {child.parentChildId && (
+            <button
+              onClick={() => bindTo(child, undefined)}
+              className="w-full text-left px-2 py-1.5 text-[11px] rounded text-muted-foreground hover:bg-muted transition-colors"
+            >
+              ใช้ข้อมูลจากคลังแทน
+            </button>
+          )}
+          {opts.map((p: any) => (
+            <button
+              key={p.id}
+              onClick={() => bindTo(child, p.id)}
+              className={cn("w-full text-left px-2 py-1.5 text-xs rounded hover:bg-muted transition-colors truncate",
+                bound === p.id && "text-[var(--forge-amber)]")}
+            >
+              {p.title}
+            </button>
+          ))}
+          {opts.length === 0 && (
+            <p className="px-2 py-1.5 text-[11px] text-muted-foreground italic">ไม่มีรายการที่ผูกใต้ได้</p>
+          )}
+        </PopoverContent>
+      </Popover>
+    );
+  };
+
+  /** หนึ่งแถวในโครง + ลูกของมัน — เยื้องตามชั้น */
+  const renderNode = (child: any, depth: number): React.ReactNode => {
+    const kids = childrenOf(child.id);
+    const link = linkOf(child);
+    const nestLabel = link?.source === 'infer' ? link.label : null;
+    const detail = getChildDetail(child);
+    const isDummy = child.type === 'dummy_character' || child.type === 'dummy_faction';
+    const isFaction = child.type === 'faction' || child.type === 'dummy_faction';
+    const isCharacter = child.type === 'character' || child.type === 'dummy_character';
+    const isLocation = child.type === 'location';
+    const rm = roleMeta(detail?.role || child.role);
+    const kind = kindOf(child.type);
+    const TypeIcon = isLocation ? MapPin : (kind ? (NODE_ICONS[kind.icon] ?? Lightbulb) : Lightbulb);
+    const realFaction = isFaction && !isDummy ? factions?.find((f: any) => f.id === child.referenceId) : null;
+    const factionBlurb: string | null = realFaction?.goal || realFaction?.description || null;
+    const allLinkedIdeas: any[] = realFaction?.linkedIdeaIds
+      ? realFaction.linkedIdeaIds.map((id: string) => ideas?.find((i: any) => i.id === id)).filter(Boolean)
+      : [];
+    const linkedIdeas = child.pinnedIdeaIds
+      ? allLinkedIdeas.filter((i: any) => child.pinnedIdeaIds.includes(i.id))
+      : allLinkedIdeas;
+    const togglePinnedIdea = (ideaId: string) => {
+      const current: string[] = child.pinnedIdeaIds ?? allLinkedIdeas.map((i: any) => i.id);
+      const next = current.includes(ideaId) ? current.filter((id) => id !== ideaId) : [...current, ideaId];
+      onUpdateChild?.(item.id, child.id, { pinnedIdeaIds: next });
+    };
+
+    return (
+      <div key={child.id} style={depth > 0 ? { paddingLeft: depth * 12 } : undefined}>
+        <div className="py-1 text-xs group/item">
+          <div className="flex items-center gap-1.5">
+            {isCharacter ? (
+              <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", rm.dot)} />
+            ) : (
+              <TypeIcon
+                className={cn("w-3 h-3 shrink-0", isDummy ? "text-muted-foreground" : (isLocation ? "text-green-500" : kind?.color ?? "text-yellow-500"))}
+                style={realFaction?.color ? { color: realFaction.color } : undefined}
+              />
+            )}
+            <span className={cn("truncate font-medium text-foreground", isDummy && "italic text-muted-foreground")}>
+              {child.title}
+              {isDummy && <span className="text-[10px] text-muted-foreground font-normal ml-1">(Dummy)</span>}
+            </span>
+            {isCharacter && <span className={cn("text-[10px] shrink-0", rm.text)}>{rm.label}</span>}
+            {nestLabel && (
+              <span className="shrink-0 text-[9px] uppercase tracking-wide text-muted-foreground/60 font-technical" title="อนุมานจากข้อมูลในคลัง — กดปุ่มลูกศรเพื่อผูกเอง">
+                {nestLabel}
+              </span>
+            )}
+            {realFaction?.type && (
+              <span className="text-[9px] uppercase tracking-wide text-muted-foreground/70 shrink-0">{realFaction.type}</span>
+            )}
+            <span className="flex-1" />
+            <BindButton child={child} />
+            {!isDummy && !isLocation && child.referenceId && novelId && (isCharacter || isFaction) && (
+              <button
+                onClick={() => setThroughLine({ type: isFaction ? 'faction' : 'character', id: child.referenceId, name: child.title })}
+                className="opacity-0 group-hover/item:opacity-100 text-muted-foreground hover:text-foreground transition-opacity shrink-0"
+                title="ดูเส้นเรื่องข้ามฉาก"
+              >
+                <Route className="w-3 h-3" />
+              </button>
+            )}
+            {isDummy && onPromoteDummy && (
+              <PromoteDummyButton dummy={child} characters={characters || []} factions={factions || []} onPromote={onPromoteDummy} />
+            )}
+            {onEditChild && (
+              <button
+                onClick={() => onEditChild({ ...child, canvasItemId: item.id })}
+                className="opacity-0 group-hover/item:opacity-100 text-muted-foreground hover:text-foreground transition-opacity shrink-0"
+                title="แก้ไขรายละเอียด"
+              >
+                <Pencil className="w-3 h-3" />
+              </button>
+            )}
+            {onRemoveChild && (
+              <button
+                onClick={() => removeNode(child)}
+                className="opacity-0 group-hover/item:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0"
+                title="เอาออกจากไอเดีย"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+
+          {detail?.action && (
+            <p className="mt-0.5 ml-[18px] text-[11px] leading-snug text-muted-foreground whitespace-pre-wrap">{detail.action}</p>
+          )}
+          {!detail?.action && factionBlurb && (
+            <p className="mt-0.5 ml-[18px] text-[11px] leading-snug text-muted-foreground/80 line-clamp-2 whitespace-pre-wrap">{factionBlurb}</p>
+          )}
+          {linkedIdeas.length > 0 && (
+            <div className="mt-1 ml-[18px] flex flex-wrap items-center gap-1">
+              {linkedIdeas.map((idea: any) => (
+                <span key={idea.id}
+                  className="group/idea inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded border border-amber-500/30 bg-amber-500/10 text-[10px] text-amber-600 dark:text-amber-400"
+                  title={idea.summary || idea.content || idea.title}>
+                  <Lightbulb className="w-2.5 h-2.5 shrink-0" />
+                  <span className="truncate max-w-[140px]">{idea.title}</span>
+                  {onUpdateChild && (
+                    <button onClick={() => togglePinnedIdea(idea.id)} className="shrink-0 opacity-40 hover:opacity-100 hover:text-destructive transition-opacity" title="ซ่อนไอเดียนี้ออกจากการ์ด">
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  )}
+                </span>
+              ))}
+              {allLinkedIdeas.length > linkedIdeas.length && onUpdateChild && (
+                <button onClick={() => onUpdateChild(item.id, child.id, { pinnedIdeaIds: undefined })} className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2">
+                  +{allLinkedIdeas.length - linkedIdeas.length} ซ่อนอยู่ · แสดงทั้งหมด
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {kids.length > 0 && (
+          <div className={cn("border-l ml-[5px] pl-1",
+            kids.some((k: any) => linkOf(k)?.source === 'bind')
+              ? "border-[var(--forge-amber)]/40"
+              : "border-dashed border-border/60")}>
+            {kids.map((k: any) => renderNode(k, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  /** ลบแถว — ลูกของมันเลื่อนขึ้นระดับบนสุด ไม่ลบตาม */
+  const removeNode = (child: any) => {
+    const kids = childrenOf(child.id);
+    kids.forEach((k: any) => onUpdateChild?.(item.id, k.id, { parentChildId: null }));
+    onRemoveChild?.(child.id);
+    if (kids.length > 0) toast.info(`ย้าย ${kids.length} รายการที่อยู่ใต้ “${child.title}” ขึ้นระดับบนสุด`);
+  };
+
   const getDetailPageUrl = () => (novelId ? `/dashboard/project/${novelId}/idea` : null);
 
   return (
@@ -737,16 +1057,61 @@ function IdeaFrameDialog({
       collisionPadding={16}
       onOpenAutoFocus={(e) => e.preventDefault()}
       onInteractOutside={(e) => e.preventDefault()}
-      className="w-[315px] max-w-[92vw] max-h-[56vh] overflow-y-auto p-0"
+      ref={contentRef}
+      className="pointer-events-auto w-[315px] max-w-[92vw] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto p-0"
+      style={floatAt ? {
+        // absolute ไม่ใช่ fixed — กล่องนอกของ Radix มี transform อยู่ มันเลยกลายเป็น
+        // containing block ของ fixed ทำให้ left/top แบบพิกัดจอเพี้ยนกระเด็นไปไกล
+        // absolute ที่ 0,0 = ตำแหน่งเดิมของแผงพอดี แล้วค่อยขยับด้วย translate
+        position: "absolute",
+        left: 0,
+        top: 0,
+        margin: 0,
+        transform: `translate3d(${dragPos?.x ?? 0}px, ${dragPos?.y ?? 0}px, 0)`,
+      } : undefined}
     >
         <FilmSprockets count={15} />
         <div className="p-4 space-y-4">
           <div className="space-y-2 text-left">
-            <div className="flex items-center gap-2 text-left">
+            <div
+              className={cn(
+                "flex items-center gap-2 text-left -mx-1 px-1 rounded touch-none select-none",
+                "cursor-grab active:cursor-grabbing hover:bg-muted/40 transition-colors"
+              )}
+              title="ลากเพื่อย้ายแผง · ดับเบิลคลิกเพื่อคืนตำแหน่ง"
+              onPointerDown={startDrag}
+              onPointerMove={onDrag}
+              onPointerUp={endDrag}
+              onPointerCancel={endDrag}
+              onDoubleClick={() => { setDragPos(null); setFloatAt(null); }}
+            >
+              <GripVertical className="w-3 h-3 shrink-0 text-muted-foreground/40" />
               <span className="font-technical text-[10px] tracking-widest text-muted-foreground/60 shrink-0">
                 {frameNumber(item)}
               </span>
-              <span className="text-sm font-semibold flex-1 min-w-0 truncate">{item.title}</span>
+              {editingTitle && onRenameIdea ? (
+                <input
+                  autoFocus
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onBlur={commitTitle}
+                  onKeyDown={(e) => {
+                    e.stopPropagation(); // กัน Space/ลูกศรถูกกระดานดักไปใช้ลากการ์ด
+                    if (e.key === "Enter") { e.preventDefault(); commitTitle(); }
+                    if (e.key === "Escape") { e.preventDefault(); setTitleDraft(item.title ?? ""); setEditingTitle(false); }
+                  }}
+                  className="flex-1 min-w-0 bg-transparent text-sm font-semibold border-b border-[var(--forge-amber)]/60 focus:outline-none"
+                />
+              ) : (
+                <span
+                  className={`text-sm font-semibold flex-1 min-w-0 truncate ${onRenameIdea ? "cursor-text hover:text-[var(--forge-amber)] transition-colors" : ""}`}
+                  data-no-drag
+                  title={onRenameIdea ? "กดเพื่อแก้ชื่อ" : undefined}
+                  onClick={onRenameIdea ? () => { setTitleDraft(item.title ?? ""); setEditingTitle(true); } : undefined}
+                >
+                  {item.title}
+                </span>
+              )}
               {item.isNarration && (
                 <span className="inline-flex items-center gap-1 shrink-0 text-[10px] font-bold uppercase tracking-wide text-amber-500">
                   <Quote className="w-3 h-3" fill="currentColor" /> บรรยาย
@@ -825,156 +1190,14 @@ function IdeaFrameDialog({
             </div>
           )}
 
-          {/* WHO — Characters + Factions รวมกัน */}
-          {children.some((c: any) => ['character', 'dummy_character', 'faction', 'dummy_faction'].includes(c.type)) && (
+          {/* องค์ประกอบในไอเดีย — เดิมเป็นลิสต์แบนแยกกอง ตอนนี้ผูกกันเป็นชั้นได้ (P-nest) */}
+          {treeRoots.length > 0 && (
             <div className="space-y-1">
               <p className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground/80">
-                <Users className="w-3 h-3" /> ตัวละคร
+                <Users className="w-3 h-3" /> องค์ประกอบ
               </p>
               <div className="divide-y divide-border/40">
-                {children
-                  .filter((c: any) => c.type === 'character' || c.type === 'dummy_character')
-                  .map((child: any) => {
-                    const detail = getChildDetail(child);
-                    const isDummy = child.type === 'dummy_character';
-                    const rm = roleMeta(detail?.role || child.role);
-                    return (
-                      <div key={child.id} className="py-1 text-xs group/item">
-                        <div className="flex items-center gap-1.5">
-                          <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", rm.dot)} />
-                          <span className={cn("truncate font-medium text-foreground", isDummy && "italic text-muted-foreground")}>
-                            {child.title}{isDummy && <span className="text-[10px] text-muted-foreground font-normal ml-1">(Dummy)</span>}
-                          </span>
-                          <span className={cn("text-[10px] shrink-0", rm.text)}>{rm.label}</span>
-                          <span className="flex-1" />
-                          {onEditChild && (
-                            <button onClick={() => onEditChild({ ...child, canvasItemId: item.id })} className="opacity-0 group-hover/item:opacity-100 text-muted-foreground hover:text-foreground transition-opacity shrink-0" title="แก้ไขรายละเอียด">
-                              <Pencil className="w-3 h-3" />
-                            </button>
-                          )}
-                          {onRemoveChild && (
-                            <button onClick={() => onRemoveChild(child.id)} className="opacity-0 group-hover/item:opacity-100 text-muted-foreground hover:text-destructive transition-opacity shrink-0">
-                              <X className="w-3 h-3" />
-                            </button>
-                          )}
-                        </div>
-                        {detail?.action && (
-                          <p className="mt-0.5 ml-3 text-[11px] leading-snug text-muted-foreground whitespace-pre-wrap">{detail.action}</p>
-                        )}
-                      </div>
-                    );
-                  })}
-                {children
-                  .filter((c: any) => c.type === 'faction' || c.type === 'dummy_faction')
-                  .map((child: any) => {
-                    const detail = getChildDetail(child);
-                    const isDummy = child.type === 'dummy_faction';
-                    const realFaction = !isDummy ? factions?.find((f: any) => f.id === child.referenceId) : null;
-                    const factionBlurb: string | null = realFaction?.goal || realFaction?.description || null;
-                    const allLinkedIdeas: any[] = realFaction?.linkedIdeaIds
-                      ? realFaction.linkedIdeaIds.map((id: string) => ideas?.find((i: any) => i.id === id)).filter(Boolean)
-                      : [];
-                    const linkedIdeas = child.pinnedIdeaIds
-                      ? allLinkedIdeas.filter((i: any) => child.pinnedIdeaIds.includes(i.id))
-                      : allLinkedIdeas;
-                    const togglePinnedIdea = (ideaId: string) => {
-                      const current: string[] = child.pinnedIdeaIds ?? allLinkedIdeas.map((i: any) => i.id);
-                      const next = current.includes(ideaId) ? current.filter((id) => id !== ideaId) : [...current, ideaId];
-                      onUpdateChild?.(item.id, child.id, { pinnedIdeaIds: next });
-                    };
-                    return (
-                      <div key={child.id} className="py-1 text-xs group/item">
-                        <div className="flex items-center gap-1.5">
-                          <Shield className={cn("w-3 h-3 shrink-0", isDummy ? "text-muted-foreground" : "text-emerald-500")}
-                            style={!isDummy && realFaction?.color ? { color: realFaction.color } : undefined} />
-                          <span className={cn("truncate font-medium text-foreground", isDummy && "italic text-muted-foreground")}>
-                            {child.title}{isDummy && <span className="text-[10px] text-muted-foreground font-normal ml-1">(Dummy)</span>}
-                          </span>
-                          {realFaction?.type && (
-                            <span className="text-[9px] uppercase tracking-wide text-muted-foreground/70 shrink-0">{realFaction.type}</span>
-                          )}
-                          <span className="flex-1" />
-                          {onEditChild && (
-                            <button onClick={() => onEditChild({ ...child, canvasItemId: item.id })} className="opacity-0 group-hover/item:opacity-100 hover:text-emerald-500 transition-opacity shrink-0" title="แก้ไขรายละเอียด">
-                              <Pencil className="w-3 h-3" />
-                            </button>
-                          )}
-                          {onRemoveChild && (
-                            <button onClick={() => onRemoveChild(child.id)} className="opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-opacity shrink-0">
-                              <X className="w-3 h-3" />
-                            </button>
-                          )}
-                        </div>
-                        {detail?.action && (
-                          <p className="mt-0.5 ml-[18px] text-[11px] leading-snug text-muted-foreground whitespace-pre-wrap">{detail.action}</p>
-                        )}
-                        {!detail?.action && factionBlurb && (
-                          <p className="mt-0.5 ml-[18px] text-[11px] leading-snug text-muted-foreground/80 line-clamp-2 whitespace-pre-wrap">{factionBlurb}</p>
-                        )}
-                        {linkedIdeas.length > 0 && (
-                          <div className="mt-1 ml-[18px] flex flex-wrap items-center gap-1">
-                            {linkedIdeas.map((idea: any) => (
-                              <span key={idea.id}
-                                className="group/idea inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded border border-amber-500/30 bg-amber-500/10 text-[10px] text-amber-600 dark:text-amber-400"
-                                title={idea.summary || idea.content || idea.title}>
-                                <Lightbulb className="w-2.5 h-2.5 shrink-0" />
-                                <span className="truncate max-w-[140px]">{idea.title}</span>
-                                {onUpdateChild && (
-                                  <button onClick={() => togglePinnedIdea(idea.id)} className="shrink-0 opacity-40 hover:opacity-100 hover:text-destructive transition-opacity" title="ซ่อนไอเดียนี้ออกจากการ์ด">
-                                    <X className="w-2.5 h-2.5" />
-                                  </button>
-                                )}
-                              </span>
-                            ))}
-                            {allLinkedIdeas.length > linkedIdeas.length && onUpdateChild && (
-                              <button onClick={() => onUpdateChild(item.id, child.id, { pinnedIdeaIds: undefined })} className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2">
-                                +{allLinkedIdeas.length - linkedIdeas.length} ซ่อนอยู่ · แสดงทั้งหมด
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-              </div>
-            </div>
-          )}
-
-          {/* WHERE — Locations */}
-          {children.some((c: any) => c.type === 'location') && (
-            <div className="space-y-1">
-              <p className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground/80">
-                <MapPin className="w-3 h-3" /> สถานที่
-              </p>
-              <div className="divide-y divide-border/40">
-                {children
-                  .filter((c: any) => c.type === 'location')
-                  .map((child: any) => {
-                    const detail = getChildDetail(child);
-                    const hasDetail = detail && (detail.action || detail.how || detail.goal);
-                    return (
-                      <div key={child.id} className="flex items-center gap-1.5 py-1 text-xs group/item">
-                        <MapPin className="w-3 h-3 text-green-500 shrink-0" />
-                        <span className="truncate font-medium">{child.title}</span>
-                        {hasDetail && (
-                          <span className="truncate text-[10px] text-muted-foreground/80 min-w-0">
-                            {detail.action && `· ${detail.action}`}
-                          </span>
-                        )}
-                        <span className="flex-1" />
-                        {onEditChild && (
-                          <button onClick={() => onEditChild({ ...child, canvasItemId: item.id })} className="opacity-0 group-hover/item:opacity-100 hover:text-green-500 transition-opacity shrink-0" title="แก้ไขรายละเอียด">
-                            <Pencil className="w-3 h-3" />
-                          </button>
-                        )}
-                        {onRemoveChild && (
-                          <button onClick={() => onRemoveChild(child.id)} className="opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-opacity shrink-0">
-                            <X className="w-3 h-3" />
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
+                {treeRoots.map((c: any) => renderNode(c, 0))}
               </div>
             </div>
           )}
@@ -1045,28 +1268,9 @@ function IdeaFrameDialog({
             </div>
           )}
 
-          {/* รายการอื่นที่ไม่เข้าหมวดไหน */}
-          {children.some((c: any) => !['character', 'dummy_character', 'faction', 'dummy_faction', 'location', 'sticky-note'].includes(c.type)) && (
-            <div className="divide-y divide-border/40">
-              {children
-                .filter((c: any) => !['character', 'dummy_character', 'faction', 'dummy_faction', 'location', 'sticky-note'].includes(c.type))
-                .map((child: any) => (
-                  <div key={child.id} className="flex items-center gap-1.5 py-1 text-xs group/item">
-                    <Lightbulb className="w-3 h-3 text-yellow-500 shrink-0" />
-                    <span className="truncate flex-1">{child.title}</span>
-                    {onRemoveChild && (
-                      <button onClick={() => onRemoveChild(child.id)} className="opacity-0 group-hover/item:opacity-100 hover:text-destructive transition-opacity shrink-0">
-                        <X className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-            </div>
-          )}
-
           {/* ผู้เข้าร่วม */}
           {onAddChild && sceneId && novelId && onDetailSaved && (
-            <div className="flex justify-end">
+            <div>
               <SceneParticipantsPanel
                 ideaItem={item}
                 sceneId={sceneId}
@@ -1077,10 +1281,7 @@ function IdeaFrameDialog({
                 items={items || []}
                 entities={entities || []}
                 worldSystems={worldSystems || []}
-                elementDetails={elementDetails}
                 onAddChild={onAddChild}
-                onPromoteDummy={onPromoteDummy}
-                onRemoveChild={(childId) => onRemoveChild?.(childId)}
                 onDetailSaved={onDetailSaved}
               />
             </div>
@@ -1206,6 +1407,17 @@ function IdeaFrameDialog({
           </div>
         </div>
         <FilmSprockets count={15} />
+        {throughLine && novelId && (
+          <CharacterThroughLine
+            open={!!throughLine}
+            onOpenChange={(o) => !o && setThroughLine(null)}
+            novelId={novelId}
+            elementType={throughLine.type}
+            elementId={throughLine.id}
+            elementName={throughLine.name}
+            currentSceneId={sceneId}
+          />
+        )}
     </PopoverContent>
   );
 }

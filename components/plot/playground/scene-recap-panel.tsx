@@ -1,17 +1,18 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { FileText, Loader2, RefreshCw, AlertTriangle, HelpCircle } from "lucide-react";
 import { runSceneRecap } from "@/server/plot-recap";
 import type { CausalityVerdict } from "@/lib/plot-recap";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
 
 interface SceneRecapPanelProps {
     novelId: string;
     sceneId: string;
     initialRecap?: { recap: string; causality?: CausalityVerdict; causalityNote?: string } | null;
+    /** ส่งสัญญาณเตือนขึ้นไปให้ปุ่ม "ผู้ช่วย" — ไม่งั้นคำเตือนเหตุ-ผลจะถูกซ่อนอยู่ในกล่องที่ยังไม่ได้เปิด */
+    onWarningChange?: (hasWarning: boolean) => void;
 }
 
 const CAUSALITY_LABEL: Record<Exclude<CausalityVerdict, "not_stated">, { text: string; icon: typeof AlertTriangle; cls: string }> = {
@@ -27,7 +28,7 @@ const CAUSALITY_LABEL: Record<Exclude<CausalityVerdict, "not_stated">, { text: s
  * ปุ่มเดียวทำสองหน้าที่: กด = สั่งสรุป (มี hash-skip ในตัวอยู่แล้ว ไม่เปลืองถ้าไม่มีอะไรเปลี่ยน)
  * และ Popover เปิด/ปิดตาม default ของ Radix trigger — ไม่ควบคุม state เอง
  */
-export function SceneRecapPanel({ novelId, sceneId, initialRecap }: SceneRecapPanelProps) {
+export function SceneRecapSection({ novelId, sceneId, initialRecap, onWarningChange }: SceneRecapPanelProps) {
     const [recap, setRecap] = useState<string | null>(initialRecap?.recap ?? null);
     const [causality, setCausality] = useState<CausalityVerdict | undefined>(initialRecap?.causality);
     const [causalityNote, setCausalityNote] = useState<string | undefined>(initialRecap?.causalityNote);
@@ -50,50 +51,40 @@ export function SceneRecapPanel({ novelId, sceneId, initialRecap }: SceneRecapPa
     const causalityInfo = causality && causality !== "not_stated" ? CAUSALITY_LABEL[causality] : null;
     const hasWarning = causality === "unsupported";
 
+    useEffect(() => { onWarningChange?.(hasWarning); }, [hasWarning, onWarningChange]);
+
     return (
-        <Popover>
-            <PopoverTrigger asChild>
+        <section className="space-y-2">
+            <div className="flex items-center gap-2">
+                <span className="font-technical text-[9px] uppercase tracking-widest text-muted-foreground flex-1">
+                    สรุปฉาก + เหตุ-ผล
+                </span>
                 <Button
                     size="sm"
-                    variant="ghost"
+                    variant="outline"
                     onClick={handleRun}
                     disabled={isPending}
-                    className="h-8 gap-1.5 text-xs relative"
-                    title="สรุปฉากนี้ + ตรวจเหตุ-ผล"
+                    className="h-7 gap-1.5 text-xs chamfered-sm"
                 >
-                    {isPending ? (
-                        <Loader2 size={13} className="animate-spin" />
-                    ) : recap ? (
-                        <RefreshCw size={13} />
-                    ) : (
-                        <FileText size={13} />
-                    )}
-                    {isPending ? "กำลังสรุป…" : recap ? "สรุปฉากใหม่" : "สรุปฉาก"}
-                    {hasWarning && (
-                        <span
-                            className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full"
-                            style={{ background: "var(--forge-amber)" }}
-                            title={causalityInfo?.text}
-                        />
-                    )}
+                    {isPending ? <Loader2 size={13} className="animate-spin" /> : recap ? <RefreshCw size={13} /> : <FileText size={13} />}
+                    {isPending ? "กำลังสรุป…" : recap ? "สรุปใหม่" : "สรุปฉาก"}
                 </Button>
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-80 space-y-2.5 text-sm">
-                {recap ? (
-                    <p className="leading-relaxed text-foreground">{recap}</p>
-                ) : (
-                    <p className="text-xs text-muted-foreground">ยังไม่เคยสรุปฉากนี้ — กด "สรุปฉาก" เพื่อเริ่ม</p>
-                )}
-                {causalityInfo && (
-                    <div className="flex items-start gap-1.5 border-t border-border/60 pt-2 text-xs">
-                        <causalityInfo.icon size={13} className={`shrink-0 mt-0.5 ${causalityInfo.cls}`} />
-                        <span className={causalityInfo.cls}>
-                            {causalityInfo.text}
-                            {causalityNote && <span className="text-muted-foreground"> — {causalityNote}</span>}
-                        </span>
-                    </div>
-                )}
-            </PopoverContent>
-        </Popover>
+            </div>
+
+            {recap ? (
+                <p className="text-xs leading-relaxed text-foreground">{recap}</p>
+            ) : (
+                <p className="text-xs text-muted-foreground">ยังไม่เคยสรุปฉากนี้ — กด &quot;สรุปฉาก&quot; เพื่อเริ่ม</p>
+            )}
+            {causalityInfo && (
+                <div className="flex items-start gap-1.5 border-t border-border/60 pt-2 text-xs">
+                    <causalityInfo.icon size={13} className={`shrink-0 mt-0.5 ${causalityInfo.cls}`} />
+                    <span className={causalityInfo.cls}>
+                        {causalityInfo.text}
+                        {causalityNote && <span className="text-muted-foreground"> — {causalityNote}</span>}
+                    </span>
+                </div>
+            )}
+        </section>
     );
 }

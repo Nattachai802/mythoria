@@ -1,7 +1,6 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
 import { Activity, Sparkles, Loader2, TriangleAlert } from "lucide-react"
 import { toast } from "sonner"
@@ -31,8 +30,8 @@ interface Props {
     cards: { id: string; beatIndex: number; pacing: number | null }[]
 }
 
-export function BeatCoachPanel({ novelId, sceneId, cards }: Props) {
-    const [open, setOpen] = useState(false)
+// เนื้อหาอย่างเดียว — trigger ไปอยู่ที่ปุ่ม "ผู้ช่วย" ปุ่มเดียวในทูลบาร์แล้ว
+export function BeatCoachSection({ novelId, sceneId, cards }: Props) {
     const [loading, setLoading] = useState(false)
     /** จังหวะที่ AI เดาให้ — ไม่เขียนทับของผู้ใช้ ไม่บันทึกลง DB */
     const [aiBeats, setAiBeats] = useState<Record<string, number>>({})
@@ -67,21 +66,7 @@ export function BeatCoachPanel({ novelId, sceneId, cards }: Props) {
     const bars = collapseByBeat(merged)
 
     return (
-        <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger asChild>
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    className={cn("h-8 gap-1.5 text-xs", attention && "text-[var(--forge-amber)]")}
-                    title="ดูจังหวะการเล่าในฉากนี้"
-                >
-                    <Activity className="h-4 w-4" />
-                    จังหวะ
-                    {attention && <span className="h-1.5 w-1.5 rounded-full bg-[var(--forge-amber)]" />}
-                </Button>
-            </PopoverTrigger>
-
-            <PopoverContent className="w-[320px] p-0 overflow-hidden" align="start">
+        <section>
                 <div className="flex items-center gap-2 px-2.5 py-1.5 bg-zinc-900 border-b border-zinc-700/60">
                     <Activity className="h-3 w-3 text-[var(--forge-amber)]" />
                     <span className="font-technical text-[9px] uppercase tracking-widest text-zinc-300">
@@ -166,7 +151,6 @@ export function BeatCoachPanel({ novelId, sceneId, cards }: Props) {
                         </>
                     )}
                 </div>
-            </PopoverContent>
-        </Popover>
+        </section>
     )
 }
