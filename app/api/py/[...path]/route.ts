@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { PYTHON_SERVICE_URL } from "@/lib/python-service";
-import { resolvePythonFeature, assertAiAllowed, markFeatureActive, AiControlError } from "@/lib/ai-gateway";
+import { resolvePythonFeature, assertAiAllowed, markFeatureActive, clearFeatureActive, AiControlError } from "@/lib/ai-gateway";
 
 // Same-origin proxy: เบราว์เซอร์ (fetch + EventSource) เรียกผ่าน /api/py/... แทนที่จะยิง Python ตรง
 // ที่นี่คือจุดเดียวที่ (1) เช็ค session ผู้ใช้ (2) แนบ internal key ให้ Python
@@ -25,7 +25,7 @@ async function proxy(req: Request, path: string[]): Promise<Response> {
         try {
             await assertAiAllowed(feature);
         } catch (e) {
-            const quota = e instanceof AiControlError && e.reason === "quota";
+            const quota = e instanceof AiControlError && (e.reason === "quota" || e.reason === "busy");
             const message = e instanceof AiControlError ? e.message : "ไม่ได้รับอนุญาตให้ใช้ AI";
             return Response.json({ detail: message }, { status: quota ? 429 : 403 });
         }
@@ -50,6 +50,7 @@ async function proxy(req: Request, path: string[]): Promise<Response> {
         });
     } catch {
         // Python ไม่ได้รัน / ต่อไม่ติด — ตอบ 503 ให้ client รู้ว่า "บริการไม่พร้อม" ไม่ใช่ 500 ที่แปลว่าโค้ดเราพัง
+        if (feature) await clearFeatureActive(feature, session.user.id);
         return Response.json({ detail: "Python service unavailable" }, { status: 503 });
     }
 
@@ -57,6 +58,10 @@ async function proxy(req: Request, path: string[]): Promise<Response> {
     const respHeaders = new Headers();
     const ct = upstream.headers.get("content-type");
     if (ct) respHeaders.set("content-type", ct);
+
+    // ปลดล็อกกันยิงซ้อนทันทีที่ตอบจบ — endpoint ธรรมดาจบพร้อม response นี้เลย
+    // ส่วน SSE ยังส่งต่ออีกนาน ปล่อยให้แถว active หมดอายุเองตาม ACTIVE_STALE_MS
+    if (feature && !ct?.startsWith("text/event-stream")) await clearFeatureActive(feature, session.user.id);
     return new Response(upstream.body, { status: upstream.status, headers: respHeaders });
 }
 

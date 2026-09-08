@@ -38,7 +38,7 @@ export type { AiProvider, AiProviderStep, AiFeatureDef, AiFeatureKey };
 // Errors
 // ============================================
 
-export type AiBlockReason = "disabled" | "guest" | "quota" | "all-failed" | "unknown-feature";
+export type AiBlockReason = "disabled" | "guest" | "quota" | "busy" | "all-failed" | "unknown-feature";
 
 export class AiControlError extends Error {
     reason: AiBlockReason;
@@ -132,14 +132,36 @@ export async function markFeatureActive(featureKey: string, userId: string | nul
     }
 }
 
+/**
+ * งานจบแล้ว — ลบแถว active ทิ้ง ไม่ต้องรอ 8 วิให้ stail เอง
+ *
+ * จำเป็นเพราะ hasActiveRun() ใช้แถวนี้กันยิงซ้อน ถ้าไม่ลบ คนที่ยิงเสร็จใน 1 วิ
+ * จะโดนบล็อกอีก 7 วิทั้งที่ไม่ได้ทำอะไรค้าง · ผลพลอยได้: หน้า AI Control เลิกโชว์
+ * "กำลังทำงาน" ค้างหลังงานจบแล้ว
+ */
+export async function clearFeatureActive(featureKey: string, userId: string | null) {
+    if (!userId) return;
+    try {
+        await db.delete(aiActiveRuns)
+            .where(and(eq(aiActiveRuns.userId, userId), eq(aiActiveRuns.feature, featureKey)));
+    } catch (e) {
+        console.error("[ai-gateway] clearFeatureActive failed:", e instanceof Error ? e.message : e);
+    }
+}
+
 // ============================================
-// Gate — เช็คทั้งหมดก่อนยิง AI (flag → guest → quota)
+// Gate — เช็คทั้งหมดก่อนยิง AI (flag → guest → ยิงซ้อน → quota)
 // ============================================
 
 export interface GateContext {
     userId?: string;
     /** ข้าม guest check (เฉพาะ flow ที่ระบบเรียกเอง เช่น seed demo) — ปกติไม่ต้องส่ง */
     skipGuestCheck?: boolean;
+    /**
+     * ข้ามการกันยิงซ้อน — ใช้เฉพาะ pattern โหวต ที่ตั้งใจยิงหลาย provider ของฟีเจอร์เดียวกัน
+     * พร้อมกัน (ดู callAiProvider) flow ปกติห้ามส่ง
+     */
+    skipBusyCheck?: boolean;
 }
 
 async function ensureAiAllowed(featureKey: string, ctx: GateContext = {}): Promise<void> {
@@ -158,11 +180,18 @@ async function ensureAiAllowed(featureKey: string, ctx: GateContext = {}): Promi
         throw new AiControlError("guest", GUEST_AI_MESSAGE);
     }
 
+    const userId = await resolveUserId(ctx.userId);
+    if (!userId) return; // ระบุตัวตนไม่ได้ — บังคับ quota/ยิงซ้อนไม่ได้ (background job)
+
+    if (!ctx.skipBusyCheck && (await hasActiveRun(featureKey, userId))) {
+        throw new AiControlError(
+            "busy",
+            `ฟีเจอร์ "${def.label}" กำลังทำงานอยู่ — รอให้รอบนี้เสร็จก่อน`,
+        );
+    }
+
     const limit = override?.dailyLimitPerUser ?? def.defaultDailyLimit;
     if (limit === null) return;
-
-    const userId = await resolveUserId(ctx.userId);
-    if (!userId) return; // ระบุตัวตนไม่ได้ — บังคับ quota ไม่ได้ (background job)
 
     const used = await countTodayRuns(featureKey, userId);
     if (used >= limit) {
@@ -170,6 +199,35 @@ async function ensureAiAllowed(featureKey: string, ctx: GateContext = {}): Promi
             "quota",
             `ใช้ฟีเจอร์ "${def.label}" ครบโควตา ${used}/${limit} ครั้งวันนี้แล้ว — โควตารีเซ็ตเที่ยงคืน`,
         );
+    }
+}
+
+/**
+ * มีงานของฟีเจอร์นี้ค้างอยู่ไหม — กันยิงซ้อน
+ *
+ * ทำไมต้องมี: โควตารายวันนับจาก ai_usage_log ซึ่งแถวถูก insert *หลัง* provider ตอบกลับ
+ * ยิงพร้อมกัน 50 ครั้งจึงเห็น used เดิมเท่ากันหมดแล้วผ่านทุกตัว — โควตากันได้แค่คนกดทีละครั้ง
+ * ส่วน ai_active_runs ถูก upsert ทันทีหลังผ่าน gate เลยใช้เป็นตัวกันซ้อนได้เลย ไม่ต้องเพิ่มตาราง
+ *
+ * ponytail: เพดานคือ ACTIVE_STALE_MS (8 วิ) — งานที่ยิงนานกว่านั้น (SSE, chain ยาว)
+ * จะกลายเป็น stale แล้วปล่อยรอบใหม่ผ่านได้ · ยังมีช่องแข่งกันแคบ ๆ ระหว่างเช็คกับ upsert
+ * (สอง request พร้อมกันเป๊ะอ่านเห็นว่างทั้งคู่) ถ้าต้องแน่นกว่านี้ต้องขยับไป advisory lock
+ */
+async function hasActiveRun(featureKey: string, userId: string): Promise<boolean> {
+    try {
+        const [row] = await db
+            .select({ id: aiActiveRuns.userId })
+            .from(aiActiveRuns)
+            .where(
+                and(
+                    eq(aiActiveRuns.userId, userId),
+                    eq(aiActiveRuns.feature, featureKey),
+                    gte(aiActiveRuns.lastSeenAt, new Date(Date.now() - ACTIVE_STALE_MS)),
+                ),
+            );
+        return !!row;
+    } catch {
+        return false; // DB ล้ม = ปล่อยผ่าน (fail-open เหมือน countTodayRuns)
     }
 }
 
@@ -528,32 +586,37 @@ export async function callAi(options: AiCallOptions): Promise<AiCallResult> {
     };
 
     await ensureAiAllowed(featureKey, ctx);
-    await markFeatureActive(featureKey, await resolveUserId(ctx.userId), ctx.novelId);
+    const activeUserId = await resolveUserId(ctx.userId);
+    await markFeatureActive(featureKey, activeUserId, ctx.novelId);
 
-    if (def.chain.length === 0) {
-        throw new AiControlError("all-failed", `ฟีเจอร์ "${def.label}" ไม่มี LLM provider (ฝั่ง Python)`);
-    }
-
-    const errors: string[] = [];
-    for (const step of def.chain) {
-        if (isCoolingDown(step.provider)) {
-            const waitSec = Math.ceil((providerCooldownUntil.get(step.provider)! - Date.now()) / 1000);
-            errors.push(`${step.provider}: cooling down ${waitSec}s (rate limited earlier)`);
-            continue;
+    try {
+        if (def.chain.length === 0) {
+            throw new AiControlError("all-failed", `ฟีเจอร์ "${def.label}" ไม่มี LLM provider (ฝั่ง Python)`);
         }
-        try {
-            return await executeStep(featureKey, ctx, step, buildChatRequest(step, options), {
-                markRateLimitCooldown: options.useCooldown !== false,
-            });
-        } catch (e) {
-            errors.push(e instanceof Error ? e.message : String(e));
-        }
-    }
 
-    throw new AiControlError(
-        "all-failed",
-        `ทุก provider ล้มหมด (${def.label}) — ${errors[errors.length - 1] ?? "no provider configured"}`,
-    );
+        const errors: string[] = [];
+        for (const step of def.chain) {
+            if (isCoolingDown(step.provider)) {
+                const waitSec = Math.ceil((providerCooldownUntil.get(step.provider)! - Date.now()) / 1000);
+                errors.push(`${step.provider}: cooling down ${waitSec}s (rate limited earlier)`);
+                continue;
+            }
+            try {
+                return await executeStep(featureKey, ctx, step, buildChatRequest(step, options), {
+                    markRateLimitCooldown: options.useCooldown !== false,
+                });
+            } catch (e) {
+                errors.push(e instanceof Error ? e.message : String(e));
+            }
+        }
+
+        throw new AiControlError(
+            "all-failed",
+            `ทุก provider ล้มหมด (${def.label}) — ${errors[errors.length - 1] ?? "no provider configured"}`,
+        );
+    } finally {
+        await clearFeatureActive(featureKey, activeUserId);
+    }
 }
 
 /**
@@ -575,6 +638,11 @@ export async function callAiProvider(
         userId: options.userId,
         skipGuestCheck: options.skipGuestCheck,
         novelId: options.novelId,
+        // ตัวนี้มีไว้ยิงหลาย provider ของฟีเจอร์เดียวกันพร้อมกันโดยเจตนา (โหวต) —
+        // ถ้าเปิดกันยิงซ้อน ตัวที่สองจะโดนบล็อกทุกครั้ง
+        // ponytail: เท่ากับ callAiProvider ไม่มีตัวกัน burst เหลือแต่โควตารายวัน
+        // ตอนนี้มีผู้ใช้แค่ 2 ฟีเจอร์ (bible-import, character-state-extractor) รับได้
+        skipBusyCheck: true,
     };
 
     await ensureAiAllowed(featureKey, ctx);

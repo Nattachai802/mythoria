@@ -471,30 +471,30 @@ function ThreadSuggestToast({
     };
 
     return (
-        <div className="chamfered-sm border border-zinc-700 bg-zinc-900 text-zinc-100 shadow-xl w-[320px] overflow-hidden">
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-700/60 bg-zinc-950/60">
-                <Sprout className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                <span className="font-technical text-[9px] uppercase tracking-widest text-zinc-400">วางแล้ว — ผูกปมดีไหม?</span>
-                <button onClick={onDismiss} className="ml-auto text-zinc-600 hover:text-zinc-300 transition-colors">
+        <div className="chamfered-sm border border-border bg-popover text-popover-foreground shadow-xl w-[320px] overflow-hidden">
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-border/60 bg-muted/40">
+                <Sprout className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span className="font-technical text-[9px] uppercase tracking-widest text-muted-foreground">วางแล้ว — ผูกปมดีไหม?</span>
+                <button onClick={onDismiss} className="ml-auto text-muted-foreground hover:text-foreground transition-colors">
                     <X className="h-3 w-3" />
                 </button>
             </div>
 
             <div className="px-3 py-2.5 space-y-2">
-                <p className="text-xs text-zinc-300 truncate">
-                    <span className="text-amber-400 font-medium">"{ideaTitle}"</span>
+                <p className="text-xs truncate">
+                    <span className="text-amber-600 dark:text-amber-400 font-medium">"{ideaTitle}"</span>
                 </p>
 
                 <div className="flex gap-1">
                     <button
                         onClick={() => setMode("pick")}
-                        className={`flex-1 h-6 text-[10px] chamfered-sm border transition-colors ${mode === "pick" ? "bg-zinc-700 border-zinc-500 text-zinc-100" : "border-zinc-700 text-zinc-500 hover:text-zinc-300"}`}
+                        className={`flex-1 h-6 text-[10px] chamfered-sm border transition-colors ${mode === "pick" ? "bg-muted border-border text-foreground" : "border-border text-muted-foreground hover:text-foreground"}`}
                     >
                         ปมที่มีอยู่
                     </button>
                     <button
                         onClick={() => setMode("new")}
-                        className={`flex-1 h-6 text-[10px] chamfered-sm border transition-colors ${mode === "new" ? "bg-zinc-700 border-zinc-500 text-zinc-100" : "border-zinc-700 text-zinc-500 hover:text-zinc-300"}`}
+                        className={`flex-1 h-6 text-[10px] chamfered-sm border transition-colors ${mode === "new" ? "bg-muted border-border text-foreground" : "border-border text-muted-foreground hover:text-foreground"}`}
                     >
                         สร้างปมใหม่
                     </button>
@@ -506,7 +506,7 @@ function ThreadSuggestToast({
                             <button
                                 key={t.id}
                                 onClick={() => setSelectedId(t.id)}
-                                className={`flex items-center gap-2 px-2 py-1.5 chamfered-sm border text-left text-xs transition-colors ${selectedId === t.id ? "border-amber-500/50 bg-amber-500/10 text-amber-200" : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"}`}
+                                className={`flex items-center gap-2 px-2 py-1.5 chamfered-sm border text-left text-xs transition-colors ${selectedId === t.id ? "border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-200" : "border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground"}`}
                             >
                                 <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: t.color ?? "#f59e0b" }} />
                                 <span className="truncate">{t.title}</span>
@@ -517,7 +517,7 @@ function ThreadSuggestToast({
                 )}
 
                 {mode === "pick" && threads.length === 0 && (
-                    <p className="text-[11px] text-zinc-500 text-center py-1">ยังไม่มีปม — ลองสร้างใหม่</p>
+                    <p className="text-[11px] text-muted-foreground text-center py-1">ยังไม่มีปม — ลองสร้างใหม่</p>
                 )}
 
                 {mode === "new" && (
@@ -525,7 +525,7 @@ function ThreadSuggestToast({
                         value={newTitle}
                         onChange={e => setNewTitle(e.target.value)}
                         placeholder="ชื่อปมใหม่…"
-                        className="w-full h-8 px-2 text-xs bg-zinc-800 border border-zinc-600 chamfered-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/60"
+                        className="w-full h-8 px-2 text-xs bg-background border border-input chamfered-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-amber-500/60"
                         autoFocus
                     />
                 )}
@@ -534,14 +534,14 @@ function ThreadSuggestToast({
                     <button
                         onClick={handleLink}
                         disabled={isLinking || (mode === "pick" && !selectedId) || (mode === "new" && !newTitle.trim())}
-                        className="flex-1 h-7 chamfered-sm bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[11px] font-medium hover:bg-amber-500/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1"
+                        className="flex-1 h-7 chamfered-sm bg-amber-500/15 border border-amber-500/40 text-amber-700 dark:text-amber-300 text-[11px] font-medium hover:bg-amber-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1"
                     >
                         {isLinking ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sprout className="h-3 w-3" />}
                         {mode === "new" ? "สร้างและผูก" : "ผูกปม"}
                     </button>
                     <button
                         onClick={onDismiss}
-                        className="h-7 px-2 chamfered-sm border border-zinc-700 text-zinc-500 text-[11px] hover:text-zinc-300 transition-colors"
+                        className="h-7 px-2 chamfered-sm border border-border text-muted-foreground text-[11px] hover:text-foreground transition-colors"
                     >
                         ข้าม
                     </button>
@@ -1417,19 +1417,37 @@ export function PlaygroundBoard({
         }
     }, []);
 
+    // กันปิดแท็บ/รีเฟรชระหว่างที่ autosave ยังไม่ลง — หน้าต่างนี้กว้าง 2 วิ + เวลาที่ยิงจริง
+    // ceiling: เปลี่ยนหน้าในแอปเอง (next/link) ไม่ยิง beforeunload ต้องดัก router event ถึงจะกันได้
+    const savePending = useRef(false);
+    useEffect(() => {
+        const warn = (e: BeforeUnloadEvent) => {
+            if (!savePending.current) return;
+            e.preventDefault();
+            e.returnValue = ""; // เบราว์เซอร์เก่ายังต้องการค่านี้ถึงจะขึ้นกล่องยืนยัน
+        };
+        window.addEventListener("beforeunload", warn);
+        return () => window.removeEventListener("beforeunload", warn);
+    }, []);
+
     // Auto-save (items + lanes)
     useEffect(() => {
         if (isFirstMount.current) {
             isFirstMount.current = false;
             return;
         }
+        savePending.current = true;
         const timeoutId = setTimeout(async () => {
             setIsSaving(true);
             const laneNodes = lanes_.map(l => ({ id: l.id, type: 'lane', name: l.name, orderIndex: l.orderIndex, color: l.color }));
             const chapterNodes = chapters.map(c => ({ id: c.id, type: 'chapter', name: c.name, startBeat: c.startBeat, endBeat: c.endBeat }));
             const result = await updateTimelineCanvas(eventId, [...items, ...laneNodes, ...chapterNodes]);
-            if (result.success) setLastSaved(new Date());
-            else toast.error("บันทึกอัตโนมัติไม่สำเร็จ — ลองแก้อะไรสักอย่างเพื่อบันทึกใหม่");
+            if (result.success) {
+                setLastSaved(new Date());
+                savePending.current = false; // ยิงพลาดยังถือว่าค้าง — ให้เตือนตอนปิดแท็บต่อไป
+            } else {
+                toast.error("บันทึกอัตโนมัติไม่สำเร็จ — ลองแก้อะไรสักอย่างเพื่อบันทึกใหม่");
+            }
             setIsSaving(false);
         }, 2000);
         return () => clearTimeout(timeoutId);

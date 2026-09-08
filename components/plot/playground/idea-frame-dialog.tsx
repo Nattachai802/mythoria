@@ -472,8 +472,12 @@ interface IdeaFrameDialogProps {
   onEchoResult?: (finding: EchoFinding) => void;
 }
 
+/** คลิกนอกแผงสองครั้งห่างกันไม่เกินนี้ = สั่งปิด (ค่าเดียวกับ dblclick ของเบราว์เซอร์คร่าว ๆ) */
+const DOUBLE_CLICK_MS = 400;
+
 // รายละเอียดเต็มของไอเดีย — ลอยข้างการ์ดแบบ hovercard (Popover) แทน dialog กลางจอ
 // เพื่อให้เปิดดูได้พร้อมกันหลายใบสำหรับเทียบ ๆ กัน — ไม่บังพื้นหลัง ไม่ auto-close ตอนคลิกการ์ดอื่น
+// ปิดได้ 3 ทาง: ปุ่มกากบาท · Esc · ดับเบิลคลิกนอกแผง
 function IdeaFrameDialog({
   onClose, item, elementDetails, onEditChild, onRemoveChild, ideaNotes,
   onQuickAddNote, onDeleteNote, onReorderNotes, novelId, ancestorConnections, onRemoveAncestor,
@@ -531,6 +535,40 @@ function IdeaFrameDialog({
   // ผลคือ wrapper ยังกินพื้นที่กล่องเดิมค้างไว้ ทับการ์ดใบข้าง ๆ จนกดไม่ได้แม้ลากแผงหนีไปแล้ว
   // ปิด pointer-events ที่ wrapper แล้วเปิดคืนเฉพาะเนื้อใน — กล่องผีเลยโปร่งให้คลิกทะลุ
   const contentRef = useRef<HTMLDivElement | null>(null);
+
+  // ปิดแผงด้วยการคลิกนอกแผงสองครั้งติด — คลิกเดียวยังไม่ปิด เพราะตั้งใจให้เปิดหลายใบ
+  // เทียบกันได้ กดการ์ดใบข้าง ๆ หรือลากกระดานแล้วแผงต้องไม่หาย
+  // นับเองด้วยเวลา ไม่ใช้ event.detail เพราะ pointerdown ในบางเบราว์เซอร์ให้ 0 เสมอ
+  const noteDirty = quickNoteOpen && !!quickNote.trim() && quickNote !== noteBaseline;
+
+  const lastOutsideAt = useRef(0);
+  const handleInteractOutside = (e: { preventDefault: () => void }) => {
+    // มีโน้ตพิมพ์ค้างอยู่ = ไม่ปิดไม่ว่ากดกี่ครั้ง (ปุ่มกากบาทกับ Esc ก็ไม่ควรกินของหาย
+    // แต่ตรงนี้คือทางที่เผลอง่ายสุด — คลิกพลาดนอกแผงสองที)
+    if (noteDirty) {
+      e.preventDefault();
+      toast.info("มีโน้ตที่ยังไม่ได้บันทึก — กดบันทึกหรือยกเลิกก่อนปิดแผง");
+      return;
+    }
+    const now = Date.now();
+    const isDouble = now - lastOutsideAt.current < DOUBLE_CLICK_MS;
+    lastOutsideAt.current = isDouble ? 0 : now; // ปิดแล้วเริ่มนับใหม่ ไม่ให้คลิกที่สามพ่วงต่อ
+    if (!isDouble) e.preventDefault();
+  };
+
+  // โน้ตไม่มี autosave (เซฟตอนกดปุ่มเท่านั้น) — เตือนก่อนปิดแท็บ/รีเฟรช/ออกไปเว็บอื่น
+  // ceiling: เปลี่ยนหน้าในแอปเอง (next/link) ไม่ยิง beforeunload — แผงถูก unmount ไปเงียบ ๆ
+  // ถ้าจะกันเคสนั้นด้วยต้องดัก router event ซึ่งต้องแก้นอกไฟล์นี้
+  useEffect(() => {
+    if (!noteDirty) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = ""; // เบราว์เซอร์เก่ายังต้องการค่านี้ถึงจะขึ้นกล่องยืนยัน
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [noteDirty]);
+
   useEffect(() => {
     const wrapper = contentRef.current?.parentElement;
     if (wrapper) wrapper.style.pointerEvents = "none";
@@ -1056,7 +1094,7 @@ function IdeaFrameDialog({
       sideOffset={12}
       collisionPadding={16}
       onOpenAutoFocus={(e) => e.preventDefault()}
-      onInteractOutside={(e) => e.preventDefault()}
+      onInteractOutside={handleInteractOutside}
       ref={contentRef}
       className="pointer-events-auto w-[315px] max-w-[92vw] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto p-0"
       style={floatAt ? {
@@ -1399,9 +1437,6 @@ function IdeaFrameDialog({
               )}
               <Button type="button" size="sm" variant="ghost" className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground" onClick={onCopy}>
                 <Copy className="w-3 h-3" /> คัดลอก
-              </Button>
-              <Button type="button" size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-foreground" title="ปิด" onClick={onClose}>
-                <X className="w-3.5 h-3.5" />
               </Button>
             </div>
           </div>

@@ -22,7 +22,7 @@ export async function POST(request: NextRequest, { params }: Props) {
         } catch (e) {
             return NextResponse.json(
                 { success: false, error: e instanceof AiControlError ? e.message : "ใช้ AI ไม่ได้" },
-                { status: e instanceof AiControlError && e.reason === "quota" ? 429 : 403 }
+                { status: e instanceof AiControlError && (e.reason === "quota" || e.reason === "busy") ? 429 : 403 }
             );
         }
 
