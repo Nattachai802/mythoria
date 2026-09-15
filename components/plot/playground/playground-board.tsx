@@ -1976,6 +1976,30 @@ export function PlaygroundBoard({
             }
         });
 
+        // เส้น converge/split หลายเส้นที่ใช้ node+ทิศเดียวกัน เดิม busX ตรงกันเป๊ะ (ฝั่ง target/source
+        // ใช้ mergeY เดียวกันด้วย) จึงวิ่งทับกันสนิทตลอดช่วงบัส อ่านไม่ออกว่ามีกี่เส้น —
+        // จัดลำดับ index ต่อกลุ่ม (target/source เดียวกัน + ทิศเดียวกัน) แล้วถ่างบัสออกทีละขั้น
+        // ก่อนถึง pass "จัด track" ทั่วไป (ซึ่งจัดเฉพาะกรณีบังเอิญ x ใกล้กัน ไม่ได้ตั้งใจแยกกลุ่มนี้)
+        const BUS_STEP = 18;
+        const busGroupIndex = new Map<typeof edges[number], number>();
+        {
+            const groups = new Map<string, typeof edges>();
+            edges.forEach(e => {
+                const converge = (inCount.get(e.targetId) ?? 0) > 1;
+                const split = !converge && (outCount.get(e.sourceId) ?? 0) > 1;
+                if (!converge && !split) return;
+                const dir = e.tPos.x >= e.sPos.x ? 1 : -1;
+                const key = converge ? `to:${e.targetId}:${dir}` : `from:${e.sourceId}:${dir}`;
+                if (!groups.has(key)) groups.set(key, []);
+                groups.get(key)!.push(e);
+            });
+            groups.forEach(list => {
+                // เรียงลำดับให้คงที่ (ไม่ขึ้นกับลำดับ insert) — ตามตำแหน่ง y ของปลายอีกฝั่ง
+                list.sort((a, b) => (a.sPos.y + a.tPos.y) - (b.sPos.y + b.tPos.y));
+                list.forEach((e, i) => busGroupIndex.set(e, i));
+            });
+        }
+
         const built = edges.map((e) => {
             const converge = (inCount.get(e.targetId) ?? 0) > 1; // รวมเข้า target
             const split = !converge && (outCount.get(e.sourceId) ?? 0) > 1; // แตกจาก source (mirror)
@@ -1989,9 +2013,10 @@ export function PlaygroundBoard({
                 const dir = e.tPos.x >= e.sPos.x ? 1 : -1;
                 const aX = e.sPos.x + dir * e.sPos.w / 2;
                 const bX = e.tPos.x - dir * e.tPos.w / 2;
+                const busOffset = (busGroupIndex.get(e) ?? 0) * BUS_STEP;
                 let busX: number, aY: number, bY: number;
-                if (converge) { busX = bX - dir * GAP; aY = e.sPos.y; bY = targetMergeY.get(e.targetId)!; }
-                else { busX = aX + dir * GAP; aY = sourceMergeY.get(e.sourceId)!; bY = e.tPos.y; }
+                if (converge) { busX = bX - dir * (GAP + busOffset); aY = e.sPos.y; bY = targetMergeY.get(e.targetId)!; }
+                else { busX = aX + dir * (GAP + busOffset); aY = sourceMergeY.get(e.sourceId)!; bY = e.tPos.y; }
                 points = [{ x: aX, y: aY }, { x: busX, y: aY }, { x: busX, y: bY }, { x: bX, y: bY }];
             } else if (sItem && tItem && sItem.beatIndex === tItem.beatIndex) {
                 // จังหวะเดียวกัน (คอลัมน์เดียว) → ออกขวาทั้งคู่ แล้ววิ่งบัสในร่อง gutter ด้านขวา

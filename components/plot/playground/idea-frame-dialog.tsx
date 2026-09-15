@@ -303,11 +303,7 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
             {peopleNames.length > 0 && (
               <span className="flex items-center gap-1 min-w-0 flex-1" title={peopleNames.join(', ')}>
                 <Users className="w-3 h-3 shrink-0" />
-                <span className="relative min-w-0 flex-1 h-3.5 overflow-hidden">
-                  <span className="absolute inset-y-0 left-0 whitespace-nowrap animate-marquee-ltr">
-                    {peopleNames.join(', ')}
-                  </span>
-                </span>
+                <span className="truncate">{peopleNames.join(', ')}</span>
               </span>
             )}
             {locationCount > 0 && (
