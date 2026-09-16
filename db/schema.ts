@@ -2165,6 +2165,9 @@ export const aiUsageLog = pgTable("ai_usage_log", {
   completionTokens: integer("completion_tokens").default(0).notNull(),
   latencyMs: integer("latency_ms"),
   errorDetail: text("error_detail"), // ตัดสั้นๆ — อย่าเก็บ prompt/เนื้อหาผู้ใช้
+  // คำตอบดิบจากโมเดล เก็บเฉพาะตอน status = "parse_error" (provider ตอบมาแล้วแต่ผู้เรียกอ่านไม่ออก)
+  // ตอนสำเร็จเป็น null เสมอ — จงใจไม่เก็บทุกครั้ง ไม่งั้นเนื้อเรื่องของผู้ใช้จะไหลเข้า log
+  rawResponse: text("raw_response"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   userDayIdx: index("ai_usage_user_day_idx").on(table.userId, table.createdAt),

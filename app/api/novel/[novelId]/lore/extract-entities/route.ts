@@ -63,7 +63,7 @@ Lore Content:
         } catch (e: any) {
             if (e instanceof AiControlError) {
                 // disabled/quota/guest — บอกสาเหตุตรงๆ (ไม่ fallback ลับๆ ทั้งที่ระบบปิด)
-                return NextResponse.json({ error: e.message }, { status: e.reason === "quota" ? 429 : 403 });
+                return NextResponse.json({ error: e.message }, { status: e.reason === "quota" || e.reason === "busy" ? 429 : 403 });
             }
             console.warn(`LLM Extraction failed: ${e?.message}. Using fallback local scan.`);
             isFallback = true;

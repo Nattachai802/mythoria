@@ -5,6 +5,7 @@ import { Download, Clapperboard } from "lucide-react";
 import { toast } from "sonner";
 import type { ThreadWithBeats } from "@/server/plot-threads";
 import { ChapterRecapButton } from "./chapter-recap-panel";
+import { ChapterChecklistPanel } from "./chapter-checklist-panel";
 import { PacingLine } from "./pacing-line";
 
 // ความกว้าง/gap ต่อ "ช่องฉาก" หนึ่งช่องบนเส้นจังหวะ — ไม่มีการ์ดแสดงจริงในบอร์ดนี้แล้ว
@@ -69,6 +70,7 @@ export function ChapterOverviewBoard({ novelId, chapterId, chapterTitle, events,
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                     <ChapterRecapButton novelId={novelId} chapterId={chapterId} initialRecap={initialChapterRecap} />
+                    <ChapterChecklistPanel novelId={novelId} chapterId={chapterId} />
                     <Button variant="outline" size="sm" onClick={handleExportAll}
                         className="h-9 gap-1.5 chamfered-sm font-technical text-[9px] uppercase tracking-[0.08em]">
                         <Download className="h-3.5 w-3.5" />export

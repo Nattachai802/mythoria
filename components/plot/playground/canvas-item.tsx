@@ -47,6 +47,11 @@ export function DraggableCanvasItem({
   characters,
   novelDummyNames,
   factions,
+  powers,
+  items,
+  entities,
+  worldSystems,
+  participantLinks,
   ideas,
   onAddChild,
   onUpdateChild,
@@ -55,6 +60,7 @@ export function DraggableCanvasItem({
   onSetColor,
   onSetSceneDrama,
   onSetKeyMoment,
+  onRenameIdea,
   onSetNarration,
   threadBeats,
   onOpenThreadBind,
@@ -73,6 +79,7 @@ export function DraggableCanvasItem({
   onSetColor?: (color: string | null) => void;
   onSetSceneDrama?: (patch: Record<string, unknown>) => void;
   onSetKeyMoment?: (label: string | null) => void;
+  onRenameIdea?: (title: string) => void;
   onSetNarration?: (isNarration: boolean) => void;
   threadBeats?: Array<{ beatId: string; threadId: string; title: string; color: string | null; role: string }>;
   onOpenThreadBind?: () => void;
@@ -96,6 +103,11 @@ export function DraggableCanvasItem({
   characters?: any[];
   novelDummyNames?: string[];
   factions?: any[];
+  powers?: any[];
+  items?: any[];
+  entities?: any[];
+  worldSystems?: any[];
+  participantLinks?: { charFactions?: any[]; charPowers?: any[] };
   ideas?: any[];
   onAddChild?: (ideaId: string, child: any) => void;
   onUpdateChild?: (parentId: string, childId: string, patch: any) => void;
@@ -203,6 +215,11 @@ export function DraggableCanvasItem({
         characters={characters}
         novelDummyNames={novelDummyNames}
         factions={factions}
+        powers={powers}
+        items={items}
+        entities={entities}
+        worldSystems={worldSystems}
+        participantLinks={participantLinks}
         ideas={ideas}
         onAddChild={onAddChild}
         onUpdateChild={onUpdateChild}
@@ -212,6 +229,7 @@ export function DraggableCanvasItem({
         onSetSceneDrama={onSetSceneDrama}
         tonePresets={tonePresets}
         onSetKeyMoment={onSetKeyMoment}
+        onRenameIdea={onRenameIdea}
         onSetNarration={onSetNarration}
         threadBeats={threadBeats}
         onOpenThreadBind={onOpenThreadBind}
@@ -353,6 +371,11 @@ export function CanvasItem({
   characters,
   novelDummyNames,
   factions,
+  powers,
+  items,
+  entities,
+  worldSystems,
+  participantLinks,
   ideas,
   onAddChild,
   onUpdateChild,
@@ -362,6 +385,7 @@ export function CanvasItem({
   onSetSceneDrama,
   tonePresets = [],
   onSetKeyMoment,
+  onRenameIdea,
   onSetNarration,
   threadBeats,
   onOpenThreadBind,
@@ -375,6 +399,7 @@ export function CanvasItem({
   onSetColor?: (color: string | null) => void;
   onSetSceneDrama?: (patch: Record<string, unknown>) => void;
   onSetKeyMoment?: (label: string | null) => void;
+  onRenameIdea?: (title: string) => void;
   onSetNarration?: (isNarration: boolean) => void;
   threadBeats?: Array<{ beatId: string; threadId: string; title: string; color: string | null; role: string }>;
   onOpenThreadBind?: () => void;
@@ -400,6 +425,11 @@ export function CanvasItem({
   characters?: any[];
   novelDummyNames?: string[];
   factions?: any[];
+  powers?: any[];
+  items?: any[];
+  entities?: any[];
+  worldSystems?: any[];
+  participantLinks?: { charFactions?: any[]; charPowers?: any[] };
   ideas?: any[];
   onAddChild?: (ideaId: string, child: any) => void;
   onUpdateChild?: (parentId: string, childId: string, patch: any) => void;
@@ -437,6 +467,11 @@ export function CanvasItem({
         characters={characters}
         novelDummyNames={novelDummyNames}
         factions={factions}
+        powers={powers}
+        items={items}
+        entities={entities}
+        worldSystems={worldSystems}
+        participantLinks={participantLinks}
         ideas={ideas}
         onAddChild={onAddChild}
         onUpdateChild={onUpdateChild}
@@ -446,6 +481,7 @@ export function CanvasItem({
         onSetSceneDrama={onSetSceneDrama}
         tonePresets={tonePresets}
         onSetKeyMoment={onSetKeyMoment}
+        onRenameIdea={onRenameIdea}
         onSetNarration={onSetNarration}
         threadBeats={threadBeats}
         onOpenThreadBind={onOpenThreadBind}

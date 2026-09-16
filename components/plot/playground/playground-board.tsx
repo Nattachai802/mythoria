@@ -9,14 +9,15 @@ import {
     useSensor,
     useSensors,
     PointerSensor,
+    KeyboardSensor,
     DragStartEvent,
     pointerWithin,
     DragOverlay,
 } from "@dnd-kit/core";
-import { ResourceSidebar } from "./resource-sidebar";
 import { CanvasItem, DraggableCanvasItem } from "./canvas-item";
 import { EchoScorePanel } from "./echo-score-panel";
-import { SceneRecapPanel } from "./scene-recap-panel";
+import { BeatCoachSection } from "./beat-coach-panel";
+import { SceneRecapSection } from "./scene-recap-panel";
 import type { EchoFinding } from "@/lib/echo-score";
 import type { CausalityVerdict } from "@/lib/plot-recap";
 import { type BoardChapter, updateTimelineCanvas, getNovelDummyParticipants } from "@/server/timeline";
@@ -29,7 +30,7 @@ import { SceneElementDetails } from "@/db/schema";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Link2, X, Check, Download, List, Navigation, StickyNote, GitBranchPlus, Lightbulb, Loader2, Sprout, LayoutGrid, Rows3, PanelLeftClose, PanelLeftOpen, Repeat, Target, FileText } from "lucide-react";
+import { Plus, Link2, X, Check, Download, List, Navigation, StickyNote, GitBranchPlus, Lightbulb, Loader2, Sprout, LayoutGrid, Rows3, Repeat, Target, FileText, Sparkles, Activity } from "lucide-react";
 import { CreateIdeaDialog } from "@/components/project/idea/create-idea-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -38,23 +39,48 @@ import { createPortal } from "react-dom";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import { snapSimultaneousBeats } from "@/lib/simultaneous-beats";
+import { analyzeBeats, collapseByBeat } from "@/lib/beat-coach";
+import { SceneDramaticPanel } from "./scene-dramatic-panel";
 import { labelAnchor } from "@/lib/link-label";
 import { buildSceneFormat, renderSceneMarkdown } from "@/lib/story-format";
 import { useIsMobile } from "@/hooks/use-mobile";
+
+// KeyboardSensor ตัวเดิมกิน Space ที่ bubble ขึ้นมาจากช่องพิมพ์ในการ์ด (เช่นโน้ตของไอเดีย)
+// เพราะ dnd-kit จะข้าม guard ของตัวเองเมื่อ activatorNode เป็น null แล้ว preventDefault ทิ้ง
+// กันไว้ที่ sensor ที่เดียว ดีกว่าไล่ใส่ stopPropagation ทุก input
+class TypingSafeKeyboardSensor extends KeyboardSensor {
+    static activators = [{
+        eventName: "onKeyDown" as const,
+        handler: (event: any, args: any, ctx: any) => {
+            const target = event.target as HTMLElement | null;
+            if (target?.isContentEditable || target?.closest?.("input, textarea, select, [contenteditable='true']")) {
+                return false;
+            }
+            return (KeyboardSensor as any).activators[0].handler(event, args, ctx);
+        },
+    }];
+}
 
 interface PlaygroundBoardProps {
     eventId: string;
     novelId: string;
     initialItems: any[];
+    sceneEvents?: any[]; // ฉากทั้งเรื่อง — ส่งต่อให้ SceneDramaticPanel ใช้เลือกฉากต้นเหตุ
     event?: any; // timelineEvent เต็ม — ใช้ดึงฟิลด์ดราม่า (goal/conflict/outcome/POV/เหตุ-ผล) ตอน export
     characters: any[];
-    locations: any[];
     ideas: any[];
     threads?: ThreadWithBeats[];
     factions?: any[];
+    powers?: any[];
+    /** สิ่งของในนิยาย (ตาราง items) — alias เป็น worldItems ตอนรับ เพราะ items ในไฟล์นี้คือการ์ดบนแคนวาส */
+    items?: any[];
+    entities?: any[];
+    worldSystems?: any[];
     boardChapters?: BoardChapter[]; // ตอนที่แบ่งไว้บนกระดานอื่นของนิยายเดียวกัน — ใช้อ้างอิงตอนตั้งชื่อ
     tonePresets?: { id: string; label: string; color: string }[];
     initialEchoFindings?: EchoFinding[];
+    /** ความสัมพันธ์จากตารางโลก ใช้อนุมานโครงชั้นในการ์ด (P-nest) */
+    participantLinks?: { charFactions?: any[]; charPowers?: any[] };
     initialSceneRecap?: { recap: string; causality?: CausalityVerdict; causalityNote?: string } | null;
 }
 
@@ -445,30 +471,30 @@ function ThreadSuggestToast({
     };
 
     return (
-        <div className="chamfered-sm border border-zinc-700 bg-zinc-900 text-zinc-100 shadow-xl w-[320px] overflow-hidden">
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-700/60 bg-zinc-950/60">
-                <Sprout className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                <span className="font-technical text-[9px] uppercase tracking-widest text-zinc-400">วางแล้ว — ผูกปมดีไหม?</span>
-                <button onClick={onDismiss} className="ml-auto text-zinc-600 hover:text-zinc-300 transition-colors">
+        <div className="chamfered-sm border border-border bg-popover text-popover-foreground shadow-xl w-[320px] overflow-hidden">
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-border/60 bg-muted/40">
+                <Sprout className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span className="font-technical text-[9px] uppercase tracking-widest text-muted-foreground">วางแล้ว — ผูกปมดีไหม?</span>
+                <button onClick={onDismiss} className="ml-auto text-muted-foreground hover:text-foreground transition-colors">
                     <X className="h-3 w-3" />
                 </button>
             </div>
 
             <div className="px-3 py-2.5 space-y-2">
-                <p className="text-xs text-zinc-300 truncate">
-                    <span className="text-amber-400 font-medium">"{ideaTitle}"</span>
+                <p className="text-xs truncate">
+                    <span className="text-amber-600 dark:text-amber-400 font-medium">"{ideaTitle}"</span>
                 </p>
 
                 <div className="flex gap-1">
                     <button
                         onClick={() => setMode("pick")}
-                        className={`flex-1 h-6 text-[10px] chamfered-sm border transition-colors ${mode === "pick" ? "bg-zinc-700 border-zinc-500 text-zinc-100" : "border-zinc-700 text-zinc-500 hover:text-zinc-300"}`}
+                        className={`flex-1 h-6 text-[10px] chamfered-sm border transition-colors ${mode === "pick" ? "bg-muted border-border text-foreground" : "border-border text-muted-foreground hover:text-foreground"}`}
                     >
                         ปมที่มีอยู่
                     </button>
                     <button
                         onClick={() => setMode("new")}
-                        className={`flex-1 h-6 text-[10px] chamfered-sm border transition-colors ${mode === "new" ? "bg-zinc-700 border-zinc-500 text-zinc-100" : "border-zinc-700 text-zinc-500 hover:text-zinc-300"}`}
+                        className={`flex-1 h-6 text-[10px] chamfered-sm border transition-colors ${mode === "new" ? "bg-muted border-border text-foreground" : "border-border text-muted-foreground hover:text-foreground"}`}
                     >
                         สร้างปมใหม่
                     </button>
@@ -480,7 +506,7 @@ function ThreadSuggestToast({
                             <button
                                 key={t.id}
                                 onClick={() => setSelectedId(t.id)}
-                                className={`flex items-center gap-2 px-2 py-1.5 chamfered-sm border text-left text-xs transition-colors ${selectedId === t.id ? "border-amber-500/50 bg-amber-500/10 text-amber-200" : "border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"}`}
+                                className={`flex items-center gap-2 px-2 py-1.5 chamfered-sm border text-left text-xs transition-colors ${selectedId === t.id ? "border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-200" : "border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground"}`}
                             >
                                 <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: t.color ?? "#f59e0b" }} />
                                 <span className="truncate">{t.title}</span>
@@ -491,7 +517,7 @@ function ThreadSuggestToast({
                 )}
 
                 {mode === "pick" && threads.length === 0 && (
-                    <p className="text-[11px] text-zinc-500 text-center py-1">ยังไม่มีปม — ลองสร้างใหม่</p>
+                    <p className="text-[11px] text-muted-foreground text-center py-1">ยังไม่มีปม — ลองสร้างใหม่</p>
                 )}
 
                 {mode === "new" && (
@@ -499,7 +525,7 @@ function ThreadSuggestToast({
                         value={newTitle}
                         onChange={e => setNewTitle(e.target.value)}
                         placeholder="ชื่อปมใหม่…"
-                        className="w-full h-8 px-2 text-xs bg-zinc-800 border border-zinc-600 chamfered-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-amber-500/60"
+                        className="w-full h-8 px-2 text-xs bg-background border border-input chamfered-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-amber-500/60"
                         autoFocus
                     />
                 )}
@@ -508,14 +534,14 @@ function ThreadSuggestToast({
                     <button
                         onClick={handleLink}
                         disabled={isLinking || (mode === "pick" && !selectedId) || (mode === "new" && !newTitle.trim())}
-                        className="flex-1 h-7 chamfered-sm bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[11px] font-medium hover:bg-amber-500/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1"
+                        className="flex-1 h-7 chamfered-sm bg-amber-500/15 border border-amber-500/40 text-amber-700 dark:text-amber-300 text-[11px] font-medium hover:bg-amber-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-1"
                     >
                         {isLinking ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sprout className="h-3 w-3" />}
                         {mode === "new" ? "สร้างและผูก" : "ผูกปม"}
                     </button>
                     <button
                         onClick={onDismiss}
-                        className="h-7 px-2 chamfered-sm border border-zinc-700 text-zinc-500 text-[11px] hover:text-zinc-300 transition-colors"
+                        className="h-7 px-2 chamfered-sm border border-border text-muted-foreground text-[11px] hover:text-foreground transition-colors"
                     >
                         ข้าม
                     </button>
@@ -708,32 +734,64 @@ function ChapterPopover({ trigger, initial, beatCount, onSave, onDelete, recentC
     );
 }
 
-// การ์ดร่างสร้างไอเดีย inline — ใส่แค่ชื่อ, Enter/blur ที่มีชื่อ = บันทึก, ว่าง/Esc = ทิ้ง
-function DraftIdeaCard({ onCommit, onCancel }: { onCommit: (title: string) => void; onCancel: () => void }) {
+// การ์ดร่างสร้างไอเดีย inline — ช่องเดียวทำสองอย่าง: พิมพ์ชื่อใหม่ = สร้าง, หรือเลือกจากไอเดียเดิมที่ขึ้นมาให้
+// (แทนที่การลากไอเดียจากแถบซ้ายซึ่งเลิกใช้แล้ว — กดที่ช่องที่ต้องการก่อน จึงไม่มีทางหย่อนผิดช่อง)
+function DraftIdeaCard({ onCommit, onCancel, onPick, unusedIdeas = [] }: {
+    onCommit: (title: string) => void;
+    onCancel: () => void;
+    onPick: (idea: any) => void;
+    unusedIdeas?: any[];
+}) {
     const [title, setTitle] = useState("");
     const cancelRef = useRef(false);
+
+    const q = title.trim().toLowerCase();
+    const matches = q
+        ? unusedIdeas.filter((i: any) => (i.title || "").toLowerCase().includes(q)).slice(0, 4)
+        : unusedIdeas.slice(0, 4);
+
     return (
         <div
-            className="rounded-md border border-[var(--forge-amber)]/60 bg-card p-2 shadow-sm animate-in fade-in zoom-in-95 duration-150"
+            className="chamfered-sm border border-[var(--forge-amber)]/60 bg-card p-2 shadow-sm animate-in fade-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
             onPointerDown={(e) => e.stopPropagation()}
         >
             <div className="flex items-center gap-1.5 mb-1">
                 <Lightbulb className="w-3.5 h-3.5 text-[var(--forge-amber)]" />
-                <span className="text-[9px] uppercase font-technical tracking-wide text-muted-foreground">ไอเดียใหม่</span>
+                <span className="text-[9px] uppercase font-technical tracking-wide text-muted-foreground">ไอเดีย</span>
             </div>
             <input
                 autoFocus
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 onKeyDown={(e) => {
+                    e.stopPropagation();
                     if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); }
                     else if (e.key === "Escape") { cancelRef.current = true; e.currentTarget.blur(); }
                 }}
                 onBlur={() => { if (cancelRef.current || !title.trim()) onCancel(); else onCommit(title.trim()); }}
-                placeholder="ชื่อไอเดีย… (Enter บันทึก, ปล่อยว่าง = ทิ้ง)"
+                placeholder="ชื่อไอเดีย… (Enter = สร้างใหม่)"
                 className="w-full h-7 px-1 text-sm font-semibold bg-transparent border-b border-border/60 focus:outline-none focus:border-[var(--forge-amber)]"
             />
+
+            {matches.length > 0 && (
+                <div className="mt-1.5 space-y-0.5">
+                    <p className="text-[9px] uppercase font-technical tracking-wide text-muted-foreground/70">
+                        หรือดึงจากคลังไอเดีย
+                    </p>
+                    {matches.map((idea: any) => (
+                        <button
+                            key={idea.id}
+                            // mousedown ต้องกัน blur ไม่ให้ยิง onCommit ทับก่อนที่ click จะทำงาน
+                            onMouseDown={(e) => { e.preventDefault(); cancelRef.current = true; onPick(idea); }}
+                            className="w-full flex items-center gap-1.5 px-1 py-1 text-left text-xs chamfered-sm hover:bg-[var(--forge-amber)]/10 transition-colors"
+                        >
+                            <span className="h-1.5 w-1.5 rounded-full bg-yellow-500 shrink-0" />
+                            <span className="truncate">{idea.title}</span>
+                        </button>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
@@ -896,14 +954,19 @@ export function PlaygroundBoard({
     novelId,
     initialItems,
     event,
+    sceneEvents = [],
     characters,
-    locations,
     ideas,
     threads = [],
     factions = [],
+    powers = [],
+    items: worldItems = [],
+    entities = [],
+    worldSystems = [],
     boardChapters = [],
     tonePresets = [],
     initialEchoFindings = [],
+    participantLinks,
     initialSceneRecap = null,
 }: PlaygroundBoardProps) {
     const [{ lanes, items: initialCardItems, chapters: initialChapters }] = useState(() => buildBoardState(initialItems, ideas));
@@ -938,12 +1001,19 @@ export function PlaygroundBoard({
         return Number.isFinite(n) && n > max ? n : max;
     }, 0) + 1;
     const [activeDragItem, setActiveDragItem] = useState<any>(null);
+    // สัญญาณเตือนของผู้ช่วยแต่ละตัว รวมขึ้นมาที่ปุ่มเดียว — ไม่งั้นคำเตือนจะถูกซ่อนในกล่องที่ยังไม่เปิด
+    const [recapWarning, setRecapWarning] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const isMobile = useIsMobile();
     // ไอเดียใหม่จะวางที่จังหวะไหน: 'latest' = จังหวะล่าสุด (คอลัมน์ที่มีอยู่) | 'new' = จังหวะใหม่ (คอลัมน์ท้าย)
     const [newIdeaBeat, setNewIdeaBeat] = useState<'latest' | 'new'>('new');
     const [newIdeaLaneId, setNewIdeaLaneId] = useState<string>(''); // '' = เลนแรก
+
+    // ไอเดียที่ยังไม่ถูกวางบนกระดานนี้ — เช็คจาก items ด้วย ไม่ใช่แค่ flag isUsed ที่อาจตามไม่ทัน
+    const unusedIdeas = useMemo(() => {
+        const onBoard = new Set(items.filter((i: any) => i.type === 'idea').map((i: any) => i.referenceId));
+        return (ideas || []).filter((i: any) => !i.isUsed && !onBoard.has(i.id));
+    }, [ideas, items]);
 
     // สร้างไอเดีย inline: การ์ดร่างในช่องที่กด +
     const [draftCell, setDraftCell] = useState<{ laneId: string; beatIndex: number } | null>(null);
@@ -964,7 +1034,46 @@ export function PlaygroundBoard({
         }]);
         setCreatingCell(null);
         updateIdea(idea.id, { isUsed: true });
+        suggestThreadBind(idea.title);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [draftCell, novelId]);
+
+    // หลังวางไอเดียลงกระดาน ชวนผูกปม — เฉพาะตอนที่นิยายมีปมอยู่แล้ว
+    // ถ้ายังไม่มีปมเลยสักเส้น ผู้เขียนใหม่ยังไม่รู้จัก "ปม" ด้วยซ้ำ การเด้งทันทีจะกลายเป็นขวางจังหวะ
+    // function declaration ตั้งใจ — hoist ขึ้นไปให้ handler ที่ประกาศก่อนหน้าเรียกได้ โดยไม่ต้องสลับลำดับทั้งไฟล์
+    function suggestThreadBind(ideaTitle: string) {
+        if (threadState.length === 0) return;
+        setThreadSuggest({
+            ideaTitle: ideaTitle || "ไอเดียนี้",
+            selectedThreadId: threadState[0]?.id ?? "",
+            newThreadTitle: ideaTitle || "",
+            mode: "pick",
+            isLinking: false,
+        });
+        toast(
+            <ThreadSuggestToast
+                ideaTitle={ideaTitle || "ไอเดียนี้"}
+                threads={threadState}
+                novelId={novelId}
+                eventId={eventId}
+                onDismiss={() => toast.dismiss("thread-suggest")}
+            />,
+            { id: "thread-suggest", duration: 8000, unstyled: true, classNames: { toast: "w-full" } }
+        );
+    }
+
+    // วางไอเดียที่มีอยู่แล้วลงช่อง — เดิมทำได้ทางเดียวคือลากจากแถบซ้าย
+    const handlePickExistingIdea = useCallback((cell: { laneId: string; beatIndex: number }, idea: any) => {
+        setDraftCell(null);
+        setItems(prev => [...prev, {
+            id: crypto.randomUUID(), type: 'idea', referenceId: idea.id,
+            title: idea.title, content: idea.content || '',
+            laneId: cell.laneId, beatIndex: cell.beatIndex, children: [], links: [],
+        }]);
+        updateIdea(idea.id, { isUsed: true });
+        suggestThreadBind(idea.title);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // ปมเรื่องระดับ card: เก็บ threads เป็น state เพื่ออัปเดต badge ทันทีหลังผูก/ปลด
     const [threadState, setThreadState] = useState<ThreadWithBeats[]>(threads);
@@ -1011,7 +1120,7 @@ export function PlaygroundBoard({
         await handleBindThread(cardId, thread.id, role);
     }, [novelId, handleBindThread]);
 
-    const [threadSuggest, setThreadSuggest] = useState<{
+    const [, setThreadSuggest] = useState<{
         ideaTitle: string;
         selectedThreadId: string;
         newThreadTitle: string;
@@ -1308,19 +1417,37 @@ export function PlaygroundBoard({
         }
     }, []);
 
+    // กันปิดแท็บ/รีเฟรชระหว่างที่ autosave ยังไม่ลง — หน้าต่างนี้กว้าง 2 วิ + เวลาที่ยิงจริง
+    // ceiling: เปลี่ยนหน้าในแอปเอง (next/link) ไม่ยิง beforeunload ต้องดัก router event ถึงจะกันได้
+    const savePending = useRef(false);
+    useEffect(() => {
+        const warn = (e: BeforeUnloadEvent) => {
+            if (!savePending.current) return;
+            e.preventDefault();
+            e.returnValue = ""; // เบราว์เซอร์เก่ายังต้องการค่านี้ถึงจะขึ้นกล่องยืนยัน
+        };
+        window.addEventListener("beforeunload", warn);
+        return () => window.removeEventListener("beforeunload", warn);
+    }, []);
+
     // Auto-save (items + lanes)
     useEffect(() => {
         if (isFirstMount.current) {
             isFirstMount.current = false;
             return;
         }
+        savePending.current = true;
         const timeoutId = setTimeout(async () => {
             setIsSaving(true);
             const laneNodes = lanes_.map(l => ({ id: l.id, type: 'lane', name: l.name, orderIndex: l.orderIndex, color: l.color }));
             const chapterNodes = chapters.map(c => ({ id: c.id, type: 'chapter', name: c.name, startBeat: c.startBeat, endBeat: c.endBeat }));
             const result = await updateTimelineCanvas(eventId, [...items, ...laneNodes, ...chapterNodes]);
-            if (result.success) setLastSaved(new Date());
-            else toast.error("บันทึกอัตโนมัติไม่สำเร็จ — ลองแก้อะไรสักอย่างเพื่อบันทึกใหม่");
+            if (result.success) {
+                setLastSaved(new Date());
+                savePending.current = false; // ยิงพลาดยังถือว่าค้าง — ให้เตือนตอนปิดแท็บต่อไป
+            } else {
+                toast.error("บันทึกอัตโนมัติไม่สำเร็จ — ลองแก้อะไรสักอย่างเพื่อบันทึกใหม่");
+            }
             setIsSaving(false);
         }, 2000);
         return () => clearTimeout(timeoutId);
@@ -1442,13 +1569,24 @@ export function PlaygroundBoard({
     };
 
 
+    // จังหวะผิดปกติ (เอื่อย/เร่งค้าง/แบน) หรือเหตุ-ผลไม่สมเหตุผล → ปุ่ม "ผู้ช่วย" ติดจุดเตือน
+    const assistantAttention = useMemo(() => {
+        const beatCards = items
+            .filter((it: any) => it.type === "idea")
+            .map((it: any) => ({ id: it.referenceId || it.id, beatIndex: it.beatIndex ?? 0, pacing: typeof it.pacing === "number" ? it.pacing : null }));
+        const state = analyzeBeats(collapseByBeat(beatCards)).state;
+        return recapWarning || state === "dragging" || state === "overheated" || state === "flat";
+    }, [items, recapWarning]);
+
     const sensors = useSensors(
         useSensor(PointerSensor, {
             activationConstraint: {
                 distance: 8,
                 shouldActivate: (event: any) => !linkingSourceId && event.button === 0,
             },
-        })
+        }),
+        // ลากด้วยคีย์บอร์ดได้ (Space/Enter จับ, ลูกศรเลื่อน) — ไม่งั้นฟีเจอร์หลักใช้ได้เฉพาะเมาส์
+        useSensor(TypingSafeKeyboardSensor)
     );
 
     const handleRemoveChild = (parentId: string, childId: string) => {
@@ -1688,78 +1826,6 @@ export function PlaygroundBoard({
             return;
         }
 
-        // --- ของใหม่จาก sidebar ---
-        if (overData?.acceptDrops) {
-            if (activeData.type === 'idea') {
-                toast.error("ไอเดียซ้อนกันไม่ได้");
-                return;
-            }
-            const incomingRefId = activeData.id;
-            setItems(prev => {
-                const targetIdea = prev.find(i => i.id === over.id);
-                if (targetIdea && isDuplicate(targetIdea, incomingRefId)) {
-                    toast.error("มีอยู่ในไอเดียนี้แล้ว");
-                    return prev;
-                }
-                const newItem = {
-                    id: crypto.randomUUID(),
-                    type: activeData.type,
-                    referenceId: incomingRefId,
-                    title: activeData.title,
-                    content: activeData.content,
-                    role: activeData.role,
-                };
-                return prev.map(item => item.id === over.id
-                    ? { ...item, children: [...(item.children || []), newItem] }
-                    : item
-                );
-            });
-            return;
-        }
-
-        if (cellMatch) {
-            const [, laneId, beatIndexStr] = overId.split(':');
-            const beatIndex = Number(beatIndexStr);
-            const newItem = {
-                id: crypto.randomUUID(),
-                type: activeData.type,
-                referenceId: activeData.id,
-                title: activeData.title,
-                content: activeData.content,
-                role: activeData.role,
-                laneId,
-                beatIndex,
-                children: [],
-                links: [],
-            };
-            setItems(prev => [...prev, newItem]);
-
-            if (activeData.type === 'idea' && activeData.id) {
-                updateIdea(activeData.id, { isUsed: true });
-                // แจ้งเตือนผูกปมเฉพาะตอนนิยายมีปมอยู่แล้ว — ถ้ายังไม่มีปมเลยสักเส้น ผู้เขียนใหม่ยังไม่รู้จัก
-                // "ปม" ด้วยซ้ำ การ popup ทันทีหลังวางการ์ดใบแรกจะกลายเป็นขวางจังหวะเฉยๆ
-                // (ผูกปมทำได้เสมออยู่แล้วผ่านเมนู 3 จุดของการ์ด "ผูกปมเรื่อง")
-                if (threadState.length > 0) {
-                    setThreadSuggest({
-                        ideaTitle: activeData.title || "ไอเดียนี้",
-                        selectedThreadId: threadState[0]?.id ?? "",
-                        newThreadTitle: activeData.title || "",
-                        mode: "pick",
-                        isLinking: false,
-                    });
-                    toast(
-                        <ThreadSuggestToast
-                            ideaTitle={activeData.title || "ไอเดียนี้"}
-                            threads={threadState}
-                            novelId={novelId}
-                            eventId={eventId}
-                            onDismiss={() => toast.dismiss("thread-suggest")}
-                        />,
-                        { id: "thread-suggest", duration: 8000, unstyled: true, classNames: { toast: "w-full" } }
-                    );
-                }
-            }
-        }
     };
 
     const handleSetColor = (id: string, color: string | null) => {
@@ -1773,6 +1839,23 @@ export function PlaygroundBoard({
     };
 
     // เหตุการณ์สำคัญ (mock) — เก็บ label ใน canvas node, auto-save เดิมจัดการต่อ
+    // เปลี่ยนชื่อไอเดียจากบนกระดาน — ชื่ออยู่สองที่ (ideas.title คือแหล่งจริง, item.title ใน canvasData คือสำเนา)
+    // เขียนทั้งคู่ ไม่งั้นอีกฝั่งค้างค่าเก่าจนกว่าจะ reload
+    const handleRenameIdea = async (id: string, nextTitle: string) => {
+        const target = items.find(i => i.id === id);
+        const clean = nextTitle.trim();
+        if (!target || !clean || clean === target.title) return;
+
+        setItems(prev => prev.map(i => (i.id === id ? { ...i, title: clean } : i)));
+        if (!target.referenceId) return; // การ์ดที่ยังไม่ผูกกับไอเดียจริง — เก็บแค่บน canvas
+
+        const res = await updateIdea(target.referenceId, { title: clean });
+        if (!res.success) {
+            setItems(prev => prev.map(i => (i.id === id ? { ...i, title: target.title } : i)));
+            toast.error("เปลี่ยนชื่อไอเดียไม่สำเร็จ");
+        }
+    };
+
     const handleSetKeyMoment = (id: string, label: string | null) => {
         setItems(prev => prev.map(item => item.id === id ? { ...item, keyMomentLabel: label } : item));
     };
@@ -1873,6 +1956,13 @@ export function PlaygroundBoard({
             eventId,
             elementDetails: elementDetailsMap,
             ideaNotes,
+            // ให้ไฟล์ที่ export ออกไปเห็นโครงชั้นเหมือนที่เห็นบนจอ (P-nest)
+            nestWorld: {
+                charFactions: participantLinks?.charFactions,
+                charPowers: participantLinks?.charPowers,
+                items: worldItems as any[],
+                powers: powers as any[],
+            },
         });
         const md = renderSceneMarkdown(format);
 
@@ -2202,6 +2292,11 @@ export function PlaygroundBoard({
             characters={characters}
             novelDummyNames={novelDummyNames}
             factions={factions}
+            powers={powers}
+            items={worldItems}
+            entities={entities}
+            worldSystems={worldSystems}
+            participantLinks={participantLinks}
             ideas={ideas}
             onAddChild={handleAddChild}
             onUpdateChild={handleUpdateChild}
@@ -2210,6 +2305,7 @@ export function PlaygroundBoard({
             onSetColor={(c: string | null) => handleSetColor(item.id, c)}
             onSetSceneDrama={(patch: Record<string, unknown>) => handleSetSceneDrama(item.id, patch)}
             tonePresets={tonePresets}
+            onRenameIdea={item.type === 'idea' ? (t: string) => handleRenameIdea(item.id, t) : undefined}
             onSetKeyMoment={item.type === 'idea' ? (label: string | null) => handleSetKeyMoment(item.id, label) : undefined}
             onSetNarration={item.type === 'idea' ? (v: boolean) => handleSetNarration(item.id, v) : undefined}
             threadBeats={item.type === 'idea' ? (cardBeats.get(item.id) ?? []) : undefined}
@@ -2230,37 +2326,6 @@ export function PlaygroundBoard({
             onDragEnd={handleDragEnd}
         >
             <div className="flex h-full">
-                {/* Sidebar — เป็นแหล่งลาก ไม่มีบนมือถือ (ไม่มี drag บนมือถือ, เพิ่มการ์ดผ่านปุ่ม "ไอเดียใหม่" แทน) */}
-                {!isMobile && (
-                <div
-                    className={`border-r bg-muted/10 overflow-hidden flex flex-col shrink-0 transition-[width] duration-300 ease-in-out ${sidebarCollapsed ? "w-9" : "w-60"}`}
-                >
-                    {sidebarCollapsed ? (
-                        <div className="flex flex-col items-center pt-2">
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                title="แสดงแถบทรัพยากร"
-                                onClick={() => setSidebarCollapsed(false)}
-                            >
-                                <PanelLeftOpen className="w-4 h-4" />
-                            </Button>
-                        </div>
-                    ) : (
-                        <div className="w-60 h-full animate-in fade-in duration-300">
-                            <ResourceSidebar
-                                characters={characters}
-                                locations={locations}
-                                ideas={ideas}
-                                factions={factions}
-                                onCollapse={() => setSidebarCollapsed(true)}
-                            />
-                        </div>
-                    )}
-                </div>
-                )}
-
                 {/* Storyboard grid area */}
                 <div className="flex-1 min-w-0 relative bg-muted/30 min-h-[400px] flex flex-col">
                     {/* Linking Mode Banner */}
@@ -2289,11 +2354,12 @@ export function PlaygroundBoard({
                     {/* Toolbar — relative+z-40 ทำให้เป็น stacking context ของตัวเอง อยู่เหนือ sticky header ของกริด (z-30)
                         เดิมมีแค่ "z-30" แบบ static เลยไม่มีผล เพราะ z-index ต้องมาคู่กับ position; backdrop-blur เองก็ดัน
                         สร้าง stacking context ใหม่โดยไม่ตั้งใจ ทำให้ panel ลูก (z-50) ถูกขังอยู่ต่ำกว่ากริดที่อยู่นอก context นั้น */}
-                    <div className="relative z-40 flex items-center gap-2 px-3 py-2 border-b bg-background/85 backdrop-blur overflow-x-auto">
+                    <div className="relative z-40 flex items-center gap-2 px-3 py-2 border-b bg-background/85 backdrop-blur">
                         <div className="relative">
-                            <Button variant={showNavigator ? "secondary" : "ghost"} size="icon" className="h-8 w-8"
-                                onClick={() => setShowNavigator(!showNavigator)} aria-label="สารบัญ" title="สารบัญ">
-                                <List className="h-4 w-4" />
+                            <Button variant={showNavigator ? "secondary" : "ghost"} size="sm"
+                                className="h-8 gap-1.5 text-xs pointer-coarse:h-11"
+                                onClick={() => setShowNavigator(!showNavigator)} title="สารบัญ">
+                                <List className="h-4 w-4" />สารบัญ
                             </Button>
                             {showNavigator && (
                                 <div className="absolute top-full left-0 mt-2 w-64 bg-popover text-popover-foreground rounded-lg shadow-xl border overflow-hidden flex flex-col max-h-[60vh] z-50">
@@ -2333,30 +2399,81 @@ export function PlaygroundBoard({
                             )}
                         </div>
 
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleAddStickyNote} aria-label="เพิ่ม Sticky Note" title="เพิ่ม Sticky Note">
-                            <StickyNote className="h-4 w-4" />
+                        <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs pointer-coarse:h-11" onClick={handleAddStickyNote} title="เพิ่มโน้ตแปะ">
+                            <StickyNote className="h-4 w-4" />โน้ต
                         </Button>
 
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleAutoArrange} aria-label='เรียง beat ตาม "นำไปสู่"' title='เรียง beat ตาม "นำไปสู่"'>
-                            <LayoutGrid className="h-4 w-4" />
+                        <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs pointer-coarse:h-11" onClick={handleAutoArrange} title='เรียงการ์ดใหม่ตามความสัมพันธ์ "นำไปสู่"'>
+                            <LayoutGrid className="h-4 w-4" />เรียงจังหวะ
                         </Button>
 
-                        <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs" onClick={handleAddLane} title="เพิ่มเลนใหม่">
-                            <Rows3 className="h-4 w-4" />เพิ่มเลน
-                        </Button>
+                        {/* ผู้ช่วยทั้งสามตัวรวมไว้ในกล่องเดียว — เรียงจาก "อ่านได้ทันที" ไป "ต้องกดสั่ง AI"
+                            เพื่อไม่ให้ผู้ใช้เผลอกดยิงงานที่เสีย token */}
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className={cn("h-8 gap-1.5 text-xs pointer-coarse:h-11", assistantAttention && "text-[var(--forge-amber)]")}
+                                    title="ผู้ช่วยดูฉาก — จังหวะ / สรุปฉาก / Echo Score"
+                                >
+                                    <Sparkles className="h-4 w-4" />
+                                    ผู้ช่วย
+                                    {assistantAttention && <span className="h-1.5 w-1.5 rounded-full bg-[var(--forge-amber)]" />}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent align="start" collisionPadding={12} className="w-[340px] p-0 overflow-hidden">
+                                <div className="flex items-center gap-2 px-2.5 py-1.5 bg-zinc-900 border-b border-zinc-700/60">
+                                    <Activity className="h-3 w-3 text-[var(--forge-amber)]" />
+                                    <span className="font-technical text-[9px] uppercase tracking-widest text-zinc-300">
+                                        ผู้ช่วยดูฉากนี้
+                                    </span>
+                                </div>
 
-                        <EchoScorePanel
-                            novelId={novelId}
-                            sceneId={eventId}
-                            findingCount={echoFindings.length}
-                            onFindingsChange={setEchoFindings}
-                        />
+                                <div className="max-h-[calc(var(--radix-popover-content-available-height)-2rem)] overflow-y-auto divide-y divide-border/60">
+                                    <BeatCoachSection
+                                        novelId={novelId}
+                                        sceneId={eventId}
+                                        cards={items
+                                            .filter((it: any) => it.type === "idea")
+                                            .map((it: any) => ({ id: it.referenceId || it.id, beatIndex: it.beatIndex ?? 0, pacing: typeof it.pacing === "number" ? it.pacing : null }))}
+                                    />
 
-                        <SceneRecapPanel
-                            novelId={novelId}
-                            sceneId={eventId}
-                            initialRecap={initialSceneRecap}
-                        />
+                                    <div className="p-3">
+                                        <SceneRecapSection
+                                            novelId={novelId}
+                                            sceneId={eventId}
+                                            initialRecap={initialSceneRecap}
+                                            onWarningChange={setRecapWarning}
+                                        />
+                                    </div>
+
+                                    <div className="p-3 space-y-2">
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-technical text-[9px] uppercase tracking-widest text-muted-foreground flex-1">
+                                                Echo Score
+                                            </span>
+                                            {echoFindings.length > 0 && (
+                                                <span className="text-[11px] text-muted-foreground tabular-nums">
+                                                    พบ {echoFindings.length} การ์ด
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-[11px] text-muted-foreground">หาจังหวะที่เดาได้ ผลขึ้นเป็นป้ายบนการ์ด</p>
+                                        <EchoScorePanel
+                                            novelId={novelId}
+                                            sceneId={eventId}
+                                            findingCount={echoFindings.length}
+                                            onFindingsChange={setEchoFindings}
+                                        />
+                                    </div>
+                                </div>
+                            </PopoverContent>
+                        </Popover>
+
+                        {event && (
+                            <SceneDramaticPanel event={event} characters={characters} events={sceneEvents} />
+                        )}
 
                         <div className="flex-1" />
 
@@ -2423,15 +2540,16 @@ export function PlaygroundBoard({
                                 updateIdea(idea.id, { isUsed: true });
                             }}
                             trigger={
-                                <Button size="sm" className="h-8 gap-1.5">
+                                <Button size="sm" className="h-8 gap-1.5 pointer-coarse:h-11">
                                     <Plus className="w-4 h-4" />ไอเดียใหม่
                                 </Button>
                             }
                         />
 
+                        {/* เมนูนี้ทำเรื่องเดียว: เอาข้อมูลออกจากกระดาน — ใช้ไอคอนดาวน์โหลดให้รู้ว่าเป็นหมวดไหน */}
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <Button size="icon" variant="outline" className="h-8 w-8" aria-label="ส่งออก" title="ส่งออก">
+                                <Button size="icon" variant="ghost" className="h-8 w-8 pointer-coarse:h-11 pointer-coarse:w-11" aria-label="ส่งออก" title="ส่งออก">
                                     <Download className="w-4 h-4" />
                                 </Button>
                             </DropdownMenuTrigger>
@@ -2584,6 +2702,8 @@ export function PlaygroundBoard({
                                                     <DraftIdeaCard
                                                         onCommit={handleCommitDraft}
                                                         onCancel={() => setDraftCell(null)}
+                                                        onPick={(idea) => handlePickExistingIdea({ laneId: lane.id, beatIndex }, idea)}
+                                                        unusedIdeas={unusedIdeas}
                                                     />
                                                 ) : beatIndex !== beatCount ? (
                                                     <button
@@ -2608,6 +2728,19 @@ export function PlaygroundBoard({
                                 </Fragment>
                                 );
                             })}
+
+                            {/* เพิ่มเลนอยู่ท้ายคอลัมน์เลน ไม่ใช่ในเมนูรวม — เป็นการแก้โครงกระดาน คนละเรื่องกับส่งออก */}
+                            <div
+                                style={{ gridColumn: 1, gridRow: lanes_.length + 3, width: LABEL_WIDTH }}
+                                className="sticky left-0 z-20 bg-muted/40 backdrop-blur-sm border-r border-b border-border/60 p-1.5"
+                            >
+                                <button
+                                    onClick={handleAddLane}
+                                    className="w-full flex items-center justify-center gap-1.5 py-2 text-[11px] text-muted-foreground hover:text-[var(--forge-amber)] border border-dashed border-border/50 hover:border-[var(--forge-amber)]/50 chamfered-sm transition-colors"
+                                >
+                                    <Rows3 className="w-3.5 h-3.5" />เพิ่มเลน
+                                </button>
+                            </div>
 
                             {/* เส้นเชื่อม overlay */}
                             <svg

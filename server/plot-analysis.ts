@@ -8,10 +8,16 @@ import {
     sceneElementDetails,
     plotFindings,
     plotRecaps,
+    characters,
+    characterFactions,
+    characterPowers,
+    powers,
+    items as items2,
 } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { requireNovelAccess } from "@/lib/authz";
 import { buildSceneFormat, type SceneFormat, type SceneFormatInput } from "@/lib/story-format";
+import type { NestWorld } from "@/lib/participant-nest";
 import {
     analyzePlot,
     type PlotAnalysisReport,
@@ -59,6 +65,28 @@ function parseCanvasData(canvasData: unknown): {
  * แยกออกมาจาก runEchoScore เพื่อให้ server/plot-recap.ts เรียกใช้ซ้ำได้ (สรุปฉากต้องการ
  * SceneFormat ตัวเดียวกันเป๊ะ ไม่ใช่คำนวณใหม่คนละแบบ) — null = ไม่พบฉากนี้ในนิยายนี้
  */
+/**
+ * ข้อมูลความสัมพันธ์จากตารางโลก ใช้อนุมานโครงชั้นในการ์ด (P-nest)
+ * ดึงทีเดียวต่อนิยาย ไม่ใช่ต่อฉาก — ทุกฉากใช้ชุดเดียวกัน
+ */
+async function loadNestWorld(novelId: string): Promise<NestWorld> {
+    const [charFactions, charPowers, itemRows, powerRows] = await Promise.all([
+        db.select({ characterId: characterFactions.characterId, factionId: characterFactions.factionId })
+            .from(characterFactions)
+            .innerJoin(characters, eq(characters.id, characterFactions.characterId))
+            .where(eq(characters.novelId, novelId)),
+        db.select({ characterId: characterPowers.characterId, powerId: characterPowers.powerId })
+            .from(characterPowers)
+            .innerJoin(characters, eq(characters.id, characterPowers.characterId))
+            .where(eq(characters.novelId, novelId)),
+        db.select({ id: items2.id, currentOwnerId: items2.currentOwnerId, locationId: items2.locationId })
+            .from(items2).where(eq(items2.novelId, novelId)),
+        db.select({ id: powers.id, access: powers.access })
+            .from(powers).where(eq(powers.novelId, novelId)),
+    ]);
+    return { charFactions, charPowers, items: itemRows, powers: powerRows };
+}
+
 export async function buildSceneFormatForEvent(novelId: string, sceneId: string): Promise<SceneFormat | null> {
     const event = await db.query.timelineEvents.findFirst({
         where: and(
@@ -106,7 +134,9 @@ export async function buildSceneFormatForEvent(novelId: string, sceneId: string)
     }
 
     const { items, lanes } = parseCanvasData(event.canvasData);
+
     return buildSceneFormat({
+        nestWorld: await loadNestWorld(novelId),
         event: {
             id: event.id, title: event.title, sceneGoal: event.sceneGoal,
             sceneConflict: event.sceneConflict, sceneOutcome: event.sceneOutcome,
@@ -205,6 +235,7 @@ export async function getPlotAnalysis(novelId: string): Promise<
         }
 
         // ── 4. ประกอบ SceneFormat ทีละฉาก ────────────────────────────────
+        const nestWorld = await loadNestWorld(novelId);
         const scenes = events.map(event => {
             const { items, lanes } = parseCanvasData(event.canvasData);
             const elementDetails = detailsByScene.get(event.id) ?? new Map();
@@ -220,7 +251,7 @@ export async function getPlotAnalysis(novelId: string): Promise<
                     description: event.description,
                 },
                 items, lanes, threads: threadsForFormat,
-                eventId: event.id, elementDetails, ideaNotes: [],
+                eventId: event.id, elementDetails, ideaNotes: [], nestWorld,
             };
             return buildSceneFormat(input);
         });

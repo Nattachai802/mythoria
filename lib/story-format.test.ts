@@ -321,4 +321,43 @@ assert(renderSceneMarkdown(pipeThreadFmt).includes("| ปม\\|ทดสอบ |
 assert(noteFmt.cardCount === 2, "cardCount excludes board notes");
 assert(noteFmt.beatCount === 1, "beatCount from real cards only");
 
+// ── P-nest: ผู้ร่วมฉากเรียงเป็นชั้น + บอกความสัมพันธ์ ───────────────────
+
+const nestFmt = buildSceneFormat(makeInput({
+    items: [{
+        id: "item1", type: "idea", title: "การ์ดทดสอบ", beatIndex: 0, laneId: "lane1",
+        children: [
+            { id: "k1", type: "faction", referenceId: "kage", title: "ตระกูลคาเงะ" },
+            { id: "k2", type: "character", referenceId: "hero", title: "พระเอก" },
+            { id: "k3", type: "item", referenceId: "sword", title: "ดาบต้องสาป" },
+        ],
+    }],
+    nestWorld: {
+        charFactions: [{ characterId: "hero", factionId: "kage" }],
+        items: [{ id: "sword", currentOwnerId: "hero" }],
+    },
+}));
+const nestBeat = nestFmt.beats[0];
+assert(nestBeat.participants.map(p => p.name).join(",") === "ตระกูลคาเงะ,พระเอก,ดาบต้องสาป",
+    "participants ordered by tree, not insertion");
+assert(nestBeat.participants[1].depth === 1 && nestBeat.participants[2].depth === 2,
+    "depth follows nesting");
+assert(nestBeat.participants[1].relation === "สังกัด" && nestBeat.participants[2].relation === "ถือ",
+    "relation label from inference");
+const nestMd = renderSceneMarkdown(nestFmt);
+assert(nestMd.includes("  - สังกัด: ตัวละคร — พระเอก"), "markdown indents inferred child");
+assert(nestMd.includes("    - ถือ: ของ/สิ่งของ — ดาบต้องสาป"), "markdown indents grandchild");
+
+// ไม่ส่ง nestWorld = แบนเหมือนเดิม (ของเก่าไม่พัง)
+const flatFmt = buildSceneFormat(makeInput({
+    items: [{
+        id: "item1", type: "idea", title: "การ์ดทดสอบ", beatIndex: 0, laneId: "lane1",
+        children: [
+            { id: "k1", type: "character", referenceId: "hero", title: "พระเอก" },
+            { id: "k2", type: "item", referenceId: "sword", title: "ดาบต้องสาป" },
+        ],
+    }],
+}));
+assert(flatFmt.beats[0].participants.every(p => p.depth === 0), "no world data = flat list");
+
 console.log("\n✅ All tests passed");

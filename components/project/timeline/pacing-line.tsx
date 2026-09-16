@@ -237,7 +237,7 @@ export function PacingLine({ events, novelId, chapterId, chapterTitle }: PacingL
                 )}
                 {novelId && event?.id && (
                     <Button variant="outline" size="sm" onClick={handleAiSuggest} disabled={aiLoading}
-                        title="ให้ AI ให้คะแนนจังหวะเฉพาะฉากที่เปิดอยู่"
+                        title="ให้ AI ให้คะแนนจังหวะเฉพาะฉากที่เปิดอยู่ — อ่านอิสระ ไม่เห็นค่าที่ตั้งไว้"
                         className="h-9 gap-1.5 chamfered-sm font-technical text-[9px] uppercase tracking-[0.08em] shrink-0">
                         {aiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
                         AI คิดจังหวะฉากนี้
@@ -380,7 +380,7 @@ export function PacingLine({ events, novelId, chapterId, chapterTitle }: PacingL
                             {truncate(hover.title, 32)}
                         </div>
                         <div className="font-technical text-[10px] uppercase tracking-wider text-zinc-300 mt-0.5">
-                            {hover.isAi ? "AI แนะนำ" : hover.isScene ? "ฉากใหญ่" : "การ์ดไอเดีย"} · {hover.pacing != null ? `${hover.pacing}/10 · ${pacingLabel(hover.pacing)}` : "ยังไม่ตั้งจังหวะ"}
+                            {hover.isAi ? "AI อ่านว่า" : hover.isScene ? "ฉากใหญ่" : "การ์ดไอเดีย"} · {hover.pacing != null ? `${hover.pacing}/10 · ${pacingLabel(hover.pacing)}` : "ยังไม่ตั้งจังหวะ"}
                             {hover.isAi && hover.confidence != null && ` · มั่นใจ ${Math.round(hover.confidence * 100)}%`}
                         </div>
                         {hover.isAi && hover.reason && (

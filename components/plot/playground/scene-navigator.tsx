@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { Check, ChevronsUpDown, Plus, Trash2, MoreHorizontal, ArrowLeft } from "lucide-react"
+import { Check, ChevronsUpDown, Plus, Trash2, ArrowLeft } from "lucide-react"
 import { Chapter, TimelineEvent } from "@/db/schema"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -20,12 +20,6 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover"
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import {
     AlertDialog,
     AlertDialogAction,
@@ -218,22 +212,17 @@ export function SceneNavigator({
                 }
             />
 
-            <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon">
-                        <MoreHorizontal className="w-4 h-4" />
-                    </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                        onSelect={(e) => { e.preventDefault(); setDeleteOpen(true) }}
-                        className="text-destructive focus:text-destructive"
-                    >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        ลบฉาก
-                    </DropdownMenuItem>
-                </DropdownMenuContent>
-            </DropdownMenu>
+            {/* เมนูที่มีรายการเดียวไม่คุ้มเป็นเมนู — ปุ่มถังขยะตรง ๆ อ่านออกทันทีว่าคืออะไร */}
+            <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setDeleteOpen(true)}
+                aria-label="ลบฉากนี้"
+                title="ลบฉากนี้"
+                className="text-muted-foreground hover:text-destructive pointer-coarse:h-11 pointer-coarse:w-11"
+            >
+                <Trash2 className="w-4 h-4" />
+            </Button>
 
             <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
                 <AlertDialogContent>
