@@ -447,6 +447,10 @@ function IdeaFrameDialog({
   const [editingKeyMoment, setEditingKeyMoment] = useState(false);
   const [keyMomentDraft, setKeyMomentDraft] = useState(item.keyMomentLabel || "");
 
+  // รายชื่อตัวละคร/กลุ่มฝ่ายยุบไว้เมื่อเยอะ — ไม่งั้นการ์ดที่มีคนเข้าฉากเยอะสูงจนต้องเลื่อนยาว
+  const [participantsExpanded, setParticipantsExpanded] = useState(false);
+  const PARTICIPANTS_VISIBLE = 4;
+
   // Echo Score เฉพาะการ์ดนี้ — scope เดียวกับ EchoScorePanel แต่ยิงแค่การ์ดเดียว
   const [echoFinding, setEchoFinding] = useState<EchoFinding | null>(null);
   const [echoStatus, setEchoStatus] = useState<'idle' | 'pending' | 'empty' | 'error'>('idle');
@@ -810,14 +814,21 @@ function IdeaFrameDialog({
           )}
 
           {/* WHO — Characters + Factions รวมกัน */}
-          {children.some((c: any) => ['character', 'dummy_character', 'faction', 'dummy_faction'].includes(c.type)) && (
+          {children.some((c: any) => ['character', 'dummy_character', 'faction', 'dummy_faction'].includes(c.type)) && (() => {
+            const allParticipants = children.filter((c: any) => ['character', 'dummy_character', 'faction', 'dummy_faction'].includes(c.type));
+            const hiddenCount = allParticipants.length - PARTICIPANTS_VISIBLE;
+            const visibleIds = participantsExpanded || hiddenCount <= 0
+              ? null // null = แสดงทั้งหมด ไม่ต้อง filter
+              : new Set(allParticipants.slice(0, PARTICIPANTS_VISIBLE).map((c: any) => c.id));
+            const isVisible = (c: any) => visibleIds === null || visibleIds.has(c.id);
+            return (
             <div className="space-y-1">
               <p className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground/80">
                 <Users className="w-3 h-3" /> ตัวละคร
               </p>
               <div className="divide-y divide-border/40">
                 {children
-                  .filter((c: any) => c.type === 'character' || c.type === 'dummy_character')
+                  .filter((c: any) => (c.type === 'character' || c.type === 'dummy_character') && isVisible(c))
                   .map((child: any) => {
                     const detail = getChildDetail(child);
                     const isDummy = child.type === 'dummy_character';
@@ -849,7 +860,7 @@ function IdeaFrameDialog({
                     );
                   })}
                 {children
-                  .filter((c: any) => c.type === 'faction' || c.type === 'dummy_faction')
+                  .filter((c: any) => (c.type === 'faction' || c.type === 'dummy_faction') && isVisible(c))
                   .map((child: any) => {
                     const detail = getChildDetail(child);
                     const isDummy = child.type === 'dummy_faction';
@@ -921,8 +932,17 @@ function IdeaFrameDialog({
                     );
                   })}
               </div>
+              {hiddenCount > 0 && (
+                <button
+                  onClick={() => setParticipantsExpanded(v => !v)}
+                  className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+                >
+                  {participantsExpanded ? "ย่อรายชื่อ" : `+${hiddenCount} คน · แสดงทั้งหมด`}
+                </button>
+              )}
             </div>
-          )}
+            );
+          })()}
 
           {/* WHERE — Locations */}
           {children.some((c: any) => c.type === 'location') && (
