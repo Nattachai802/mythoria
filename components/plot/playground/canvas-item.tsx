@@ -26,6 +26,7 @@ import type { EchoFinding } from "@/lib/echo-score";
 // For items already on the canvas (moveable)
 export function DraggableCanvasItem({
   item,
+  frameNo,
   tonePresets,
   onRemove,
   onRemoveChild,
@@ -72,6 +73,8 @@ export function DraggableCanvasItem({
   onEchoResult,
 }: {
   item: any;
+  /** เลขการ์ด #LBBN คำนวณจาก board (ต้องรู้ทั้งกระดาน) */
+  frameNo?: string;
   echoFinding?: EchoFinding;
   onEchoResult?: (finding: EchoFinding) => void;
   tonePresets?: { id: string; label: string; color: string }[];
@@ -194,6 +197,7 @@ export function DraggableCanvasItem({
       )}
       <CanvasItem
         item={item}
+        frameNo={frameNo}
         onRemove={onRemove}
         onRemoveChild={onRemoveChild}
         isDragging={isDragging}
@@ -349,6 +353,7 @@ function StickyNoteItem({ item, onRemove, isDragging, isOverlay }: { item: any; 
 // The Visual Representation (used for both Canvas and DragOverlay)
 export function CanvasItem({
   item,
+  frameNo,
   onRemove,
   onRemoveChild,
   isDragging,
@@ -393,6 +398,7 @@ export function CanvasItem({
   onEchoResult,
 }: {
   item: any;
+  frameNo?: string;
   echoFinding?: EchoFinding;
   onEchoResult?: (finding: EchoFinding) => void;
   tonePresets?: { id: string; label: string; color: string }[];
@@ -446,6 +452,7 @@ export function CanvasItem({
     return (
       <IdeaFilmCard
         item={item}
+        frameNo={frameNo}
         onRemove={onRemove}
         onRemoveChild={onRemoveChild}
         isDragging={isDragging}

@@ -53,7 +53,10 @@ const NODE_ICONS: Record<string, typeof User> = { User, Shield, Zap, Gem, PawPri
 
 const roleMeta = (role?: string) => ROLE_META[(role || 'protagonist').toLowerCase()] ?? ROLE_META.protagonist;
 
-const frameNumber = (item: any) => `#${String((item.beatIndex ?? 0) + 1).padStart(3, "0")}`;
+// เลขเดิมยึด beatIndex อย่างเดียว การ์ดร่วมจังหวะจึงเลขซ้ำกันหมด — ตัวจริงคือ #LBBN ที่ board คำนวณให้
+// fallback ไว้กันการ์ดที่ไม่ได้มาจาก board (drag overlay ฯลฯ) แสดงช่องว่าง
+const frameNumber = (item: any, frameNo?: string) =>
+  frameNo ?? `#${String((item.beatIndex ?? 0) + 1).padStart(3, "0")}`;
 
 // แถบรูฟิล์ม (sprocket holes) — บน/ล่างของการ์ดและไดอะล็อกไอเดีย
 function FilmSprockets({ count = 11 }: { count?: number }) {
@@ -85,6 +88,8 @@ interface ThreadBeat {
 
 interface IdeaFilmCardProps {
   item: any;
+  /** เลขการ์ด #LBBN คำนวณจาก board */
+  frameNo?: string;
   onRemove?: () => void;
   onRemoveChild?: (id: string) => void;
   isDragging?: boolean;
@@ -131,7 +136,7 @@ interface IdeaFilmCardProps {
 // การ์ดหน้าตา "เฟรมฟิล์ม" แบบย่อบน canvas — กดเพื่อเปิดรายละเอียดเต็มใน IdeaFrameDialog
 export function IdeaFilmCard(props: IdeaFilmCardProps) {
   const {
-    item, onRemove, onRemoveChild, isDragging, isOverlay, isOver, isLinkingSource, onLinkStart,
+    item, frameNo, onRemove, onRemoveChild, isDragging, isOverlay, isOver, isLinkingSource, onLinkStart,
     elementDetails, onEditChild, ideaNotes, onQuickAddNote, onDeleteNote, onReorderNotes, novelId,
     onSetAncestor, ancestorConnections, onRemoveAncestor, sceneId, characters, novelDummyNames,
     factions, powers, items, entities, worldSystems, participantLinks, ideas, onAddChild, onUpdateChild, onPromoteDummy, onDetailSaved, onSetColor,
@@ -211,7 +216,7 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
           <div className="flex items-center justify-between gap-1.5">
             <span className="flex items-center gap-1.5 font-technical text-[10px] tracking-widest text-muted-foreground/60 shrink-0">
               {item.color && <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: item.color }} />}
-              {frameNumber(item)}
+              {frameNumber(item, frameNo)}
             </span>
             <div className="flex items-center gap-1 shrink-0">
               {item.isNarration && <Quote className="w-3 h-3 text-amber-500" fill="currentColor" />}
@@ -330,11 +335,12 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
             <p className="text-[11px] text-muted-foreground leading-snug line-clamp-2">{item.content}</p>
           )}
 
-          <div className="flex items-center gap-2.5 pt-0.5 text-[11px] text-muted-foreground/90 min-w-0">
+          <div className="flex items-start gap-2.5 pt-0.5 text-[11px] text-muted-foreground/90 min-w-0">
             {peopleNames.length > 0 && (
-              <span className="flex items-center gap-1 min-w-0 flex-1" title={peopleNames.join(', ')}>
-                <Users className="w-3 h-3 shrink-0" />
-                <span className="truncate">{peopleNames.join(', ')}</span>
+              <span className="flex items-start gap-1 min-w-0 flex-1" title={peopleNames.join(', ')}>
+                <Users className="w-3 h-3 shrink-0 mt-[2px]" />
+                {/* ชื่อยาวขึ้นบรรทัดใหม่แทนตัดท้ายด้วย … — ชื่อตัวละครตัดแล้วเดาไม่ออกว่าใคร */}
+                <span className="break-words">{peopleNames.join(', ')}</span>
               </span>
             )}
             {locationCount > 0 && (
@@ -395,6 +401,7 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
       <IdeaFrameDialog
         onClose={() => setDialogOpen(false)}
         item={item}
+        frameNo={frameNo}
         elementDetails={elementDetails}
         onEditChild={onEditChild}
         onRemoveChild={onRemoveChild}
@@ -435,6 +442,7 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
 interface IdeaFrameDialogProps {
   onClose: () => void;
   item: any;
+  frameNo?: string;
   elementDetails?: Map<string, SceneElementDetails>;
   onEditChild?: (child: any) => void;
   onRemoveChild?: (id: string) => void;
@@ -475,7 +483,7 @@ const DOUBLE_CLICK_MS = 400;
 // เพื่อให้เปิดดูได้พร้อมกันหลายใบสำหรับเทียบ ๆ กัน — ไม่บังพื้นหลัง ไม่ auto-close ตอนคลิกการ์ดอื่น
 // ปิดได้ 3 ทาง: ปุ่มกากบาท · Esc · ดับเบิลคลิกนอกแผง
 function IdeaFrameDialog({
-  onClose, item, elementDetails, onEditChild, onRemoveChild, ideaNotes,
+  onClose, item, frameNo, elementDetails, onEditChild, onRemoveChild, ideaNotes,
   onQuickAddNote, onDeleteNote, onReorderNotes, novelId, ancestorConnections, onRemoveAncestor,
   sceneId, characters, novelDummyNames, factions, powers, items, entities, worldSystems, participantLinks, ideas, onAddChild, onUpdateChild,
   onPromoteDummy, onDetailSaved, onSetKeyMoment, onRenameIdea, onSetSceneDrama, onOpenThreadBind, threadBeats, onCopy,
@@ -1121,7 +1129,7 @@ function IdeaFrameDialog({
             >
               <GripVertical className="w-3 h-3 shrink-0 text-muted-foreground/40" />
               <span className="font-technical text-[10px] tracking-widest text-muted-foreground/60 shrink-0">
-                {frameNumber(item)}
+                {frameNumber(item, frameNo)}
               </span>
               {editingTitle && onRenameIdea ? (
                 <input

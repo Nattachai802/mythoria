@@ -2071,7 +2071,11 @@ export function PlaygroundBoard({
         // จัดลำดับ index ต่อกลุ่ม (target/source เดียวกัน + ทิศเดียวกัน) แล้วถ่างบัสออกทีละขั้น
         // ก่อนถึง pass "จัด track" ทั่วไป (ซึ่งจัดเฉพาะกรณีบังเอิญ x ใกล้กัน ไม่ได้ตั้งใจแยกกลุ่มนี้)
         const BUS_STEP = 18;
+        // ขาสุดท้ายเดิมใช้ mergeY ค่าเดียวกันทั้งกลุ่ม หัวลูกศรจึงตกจุดเดียวกันเป๊ะ
+        // ต่อให้บัสถ่างแล้วก็ยังอ่านเป็นเส้นเดียว — ถ่างจุดเข้าการ์ดด้วย กระจายรอบ mergeY
+        const ENTRY_STEP = 14;
         const busGroupIndex = new Map<typeof edges[number], number>();
+        const busGroupSize = new Map<typeof edges[number], number>();
         {
             const groups = new Map<string, typeof edges>();
             edges.forEach(e => {
@@ -2086,7 +2090,7 @@ export function PlaygroundBoard({
             groups.forEach(list => {
                 // เรียงลำดับให้คงที่ (ไม่ขึ้นกับลำดับ insert) — ตามตำแหน่ง y ของปลายอีกฝั่ง
                 list.sort((a, b) => (a.sPos.y + a.tPos.y) - (b.sPos.y + b.tPos.y));
-                list.forEach((e, i) => busGroupIndex.set(e, i));
+                list.forEach((e, i) => { busGroupIndex.set(e, i); busGroupSize.set(e, list.length); });
             });
         }
 
@@ -2103,10 +2107,13 @@ export function PlaygroundBoard({
                 const dir = e.tPos.x >= e.sPos.x ? 1 : -1;
                 const aX = e.sPos.x + dir * e.sPos.w / 2;
                 const bX = e.tPos.x - dir * e.tPos.w / 2;
-                const busOffset = (busGroupIndex.get(e) ?? 0) * BUS_STEP;
+                const idx = busGroupIndex.get(e) ?? 0;
+                const busOffset = idx * BUS_STEP;
+                // กระจายรอบกึ่งกลาง (…,-1,0,+1,…) จุดเข้าจึงไม่เลื่อนไปทางเดียวจนเบียดขอบ
+                const entryOffset = (idx - ((busGroupSize.get(e) ?? 1) - 1) / 2) * ENTRY_STEP;
                 let busX: number, aY: number, bY: number;
-                if (converge) { busX = bX - dir * (GAP + busOffset); aY = e.sPos.y; bY = targetMergeY.get(e.targetId)!; }
-                else { busX = aX + dir * (GAP + busOffset); aY = sourceMergeY.get(e.sourceId)!; bY = e.tPos.y; }
+                if (converge) { busX = bX - dir * (GAP + busOffset); aY = e.sPos.y; bY = clampY(targetMergeY.get(e.targetId)! + entryOffset, e.tPos); }
+                else { busX = aX + dir * (GAP + busOffset); aY = clampY(sourceMergeY.get(e.sourceId)! + entryOffset, e.sPos); bY = e.tPos.y; }
                 points = [{ x: aX, y: aY }, { x: busX, y: aY }, { x: busX, y: bY }, { x: bX, y: bY }];
             } else if (sItem && tItem && sItem.beatIndex === tItem.beatIndex) {
                 // จังหวะเดียวกัน (คอลัมน์เดียว) → ออกขวาทั้งคู่ แล้ววิ่งบัสในร่อง gutter ด้านขวา
@@ -2253,11 +2260,30 @@ export function PlaygroundBoard({
         return <ConnectionLine key={`ancestor-${conn.id}`} start={end} end={start} kind="ancestor" label={conn.label} />;
     });
 
+    // เลขการ์ด #LBBN — L=เลน, BB=จังหวะ, N=ลำดับในช่องตามแกน y
+    // ต้องเป็น map ก้อนเดียว เพราะลำดับในช่องต้องรู้ทั้งกระดาน การ์ดใบเดียวคำนวณเองไม่ได้
+    const frameNoById = useMemo(() => {
+        const m = new Map<string, string>();
+        const d = (n: number) => String(Math.min(n, 9)); // ponytail: เพดาน 9 ตามที่ตกลง เกินกว่านั้นเลขชนกัน
+        lanes_.forEach((lane, laneIndex) => {
+            const byBeat = new Map<number, any[]>();
+            items.filter(i => i.laneId === lane.id).forEach(i => {
+                const b = i.beatIndex ?? 0;
+                if (!byBeat.has(b)) byBeat.set(b, []);
+                byBeat.get(b)!.push(i);
+            });
+            byBeat.forEach((cell, beatIndex) => cell.forEach((i, idx) =>
+                m.set(i.id, `#${d(laneIndex + 1)}${String(beatIndex + 1).padStart(2, "0")}${d(idx + 1)}`)));
+        });
+        return m;
+    }, [items, lanes_]);
+
     // การ์ดหนึ่งใบ — ใช้ร่วมกันทั้งกริด desktop และ list มือถือ (dragDisabled ปิด drag/connect บนมือถือ)
     const renderCard = (item: any, dragDisabled = false) => (
         <DraggableCanvasItem
             key={item.id}
             item={item}
+            frameNo={frameNoById.get(item.id)}
             dragDisabled={dragDisabled}
             onRemove={() => handleRemoveItem(item.id)}
             onRemoveChild={(childId: string) => handleRemoveChild(item.id, childId)}
