@@ -1247,6 +1247,39 @@ export function PlaygroundBoard({
         setChapters(prev => prev.filter(c => c.id !== id));
     }, []);
 
+    // ลากบนแถบตอนเพื่อแบ่งตอนทันที ไม่ต้องเปิด popover ตั้งชื่อก่อน
+    // ชื่อใช้ "ตอนที่ N" อัตโนมัติ — อยากเปลี่ยนค่อยกดที่แถบตอนทีหลัง (popover เดิม)
+    const [dragBeat, setDragBeat] = useState<{ from: number; to: number } | null>(null);
+    const dragBeatRef = useRef<{ from: number; to: number } | null>(null);
+    dragBeatRef.current = dragBeat;
+
+    // หนีบช่วงไม่ให้คร่อมตอนที่มีอยู่ — ลากชนแล้วหยุดที่ขอบ (ตอนซ้อนกันทำให้แถบกริดพัง)
+    const clampChapterRange = useCallback((from: number, to: number) => {
+        const dir = to >= from ? 1 : -1;
+        let last = from;
+        for (let b = from; dir > 0 ? b <= to : b >= to; b += dir) {
+            if (chapterRanges.some(c => b >= c.startBeat && b <= c.endBeat)) break;
+            last = b;
+        }
+        return { startBeat: Math.min(from, last), endBeat: Math.max(from, last) };
+    }, [chapterRanges]);
+
+    useEffect(() => {
+        if (!dragBeat) return;
+        // ผูกที่ window ไม่ใช่ที่ cell — ปล่อยเมาส์นอกแถบต้องจบ drag ด้วย ไม่งั้น state ค้าง
+        const end = () => {
+            const d = dragBeatRef.current;
+            setDragBeat(null);
+            if (!d) return;
+            const { startBeat, endBeat } = clampChapterRange(d.from, d.to);
+            addChapter({ name: `ตอนที่ ${nextChapterNumber}`, startBeat, endBeat });
+        };
+        const cancel = (e: KeyboardEvent) => { if (e.key === 'Escape') setDragBeat(null); };
+        window.addEventListener('pointerup', end);
+        window.addEventListener('keydown', cancel);
+        return () => { window.removeEventListener('pointerup', end); window.removeEventListener('keydown', cancel); };
+    }, [dragBeat, clampChapterRange, addChapter, nextChapterNumber]);
+
     // Sync เมื่อเปลี่ยนฉาก
     useEffect(() => {
         const { lanes: newLanes, items: newItems } = buildBoardState(initialItems);
@@ -2072,8 +2105,26 @@ export function PlaygroundBoard({
         // ก่อนถึง pass "จัด track" ทั่วไป (ซึ่งจัดเฉพาะกรณีบังเอิญ x ใกล้กัน ไม่ได้ตั้งใจแยกกลุ่มนี้)
         const BUS_STEP = 18;
         // ขาสุดท้ายเดิมใช้ mergeY ค่าเดียวกันทั้งกลุ่ม หัวลูกศรจึงตกจุดเดียวกันเป๊ะ
-        // ต่อให้บัสถ่างแล้วก็ยังอ่านเป็นเส้นเดียว — ถ่างจุดเข้าการ์ดด้วย กระจายรอบ mergeY
-        const ENTRY_STEP = 14;
+        // ต่อให้บัสถ่างแล้วก็ยังอ่านเป็นเส้นเดียว — ถ่างจุดเข้าการ์ดด้วย
+        //
+        // สำคัญ: clamp ที่ "จุดศูนย์กลางของกลุ่ม" ไม่ใช่ที่เส้นแต่ละเส้น
+        // เดิมทำ clamp(mergeY + offset) ทีละเส้น พอ mergeY ตกนอกการ์ด (source อยู่คนละเลน
+        // ค่าเฉลี่ยจึงหลุดไปไกล) ทุกเส้นชนเพดานเดียวกัน ระยะถ่างหายเกลี้ยง กลับไปทับเหมือนเดิม
+        const ENTRY_STEP_MIN = 14;  // แคบกว่านี้เส้นหนา 6-8px เหลือช่องว่างไม่พอให้ตาแยก
+        const ENTRY_STEP_MAX = 36;  // กว้างกว่านี้เส้นเข้าคนละมุมการ์ด ไม่เหลือความเป็นกลุ่ม
+        const ENTRY_PAD = 10;       // เท่ากับ clampY — จุดเข้าไม่เกาะขอบการ์ดพอดี
+        // y ของจุดเข้าเส้นที่ idx ในกลุ่มขนาด n บนการ์ด pos
+        const entryY = (mergeY: number, pos: { y: number; h: number }, idx: number, n: number) => {
+            if (n <= 1) return clampY(mergeY, pos);
+            const band = Math.max(0, pos.h - ENTRY_PAD * 2);
+            // ยืดตามที่ว่างจริง แล้วคุมเพดาน/พื้น — การ์ดเตี้ยมากยอมให้แคบกว่าพื้น เพราะทับกันแย่กว่าแน่น
+            const step = Math.min(ENTRY_STEP_MAX, Math.max(ENTRY_STEP_MIN, band / (n + 1)), band / (n - 1));
+            const span = step * (n - 1);
+            const lo = pos.y - pos.h / 2 + ENTRY_PAD + span / 2;
+            const hi = pos.y + pos.h / 2 - ENTRY_PAD - span / 2;
+            const center = Math.max(lo, Math.min(hi, mergeY));
+            return center + (idx - (n - 1) / 2) * step;
+        };
         const busGroupIndex = new Map<typeof edges[number], number>();
         const busGroupSize = new Map<typeof edges[number], number>();
         {
@@ -2108,12 +2159,11 @@ export function PlaygroundBoard({
                 const aX = e.sPos.x + dir * e.sPos.w / 2;
                 const bX = e.tPos.x - dir * e.tPos.w / 2;
                 const idx = busGroupIndex.get(e) ?? 0;
+                const n = busGroupSize.get(e) ?? 1;
                 const busOffset = idx * BUS_STEP;
-                // กระจายรอบกึ่งกลาง (…,-1,0,+1,…) จุดเข้าจึงไม่เลื่อนไปทางเดียวจนเบียดขอบ
-                const entryOffset = (idx - ((busGroupSize.get(e) ?? 1) - 1) / 2) * ENTRY_STEP;
                 let busX: number, aY: number, bY: number;
-                if (converge) { busX = bX - dir * (GAP + busOffset); aY = e.sPos.y; bY = clampY(targetMergeY.get(e.targetId)! + entryOffset, e.tPos); }
-                else { busX = aX + dir * (GAP + busOffset); aY = clampY(sourceMergeY.get(e.sourceId)! + entryOffset, e.sPos); bY = e.tPos.y; }
+                if (converge) { busX = bX - dir * (GAP + busOffset); aY = e.sPos.y; bY = entryY(targetMergeY.get(e.targetId)!, e.tPos, idx, n); }
+                else { busX = aX + dir * (GAP + busOffset); aY = entryY(sourceMergeY.get(e.sourceId)!, e.sPos, idx, n); bY = e.tPos.y; }
                 points = [{ x: aX, y: aY }, { x: busX, y: aY }, { x: busX, y: bY }, { x: bX, y: bY }];
             } else if (sItem && tItem && sItem.beatIndex === tItem.beatIndex) {
                 // จังหวะเดียวกัน (คอลัมน์เดียว) → ออกขวาทั้งคู่ แล้ววิ่งบัสในร่อง gutter ด้านขวา
@@ -2631,6 +2681,26 @@ export function PlaygroundBoard({
                                     }
                                 />
                             </div>
+                            {/* ช่องเปล่าในแถบตอน — กดค้างแล้วลากเพื่อแบ่งตอน (แถบตอนจริงวางทับด้านบน) */}
+                            {Array.from({ length: beatCount }).map((_, beatIndex) => {
+                                if (chapterRanges.some(c => beatIndex >= c.startBeat && beatIndex <= c.endBeat)) return null;
+                                const d = dragBeat && clampChapterRange(dragBeat.from, dragBeat.to);
+                                const inDrag = !!d && beatIndex >= d.startBeat && beatIndex <= d.endBeat;
+                                return (
+                                    <div
+                                        key={`chapter-slot-${beatIndex}`}
+                                        style={{ gridColumn: beatGridCol(beatIndex), gridRow: 1 }}
+                                        // onPointerEnter ต่อ cell ไม่คำนวณจาก clientX เอง — กริดมี zoom พิกัดจะเพี้ยน
+                                        onPointerDown={(e) => { e.preventDefault(); setDragBeat({ from: beatIndex, to: beatIndex }); }}
+                                        onPointerEnter={() => dragBeat && setDragBeat(p => p && { ...p, to: beatIndex })}
+                                        title="กดค้างแล้วลากเพื่อแบ่งตอน"
+                                        className={cn(
+                                            "border-b border-border/60 cursor-ew-resize transition-colors",
+                                            inDrag ? "bg-[var(--forge-amber)]/25" : "hover:bg-[var(--forge-amber)]/8"
+                                        )}
+                                    />
+                                );
+                            })}
                             {chapterRanges.map((c) => (
                                 <div
                                     key={`chapter-${c.id}`}
