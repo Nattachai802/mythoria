@@ -10,6 +10,7 @@
  */
 
 import type { FormatBeat } from "./story-format";
+import type { JevAnswer, JevQuestion } from "./ai-features";
 import { createHash } from "crypto";
 
 // ─── Constants ──────────────────────────────────────────────────────────
@@ -30,6 +31,13 @@ export interface EchoEvidence {
     hitCount: number;         // LLM ตัดสินว่าตรงกับการ์ดจริงกี่ครั้ง
     guesses: string[];        // ตัวคำเดาทั้ง K ครั้ง (แสดงใน UI)
     matched: { index: number; reason: string }[]; // ข้อที่ตรง (0-based) + เหตุผลสั้นๆ ว่าทำไมตรง — ตรวจสอบย้อนหลังได้ว่า judge ตัดสินใจถูกไหม
+    /**
+     * คะแนนดิบต่อคำเดา (เรียงตาม guesses) — มีเฉพาะรอบที่ตัดสินด้วย Jev · undefined = ตัดสินด้วย LLM
+     *
+     * เก็บไว้เพื่อให้เปลี่ยนเกณฑ์ตัด (ECHO_JUDGE_*) แล้วคำนวณ hitCount ใหม่ได้เลย ไม่ต้องยิง AI ซ้ำ
+     * และเพื่อให้ทำ hitCount แบบถ่วงน้ำหนัก (ทศนิยม) ทีหลังได้โดยไม่เสียข้อมูล
+     */
+    judgeScores?: { match: number; specific: number }[];
     model: string;            // ชื่อโมเดลที่ใช้
     promptVersion: string;    // ECHO_PROMPT_VERSION
     k: number;                // K ที่ใช้จริง
@@ -222,6 +230,80 @@ export function buildJudgePrompt(
     };
 }
 
+// ─── Judge แบบ Jev (typed judgment) ─────────────────────────────────────
+
+/**
+ * เกณฑ์ตัด — ปรับได้โดยไม่ต้องยิง AI ใหม่ ถ้า evidence รอบนั้นมี judgeScores เก็บไว้
+ *
+ * ที่มาของตัวเลข: ยิงทดสอบกับฉากจำลอง 6 คำเดา (scratchpad/jev-probe2) ได้การแยกกลุ่ม
+ * ตก 0.11-0.32 · ผ่าน 0.66-0.74 เมื่อคูณกัน — ช่องว่างกว้างพอให้ตัดตรงไหนก็ได้ระหว่างนั้น
+ *
+ * ponytail: ค่านี้ยังไม่ได้ calibrate กับคำเดาจริงจากฐานข้อมูล ถ้าจะจริงจังต้องรันย้อนหลัง
+ * เทียบกับ hits ที่ระบบเดิมเคยตัดสิน แล้วดูจุดที่สองระบบไม่ตรงกันด้วยตาก่อนล็อกเลข
+ */
+export const ECHO_JUDGE_MATCH_MIN = 0.5;    // ต่ำกว่านี้ = ขัดกับเหตุการณ์จริง
+export const ECHO_JUDGE_SPECIFIC_MIN = 0.5; // ต่ำกว่านี้ = กว้างจนใช้กับฉากไหนก็ได้ ไม่นับว่าเดาถูก
+
+/**
+ * คำเดาหนึ่งข้อ = คำถาม 2 ข้อที่เป็นอิสระต่อกัน — "ขัดแย้งไหม" กับ "เจาะจงไหม"
+ *
+ * ทำไมต้องแยก: ยัดสองเกณฑ์ในคำถามเดียวแล้วคำเดากว้าง ๆ อย่าง "มีความขัดแย้งภายในสำนัก"
+ * จะได้ค่ากลาง ๆ (วัดจริงได้ 0.67) เพราะมันไม่ขัดกับเรื่อง (ดันขึ้น) แต่ไม่เจาะจง (ดันลง)
+ * พอแยกแล้วได้ match 0.75 / specific 0.20 ซึ่งตัดออกได้ชัดเจน
+ *
+ * state ถูกนับ token ครั้งเดียวต่อคอล คำถามทุกข้อจึงใช้บริบทเดียวกันได้โดยไม่เสียค่าซ้ำ
+ */
+export function buildJudgeJev(
+    prefixText: string,
+    cardText: string,
+    guesses: string[],
+): { state: unknown; questions: Record<string, JevQuestion>; toJson: (a: Record<string, JevAnswer>) => string } {
+    const state = { บริบทก่อนหน้า: prefixText, เหตุการณ์จริง: cardText };
+
+    const questions: Record<string, JevQuestion> = {};
+    guesses.forEach((g, i) => {
+        questions[`m${i}`] = {
+            type: "noul",
+            instructions: `คำเดา "${g}" สอดคล้องกับ \`เหตุการณ์จริง\` หรือขัดแย้งกัน`,
+            criteria: {
+                true: "ผู้กระทำ การกระทำหลัก และผลลัพธ์ ไปด้วยกันได้กับเหตุการณ์จริง ถ้อยคำต่างกันได้",
+                false: "ขัดกับเหตุการณ์จริง เช่น ผลลัพธ์ตรงข้าม หรือคนละคนเป็นผู้กระทำ",
+            },
+        };
+        questions[`s${i}`] = {
+            type: "noul",
+            instructions: `คำเดา "${g}" ชี้เหตุการณ์เฉพาะเจาะจงแค่ไหน`,
+            criteria: {
+                true: "ระบุชัดว่าใครทำอะไรแล้วเกิดผลอะไร เอาไปใช้กับฉากอื่นไม่ได้",
+                false: "กว้างจนใช้กับนิยายเรื่องไหนก็ได้ เช่น 'มีความขัดแย้ง' 'ตัวเอกรู้ความจริง'",
+            },
+        };
+    });
+
+    /** แปลงกลับเป็นรูปเดียวกับที่ LLM ตอบ → parseJudgeResponse ตัวเดิมกินได้ ไม่ต้องแยกสายโค้ด */
+    const toJson = (answers: Record<string, JevAnswer>): string => {
+        const judgeScores = guesses.map((_, i) => ({
+            match: noulOf(answers[`m${i}`]),
+            specific: noulOf(answers[`s${i}`]),
+        }));
+        const matched = judgeScores
+            .map((s, index) => ({ ...s, index }))
+            .filter(s => s.match >= ECHO_JUDGE_MATCH_MIN && s.specific >= ECHO_JUDGE_SPECIFIC_MIN)
+            .map(s => ({
+                index: s.index,
+                reason: `ตรงกับเหตุการณ์จริง (ความสอดคล้อง ${s.match.toFixed(2)} · ความเจาะจง ${s.specific.toFixed(2)})`,
+            }));
+        return JSON.stringify({ matched, judgeScores });
+    };
+
+    return { state, questions, toJson };
+}
+
+/** 0 เมื่อคำตอบหาย/ผิดชนิด — ปลอดภัยฝั่งเดียว (ไม่นับเป็น hit) ดีกว่าเดาว่าตรง */
+function noulOf(a: JevAnswer | undefined): number {
+    return a && a.type === "noul" && Number.isFinite(a.noul) ? a.noul : 0;
+}
+
 // ─── Validators ─────────────────────────────────────────────────────────
 
 /** แปลง LLM output เป็น string[] — กัน format แปลก */
@@ -243,7 +325,12 @@ export function parseGuessResponse(raw: string): string[] | null {
  * แปลง LLM output เป็น { hits, matched } — hits คำนวณจาก matched.length เสมอ
  * (v1 เคยขอ hits จากโมเดลแยกต่างหาก แต่สองค่านี้ไม่การันตีว่าตรงกัน — ตัดออก ให้มีแหล่งความจริงเดียว)
  */
-export function parseJudgeResponse(raw: string): { hits: number; matched: { index: number; reason: string }[] } | null {
+export function parseJudgeResponse(raw: string): {
+    hits: number;
+    matched: { index: number; reason: string }[];
+    /** มีเฉพาะเมื่อตัดสินด้วย Jev — LLM ไม่เคยตอบช่องนี้ จึงเป็น undefined ในโหมดเดิมเสมอ */
+    judgeScores?: { match: number; specific: number }[];
+} | null {
     try {
         const trimmed = raw.trim();
         const match = trimmed.match(/\{[\s\S]*\}/);
@@ -254,7 +341,14 @@ export function parseJudgeResponse(raw: string): { hits: number; matched: { inde
             (m: unknown): m is { index: number; reason: string } =>
                 !!m && typeof m === "object" && typeof (m as any).index === "number" && typeof (m as any).reason === "string",
         );
-        return { hits: matched.length, matched };
+        const judgeScores = Array.isArray(parsed.judgeScores)
+            ? parsed.judgeScores.filter((s: unknown): s is { match: number; specific: number } => {
+                if (!s || typeof s !== "object") return false;
+                const r = s as Record<string, unknown>;
+                return typeof r.match === "number" && typeof r.specific === "number";
+            })
+            : undefined;
+        return { hits: matched.length, matched, judgeScores: judgeScores?.length ? judgeScores : undefined };
     } catch {
         return null;
     }

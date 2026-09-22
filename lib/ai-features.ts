@@ -7,7 +7,38 @@
  * หลักการ: ไม่มีแถวใน ai_features = ใช้ default จาก registry (เปิด, quota ตาม defaultDailyLimit)
  */
 
-export type AiProvider = "groq" | "typhoon" | "gemini" | "openrouter" | "python";
+export type AiProvider = "groq" | "typhoon" | "gemini" | "openrouter" | "python" | "typesafe";
+
+/** โหมดโมเดลต่อฟีเจอร์ — เก็บใน ai_features.mode สลับได้จากหน้า AI Control ไม่ต้อง deploy */
+export const AI_MODES = ["traditional", "jev"] as const;
+export type AiMode = (typeof AI_MODES)[number];
+
+// ─── TypeSafe (Jev) — System One primitives ─────────────────────────────
+// อยู่ในไฟล์นี้เพราะเป็น pure type ที่ lib ฝั่ง client-safe (เช่น echo-score) ต้องใช้ด้วย
+// ส่วน gateway ที่เป็น "server-only" แค่ re-export ต่อ
+
+/** คำถามหนึ่งข้อ — ดู https://docs.typesafe.ai/primitives.md */
+export type JevQuestion =
+    | { type: "noul"; instructions: string; criteria: { true: string; false: string } }
+    | { type: "choice"; instructions: string; criteria: Record<string, string> }
+    | { type: "score"; instructions: string; criteria: string[] };
+
+/** คำตอบที่ Jev คืนมา — noul ไม่มี confidence แยก ตัวเลขคือความน่าจะเป็นในตัวมันเอง */
+export type JevAnswer =
+    | { type: "noul"; noul: number }
+    | { type: "choice"; choice: string; probabilities: Record<string, number>; confidence: number }
+    | { type: "score"; score: number; legend: Record<string, string>; probabilities: Record<string, number>; confidence: number };
+
+export interface JevPayload {
+    /** บริบทที่ใช้ตอบทุกคำถามในคอลนี้ — นับ token ครั้งเดียวต่อคอล ไม่ว่าจะกี่คำถาม */
+    state: unknown;
+    questions: Record<string, JevQuestion>;
+    /**
+     * แปลงคำตอบกลับเป็น JSON string รูปเดียวกับที่ LLM เดิมตอบ เพื่อให้ parser ของฟีเจอร์
+     * ใช้ตัวเดิมได้ทั้งสองโหมด — หัวใจของการไม่แตกโค้ดเป็นสองสาย
+     */
+    toJson: (answers: Record<string, JevAnswer>) => string;
+}
 
 export interface AiProviderStep {
     provider: AiProvider;
@@ -22,6 +53,12 @@ export interface AiFeatureDef {
     description: string;
     /** ลำดับ fallback — [] = ไม่ยิง LLM เอง (ฟีเจอร์ฝั่ง Python, gate อย่างเดียว) */
     chain: AiProviderStep[];
+    /**
+     * chain ที่ใช้เมื่อ ai_features.mode = "jev" — ยิงก่อน chain ปกติ ถ้าล้มตกไป chain เดิมต่อ
+     * มีเฉพาะฟีเจอร์ที่คำตอบเป็น "เลือกจากตัวเลือกที่รู้ล่วงหน้า" เท่านั้น (Choice/Score/Noul)
+     * ฟีเจอร์ที่ต้องเขียนข้อความใหม่ (สรุป/แปล/แต่งประโยค) ไม่มีช่องนี้ — Jev ไม่ generate text
+     */
+    jevChain?: AiProviderStep[];
     /** quota default (ครั้ง/วัน/ผู้ใช้) — ai_features.daily_limit_per_user ทับค่านี้ได้ · null = ไม่จำกัด */
     defaultDailyLimit: number | null;
     /** สำหรับฟีเจอร์ฝั่ง Python: โมเดลที่ service เรียกเองภายใน (ไว้โชว์บนแผนผังโมเดล) */
@@ -36,6 +73,9 @@ const TYPHOON_MODEL = "typhoon-v2.5-30b-a3b-instruct"; // มาตรฐาน�
 // qwen3.8 เร็วกว่า (432ms vs 711ms) และใช้ token น้อยกว่ามากในเทสต์เดียวกัน (84 vs 398)
 const GROQ_MODEL = "qwen/qwen3.8-27b";
 const GEMINI_MODEL = "gemini-2.5-flash";
+// TypeSafe System One — ไม่ generate text คืนค่า typed + ความน่าจะเป็นที่ calibrate มาแล้ว
+// ไม่มี temperature/maxTokens (adapter ข้ามให้) · output token ไม่คิดเงิน input $0.042/1M
+const JEV_MODEL = "jev-latest";
 // ช่องเดียวสำหรับเปลี่ยนโมเดลที่ยิงผ่าน OpenRouter ทั้งแอป — ตอนนี้ใช้เป็นตัวหลักของ echo-score
 export const OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct";
 
@@ -109,6 +149,9 @@ export const AI_FEATURES: Record<string, AiFeatureDef> = {
             { provider: "gemini", model: GEMINI_MODEL, temperature: 1.0 },
             { provider: "typhoon", model: TYPHOON_MODEL, temperature: 1.0 },
         ],
+        // เฉพาะรอบ "ตัดสิน" (judge) เท่านั้นที่ใช้ Jev ได้ — รอบ "ทาย" (guess) ต้องแต่งประโยคใหม่
+        // gateway เลือก chain นี้ก็ต่อเมื่อ caller ส่ง payload jev มาด้วย รอบ guess จึงตกไป chain เดิมเอง
+        jevChain: [{ provider: "typesafe", model: JEV_MODEL, temperature: 0 }],
         defaultDailyLimit: 100,
     },
     "scene-type-suggest": {
@@ -119,6 +162,7 @@ export const AI_FEATURES: Record<string, AiFeatureDef> = {
             { provider: "groq", model: GROQ_MODEL, temperature: 0.3, maxTokens: 400 },
             { provider: "typhoon", model: TYPHOON_MODEL, temperature: 0.3, maxTokens: 400 },
         ],
+        jevChain: [{ provider: "typesafe", model: JEV_MODEL, temperature: 0 }],
         defaultDailyLimit: 100,
     },
     "pacing-ai-suggest": {
@@ -129,6 +173,7 @@ export const AI_FEATURES: Record<string, AiFeatureDef> = {
             { provider: "groq", model: GROQ_MODEL, temperature: 0.3, maxTokens: 2000 },
             { provider: "typhoon", model: TYPHOON_MODEL, temperature: 0.3, maxTokens: 2000 },
         ],
+        jevChain: [{ provider: "typesafe", model: JEV_MODEL, temperature: 0 }],
         defaultDailyLimit: 40,
     },
     "beat-coach": {
@@ -139,6 +184,7 @@ export const AI_FEATURES: Record<string, AiFeatureDef> = {
             { provider: "groq", model: GROQ_MODEL, temperature: 0.3, maxTokens: 1500 },
             { provider: "typhoon", model: TYPHOON_MODEL, temperature: 0.3, maxTokens: 1500 },
         ],
+        jevChain: [{ provider: "typesafe", model: JEV_MODEL, temperature: 0 }],
         defaultDailyLimit: 100,
     },
     "character-state-extractor": {

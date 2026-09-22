@@ -5,7 +5,7 @@ import { aiFeatures, aiUsageLog, aiActiveRuns } from "@/db/schema";
 import { desc, gte, eq, and, ne, sql } from "drizzle-orm";
 import { isGuest } from "@/lib/guest";
 import { requireUser } from "@/lib/authz";
-import { AI_FEATURES, ACTIVE_STALE_MS } from "@/lib/ai-gateway";
+import { AI_FEATURES, ACTIVE_STALE_MS, type AiMode } from "@/lib/ai-gateway";
 
 /**
  * AI Control Board — ตัวโหลดข้อมูลหน้า /dashboard/ai-control (read-only)
@@ -33,6 +33,10 @@ export interface AiFeatureView {
     description: string;
     enabled: boolean; // merged (override ?? default true)
     dailyLimit: number | null; // merged
+    /** โหมดโมเดลที่ใช้อยู่จริง — "jev" เฉพาะเมื่อเปิดไว้และรีจิสทรีมี jevChain ให้เดินจริง */
+    mode: AiMode;
+    /** ฟีเจอร์นี้สลับไปโหมด jev ได้ไหม — ใช้ซ่อน/แสดงตัวเลือกบนหน้าจอ */
+    supportsJev: boolean;
     defaultDailyLimit: number | null;
     isOverridden: boolean;
     steps: AiModelStepView[]; // chain เต็มสำหรับแผนผังโมเดล
@@ -132,7 +136,11 @@ export async function getAiOverview(): Promise<AiOverviewData> {
 
         const features: AiFeatureView[] = Object.values(AI_FEATURES).map((def) => {
             const o = overrideMap.get(def.key);
-            const steps: AiModelStepView[] = def.chain.map((s, i) => ({
+            // โหมด jev เดิน jevChain ก่อน chain เดิม — แผนผังโมเดลต้องสะท้อนลำดับที่ยิงจริง
+            const supportsJev = !!def.jevChain?.length;
+            const mode: AiMode = o?.mode === "jev" && supportsJev ? "jev" : "traditional";
+            const chain = mode === "jev" ? [...def.jevChain!, ...def.chain] : def.chain;
+            const steps: AiModelStepView[] = chain.map((s, i) => ({
                 order: i === 0 ? "หลัก" : `สำรอง ${i}`,
                 provider: s.provider,
                 model: s.model,
@@ -149,6 +157,8 @@ export async function getAiOverview(): Promise<AiOverviewData> {
                 description: def.description,
                 enabled: o ? o.enabled : true,
                 dailyLimit: o ? o.dailyLimitPerUser : def.defaultDailyLimit,
+                mode,
+                supportsJev,
                 defaultDailyLimit: def.defaultDailyLimit,
                 isOverridden: !!o,
                 steps,

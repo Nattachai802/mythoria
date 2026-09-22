@@ -2146,6 +2146,12 @@ export const aiFeatures = pgTable("ai_features", {
   key: text("key").primaryKey(), // feature key จาก AI_FEATURES registry เช่น "librarian"
   enabled: boolean("enabled").notNull().default(true),
   dailyLimitPerUser: integer("daily_limit_per_user"), // null = ไม่จำกัด
+  /**
+   * โหมดโมเดล — "traditional" = LLM ตามลำดับใน chain (ค่าเดิม ทุกแถวเก่าได้ค่านี้อัตโนมัติ)
+   * "jev" = ยิง TypeSafe (typed judgment) ก่อน แล้วค่อยตกไป chain เดิมถ้าล้ม
+   * ฟีเจอร์ที่ไม่มี jevChain ในรีจิสทรี ค่านี้ไม่มีผล (gateway ตกกลับ chain เดิมเงียบ ๆ)
+   */
+  mode: text("mode").notNull().default("traditional"),
   updatedAt: timestamp("updated_at")
     .defaultNow()
     .$onUpdate(() => /* @__PURE__ */ new Date())

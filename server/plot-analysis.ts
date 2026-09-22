@@ -34,6 +34,7 @@ import {
     hashEchoInput,
     buildGuessPrompt,
     buildJudgePrompt,
+    buildJudgeJev,
     filterEchoTargets,
     parseGuessResponse,
     parseJudgeResponse,
@@ -555,6 +556,7 @@ export async function runEchoScore(
             // ── 6b. ตัดสินว่าตรงกี่ครั้ง (temp 0 เข้มงวด) ──────────────────
             let hitCount = 0;
             let matched: { index: number; reason: string }[] = [];
+            let judgeScores: { match: number; specific: number }[] | undefined;
             try {
                 const judgePrompt = buildJudgePrompt(prefixText, cardText, guesses);
                 const judgeResp = await callAi({
@@ -565,12 +567,16 @@ export async function runEchoScore(
                     temperature: 0.0,
                     maxTokens: 512, // เผื่อ reason ต่อข้อที่ตรง (เดิม 128 พอแค่ตอนตอบแค่ index เปล่าๆ)
                     novelId,
+                    // เปิดทางโหมด Jev — gateway จะใช้ก็ต่อเมื่อ ai_features.mode = "jev"
+                    // รอบ guess ข้างบนไม่ส่งช่องนี้ เพราะการแต่งคำเดาเป็นงาน generate ที่ Jev ทำไม่ได้
+                    jev: buildJudgeJev(prefixText, cardText, guesses),
                 });
                 usedModel = judgeResp.model; // ตัวตัดสินสุดท้าย — ใช้เป็น model ที่บันทึกถ้าสำเร็จ
                 const parsed = parseJudgeResponse(judgeResp.text);
                 if (parsed) {
                     hitCount = parsed.hits;
                     matched = parsed.matched;
+                    judgeScores = parsed.judgeScores;
                 }
             } catch (err) {
                 console.error(`[EchoScore] judge error card ${beat.code}:`, err);
@@ -583,6 +589,7 @@ export async function runEchoScore(
                 hitCount,
                 guesses,
                 matched,
+                judgeScores,
                 model: usedModel,
                 promptVersion: ECHO_PROMPT_VERSION,
                 k: ECHO_K,

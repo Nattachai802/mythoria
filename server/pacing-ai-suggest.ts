@@ -5,6 +5,7 @@ import { callAi, assertAiAllowed, AiControlError, logParseFailure } from "@/lib/
 import {
     buildPacingAiSuggestPrompt,
     parsePacingAiSuggestResponse,
+    buildPacingJev,
     PACING_AI_SUGGEST_SCHEMA,
     type PacingSuggestion,
 } from "@/lib/pacing-ai-suggest";
@@ -31,12 +32,21 @@ export async function suggestScenePacing(sceneId: string, novelId: string, chapt
         if (ctx.sceneCount === 0) return { success: false, error: "ไม่พบฉากนี้" };
 
         const prompt = buildPacingAiSuggestPrompt(ctx.text);
+        // id ของจุดที่ต้องให้คะแนน — โหมด Jev ใช้เป็น key ของคำถาม จึงข้าม/เกินไม่ได้เชิงโครงสร้าง
+        // ctx.format มีเฉพาะ scope "scene" ซึ่งเป็น scope ของฟีเจอร์นี้อยู่แล้ว (ดู lib/plot-context.ts)
+        const targets = ctx.format
+            ? [
+                { id: ctx.format.scene.id, title: ctx.format.scene.title, isScene: true },
+                ...ctx.format.beats.filter(b => !b.isBoardNote).map(b => ({ id: b.id, title: b.title })),
+            ]
+            : [];
         const resp = await callAi({
             feature: "pacing-ai-suggest",
             system: prompt.system,
             prompt: prompt.user,
             responseSchema: PACING_AI_SUGGEST_SCHEMA,
             novelId,
+            jev: targets.length ? buildPacingJev(ctx.text, targets) : undefined,
         });
         const parsed = parsePacingAiSuggestResponse(resp.text);
         if (!parsed) {

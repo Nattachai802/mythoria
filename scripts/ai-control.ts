@@ -8,12 +8,13 @@
  *   npm run ai on <key>             เปิดฟีเจอร์ (เช่น npm run ai on librarian)
  *   npm run ai off <key>            ปิดฟีเจอร์
  *   npm run ai quota <key> <N>      ตั้งโควตา N ครั้ง/วัน/ผู้ใช้ (0 = ไม่จำกัด)
+ *   npm run ai mode <key> <โหมด>    traditional (LLM) | jev (TypeSafe) — เฉพาะฟีเจอร์ที่รองรับ
  *   npm run ai reset <key>          ลบ override → กลับไปค่า default จาก registry
  *   npm run ai log [N]              ดู AI runs ล่าสุด N แถว (default 20)
  */
 import { config } from "dotenv";
 import { Client } from "pg";
-import { AI_FEATURES } from "../lib/ai-features.ts";
+import { AI_FEATURES, AI_MODES, type AiMode } from "../lib/ai-features.ts";
 
 config({ path: ".env" });
 
@@ -48,9 +49,9 @@ async function main() {
     try {
         switch (cmd) {
             case "list": {
-                const overrides = new Map<string, { enabled: boolean; daily_limit_per_user: number | null }>();
+                const overrides = new Map<string, { enabled: boolean; daily_limit_per_user: number | null; mode: string }>();
                 const { rows } = await client.query(
-                    "SELECT key, enabled, daily_limit_per_user FROM ai_features",
+                    "SELECT key, enabled, daily_limit_per_user, mode FROM ai_features",
                 );
                 for (const r of rows) overrides.set(r.key, r);
 
@@ -71,8 +72,11 @@ async function main() {
                     const enabled = o ? o.enabled : true;
                     const limit = o ? o.daily_limit_per_user : def.defaultDailyLimit;
                     const used = usedToday.get(def.key) ?? 0;
-                    const providers = def.chain.length
-                        ? def.chain.map((s) => `${s.provider}/${s.model}`).join(" → ")
+                    // โหมด jev = เดิน jevChain ก่อน chain เดิม จึงแสดงลำดับที่ยิงจริงตามนั้น
+                    const usingJev = (o?.mode ?? "traditional") === "jev" && !!def.jevChain?.length;
+                    const steps = usingJev ? [...def.jevChain!, ...def.chain] : def.chain;
+                    const providers = steps.length
+                        ? steps.map((s) => `${s.provider}/${s.model}`).join(" → ")
                         : (def.pythonModels ?? []).join(", ") || "python microservice";
                     console.log(
                         `  ${def.key.padEnd(31)} ${enabled ? "🟢 ON " : "🔴 OFF"}  ` +
@@ -113,6 +117,28 @@ async function main() {
                     [k, limit],
                 );
                 console.log(`quota "${AI_FEATURES[k].label}" = ${limit === null ? "ไม่จำกัด" : `${limit} ครั้ง/วัน/ผู้ใช้`}`);
+                break;
+            }
+
+            case "mode": {
+                const k = requireKey();
+                const def = AI_FEATURES[k];
+                if (!def.jevChain?.length) {
+                    fail(`"${def.label}" ยังไม่รองรับโหมด jev — คำตอบของฟีเจอร์นี้ต้องแต่งข้อความใหม่ ซึ่ง Jev ทำไม่ได้`);
+                }
+                if (!AI_MODES.includes(value as AiMode)) {
+                    fail(`โหมดต้องเป็น ${AI_MODES.join(" หรือ ")} · เช่น: npm run ai mode ${k} jev`);
+                }
+                await client.query(
+                    `INSERT INTO ai_features (key, mode, daily_limit_per_user) VALUES ($1, $2, $3)
+                     ON CONFLICT (key) DO UPDATE SET mode = $2, updated_at = now()`,
+                    [k, value, def.defaultDailyLimit],
+                );
+                console.log(
+                    value === "jev"
+                        ? `🧠 "${def.label}" ใช้ Jev แล้ว — ถ้า Jev ล้มจะตกไป ${def.chain[0]?.provider ?? "chain เดิม"} ต่อเองอัตโนมัติ`
+                        : `↩️  "${def.label}" กลับไปใช้ LLM ตามลำดับเดิม`,
+                );
                 break;
             }
 
@@ -162,6 +188,7 @@ async function main() {
                         "    npm run ai on <key>              เปิดฟีเจอร์",
                         "    npm run ai off <key>             ปิดฟีเจอร์",
                         "    npm run ai quota <key> <N>       โควตา N ครั้ง/วัน/ผู้ใช้ (0 = ไม่จำกัด)",
+                        "    npm run ai mode <key> <โหมด>      traditional | jev (เฉพาะฟีเจอร์ที่รองรับ)",
                         "    npm run ai reset <key>           กลับไปค่า default จาก registry",
                         "    npm run ai log [N]               ดู runs ล่าสุด",
                         "",

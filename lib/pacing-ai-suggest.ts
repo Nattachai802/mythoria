@@ -8,6 +8,7 @@
  */
 
 import { PACING_MIN, PACING_MAX } from "./scene-dramatic";
+import type { JevAnswer, JevQuestion } from "./ai-features";
 
 export interface PacingAiSuggestPrompt {
     system: string;
@@ -58,6 +59,79 @@ export function buildPacingAiSuggestPrompt(contextText: string): PacingAiSuggest
 ตอบเป็น JSON ตาม schema เท่านั้น ต้องมีครบทุก id ที่ให้มา ห้ามข้าม ห้ามเติม id ใหม่ที่ไม่มีในรายการ`,
         user: contextText,
     };
+}
+
+// ─── โหมด Jev ───────────────────────────────────────────────────────────
+
+/**
+ * ระดับจังหวะแบบ Score — 3 ระดับพอ ไม่ใช่ 10 ช่อง
+ *
+ * Score คืนค่าทศนิยมถ่วงน้ำหนักด้วยความน่าจะเป็นของแต่ละระดับอยู่แล้ว (เช่น 1.64) จึงได้
+ * ความละเอียดกลับมาตอน map เป็น 1-10 โดยไม่ต้องให้โมเดลแยกแยะ 10 ระดับที่อธิบายต่างกันไม่ออก
+ */
+export const PACING_JEV_LEVELS = [
+    "ควรเล่าเร็ว ผ่อน หรือสรุปสั้น — เป็นช่วงพัก ไม่มีแรงกดดัน",
+    "จังหวะคงที่ ไม่เร่งไม่ผ่อน — เดินเรื่องไปตามปกติ",
+    "ควรเล่าเด่น ลงรายละเอียดเต็มที่ — เป็นจุดแตกหักหรือจุดพลิกของฉาก",
+] as const;
+
+/** 0..2 (สเกลของ Score) → 1..10 (สเกลที่ UI กับ DB ใช้) */
+export function jevScoreToPacing(score: number): number {
+    const n = PACING_MIN + (score / (PACING_JEV_LEVELS.length - 1)) * (PACING_MAX - PACING_MIN);
+    return Math.min(PACING_MAX, Math.max(PACING_MIN, Math.round(n)));
+}
+
+export interface PacingJevTarget {
+    id: string;
+    /** ชื่อไว้อ้างในคำถามให้โมเดลหาจุดถูก — ฉากใหญ่กับการ์ดใช้ id คนละชุดอยู่แล้ว */
+    title: string;
+    /** true = ตัวฉากเอง ไม่ใช่การ์ดไอเดียในฉาก */
+    isScene?: boolean;
+}
+
+/**
+ * หนึ่งจุด = หนึ่งคำถาม Score โดยใช้ id เป็น key ของ questions
+ *
+ * ผลข้างเคียงที่สำคัญ: โมเดลข้าม id หรือเติม id ใหม่ไม่ได้อีกต่อไปในเชิงโครงสร้าง — เดิมต้องขอ
+ * ด้วยคำพูดใน prompt ("ต้องมีครบทุก id ที่ให้มา ห้ามข้าม ห้ามเติม") แล้วมาไล่ตรวจทีหลัง
+ *
+ * state เดียวใช้ตอบทุกคำถาม นับ token ครั้งเดียว — ยิงทั้งฉากรวดเดียวจึงยังถูกเหมือนเดิม
+ */
+export function buildPacingJev(
+    contextText: string,
+    targets: PacingJevTarget[],
+): { state: unknown; questions: Record<string, JevQuestion>; toJson: (a: Record<string, JevAnswer>) => string } {
+    const state = { ฉาก: contextText };
+
+    const questions: Record<string, JevQuestion> = {};
+    for (const t of targets) {
+        questions[t.id] = {
+            type: "score",
+            instructions: t.isScene
+                ? `ฉากนี้ ("${t.title}") โดยรวมควรถูกเล่าด้วยจังหวะแบบไหน เมื่อดูจากแรงกดดันในเนื้อฉากและตำแหน่งของฉากในบท`
+                : `การ์ด id "${t.id}" ("${t.title}") ควรถูกเล่าด้วยจังหวะแบบไหน เมื่อดูจากเนื้อการ์ดเอง ประกอบกับจังหวะของการ์ดใบอื่นในฉากเดียวกัน`,
+            criteria: [...PACING_JEV_LEVELS],
+        };
+    }
+
+    /** คายรูปเดียวกับที่ LLM ตอบ → parsePacingAiSuggestResponse ตัวเดิมกินได้ ไม่ต้องแยกสายโค้ด */
+    const toJson = (answers: Record<string, JevAnswer>): string => {
+        const items = targets.flatMap(t => {
+            const a = answers[t.id];
+            if (!a || a.type !== "score" || !Number.isFinite(a.score)) return [];
+            // เหตุผล = ระดับที่โมเดลให้น้ำหนักมากที่สุด ไม่ใช่ประโยคที่แต่งขึ้น — Jev ไม่ generate text
+            const top = Object.entries(a.probabilities ?? {}).sort((x, y) => y[1] - x[1])[0]?.[0];
+            return [{
+                id: t.id,
+                pacing: jevScoreToPacing(a.score),
+                reason: (top !== undefined && a.legend?.[top]) || PACING_JEV_LEVELS[Math.round(a.score)] || "",
+                confidence: a.confidence,
+            }];
+        });
+        return JSON.stringify({ items });
+    };
+
+    return { state, questions, toJson };
 }
 
 /** คำแนะนำต่อหนึ่งจุด (ฉากใหญ่ หรือการ์ดไอเดียหนึ่งใบ) */

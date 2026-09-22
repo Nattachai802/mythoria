@@ -8,6 +8,7 @@ export const PROVIDER_STYLE: Record<string, string> = {
     typhoon: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
     gemini: "bg-violet-500/15 text-violet-700 dark:text-violet-300",
     openrouter: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+    typesafe: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
 };
 
 // "12s" / "1m 30s" จาก ISO timestamp ที่เริ่มทำงาน — สั้นพอไม่แย่งที่แถวโควตา
@@ -30,12 +31,23 @@ export function AiFeatureCard({ feature }: { feature: AiFeatureView }) {
                             {feature.description}
                         </p>
                     </div>
-                    <Badge
-                        variant={feature.enabled ? "default" : "destructive"}
-                        className="text-[10px] shrink-0"
-                    >
-                        {feature.enabled ? "ON" : "OFF"}
-                    </Badge>
+                    <span className="flex items-center gap-1 shrink-0">
+                        {feature.mode === "jev" && (
+                            <Badge
+                                variant="secondary"
+                                className="text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                                title="ตัดสินด้วย TypeSafe (คำตอบมีชนิดตายตัว) — ถ้าล้มจะตกไป LLM ตามลำดับเดิม"
+                            >
+                                Jev
+                            </Badge>
+                        )}
+                        <Badge
+                            variant={feature.enabled ? "default" : "destructive"}
+                            className="text-[10px]"
+                        >
+                            {feature.enabled ? "ON" : "OFF"}
+                        </Badge>
+                    </span>
                 </div>
 
                 <div className="flex flex-wrap gap-1">

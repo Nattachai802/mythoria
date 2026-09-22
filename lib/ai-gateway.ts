@@ -20,7 +20,12 @@ import { GoogleGenAI } from "@google/genai";
 import { isGuest, GUEST_AI_MESSAGE } from "@/lib/guest";
 import {
     AI_FEATURES,
+    AI_MODES,
     resolvePythonFeature,
+    type AiMode,
+    type JevPayload,
+    type JevAnswer,
+    type JevQuestion,
     type AiProvider,
     type AiProviderStep,
     type AiFeatureDef,
@@ -31,8 +36,8 @@ import {
  * registry + python path mapping อยู่ที่ lib/ai-features.ts (pure module — CLI ใช้ร่วมกัน)
  * re-export ต่อให้ call sites เดิม import จาก gateway ที่เดียวเหมือนเดิม
  */
-export { AI_FEATURES, resolvePythonFeature };
-export type { AiProvider, AiProviderStep, AiFeatureDef, AiFeatureKey };
+export { AI_FEATURES, AI_MODES, resolvePythonFeature };
+export type { AiMode, JevPayload, JevAnswer, JevQuestion, AiProvider, AiProviderStep, AiFeatureDef, AiFeatureKey };
 
 // ============================================
 // Errors
@@ -56,6 +61,7 @@ export class AiControlError extends Error {
 interface FeatureOverride {
     enabled: boolean;
     dailyLimitPerUser: number | null;
+    mode: AiMode;
 }
 
 type OverrideCacheEntry = { value: FeatureOverride | null; expires: number };
@@ -68,7 +74,12 @@ async function getOverride(key: string): Promise<FeatureOverride | null> {
     try {
         const [row] = await db.select().from(aiFeatures).where(eq(aiFeatures.key, key)).limit(1);
         const value: FeatureOverride | null = row
-            ? { enabled: row.enabled, dailyLimitPerUser: row.dailyLimitPerUser }
+            ? {
+                enabled: row.enabled,
+                dailyLimitPerUser: row.dailyLimitPerUser,
+                // ค่าแปลกในคอลัมน์ (แก้มือ/แถวเก่า) = traditional — ห้ามให้ค่าพิมพ์ผิดพาไปยิง provider อื่น
+                mode: (AI_MODES as readonly string[]).includes(row.mode) ? (row.mode as AiMode) : "traditional",
+            }
             : null;
         overrideCache.set(key, { value, expires: Date.now() + OVERRIDE_TTL_MS });
         return value;
@@ -331,6 +342,7 @@ const PROVIDER_KEYS: Record<AiProvider, string | undefined> = {
     gemini: process.env.GEMINI_API_KEY,
     openrouter: process.env.OPENROUTER_API_KEY,
     python: undefined,
+    typesafe: process.env.TYPESAFE_API_KEY,
 };
 
 interface ProviderReply {
@@ -361,6 +373,46 @@ interface ChatRequest {
     extraBody?: Record<string, unknown>;
     /** บังคับให้ตอบ JSON ตาม schema นี้ที่ระดับ API ไม่ใช่แค่ขอด้วยคำพูดใน prompt — ลด parse failure ที่ต้นตอ */
     responseSchema?: object;
+    /** payload สำหรับ provider "typesafe" เท่านั้น — provider อื่นไม่เห็นช่องนี้ */
+    jev?: JevPayload;
+}
+
+// ============================================
+// TypeSafe (Jev) — System One
+// ============================================
+
+const TYPESAFE_URL = "https://api.typesafe.ai/v1/systemone";
+
+/**
+ * ยิง Jev — ไม่มี temperature/maxTokens/responseSchema ให้ส่ง (typed output เป็นสัญญาของ API อยู่แล้ว)
+ * คืน text ที่ผ่าน toJson() มาแล้ว ฝั่ง caller จึงมองเห็นเหมือน provider ตัวอื่นทุกประการ
+ */
+async function chatTypesafe(req: ChatRequest): Promise<ProviderReply> {
+    const key = PROVIDER_KEYS.typesafe;
+    if (!key) throw new Error("ไม่ได้ตั้ง TYPESAFE_API_KEY");
+    const payload = req.jev;
+    if (!payload) throw new Error("ฟีเจอร์นี้ยังไม่มี payload สำหรับ Jev");
+
+    const res = await fetch(TYPESAFE_URL, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: req.model, state: payload.state, questions: payload.questions }),
+    });
+
+    const body = await res.text();
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${body.slice(0, 300)}`);
+
+    const json = JSON.parse(body) as {
+        answers?: Record<string, JevAnswer>;
+        usage?: { input_tokens?: number; output_tokens?: number };
+    };
+    if (!json.answers) throw new Error(`คำตอบไม่มีช่อง answers: ${body.slice(0, 300)}`);
+
+    return {
+        text: payload.toJson(json.answers),
+        promptTokens: json.usage?.input_tokens ?? 0,
+        completionTokens: json.usage?.output_tokens ?? 0,
+    };
 }
 
 async function chatOpenAiCompatible(
@@ -493,6 +545,11 @@ export interface AiCallOptions extends GateContext {
     novelId?: string;
     /** false = ไม่ mark provider cooldown เมื่อโดน rate limit (caller จัดการ retry เอง) — default true */
     useCooldown?: boolean;
+    /**
+     * เปิดทางให้ฟีเจอร์นี้ยิง Jev ได้เมื่อผู้ดูแลเปิดโหมดไว้ — ไม่ส่ง = ใช้ LLM เหมือนเดิมเสมอ
+     * prompt/system ยังต้องส่งมาด้วยตามปกติ เพราะเป็นตัวที่ใช้ตอนตกกลับ chain เดิม
+     */
+    jev?: JevPayload;
 }
 
 export interface AiCallResult extends ProviderReply {
@@ -517,7 +574,9 @@ async function executeStep(
     const startedAt = Date.now();
     try {
         let reply: ProviderReply;
-        if (step.provider === "gemini") {
+        if (step.provider === "typesafe") {
+            reply = await chatTypesafe(req);
+        } else if (step.provider === "gemini") {
             reply = await chatGemini(req);
         } else if (step.provider === "groq" || step.provider === "typhoon" || step.provider === "openrouter") {
             reply = await chatOpenAiCompatible(step.provider, req);
@@ -571,7 +630,18 @@ function buildChatRequest(step: AiProviderStep, options: AiCallOptions): ChatReq
         messages,
         extraBody: options.extraBody,
         responseSchema: options.responseSchema,
+        jev: options.jev,
     };
+}
+
+/**
+ * chain ที่จะเดินจริง — โหมด jev ต่อ jevChain ไว้หน้า chain เดิม ไม่ใช่แทนที่
+ * เงื่อนไขครบทั้งสามข้อเท่านั้นถึงใช้: เปิดโหมดไว้ + รีจิสทรีมี jevChain + caller ส่ง payload มา
+ * ขาดข้อใดข้อหนึ่ง = เดิน chain เดิมเงียบ ๆ (เช่น รอบ guess ของ echo-score ที่ต้องแต่งประโยค)
+ */
+function resolveChain(def: AiFeatureDef, mode: AiMode, options: AiCallOptions): AiProviderStep[] {
+    if (mode !== "jev" || !def.jevChain?.length || !options.jev) return def.chain;
+    return [...def.jevChain, ...def.chain];
 }
 
 export async function callAi(options: AiCallOptions): Promise<AiCallResult> {
@@ -590,12 +660,13 @@ export async function callAi(options: AiCallOptions): Promise<AiCallResult> {
     await markFeatureActive(featureKey, activeUserId, ctx.novelId);
 
     try {
-        if (def.chain.length === 0) {
+        const chain = resolveChain(def, (await getOverride(featureKey))?.mode ?? "traditional", options);
+        if (chain.length === 0) {
             throw new AiControlError("all-failed", `ฟีเจอร์ "${def.label}" ไม่มี LLM provider (ฝั่ง Python)`);
         }
 
         const errors: string[] = [];
-        for (const step of def.chain) {
+        for (const step of chain) {
             if (isCoolingDown(step.provider)) {
                 const waitSec = Math.ceil((providerCooldownUntil.get(step.provider)! - Date.now()) / 1000);
                 errors.push(`${step.provider}: cooling down ${waitSec}s (rate limited earlier)`);

@@ -9,6 +9,8 @@
 
 import { PACING_MIN, PACING_MAX } from "./scene-dramatic";
 import { SCENE_TYPE_VALUES } from "./scene-type-suggest";
+import { PACING_JEV_LEVELS, jevScoreToPacing } from "./pacing-ai-suggest";
+import type { JevAnswer, JevQuestion } from "./ai-features";
 
 export const COACH_STATES = ["ok", "dragging", "overheated", "flat"] as const;
 export type CoachState = (typeof COACH_STATES)[number];
@@ -79,6 +81,75 @@ export function buildBeatCoachPrompt(contextText: string): { system: string; use
     };
 }
 
+// ─── โหมด Jev ───────────────────────────────────────────────────────────
+
+/**
+ * Jev ตอบได้เฉพาะส่วนที่เป็น "เลือกจากตัวเลือกที่รู้ล่วงหน้า": beats (Score), state และ
+ * suggestedType (Choice) — ส่วน text/suggestedNext เป็นประโยคไทยที่ต้องแต่งใหม่ Jev ทำไม่ได้
+ *
+ * จึงคาย advice.text/suggestedNext เป็น "" แล้วปล่อยให้ผู้เรียกตัดสินใจว่าจะยิง LLM ต่อ
+ * เพื่อเขียนข้อความบนตัวเลขที่ได้ไหม — ดู server/beat-coach.ts
+ */
+export function buildBeatCoachJev(
+    contextText: string,
+    cards: { id: string; title: string }[],
+): { state: unknown; questions: Record<string, JevQuestion>; toJson: (a: Record<string, JevAnswer>) => string } {
+    const state = { ฉาก: contextText };
+
+    const questions: Record<string, JevQuestion> = {
+        __state: {
+            type: "choice",
+            instructions: "ภาพรวมจังหวะของฉากนี้เป็นแบบไหน",
+            criteria: {
+                ok: "ขึ้นลงมีจังหวะดี ไม่มีปัญหาที่ต้องเตือน",
+                dragging: "เอื่อยยาว หลายจังหวะติดกันผ่อนจนเรื่องไม่เดิน",
+                overheated: "เร่งค้างจนล้า ไม่มีช่วงให้ผู้อ่านพัก",
+                flat: "แบน ทุกจังหวะแรงเท่ากันหมด ไม่มีสูงต่ำ",
+            },
+        },
+        __next: {
+            type: "choice",
+            instructions: "จังหวะถัดไปหลังจบฉากนี้ ควรเป็นฉากประเภทไหนตาม Unified Scene Framework",
+            criteria: {
+                setup: "ปูพื้น/ให้ข้อมูล ไม่มีการพลิกของคุณค่า",
+                action: "รุกฆาต ตัวละครมีเป้าหมายแล้วเจออุปสรรค",
+                reaction: "รับแรงกระแทกจากเหตุการณ์ก่อนหน้า แล้วตัดสินใจใหม่",
+                climax: "แตกหัก บททดสอบสูงสุด คุณค่าพลิก",
+                resolution: "คลี่คลาย สมดุลใหม่หลังพายุ",
+            },
+        },
+    };
+    for (const c of cards) {
+        questions[c.id] = {
+            type: "score",
+            instructions: `การ์ด id "${c.id}" ("${c.title}") ควรถูกเล่าด้วยจังหวะแบบไหน`,
+            criteria: [...PACING_JEV_LEVELS],
+        };
+    }
+
+    const toJson = (answers: Record<string, JevAnswer>): string => {
+        const beats = cards.flatMap(c => {
+            const a = answers[c.id];
+            return a && a.type === "score" && Number.isFinite(a.score)
+                ? [{ id: c.id, pacing: jevScoreToPacing(a.score) }]
+                : [];
+        });
+        const st = answers.__state;
+        const nx = answers.__next;
+        const advice = st && st.type === "choice"
+            ? {
+                state: (COACH_STATES as readonly string[]).includes(st.choice) ? st.choice : "ok",
+                text: "", // Jev ไม่เขียนข้อความ — ผู้เรียกเติมเองถ้าต้องการ
+                suggestedType: nx && nx.type === "choice" ? nx.choice : "",
+                suggestedNext: "",
+            }
+            : null;
+        return JSON.stringify({ beats, advice });
+    };
+
+    return { state, questions, toJson };
+}
+
 const clamp = (n: number) => Math.min(PACING_MAX, Math.max(PACING_MIN, Math.round(n)));
 
 function toPacing(v: unknown): number | null {
@@ -130,4 +201,56 @@ export function parseBeatCoachResponse(raw: string): BeatCoachAiResult | null {
 
     if (beats.size === 0 && !advice) return null;
     return { beats, advice };
+}
+
+/**
+ * รอบที่สองของโหมด Jev — ให้ LLM เขียนข้อความบน "ข้อสรุปที่ Jev ตัดสินไปแล้ว"
+ *
+ * แยกสองรอบเพราะสองงานนี้คนละชนิด: จัดหมวด (เลือกจากตัวเลือกตายตัว) กับ เขียนประโยคไทย
+ * LLM รอบนี้ห้ามเปลี่ยนข้อสรุป มีหน้าที่อธิบายอย่างเดียว จึงไม่ต้องบังคับ schema ให้ยุ่ง
+ */
+export function buildCoachTextPrompt(
+    contextText: string,
+    state: CoachState,
+    suggestedType: string,
+): { system: string; user: string } {
+    const stateLabel: Record<CoachState, string> = {
+        ok: "จังหวะโดยรวมปกติดี",
+        dragging: "จังหวะเอื่อยยาว",
+        overheated: "จังหวะเร่งค้างจนล้า",
+        flat: "จังหวะแบน ไม่มีสูงต่ำ",
+    };
+    return {
+        system: `ข้อสรุปเรื่องจังหวะของฉากนี้ถูกตัดสินมาแล้วว่า "${stateLabel[state]}" และจังหวะถัดไปควรเป็นฉากประเภท "${suggestedType}"
+
+หน้าที่ของคุณคือเขียนข้อความอธิบายข้อสรุปนั้น ห้ามเปลี่ยนข้อสรุป ห้ามเสนอข้อสรุปอื่น
+ตอบเป็น JSON: {"text": "...", "suggestedNext": "..."}
+- text: ข้อสังเกตหนึ่งประโยค อ้างสิ่งที่เห็นในฉากจริง ห้ามพูดลอย ๆ
+- suggestedNext: จังหวะถัดไปควรเกิดอะไร หนึ่งประโยค บอกทิศทาง ไม่ใช่เขียนเนื้อเรื่องให้
+ห้ามแต่งเหตุการณ์หรือชื่อตัวละครใหม่ที่ไม่มีในเอกสาร ภาษาไทย`,
+        user: contextText,
+    };
+}
+
+export const COACH_TEXT_SCHEMA = {
+    type: "object",
+    properties: { text: { type: "string" }, suggestedNext: { type: "string" } },
+    required: ["text", "suggestedNext"],
+    additionalProperties: false,
+} as const;
+
+/** อ่านผลรอบที่สอง — ขาดได้ ไม่ทิ้งตัวเลขที่ Jev ให้มาแล้วเพราะข้อความเขียนไม่ออก */
+export function parseCoachText(raw: string): { text: string; suggestedNext: string } | null {
+    try {
+        const m = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").match(/\{[\s\S]*\}/);
+        if (!m) return null;
+        const p = JSON.parse(m[0]);
+        if (typeof p.text !== "string") return null;
+        return {
+            text: p.text.trim().slice(0, 300),
+            suggestedNext: typeof p.suggestedNext === "string" ? p.suggestedNext.trim().slice(0, 300) : "",
+        };
+    } catch {
+        return null;
+    }
 }

@@ -399,6 +399,7 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
       )}
 
       <IdeaFrameDialog
+        open={dialogOpen}
         onClose={() => setDialogOpen(false)}
         item={item}
         frameNo={frameNo}
@@ -440,6 +441,12 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
 }
 
 interface IdeaFrameDialogProps {
+  /**
+   * แผงเปิดอยู่ไหม — ต้องรู้เพื่อล้างตำแหน่งที่ลากไว้ตอนปิด
+   * Radix ถอดเฉพาะ DOM ของ PopoverContent ตอนปิด แต่ตัว component นี้เป็นพ่อของมัน
+   * จึงไม่ถูก unmount · state ตำแหน่งเลยค้างข้ามรอบเปิด-ปิดถ้าไม่ล้างเอง
+   */
+  open: boolean;
   onClose: () => void;
   item: any;
   frameNo?: string;
@@ -483,7 +490,7 @@ const DOUBLE_CLICK_MS = 400;
 // เพื่อให้เปิดดูได้พร้อมกันหลายใบสำหรับเทียบ ๆ กัน — ไม่บังพื้นหลัง ไม่ auto-close ตอนคลิกการ์ดอื่น
 // ปิดได้ 3 ทาง: ปุ่มกากบาท · Esc · ดับเบิลคลิกนอกแผง
 function IdeaFrameDialog({
-  onClose, item, frameNo, elementDetails, onEditChild, onRemoveChild, ideaNotes,
+  open, onClose, item, frameNo, elementDetails, onEditChild, onRemoveChild, ideaNotes,
   onQuickAddNote, onDeleteNote, onReorderNotes, novelId, ancestorConnections, onRemoveAncestor,
   sceneId, characters, novelDummyNames, factions, powers, items, entities, worldSystems, participantLinks, ideas, onAddChild, onUpdateChild,
   onPromoteDummy, onDetailSaved, onSetKeyMoment, onRenameIdea, onSetSceneDrama, onOpenThreadBind, threadBeats, onCopy,
@@ -508,15 +515,48 @@ function IdeaFrameDialog({
   // พอเริ่มลาก ตัดแผงออกจากกล่องจัดตำแหน่งของ Radix ไปเลย: จำพิกัดบนจอ ณ ตอนนั้น
   // แล้วสลับเป็น position:fixed — เนื้อแผงหลุดจาก flow กล่องนอกจึงยุบเหลือ 0x0
   // (แค่ปิด pointer-events ไม่พอ กล่องยังกางค้างทับการ์ดใบข้าง ๆ จนกดไม่ได้)
-  const [floatAt, setFloatAt] = useState<{ left: number; top: number } | null>(null);
+  // เก็บขนาดแผงไว้ด้วย ไม่ใช่แค่มุมบนซ้าย — ขอบเขตการลากต้องรู้ว่าแผงกว้าง/สูงเท่าไหร่
+  // ถึงจะกันไม่ให้ "ท้ายแผง" หลุดจอได้ (เดิมใช้เลขคงที่ 80/60 ซึ่งไม่รู้ขนาดจริง
+  // แผงที่โน้ตเยอะจึงยาวเลยขอบล่าง และฝั่งขวาหลุดไป ~235px ของความกว้าง 315px)
+  const [floatAt, setFloatAt] = useState<{ left: number; top: number; w: number; h: number } | null>(null);
   const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
   const dragFrom = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
+
+  // ปิดแผง = ทิ้งตำแหน่งที่ลากไว้ ให้ Radix จัดตำแหน่งใหม่ตอนเปิดครั้งหน้า
+  // (Radix หลบขอบจอให้เองด้วย collisionPadding อยู่แล้ว แต่พอ floatAt มีค่า
+  //  style จะทับเป็น absolute 0,0 + transform ซึ่งตัด Radix ออกจากการจัดตำแหน่งไปเลย)
+  useEffect(() => {
+    if (!open) {
+      setDragPos(null);
+      setFloatAt(null);
+    }
+  }, [open]);
+
+  const PAD = 8; // ระยะเว้นจากขอบจอ
+
+  /**
+   * บีบ offset ให้แผง "ทั้งใบ" อยู่ในจอ
+   * แผงใหญ่กว่าจอ (โน้ตเยอะจนสูงเกิน) → ยึดขอบบน/ซ้ายแล้วปล่อยให้ scroll ในตัวเอง
+   * ดีกว่าดันไปชิดขอบล่างซึ่งทำให้หัวแผงที่ใช้ลากหลุดจอไป
+   */
+  const clampOffset = (nx: number, ny: number, box: { left: number; top: number; w: number; h: number }) => {
+    const fit = (v: number, origin: number, size: number, viewport: number) => {
+      const lo = PAD - origin;
+      const hi = viewport - PAD - size - origin;
+      return hi < lo ? lo : Math.min(Math.max(v, lo), hi);
+    };
+    return {
+      x: fit(nx, box.left, box.w, window.innerWidth),
+      y: fit(ny, box.top, box.h, window.innerHeight),
+    };
+  };
+
   const startDrag = (e: React.PointerEvent) => {
     // เว้นของที่กดได้ในแถวหัว (ปุ่มปิด, ช่องแก้ชื่อ, ชื่อที่กดเพื่อแก้)
     if ((e.target as HTMLElement).closest("button,input,[data-no-drag]")) return;
     if (!floatAt && contentRef.current) {
       const r = contentRef.current.getBoundingClientRect();
-      setFloatAt({ left: r.left, top: r.top });
+      setFloatAt({ left: r.left, top: r.top, w: r.width, h: r.height });
     }
     const cur = dragPos ?? { x: 0, y: 0 };
     dragFrom.current = { sx: e.clientX, sy: e.clientY, ox: cur.x, oy: cur.y };
@@ -526,14 +566,7 @@ function IdeaFrameDialog({
   const onDrag = (e: React.PointerEvent) => {
     const d = dragFrom.current;
     if (!d || !floatAt) return;
-    // กันลากหลุดจอจนหาไม่เจอ — เหลือหัวแผงให้จับกลับได้เสมอ
-    const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
-    const nx = d.ox + e.clientX - d.sx;
-    const ny = d.oy + e.clientY - d.sy;
-    setDragPos({
-      x: clamp(nx, -floatAt.left + 8, window.innerWidth - floatAt.left - 80),
-      y: clamp(ny, -floatAt.top + 8, window.innerHeight - floatAt.top - 60),
-    });
+    setDragPos(clampOffset(d.ox + e.clientX - d.sx, d.oy + e.clientY - d.sy, floatAt));
   };
   // Radix จัดตำแหน่งที่ div ครอบชั้นนอก (popper wrapper) ส่วนเราขยับแต่เนื้อในด้วย transform
   // ผลคือ wrapper ยังกินพื้นที่กล่องเดิมค้างไว้ ทับการ์ดใบข้าง ๆ จนกดไม่ได้แม้ลากแผงหนีไปแล้ว
