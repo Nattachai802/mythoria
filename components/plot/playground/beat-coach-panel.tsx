@@ -1,13 +1,13 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Activity, Sparkles, Loader2, TriangleAlert } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { analyzeBeats, collapseByBeat, type BeatCoachState } from "@/lib/beat-coach"
 import { pacingLabel } from "@/lib/scene-dramatic"
-import { coachScenePacing } from "@/server/beat-coach"
+import { coachScenePacing, getBeatCoach } from "@/server/beat-coach"
 import type { CoachAdvice } from "@/lib/beat-coach-ai"
 
 /** สีตามสถานะ — เทา = ปกติ/ยังไม่มีข้อมูล, อำพัน = มีอะไรให้ดู */
@@ -33,9 +33,20 @@ interface Props {
 // เนื้อหาอย่างเดียว — trigger ไปอยู่ที่ปุ่ม "ผู้ช่วย" ปุ่มเดียวในทูลบาร์แล้ว
 export function BeatCoachSection({ novelId, sceneId, cards }: Props) {
     const [loading, setLoading] = useState(false)
-    /** จังหวะที่ AI เดาให้ — ไม่เขียนทับของผู้ใช้ ไม่บันทึกลง DB */
+    /** จังหวะที่ AI เดาให้ — ไม่เขียนทับของผู้ใช้ · ผลล่าสุดเก็บใน plot_findings โหลดกลับตอนเปิดแผง */
     const [aiBeats, setAiBeats] = useState<Record<string, number>>({})
     const [aiAdvice, setAiAdvice] = useState<CoachAdvice | null>(null)
+    const [analyzedAt, setAnalyzedAt] = useState<string | null>(null)
+
+    useEffect(() => {
+        let alive = true
+        setAiBeats({}); setAiAdvice(null); setAnalyzedAt(null)
+        getBeatCoach(novelId, sceneId).then(res => {
+            if (!alive || !res?.success) return
+            setAiBeats(res.beats); setAiAdvice(res.advice); setAnalyzedAt(res.analyzedAt)
+        }).catch(() => { /* โหลดผลเก่าไม่ได้ = แผงว่างเหมือนยังไม่วิเคราะห์ */ })
+        return () => { alive = false }
+    }, [novelId, sceneId])
 
     // ค่าที่ผู้ใช้ตั้งเองชนะเสมอ — AI เติมเฉพาะช่องว่าง
     const merged = useMemo(
@@ -56,6 +67,7 @@ export function BeatCoachSection({ novelId, sceneId, cards }: Props) {
             if (!res.success) { toast.error(res.error); return }
             setAiBeats(res.beats)
             setAiAdvice(res.advice)
+            setAnalyzedAt(res.analyzedAt)
             if (Object.keys(res.beats).length === 0 && !res.advice) toast.error("AI ไม่ได้ให้ข้อมูลกลับมา")
         } finally {
             setLoading(false)
@@ -132,6 +144,17 @@ export function BeatCoachSection({ novelId, sceneId, cards }: Props) {
                                         <span className="font-technical text-[9px] uppercase tracking-widest text-muted-foreground">
                                             AI อ่านให้ · เติม {Object.keys(aiBeats).length} การ์ดที่ยังไม่ได้ตั้ง
                                         </span>
+                                        {/* ผลเก็บถาวรแล้ว ปุ่มถามครั้งแรกซ่อนไปเมื่อมีผล — ต้องมีทางวิเคราะห์ใหม่หลังแก้ฉาก */}
+                                        <button
+                                            type="button"
+                                            className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground hover:text-[var(--forge-amber)] disabled:opacity-50"
+                                            onClick={handleAsk}
+                                            disabled={loading}
+                                            title="วิเคราะห์ใหม่ (เขียนทับผลเดิม)"
+                                        >
+                                            {loading && <Loader2 className="h-3 w-3 animate-spin" />}
+                                            {analyzedAt ? new Date(analyzedAt).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" }) : ""} · วิเคราะห์ใหม่
+                                        </button>
                                     </div>
                                     {aiAdvice && (
                                         <>

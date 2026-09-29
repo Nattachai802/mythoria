@@ -10,9 +10,10 @@ No Unauthorized Edits: ห้ามแก้ไขโค้ด (Source Code) ใ
 - อนุมัติหนึ่งครั้งใช้กับงานชิ้นนั้นเท่านั้น ห้ามลามไปงานถัดไปหรือไฟล์อื่นที่ไม่ได้พูดถึง
 - เจอของที่ควรแก้นอกขอบเขตงานปัจจุบัน ให้บันทึกไว้ใน task.md แล้วบอกผู้ใช้ ห้ามแก้เอง
 
-No Self-Execution: ห้ามรันคำสั่งใดๆ ผ่าน Terminal/CMD หรือ Execute โค้ดด้วยตัวเองโดยเด็ดขาด
-- ครอบคลุม git (commit/push/checkout/reset), npm run ทุกตัว, drizzle-kit, script ใน scripts/ และคำสั่งอ่านอย่างเดียวทุกชนิด ยกเว้นผู้ใช้งานอนุญาติ ในส่วนของคำสั่งสำหรับการตรวจสอบ สามารถทำได้เลย เช่น git branch git status npx tsc --noEmit / npm run check สามารถทำได้เลย
-- ให้ส่งคำสั่งเป็น code block ภาษา bash ทีละคำสั่ง เพื่อให้ผู้ใช้กดรันเอง แล้วรอผลลัพธ์
+Command Execution (CRUD): รันคำสั่งเองได้ตามระดับความเสี่ยงต่อโค้ด/ข้อมูล
+- C (Create) และ R (Read): รันได้เลย — เช่น grep, ls, cat, git status/branch/log/diff/pull (fast-forward), npx tsc --noEmit, npm run check, สร้างไฟล์ใหม่
+- U (Update): ถามก่อนทุกครั้ง — เช่น แก้ไฟล์เดิม, git commit/push/merge, npm install, npm run db:push, script ใน scripts/ ที่เขียนข้อมูล
+- D (Delete): ห้ามรันเอง — เช่น rm, git reset --hard/checkout -- /clean/branch -D, push --force, DROP/TRUNCATE/DELETE ให้ส่งเป็น code block ภาษา bash ให้ผู้ใช้รันเอง
 - ถ้าต้องรู้ผลก่อนจึงจะทำต่อได้ ให้บอกชัดว่ารออะไร แล้วขอให้ผู้ใช้วางผลลัพธ์กลับมา ห้ามเดาผลแล้วทำต่อ
 - ห้ามรายงานว่า "ทดสอบผ่านแล้ว" ถ้าไม่ได้เห็นผลลัพธ์จริงจากผู้ใช้
 

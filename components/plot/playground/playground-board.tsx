@@ -1487,38 +1487,49 @@ export function PlaygroundBoard({
     }, [items, lanes_, chapters, eventId]);
 
     // Linking Handlers
+    const linkingStartCount = useRef(0);
     const handleStartLink = (id: string) => {
         if (linkingSourceId === id) {
             setLinkingSourceId(null);
             toast.info("โหมดเชื่อมเส้น: ยกเลิกแล้ว");
         } else {
+            linkingStartCount.current = items.find(i => i.id === id)?.links?.length || 0;
             setLinkingSourceId(id);
             toast.info("โหมดเชื่อมเส้น: คลิกการ์ดที่จะเชื่อมด้วย");
         }
     };
 
+    // เชื่อมอยู่แล้วทั้งสองทิศ (A→B หรือ B→A) นับเป็นซ้ำ — สองเส้นสวนกันวิ่งทับจนกดเส้นล่างไม่ได้
+    const isLinked = (list: any[], a: string, b: string) => list.some(i =>
+        (i.id === a && (i.links || []).some((l: any) => normalizeLink(l).targetId === b)) ||
+        (i.id === b && (i.links || []).some((l: any) => normalizeLink(l).targetId === a)));
+
+    // การ์ดหายจากกระดาน (ลบ/ซ้อนเข้าไอเดีย) → ตัดเส้นที่ชี้มาหามัน ไม่งั้น targetId ค้างถูกเซฟลง DB
+    const stripLinksTo = (list: any[], goneId: string) => list.map(i =>
+        (i.links || []).some((l: any) => normalizeLink(l).targetId === goneId)
+            ? { ...i, links: i.links.filter((l: any) => normalizeLink(l).targetId !== goneId) }
+            : i);
+
+    // คืน true ถ้าเพิ่มเส้นได้ — เช็คซ้ำนอก updater เพื่อไม่ให้ toast เด้งซ้ำใน StrictMode
+    const addLink = (sourceId: string, targetId: string) => {
+        if (sourceId === targetId) return false;
+        if (isLinked(items, sourceId, targetId)) { toast.info("เชื่อมกันอยู่แล้ว"); return false; }
+        setItems(prev => isLinked(prev, sourceId, targetId) ? prev : prev.map(item => item.id === sourceId
+            ? { ...item, links: [...(item.links || []), { targetId, kind: "related", label: null }] }
+            : item));
+        return true;
+    };
+
     const handleCompleteLink = (targetId: string) => {
         if (!linkingSourceId) return;
-        if (linkingSourceId === targetId) return;
-
-        setItems(prev => {
-            const sourceItem = prev.find(i => i.id === linkingSourceId);
-            if ((sourceItem?.links || []).some((l: any) => normalizeLink(l).targetId === targetId)) {
-                toast.info("เชื่อมกันอยู่แล้ว");
-                return prev;
-            }
-            return prev.map(item => item.id === linkingSourceId
-                ? { ...item, links: [...(item.links || []), { targetId, kind: "related", label: null }] }
-                : item
-            );
-        });
+        addLink(linkingSourceId, targetId);
     };
 
     const handleFinishLinking = () => {
         const sourceItem = items.find(i => i.id === linkingSourceId);
-        const linkCount = sourceItem?.links?.length || 0;
+        const added = Math.max(0, (sourceItem?.links?.length || 0) - linkingStartCount.current);
         setLinkingSourceId(null);
-        toast.success(`เชื่อมเสร็จแล้ว! ${linkCount} เส้น`);
+        toast.success(`เชื่อมเสร็จแล้ว! เพิ่ม ${added} เส้น`);
     };
 
     const handleCancelLink = () => {
@@ -1526,11 +1537,19 @@ export function PlaygroundBoard({
         toast.info("ยกเลิกการเชื่อม");
     };
 
+    // ถอนของที่ leads_to ก็อปไปให้ปลายทาง (เฉพาะที่มี copiedVia — ของเก่าก่อนมี marker ไม่แตะ)
+    const stripLeadsToCopies = (item: any, sourceId: string) => {
+        const kept = (item.children || []).filter((c: any) => c.copiedVia !== sourceId);
+        return kept.length === (item.children || []).length ? item : { ...item, children: kept };
+    };
+
     const handleUnlink = (sourceId: string, targetId: string) => {
-        setItems(prev => prev.map(item => item.id === sourceId
-            ? { ...item, links: (item.links || []).filter((l: any) => normalizeLink(l).targetId !== targetId) }
-            : item
-        ));
+        setItems(prev => prev.map(item => {
+            if (item.id === sourceId)
+                return { ...item, links: (item.links || []).filter((l: any) => normalizeLink(l).targetId !== targetId) };
+            if (item.id === targetId) return stripLeadsToCopies(item, sourceId);
+            return item;
+        }));
     };
 
     const handleUpdateLink = (sourceId: string, targetId: string, patch: { kind?: string; label?: string | null }) => {
@@ -1539,6 +1558,7 @@ export function PlaygroundBoard({
             const targetItem = prev.find(i => i.id === targetId);
             const oldLink = (sourceItem?.links || []).map(normalizeLink).find((l: CanvasLink) => l.targetId === targetId);
             const becomesLeadsTo = patch.kind === "leads_to" && oldLink?.kind !== "leads_to";
+            const leavesLeadsTo = !!patch.kind && patch.kind !== "leads_to" && oldLink?.kind === "leads_to";
 
             let newChildren: any[] = [];
             if (becomesLeadsTo) {
@@ -1547,7 +1567,7 @@ export function PlaygroundBoard({
                     .map((c: any) => {
                         // role/บทบาทถูกแก้ที่ detail ต่อการ์ด — ดึงค่าล่าสุดมาใส่ child ที่ก็อป ไม่งั้นได้ role ตอนสร้าง
                         const d = elementDetailsMap.get(`${sourceId}-${c.type}-${c.referenceId || c.refId || c.id}`);
-                        return { ...c, id: crypto.randomUUID(), role: d?.role || c.role };
+                        return { ...c, id: crypto.randomUUID(), role: d?.role || c.role, copiedVia: sourceId };
                     });
                 const existingRefIds = new Set((targetItem?.children || []).map((c: any) => c.referenceId));
                 newChildren = childrenToCopy.filter((c: any) => {
@@ -1571,6 +1591,7 @@ export function PlaygroundBoard({
                     };
                 }
                 if (item.id === targetId) {
+                    if (leavesLeadsTo) return stripLeadsToCopies(item, sourceId);
                     return {
                         ...item,
                         ...(newChildren.length > 0 ? { children: [...(item.children || []), ...newChildren] } : {}),
@@ -1792,17 +1813,7 @@ export function PlaygroundBoard({
             const targetId = resolveConnectTarget(over ? String(over.id) : null, sourceId);
             setConnectingSourceId(null);
             setConnectOverId(null);
-            if (targetId) {
-                setItems(prev => {
-                    const src = prev.find(i => i.id === sourceId);
-                    if ((src?.links || []).some((l: any) => normalizeLink(l).targetId === targetId)) {
-                        toast.info("เชื่อมกันอยู่แล้ว");
-                        return prev;
-                    }
-                    return prev.map(i => i.id === sourceId
-                        ? { ...i, links: [...(i.links || []), { targetId, kind: "related", label: null }] }
-                        : i);
-                });
+            if (targetId && addLink(sourceId, targetId)) {
                 setEditingLink({ sourceId, targetId }); // เปิดเลือกชนิดเส้นทันที
             }
             return;
@@ -1837,10 +1848,11 @@ export function PlaygroundBoard({
                     }
                     const activeItem = prev.find(i => i.id === active.id);
                     if (!activeItem) return prev;
-                    return prev.map(item => item.id === over.id
+                    // การ์ดที่ซ้อนเข้าไอเดียออกจากกระดาน → ตัดเส้นที่ชี้มาหามันด้วย ไม่ให้ค้างใน DB
+                    return stripLinksTo(prev.map(item => item.id === over.id
                         ? { ...item, children: [...(item.children || []), activeItem] }
                         : item
-                    ).filter(i => i.id !== active.id);
+                    ).filter(i => i.id !== active.id), String(active.id));
                 });
                 return;
             }
@@ -1900,7 +1912,7 @@ export function PlaygroundBoard({
 
     const handleRemoveItem = async (id: string) => {
         const removedItem = items.find(item => item.id === id);
-        setItems((prev) => prev.filter((item) => item.id !== id));
+        setItems((prev) => stripLinksTo(prev.filter((item) => item.id !== id), id));
         if (removedItem?.type === 'idea' && removedItem?.referenceId) {
             await updateIdea(removedItem.referenceId, { isUsed: false });
         }
@@ -2144,6 +2156,23 @@ export function PlaygroundBoard({
                 list.forEach((e, i) => { busGroupIndex.set(e, i); busGroupSize.set(e, list.length); });
             });
         }
+        // การ์ดที่ทั้งรับหลายเส้นและส่งหลายเส้น: กลุ่มข้างบนยกให้ฝั่ง converge หมด
+        // ขาออกจากต้นทางเลยออกจุดเดียวกันทับกัน — ถ่างจุดออกแยกอีกชุด ตามต้นทาง+ทิศ
+        const outIndex = new Map<typeof edges[number], number>();
+        const outSize = new Map<typeof edges[number], number>();
+        {
+            const groups = new Map<string, typeof edges>();
+            edges.forEach(e => {
+                if ((inCount.get(e.targetId) ?? 0) <= 1 || (outCount.get(e.sourceId) ?? 0) <= 1) return;
+                const key = `${e.sourceId}:${e.tPos.x >= e.sPos.x ? 1 : -1}`;
+                if (!groups.has(key)) groups.set(key, []);
+                groups.get(key)!.push(e);
+            });
+            groups.forEach(list => {
+                list.sort((a, b) => a.tPos.y - b.tPos.y);
+                list.forEach((e, i) => { outIndex.set(e, i); outSize.set(e, list.length); });
+            });
+        }
 
         const built = edges.map((e) => {
             const converge = (inCount.get(e.targetId) ?? 0) > 1; // รวมเข้า target
@@ -2162,7 +2191,10 @@ export function PlaygroundBoard({
                 const n = busGroupSize.get(e) ?? 1;
                 const busOffset = idx * BUS_STEP;
                 let busX: number, aY: number, bY: number;
-                if (converge) { busX = bX - dir * (GAP + busOffset); aY = e.sPos.y; bY = entryY(targetMergeY.get(e.targetId)!, e.tPos, idx, n); }
+                if (converge) {
+                    busX = bX - dir * (GAP + busOffset);
+                    aY = outIndex.has(e) ? entryY(sourceMergeY.get(e.sourceId)!, e.sPos, outIndex.get(e)!, outSize.get(e)!) : e.sPos.y;
+                    bY = entryY(targetMergeY.get(e.targetId)!, e.tPos, idx, n); }
                 else { busX = aX + dir * (GAP + busOffset); aY = entryY(sourceMergeY.get(e.sourceId)!, e.sPos, idx, n); bY = e.tPos.y; }
                 points = [{ x: aX, y: aY }, { x: busX, y: aY }, { x: busX, y: bY }, { x: bX, y: bY }];
             } else if (sItem && tItem && sItem.beatIndex === tItem.beatIndex) {
@@ -2196,7 +2228,22 @@ export function PlaygroundBoard({
                 const pt = anchorOn(e.tPos, tSide);
                 const s1 = { x: ps.x + SIDE_VEC[sSide][0] * GAP, y: ps.y };
                 const t1 = { x: pt.x + SIDE_VEC[tSide][0] * GAP, y: pt.y };
-                points = [ps, s1, { x: t1.x, y: s1.y }, t1, pt];
+                // ขาแนวนอนยาวที่ y ของต้นทางผ่ากลางการ์ดที่คั่นอยู่ระหว่างจังหวะ →
+                // ถ้ามีการ์ดขวาง ยกขานี้ขึ้น/ลงไปวิ่งเหนือ/ใต้กลุ่มที่ขวาง (เลือกฝั่งที่อ้อมน้อยกว่า)
+                const x0 = Math.min(s1.x, t1.x), x1 = Math.max(s1.x, t1.x);
+                const blockers = [...linkPositions.entries()].filter(([id, p]) =>
+                    id !== e.sourceId && id !== e.targetId &&
+                    p.x + p.w / 2 > x0 && p.x - p.w / 2 < x1 &&
+                    s1.y > p.y - p.h / 2 && s1.y < p.y + p.h / 2).map(([, p]) => p);
+                if (blockers.length) {
+                    const above = Math.min(...blockers.map(p => p.y - p.h / 2)) - 8;
+                    const below = Math.max(...blockers.map(p => p.y + p.h / 2)) + 8;
+                    // ponytail: อ้อมชั้นเดียว — ขาที่ยกไปแล้วอาจชนการ์ดเลนข้างเคียงได้อีก ถ้าเจอบ่อยค่อยทำ routing ในร่องเลน
+                    const midY = Math.abs(above - s1.y) <= Math.abs(below - s1.y) ? above : below;
+                    points = [ps, s1, { x: s1.x, y: midY }, { x: t1.x, y: midY }, t1, pt];
+                } else {
+                    points = [ps, s1, { x: t1.x, y: s1.y }, t1, pt];
+                }
             }
 
             // ถ้าหัวลูกศร (จุดสุดท้าย) ตกทับกรอบการ์ดอื่น (ไม่ใช่ต้น/ปลายทาง) → ขยับ y ออก
@@ -2209,7 +2256,8 @@ export function PlaygroundBoard({
             if (hit) {
                 const p = hit[1];
                 const sourceAbove = e.sPos.y < e.tPos.y;
-                const newY = sourceAbove ? p.y - p.h / 2 - 8 : p.y + p.h / 2 + 8;
+                // clamp เข้าการ์ดปลายทาง — y ที่คิดจากการ์ดที่ชนอาจหลุดขอบปลายทาง หัวศรไปลอยในที่ว่าง
+                const newY = clampY(sourceAbove ? p.y - p.h / 2 - 8 : p.y + p.h / 2 + 8, e.tPos);
                 points[points.length - 1] = { x: tip.x, y: newY };
                 points[points.length - 2] = { x: points[points.length - 2].x, y: newY };
             }
@@ -2230,16 +2278,14 @@ export function PlaygroundBoard({
         vsegs.sort((a, b) => a.x - b.x || a.y0 - b.y0);
         const placed: Array<{ x: number; y0: number; y1: number }> = [];
         vsegs.forEach(v => {
+            // หาช่องว่างที่ใกล้ x เดิมที่สุด สลับซ้าย/ขวา — เดิมดันขวาอย่างเดียว
+            // เส้นหลัง ๆ ในร่องแน่นเลยถูกดันจนเลยร่องไปทับคอลัมน์การ์ดถัดไป
+            const free = (cx: number) => !placed.some(p =>
+                v.y0 < p.y1 && v.y1 > p.y0 && Math.abs(cx - p.x) < MIN_GUTTER_GAP);
             let x = v.x;
-            let bump = true;
-            while (bump) {
-                bump = false;
-                for (const p of placed) {
-                    if (v.y0 < p.y1 && v.y1 > p.y0 && Math.abs(x - p.x) < MIN_GUTTER_GAP) {
-                        x = p.x + MIN_GUTTER_GAP;
-                        bump = true;
-                    }
-                }
+            for (let k = 1; !free(x) && k < 200; k++) {
+                const off = Math.ceil(k / 2) * (MIN_GUTTER_GAP / 2) * (k % 2 ? 1 : -1);
+                x = v.x + off;
             }
             const dx = x - v.x;
             if (dx !== 0) {

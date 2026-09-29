@@ -1,5 +1,8 @@
 "use server";
 
+import { db } from "@/db/drizzle";
+import { plotFindings } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
 import { requireNovelAccess } from "@/lib/authz";
 import { callAi, assertAiAllowed, AiControlError, logParseFailure } from "@/lib/ai-gateway";
 import {
@@ -15,11 +18,42 @@ import {
 import { getPlotContext } from "./plot-context";
 
 type CoachResult =
-    | { success: true; beats: Record<string, number>; advice: CoachAdvice | null }
+    | { success: true; beats: Record<string, number>; advice: CoachAdvice | null; analyzedAt: string }
     | { success: false; error: string };
 
+// ผลล่าสุดต่อฉาก เก็บใน plot_findings (1 แถว/ฉาก, วิเคราะห์ซ้ำ = เขียนทับ) — เปิดแผงใหม่แล้วไม่หาย
+const CHECK_ID = "beat_coach";
+const FORMAT_VERSION = "1";
+
+async function saveBeatCoach(novelId: string, sceneId: string, evidence: { beats: Record<string, number>; advice: CoachAdvice | null }) {
+    try {
+        await db.insert(plotFindings)
+            .values({ novelId, sceneId, checkId: CHECK_ID, subjectRef: sceneId, evidence, formatVersion: FORMAT_VERSION })
+            .onConflictDoUpdate({
+                target: [plotFindings.novelId, plotFindings.checkId, plotFindings.subjectRef],
+                set: { evidence, formatVersion: FORMAT_VERSION, updatedAt: new Date() },
+            });
+    } catch (err) {
+        // บันทึกล้มไม่ควรทิ้งผล AI ที่จ่าย token ไปแล้ว — ยังคืนผลให้แผงแสดงตามเดิม
+        console.error("[BeatCoach] save:", err);
+    }
+}
+
+/** ผลวิเคราะห์ที่บันทึกไว้ของฉาก — null ถ้ายังไม่เคยวิเคราะห์ */
+export async function getBeatCoach(novelId: string, sceneId: string): Promise<CoachResult | null> {
+    await requireNovelAccess(novelId);
+    const [row] = await db
+        .select({ evidence: plotFindings.evidence, updatedAt: plotFindings.updatedAt })
+        .from(plotFindings)
+        .where(and(eq(plotFindings.novelId, novelId), eq(plotFindings.checkId, CHECK_ID), eq(plotFindings.subjectRef, sceneId)))
+        .limit(1);
+    if (!row) return null;
+    const ev = row.evidence as { beats?: Record<string, number>; advice?: CoachAdvice | null };
+    return { success: true, beats: ev.beats ?? {}, advice: ev.advice ?? null, analyzedAt: row.updatedAt.toISOString() };
+}
+
 /** AI อ่านจังหวะของฉากที่ผู้ใช้ยังกรอกไม่ครบ — เดาค่าที่ขาด + เสนอว่าจังหวะถัดไปควรเป็นแบบไหน
- *  ไม่ persist ลง DB · ผู้เรียกต้อง merge เอง โดยให้ค่าที่ผู้ใช้ตั้งเองชนะเสมอ */
+ *  บันทึกผลลง plot_findings · ผู้เรียกต้อง merge เอง โดยให้ค่าที่ผู้ใช้ตั้งเองชนะเสมอ */
 export async function coachScenePacing(sceneId: string, novelId: string): Promise<CoachResult> {
     try {
         await assertAiAllowed("beat-coach");
@@ -54,7 +88,9 @@ export async function coachScenePacing(sceneId: string, novelId: string): Promis
             ? await addCoachText(ctx.text, parsed.advice, novelId)
             : parsed.advice;
 
-        return { success: true, beats: Object.fromEntries(parsed.beats), advice };
+        const beats = Object.fromEntries(parsed.beats);
+        await saveBeatCoach(novelId, sceneId, { beats, advice });
+        return { success: true, beats, advice, analyzedAt: new Date().toISOString() };
     } catch (err) {
         if (err instanceof AiControlError) return { success: false, error: err.message };
         console.error("[BeatCoach] error:", err);
