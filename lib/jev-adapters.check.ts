@@ -12,7 +12,7 @@
  */
 import assert from "node:assert";
 import { buildPacingJev, parsePacingAiSuggestResponse, jevScoreToPacing } from "./pacing-ai-suggest.ts";
-import { buildBeatCoachJev, parseBeatCoachResponse } from "./beat-coach-ai.ts";
+import { buildBeatCoachJev, parseBeatCoachResponse, buildBeatCoachPrompt } from "./beat-coach-ai.ts";
 import { buildSceneTypeJev, parseSceneTypeSuggestResponse } from "./scene-type-suggest.ts";
 import { PACING_MIN, PACING_MAX } from "./scene-dramatic.ts";
 import type { JevAnswer } from "./ai-features.ts";
@@ -86,6 +86,35 @@ const coachBad = parseBeatCoachResponse(coach.toJson({
 }));
 assert.equal(coachBad?.advice?.state, "ok", "state แปลกต้องกลับไปค่าปลอดภัย");
 assert.equal(coachBad?.advice?.suggestedType, "", "ประเภทฉากที่ไม่รู้จักต้องถูกตัดทิ้ง");
+
+// ── beat-coach: คำตอบจริงจาก typhoon ที่เคยทำให้ parse พัง ──
+// ตั้งชื่อ key เองเป็น work1/work2 ตามหัวข้อ "งานที่ 1/2" ใน prompt และใช้ score แทน pacing
+// ข้อมูลครบทุกค่า แต่ parser เดิมคืน null ทิ้งทั้งก้อน (ai_usage_log status=parse_error)
+const typhoonRaw = JSON.stringify({
+    work1: [
+        { id: "40c0fc0a-e971-447f-badd-0bf754b60f49", score: 6 },
+        { id: "d1be85a1-f193-44a4-96a0-5917efa6a648", score: 5 },
+        { id: "0c49d1da-c5eb-477e-86ac-6fb59c34f5bc", score: 9 },
+    ],
+    work2: {
+        state: "flat",
+        text: "ฉากนี้มีการเล่าที่ราบเรียบ ไม่มีจังหวะขึ้นลงชัดเจน",
+        suggestedType: "reaction",
+        suggestedNext: "ต้องการจังหวะที่มีการหยุดนิ่งเพื่อสะท้อนความรู้สึกหลังเหตุการณ์",
+    },
+});
+
+const typhoon = parseBeatCoachResponse(typhoonRaw);
+assert.ok(typhoon, "key ชื่อแปลกต้องไม่ทำให้ทิ้งทั้งก้อน");
+assert.equal(typhoon.beats.size, 3, "ต้องได้การ์ดครบ แม้ array จะชื่อ work1");
+assert.equal(typhoon.beats.get("0c49d1da-c5eb-477e-86ac-6fb59c34f5bc"), 9, "อ่าน score เป็น pacing ได้");
+assert.equal(typhoon.advice?.state, "flat", "advice ที่ชื่อ work2 ต้องถูกหยิบมา");
+assert.equal(typhoon.advice?.suggestedType, "reaction");
+
+// prompt ต้องไม่พูดถึง "งานที่ 1/2" อีก — ต้นตอที่โมเดลเอาไปตั้งเป็นชื่อ key
+const coachPrompt = buildBeatCoachPrompt("เนื้อฉาก").system;
+assert.ok(!coachPrompt.includes("งานที่ 1"), "prompt ต้องเรียกช่องด้วยชื่อ field จริง ไม่ใช่เลขงาน");
+assert.ok(coachPrompt.includes("beats") && coachPrompt.includes("advice"), "prompt ต้องระบุชื่อช่องตรง ๆ");
 
 // ── scene-type-suggest ──
 const st = buildSceneTypeJev("เนื้อฉาก");

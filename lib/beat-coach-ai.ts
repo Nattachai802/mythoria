@@ -66,11 +66,13 @@ export function buildBeatCoachPrompt(contextText: string): { system: string; use
     return {
         system: `คุณเป็นผู้ช่วยนักเขียนดูจังหวะการเล่าในฉากหนึ่ง หน้าที่คือ "ตั้งข้อสังเกต" ไม่ใช่เขียนเรื่องแทน
 
-งานที่ 1 — ให้คะแนนจังหวะการเล่าของการ์ดทุกใบในฉาก เป็นตัวเลข ${PACING_MIN}-${PACING_MAX}
+ตอบสองช่อง ชื่อช่องต้องเป็น "beats" กับ "advice" เท่านั้น ห้ามตั้งชื่อเอง
+
+beats — ให้คะแนนจังหวะการเล่าของการ์ดทุกใบในฉาก เป็น array ของ {"id", "pacing"} โดย pacing เป็นตัวเลข ${PACING_MIN}-${PACING_MAX}
 เลขต่ำ (${PACING_MIN}-3) = ควรเล่าเร็ว/ผ่อน/สรุปสั้น, กลาง (4-7) = คงที่, สูง (8-${PACING_MAX}) = ควรเล่าเด่น ลงรายละเอียดเต็มที่
 การ์ดใบไหนที่เอกสารบอก "จังหวะที่ตั้งไว้" มาแล้ว ให้ใช้ค่านั้นตามเดิม ห้ามเปลี่ยน — ตอบเฉพาะใบที่ยังไม่มีค่า
 
-งานที่ 2 — สรุปภาพรวมจังหวะของฉากนี้ แล้วเสนอว่า "จังหวะถัดไป" ควรเป็นแบบไหน
+advice — สรุปภาพรวมจังหวะของฉากนี้ แล้วเสนอว่า "จังหวะถัดไป" ควรเป็นแบบไหน
 - state: ok (ปกติดี) / dragging (เอื่อยยาว) / overheated (เร่งค้างจนล้า) / flat (แบน ไม่มีสูงต่ำ)
 - text: ข้อสังเกตหนึ่งประโยค อ้างสิ่งที่เห็นในฉากจริง ห้ามพูดลอย ๆ
 - suggestedType: ประเภทฉากที่ควรเป็นถัดไป — setup (ปูพื้น) / action (รุกฆาต) / reaction (รับแรงกระแทก) / climax (แตกหัก) / resolution (คลี่คลาย)
@@ -174,8 +176,18 @@ export function parseBeatCoachResponse(raw: string): BeatCoachAiResult | null {
     }
     if (!parsed || typeof parsed !== "object") return null;
 
+    // หา array ของ {id,...} จากค่าใด ๆ ไม่ยึดชื่อ key — typhoon เคยตอบ "work1"/"work2" ตามหัวข้อ
+    // "งานที่ 1/2" ที่เคยเขียนไว้ใน prompt (ยืนยันจาก raw_response ใน ai_usage_log) prompt แก้แล้ว
+    // แต่ provider สำรองยังตั้งชื่อเองได้อยู่ดี · วิธีเดียวกับ lib/pacing-ai-suggest.ts
+    const pickList = (o: Record<string, unknown>): unknown[] =>
+        (Object.values(o).find(v =>
+            Array.isArray(v) && v.some(it => it && typeof it === "object" && "id" in (it as object))
+        ) as unknown[]) ?? [];
+
     const beats = new Map<string, number>();
-    const list = Array.isArray(parsed.beats) ? parsed.beats : Array.isArray(parsed.items) ? parsed.items : [];
+    const list = Array.isArray(parsed.beats) ? parsed.beats
+        : Array.isArray(parsed.items) ? parsed.items
+            : pickList(parsed);
     for (const it of list) {
         if (!it || typeof it !== "object" || typeof it.id !== "string") continue;
         const p = toPacing(it.pacing ?? it.value ?? it.score);
@@ -189,7 +201,10 @@ export function parseBeatCoachResponse(raw: string): BeatCoachAiResult | null {
         }
     }
 
-    const a = parsed.advice;
+    // เช่นเดียวกับ beats — ยอมรับ object ที่หน้าตาเป็น advice แม้ชื่อ key จะไม่ใช่ "advice"
+    const looksLikeAdvice = (v: unknown) =>
+        !!v && typeof v === "object" && !Array.isArray(v) && typeof (v as Record<string, unknown>).text === "string";
+    const a = looksLikeAdvice(parsed.advice) ? parsed.advice : Object.values(parsed).find(looksLikeAdvice);
     const advice: CoachAdvice | null = a && typeof a === "object" && typeof a.text === "string"
         ? {
             state: (COACH_STATES as readonly string[]).includes(a.state) ? a.state : "ok",
