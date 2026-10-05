@@ -385,6 +385,58 @@ AI สแกนเนื้อจริงหา setup ที่ลืมเฉ�
 
 ---
 
+## 12. ออกแบบการ์ดใหญ่ (IdeaFrameDialog) + editor โน้ตใหม่ (เสนอ 2026-10-05) — ยังไม่ลงมือ
+
+ที่มา: ผู้ใช้บ่นว่าโน้ตเป็น plain text เขียนไม่สะดวก และการ์ดใหญ่รก ตกลงว่าควร
+redesign ทั้งใบ ไม่ใช่แค่เปลี่ยน editor
+
+### สิ่งที่เห็นจากโค้ด (`components/plot/playground/idea-frame-dialog.tsx`)
+
+- แผงกว้าง 315px (`:1136`) ซ้อน ~10 ส่วนในคอลัมน์เดียว (`:1149-1479`): หัว+เนื้อหา →
+  จุดสำคัญ → ปม → องค์ประกอบ → ที่มา → ผู้เข้าร่วม → โน้ต → สถานะ Echo → footer
+- "องค์ประกอบ" (`:1269`) กับ `SceneParticipantsPanel` (`:1349`) น่าจะซ้อนกัน — **ยังไม่ได้อ่าน
+  panel นั้นเพื่อยืนยัน**
+- ปุ่มแก้/ลบ/ผูก/เส้นเรื่องซ่อนด้วย `opacity-0 group-hover/item:opacity-100`
+  (`:1046, 1058, 1067`) หาไม่เจอ ใช้บนจอสัมผัสไม่ได้
+- โน้ต = `<Textarea>` (`noteEditor` `:758-882`) เก็บเป็น string ใน `notes`
+  (`elementType: 'idea_note'`, บันทึกผ่าน `handleQuickAddNote` `playground-board.tsx:1343`)
+  @mention ทำเองด้วย regex (`detectQm`/`insertQm` `:687-700`)
+- repo มี Quill แล้ว (`react-quill-new`, `quill-mention`) ใช้ใน `components/project/note-editor.tsx`,
+  `lore-rich-editor.tsx`, `lib/mentions.ts` — ยังไม่ได้อ่านไฟล์เหล่านั้น
+- sticky-note ใน `canvas-item.tsx:340` ก็เป็น textarea ธรรมดา (ยังไม่ได้ตรวจว่าใช้ที่ไหน)
+
+### ข้อเสนอ: header คงที่ + แท็บ ขยายเป็น ~420px
+
+- Header: ชื่อ, เลขเฟรม, ⭐จุดสำคัญ inline, ปิด, เมนู ⋯ (คัดลอก/ตรวจ/ดูเต็ม)
+- แท็บ **ภาพรวม**: เนื้อหา, ปมที่ผูก, ที่มา
+- แท็บ **คนในฉาก**: รวม tree + participants เป็นอันเดียว
+- แท็บ **โน้ต**: editor กว้างเต็มแท็บ (Quill bubble toolbar) + รายการโน้ตแสดงแบบ rich
+- แท็บ **ดราม่า**: `IdeaDramaticPanel` + ผล Echo (ย้ายจาก footer)
+- ทางเลือกที่ตัด: accordion (ยังเลื่อนยาว โน้ตยังแคบ), side-sheet เต็มจอ (บัง canvas)
+
+### เฟส
+
+1. จัดโครงแท็บ + header — ไม่แตะข้อมูล/server
+2. เปลี่ยน editor โน้ตเป็น rich — ต้องไล่หาทุกจุดที่อ่าน `idea_note` ก่อน (AI context/RAG,
+   echo score, preview `line-clamp`) เพราะต้อง strip tag ถ้าเก็บเป็น HTML; โน้ตเก่า (plain)
+   ต้องอ่านได้ต่อ; ไม่ต้องแก้ schema ถ้าเก็บ HTML ลงคอลัมน์ text เดิม
+3. ยุบ "องค์ประกอบ" กับ "ผู้เข้าร่วม" — เสี่ยงสุด ทำทีหลัง
+
+### ความเสี่ยง
+
+- draft โน้ตหายตอนสลับแท็บ → ต้องยก state ไว้ที่ parent
+- `IdeaDramaticPanel` เป็น popover/dialog ในตัว ต้องดูว่าฝังแท็บได้ไหม
+- ลอจิกลากแผง (`floatAt/dragPos`) ต้องคงไว้
+
+### ยังไม่เคาะ
+
+1. ใช้แท็บตามข้อเสนอ หรือแบบอื่น?
+2. คง look "เฟรมฟิล์ม" (sprockets) ไหม — เป็นเอกลักษณ์ แต่กินพื้นที่
+3. ให้เปิด browser/ส่ง screenshot ดูการ์ดจริงก่อนเฟส 1 ไหม
+4. รวม sticky-note (`canvas-item.tsx`) ในงานนี้ไหม
+
+---
+
 ## นอกขอบเขต
 
 - **อย่ารัน `drizzle-kit generate` + `db:migrate`** — `migrations/` ค้างอยู่นาน
