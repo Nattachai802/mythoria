@@ -12,6 +12,7 @@
 
 import { normalizeLink, LINK_KINDS, type CanvasLink } from "./link-kinds";
 import { resolveNesting, type NestWorld } from "./participant-nest";
+import { noteToPlain } from "./note-text";
 
 // ─── Version ───────────────────────────────────────────────────────────
 export const FORMAT_VERSION = "1";
@@ -331,7 +332,7 @@ export function buildSceneFormat(input: SceneFormatInput): SceneFormat {
         // notes
         const itemNotes = (notesByItem.get(item.id) ?? [])
             .filter(n => n.notes)
-            .map(n => n.notes!);
+            .map(n => noteToPlain(n.notes));
 
         return {
             code,

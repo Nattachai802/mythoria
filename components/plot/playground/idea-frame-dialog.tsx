@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Users, MapPin, X, Link as LinkIcon, Pencil, ExternalLink, Copy,
   GitBranchPlus, Shield, Check, MoreVertical, Loader2, Star, MessageCircle,
@@ -21,7 +20,8 @@ import {
 import Link from "next/link";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { mentionRangeAtCaret } from "@/lib/mentions";
+import { noteToPlain, noteIsEmpty, noteTemplate, withTemplate, NOTE_TEMPLATES, type NoteTemplate } from "@/lib/note-text";
+import { RichNoteEditor, NoteView } from "./rich-note-editor";
 import { SceneElementDetails } from "@/db/schema";
 import { SceneParticipantsPanel, PromoteDummyButton } from "./scene-participants-panel";
 import { kindOf, canContainChild } from "@/lib/participant-types";
@@ -497,12 +497,17 @@ function IdeaFrameDialog({
   onEchoResult,
 }: IdeaFrameDialogProps) {
   const [quickNote, setQuickNote] = useState("");
+  const [tab, setTab] = useState<"people" | "notes">("people");
+  // เปิดการ์ดใบใหม่ → กลับมาที่ "คนในฉาก" เสมอ (ไม่งั้นค้างแท็บโน้ตจากการ์ดก่อนหน้า)
+  useEffect(() => { setTab("people"); }, [item.id]);
   const [quickNoteOpen, setQuickNoteOpen] = useState(false);
   const [savingQuickNote, setSavingQuickNote] = useState(false);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null); // null = สร้างใหม่, id = แก้ไขโน้ตเดิม
   const [quickNoteKind, setQuickNoteKind] = useState<string | null>(null); // null = ทั่วไป
   const [deletingNote, setDeletingNote] = useState(false);
   const [noteBaseline, setNoteBaseline] = useState("");
+  const [quickNoteTpl, setQuickNoteTpl] = useState<NoteTemplate>("plain"); // รูปแบบแสดงผลของโน้ต ผู้ใช้เลือกเอง
+  const [noteTplBaseline, setNoteTplBaseline] = useState<NoteTemplate>("plain");
   const [confirmDeleteNote, setConfirmDeleteNote] = useState(false);
   const [confirmDiscardNote, setConfirmDiscardNote] = useState(false);
   const [draggedNoteId, setDraggedNoteId] = useState<string | null>(null);
@@ -576,7 +581,7 @@ function IdeaFrameDialog({
   // ปิดแผงด้วยการคลิกนอกแผงสองครั้งติด — คลิกเดียวยังไม่ปิด เพราะตั้งใจให้เปิดหลายใบ
   // เทียบกันได้ กดการ์ดใบข้าง ๆ หรือลากกระดานแล้วแผงต้องไม่หาย
   // นับเองด้วยเวลา ไม่ใช้ event.detail เพราะ pointerdown ในบางเบราว์เซอร์ให้ 0 เสมอ
-  const noteDirty = quickNoteOpen && !!quickNote.trim() && quickNote !== noteBaseline;
+  const noteDirty = quickNoteOpen && !noteIsEmpty(quickNote) && (quickNote !== noteBaseline || quickNoteTpl !== noteTplBaseline);
 
   const lastOutsideAt = useRef(0);
   const handleInteractOutside = (e: { preventDefault: () => void }) => {
@@ -643,10 +648,6 @@ function IdeaFrameDialog({
   };
 
   // @mention ในโน้ต — เฉพาะ character ที่เป็น children ของการ์ดนี้
-  const quickNoteRef = useRef<HTMLTextAreaElement | null>(null);
-  const [qmOpen, setQmOpen] = useState(false);
-  const [qmQuery, setQmQuery] = useState("");
-  const [qmIndex, setQmIndex] = useState(0);
   type MentionGroup = "narrator" | "card" | "novel" | "dummy";
   type MentionChar = { id: string; name: string; aliases?: string[]; role?: string; group: MentionGroup };
   const narratorChars: MentionChar[] = item.isNarration ? [{ id: 'narrator', name: 'narrator', group: 'narrator' as const }] : [];
@@ -667,37 +668,6 @@ function IdeaFrameDialog({
     .filter(n => !cardNames.has(n) && !novelNames.has(n))
     .map(n => ({ id: `dummy:${n}`, name: n, group: "dummy" as const }));
   const allMentionChars = [...narratorChars, ...cardChars, ...novelChars, ...dummyChars];
-
-  const ROLE_RANK: Record<string, number> = { protagonist: 0, antagonist: 1, supporting: 2, minor: 3 };
-  const q = qmQuery.toLowerCase();
-  const matchChar = (c: MentionChar) =>
-    c.name.toLowerCase().includes(q) || (c.aliases?.some(a => String(a).toLowerCase().includes(q)) ?? false);
-  const narratorMatches = qmOpen ? narratorChars.filter(c => q === "" || matchChar(c)) : [];
-  const cardMatches = qmOpen ? cardChars.filter(c => q === "" || matchChar(c)) : [];
-  const novelMatches = qmOpen
-    ? novelChars
-        .filter(c => q === "" || matchChar(c))
-        .sort((a, b) => (ROLE_RANK[a.role ?? ""] ?? 9) - (ROLE_RANK[b.role ?? ""] ?? 9) || a.name.localeCompare(b.name))
-        .slice(0, q === "" ? 5 : 6)
-    : [];
-  const dummyMatches = qmOpen
-    ? dummyChars.filter(c => q === "" || matchChar(c)).sort((a, b) => a.name.localeCompare(b.name)).slice(0, q === "" ? 5 : 6)
-    : [];
-  const qmMatches = [...narratorMatches, ...cardMatches, ...novelMatches, ...dummyMatches];
-  const detectQm = (value: string, caret: number) => {
-    const m = value.slice(0, caret).match(/@([^\s@]{0,30})$/);
-    if (m && allMentionChars.length > 0) { setQmQuery(m[1]); setQmOpen(true); setQmIndex(0); }
-    else setQmOpen(false);
-  };
-  const insertQm = (name: string) => {
-    const ta = quickNoteRef.current;
-    const caret = ta?.selectionStart ?? quickNote.length;
-    const before = quickNote.slice(0, caret).replace(/@([^\s@]*)$/, `@${name} `);
-    const after = quickNote.slice(caret);
-    setQuickNote(before + after);
-    setQmOpen(false);
-    requestAnimationFrame(() => { ta?.focus(); ta?.setSelectionRange(before.length, before.length); });
-  };
 
   const renderNoteMentions = (text: string): React.ReactNode => {
     const names = allMentionChars.map(c => c.name).filter(Boolean);
@@ -721,8 +691,8 @@ function IdeaFrameDialog({
   };
 
   const submitQuickNote = async () => {
-    const text = quickNote.trim();
-    if (!text || !onQuickAddNote) return;
+    if (noteIsEmpty(quickNote) || !onQuickAddNote) return;
+    const text = withTemplate(quickNote, quickNoteTpl, allMentionChars);
     setSavingQuickNote(true);
     await onQuickAddNote(item, text, editingNoteId ?? undefined, quickNoteKind ?? undefined);
     setSavingQuickNote(false);
@@ -734,13 +704,15 @@ function IdeaFrameDialog({
     setQuickNoteOpen(false);
     setEditingNoteId(null);
     setQuickNoteKind(null);
+    setQuickNoteTpl("plain");
+    setNoteTplBaseline("plain");
     setNoteBaseline("");
     setConfirmDeleteNote(false);
     setConfirmDiscardNote(false);
   };
 
   const closeQuickNote = () => {
-    const dirty = quickNote.trim() && quickNote !== noteBaseline;
+    const dirty = !noteIsEmpty(quickNote) && (quickNote !== noteBaseline || quickNoteTpl !== noteTplBaseline);
     if (dirty && !confirmDiscardNote) { setConfirmDiscardNote(true); return; }
     resetQuickNote();
   };
@@ -785,75 +757,34 @@ function IdeaFrameDialog({
           );
         })}
       </div>
-      <Popover open={qmOpen && qmMatches.length > 0}>
-        <PopoverAnchor asChild>
-          <Textarea
-            autoFocus
-            ref={quickNoteRef}
-            value={quickNote}
-            onChange={(e) => { setQuickNote(e.target.value); setConfirmDeleteNote(false); setConfirmDiscardNote(false); detectQm(e.target.value, e.target.selectionStart ?? e.target.value.length); }}
-            onKeyDown={(e) => {
-              if (qmOpen && qmMatches.length > 0) {
-                if (e.key === "ArrowDown") { e.preventDefault(); setQmIndex(i => (i + 1) % qmMatches.length); return; }
-                if (e.key === "ArrowUp") { e.preventDefault(); setQmIndex(i => (i - 1 + qmMatches.length) % qmMatches.length); return; }
-                if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); insertQm(qmMatches[qmIndex].name); return; }
-                if (e.key === "Escape") { e.preventDefault(); setQmOpen(false); return; }
-              }
-              if ((e.key === "Backspace" || e.key === "Delete") && !e.metaKey && !e.ctrlKey && !e.altKey) {
-                const ta = e.currentTarget;
-                if (ta.selectionStart === ta.selectionEnd) {
-                  const r = mentionRangeAtCaret(quickNote, ta.selectionStart, allMentionChars.map(c => c.name), e.key === "Backspace" ? "back" : "forward");
-                  if (r) {
-                    e.preventDefault();
-                    setQuickNote(quickNote.slice(0, r[0]) + quickNote.slice(r[1]));
-                    requestAnimationFrame(() => ta.setSelectionRange(r[0], r[0]));
-                    return;
-                  }
-                }
-              }
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitQuickNote(); }
-              else if (e.key === "Escape") { closeQuickNote(); }
-            }}
-            placeholder={allMentionChars.length > 0
-              ? "เขียนโน้ต… (@ เพื่อ mention ตัวละคร, ⌘/Ctrl+Enter บันทึก)"
-              : "เขียนโน้ต… (⌘/Ctrl+Enter เพื่อบันทึก)"}
-            className={cn("min-h-[52px] max-h-64 field-sizing-content resize-none text-xs", !activeNoteColor && "bg-yellow-500/10 border-yellow-500/30 focus-visible:ring-yellow-500/40")}
-            style={activeNoteColor ? { background: `${activeNoteColor}1a`, borderColor: `${activeNoteColor}4d` } : undefined}
-          />
-        </PopoverAnchor>
-        <PopoverContent
-          side="right"
-          align="start"
-          sideOffset={8}
-          hideWhenDetached
-          onOpenAutoFocus={(e) => e.preventDefault()}
-          onCloseAutoFocus={(e) => e.preventDefault()}
-          className="p-0 w-56 max-h-52 overflow-y-auto border-yellow-400"
-        >
-          {qmMatches.map((c, i) => {
-            const firstNarrator = i === 0 && narratorMatches.length > 0;
-            const firstCard = i === narratorMatches.length && cardMatches.length > 0;
-            const firstNovel = i === narratorMatches.length + cardMatches.length && novelMatches.length > 0;
-            const firstDummy = i === narratorMatches.length + cardMatches.length + novelMatches.length && dummyMatches.length > 0;
-            return (
-              <div key={c.id}>
-                {firstNarrator && <div className="px-2 pt-1 pb-0.5 text-[9px] uppercase tracking-wide text-amber-600/80 font-technical">คำบรรยาย</div>}
-                {firstCard && <div className="px-2 pt-1 pb-0.5 text-[9px] uppercase tracking-wide text-muted-foreground/70 font-technical border-t border-border/40 mt-0.5">ในการ์ดนี้</div>}
-                {firstNovel && <div className="px-2 pt-1 pb-0.5 text-[9px] uppercase tracking-wide text-muted-foreground/70 font-technical border-t border-border/40 mt-0.5">ตัวละครอื่นในนิยาย</div>}
-                {firstDummy && <div className="px-2 pt-1 pb-0.5 text-[9px] uppercase tracking-wide text-muted-foreground/70 font-technical border-t border-border/40 mt-0.5">ตัวประกอบจากฉากอื่น</div>}
-                <button
-                  type="button"
-                  onMouseDown={(e) => { e.preventDefault(); insertQm(c.name); }}
-                  className={`w-full flex items-center gap-2 px-2 py-1 text-left text-xs ${i === qmIndex ? "bg-yellow-500/20" : "hover:bg-yellow-500/10"}`}
-                >
-                  <span className="text-yellow-600 font-semibold">@</span>
-                  <span className="truncate flex-1">{c.name}</span>
-                </button>
-              </div>
-            );
-          })}
-        </PopoverContent>
-      </Popover>
+      <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+        <span>รูปแบบ</span>
+        {NOTE_TEMPLATES.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => setQuickNoteTpl(t.key)}
+            className={cn(
+              "px-2 py-0.5 rounded border transition-colors",
+              quickNoteTpl === t.key ? "border-yellow-500/50 bg-yellow-500/15 text-yellow-700 dark:text-yellow-400" : "border-border/60 hover:border-border"
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <RichNoteEditor
+        key={editingNoteId ?? "new"}
+        initial={quickNote}
+        candidates={allMentionChars}
+        tint={activeNoteColor}
+        placeholder={allMentionChars.length > 0
+          ? "เขียนโน้ต… (@ เพื่อ mention ตัวละคร, ⌘/Ctrl+Enter บันทึก)"
+          : "เขียนโน้ต… (⌘/Ctrl+Enter เพื่อบันทึก)"}
+        onChange={(json) => { setQuickNote(json); setConfirmDeleteNote(false); setConfirmDiscardNote(false); }}
+        onSubmit={submitQuickNote}
+        onCancel={closeQuickNote}
+      />
       <div className="flex items-center gap-1">
         {editingNoteId && onDeleteNote && (
           <Button
@@ -873,7 +804,7 @@ function IdeaFrameDialog({
           >
             {confirmDiscardNote ? "ทิ้งข้อความ?" : "ยกเลิก"}
           </Button>
-          <Button type="button" size="sm" className="h-6 text-xs px-2" disabled={!quickNote.trim() || savingQuickNote} onClick={submitQuickNote}>
+          <Button type="button" size="sm" className="h-6 text-xs px-2" disabled={noteIsEmpty(quickNote) || savingQuickNote} onClick={submitQuickNote}>
             {savingQuickNote ? <Loader2 className="w-3 h-3 animate-spin" /> : (editingNoteId ? "อัปเดต" : "บันทึก")}
           </Button>
         </div>
@@ -1133,7 +1064,7 @@ function IdeaFrameDialog({
       onOpenAutoFocus={(e) => e.preventDefault()}
       onInteractOutside={handleInteractOutside}
       ref={contentRef}
-      className="pointer-events-auto w-[315px] max-w-[92vw] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto p-0"
+      className="pointer-events-auto w-[360px] max-w-[92vw] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto p-0"
       style={floatAt ? {
         // absolute ไม่ใช่ fixed — กล่องนอกของ Radix มี transform อยู่ มันเลยกลายเป็น
         // containing block ของ fixed ทำให้ left/top แบบพิกัดจอเพี้ยนกระเด็นไปไกล
@@ -1265,18 +1196,6 @@ function IdeaFrameDialog({
             </div>
           )}
 
-          {/* องค์ประกอบในไอเดีย — เดิมเป็นลิสต์แบนแยกกอง ตอนนี้ผูกกันเป็นชั้นได้ (P-nest) */}
-          {treeRoots.length > 0 && (
-            <div className="space-y-1">
-              <p className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground/80">
-                <Users className="w-3 h-3" /> องค์ประกอบ
-              </p>
-              <div className="divide-y divide-border/40">
-                {treeRoots.map((c: any) => renderNode(c, 0))}
-              </div>
-            </div>
-          )}
-
           {/* WHY — Ancestor Connections */}
           {ancestorConnections && ancestorConnections.length > 0 && (
             <div>
@@ -1343,8 +1262,42 @@ function IdeaFrameDialog({
             </div>
           )}
 
+          {/* แท็บ — เดิมทุกส่วนซ้อนในคอลัมน์เดียว แคบจนโน้ตโดนตัด */}
+          <div className="flex -mx-4 border-y border-border/60" role="tablist">
+            {([
+              ["people", "คนในฉาก"],
+              ["notes", `โน้ต${thisIdeaNotes.length ? ` ${thisIdeaNotes.length}` : ""}`],
+            ] as const).map(([key, label], i) => (
+              <button
+                key={key}
+                role="tab"
+                aria-selected={tab === key}
+                onClick={() => setTab(key)}
+                className={cn(
+                  "flex-1 py-1.5 text-xs border-r border-border/60 last:border-r-0 transition-colors",
+                  tab === key ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 font-semibold" : "text-muted-foreground hover:bg-muted/40"
+                )}
+              >
+                <span className="block font-technical text-[9px] tracking-widest opacity-60">{String(i + 1).padStart(2, "0")}</span>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* องค์ประกอบในไอเดีย — เดิมเป็นลิสต์แบนแยกกอง ตอนนี้ผูกกันเป็นชั้นได้ (P-nest) */}
+          {tab === "people" && treeRoots.length > 0 && (
+            <div className="space-y-1">
+              <p className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground/80">
+                <Users className="w-3 h-3" /> องค์ประกอบ
+              </p>
+              <div className="divide-y divide-border/40">
+                {treeRoots.map((c: any) => renderNode(c, 0))}
+              </div>
+            </div>
+          )}
+
           {/* ผู้เข้าร่วม */}
-          {onAddChild && sceneId && novelId && onDetailSaved && (
+          {tab === "people" && onAddChild && sceneId && novelId && onDetailSaved && (
             <div>
               <SceneParticipantsPanel
                 ideaItem={item}
@@ -1363,7 +1316,7 @@ function IdeaFrameDialog({
           )}
 
           {/* HOW — Notes */}
-          {onQuickAddNote && (
+          {tab === "notes" && onQuickAddNote && (
             <div className="space-y-1.5">
               <p className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground/80">
                 <MessageCircle className="w-3 h-3" /> โน้ต
@@ -1401,6 +1354,8 @@ function IdeaFrameDialog({
                       setQuickNote(note.notes || "");
                       setNoteBaseline(note.notes || "");
                       setQuickNoteKind(note.noteKind ?? null);
+                      setQuickNoteTpl(noteTemplate(note.notes));
+                      setNoteTplBaseline(noteTemplate(note.notes));
                       setConfirmDeleteNote(false);
                       setQuickNoteOpen(true);
                     }}
@@ -1409,7 +1364,7 @@ function IdeaFrameDialog({
                       className="mt-1 h-1.5 w-1.5 rounded-full shrink-0"
                       style={{ background: noteColor || "#eab308" }}
                     />
-                    <p className="flex-1 min-w-0 text-foreground/90 whitespace-pre-wrap line-clamp-3 pr-4">{renderNoteMentions(note.notes || "")}</p>
+                    <div className="flex-1 min-w-0 text-foreground/90 pr-4"><NoteView raw={note.notes || ""} renderPlain={renderNoteMentions} /></div>
                     <Pencil className="w-3 h-3 absolute top-1.5 right-1.5 text-muted-foreground opacity-0 group-hover/note:opacity-100 transition-opacity" />
                   </div>
                 );
@@ -1418,7 +1373,7 @@ function IdeaFrameDialog({
                 noteEditor
               ) : !quickNoteOpen ? (
                 <button
-                  onClick={() => { setEditingNoteId(null); setQuickNote(""); setNoteBaseline(""); setQuickNoteKind(null); setConfirmDeleteNote(false); setQuickNoteOpen(true); }}
+                  onClick={() => { setEditingNoteId(null); setQuickNote(""); setNoteBaseline(""); setQuickNoteKind(null); setQuickNoteTpl("plain"); setNoteTplBaseline("plain"); setConfirmDeleteNote(false); setQuickNoteOpen(true); }}
                   className="flex items-center justify-center gap-1 w-full text-xs text-yellow-700/70 dark:text-yellow-500/70 hover:text-yellow-800 dark:hover:text-yellow-400 border border-dashed border-yellow-500/30 hover:border-yellow-500/50 hover:bg-yellow-500/5 rounded-md px-2 py-1.5 transition-colors"
                 >
                   <MessageCircle className="w-3 h-3" />

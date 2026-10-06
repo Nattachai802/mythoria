@@ -1,5 +1,6 @@
 "use server"
 
+import { noteToPlain } from "@/lib/note-text";
 import { db } from "@/db/drizzle";
 import { sceneElementDetails, timelineEvents, InsertSceneElementDetails, SceneElementDetails } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
@@ -388,7 +389,7 @@ export async function getIdeaNotesForIdeas(novelId: string, ideaIds: string[]) {
         for (const note of notes) {
             if (!note.notes) continue;
             const existing = noteMap.get(note.elementId) || [];
-            existing.push(note.notes);
+            existing.push(noteToPlain(note.notes));
             noteMap.set(note.elementId, existing);
         }
 

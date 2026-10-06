@@ -61,3 +61,6 @@ backup/
 
 # impeccable local cache (เก็บ path ในเครื่อง ไม่ควรแชร์)
 .impeccable/hook.cache.json
+
+# HyperFrames video project (local only)
+/videos
