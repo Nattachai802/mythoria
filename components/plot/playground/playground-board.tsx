@@ -23,6 +23,7 @@ import type { CausalityVerdict } from "@/lib/plot-recap";
 import { type BoardChapter, updateTimelineCanvas, getNovelDummyParticipants } from "@/server/timeline";
 import { updateIdea, createIdea } from "@/server/idea"; // updateIdea: auto-reset isUsed flag
 import { getSceneElementDetails, getIdeaNotesForIdeas, promoteDummy, promoteDummyAllScenes } from "@/server/scene-element-details";
+import { noteToPlain } from "@/lib/note-text";
 import { addBeat, createThread, deleteBeat } from "@/server/plot-threads";
 import type { ThreadWithBeats } from "@/server/plot-threads";
 import { SceneElementDetailDialog } from "./scene-element-detail-dialog";
@@ -1969,7 +1970,7 @@ export function PlaygroundBoard({
                 // ปมเรื่องที่ผูกกับการ์ดนี้ในฉากนี้
                 threads: (cardBeats.get(item.id) ?? []).map(b => ({ threadId: b.threadId, title: b.title, role: b.role, color: b.color })),
                 // โน้ตบนการ์ด
-                notes: notesByItem.get(item.id) ?? [],
+                notes: (notesByItem.get(item.id) ?? []).map(n => ({ ...n, notes: noteToPlain(n.notes) })),
             })),
             // เส้น "ทำไมถึงทำแบบนี้" (ancestor / เหตุผล)
             ancestorConnections,

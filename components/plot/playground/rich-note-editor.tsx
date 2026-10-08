@@ -112,7 +112,7 @@ export function RichNoteEditor({
     <div
       // Quill snow ตั้งฟอนต์/ขนาดของมันเอง (serif ~15px) → ทับให้เท่าโน้ตที่แสดงในแผง (text-xs, ฟอนต์ของแอป)
       className={
-        "rich-note-editor rounded-md border text-xs " +
+        "rich-note-editor rounded-md border bg-muted/30 text-xs " +
         "[&_.ql-container]:!font-[inherit] [&_.ql-container]:!text-xs " +
         // app/globals.css ตั้ง .ql-editor เป็นสไตล์เขียนนิยาย (1.05rem, line-height 1.9, ช่องไฟย่อหน้า) → ทับเฉพาะในโน้ต
         "[&_.ql-editor]:!px-2.5 [&_.ql-editor]:!py-2 [&_.ql-editor]:!text-xs [&_.ql-editor]:!leading-relaxed [&_.ql-editor]:!tracking-normal [&_.ql-editor]:min-h-[56px] " +
@@ -122,7 +122,7 @@ export function RichNoteEditor({
         "[&_.ql-mention-list-container]:!text-xs [&_.ql-mention-list-item]:!h-auto [&_.ql-mention-list-item]:!py-1 [&_.ql-mention-list-item]:!leading-snug " +
         "[&_.ql-toolbar]:!border-0 [&_.ql-toolbar]:!border-b [&_.ql-toolbar]:!border-border/40 [&_.ql-container]:!border-0"
       }
-      style={tint ? { background: `${tint}1a`, borderColor: `${tint}4d` } : { background: "rgb(234 179 8 / 0.1)", borderColor: "rgb(234 179 8 / 0.3)" }}
+      style={tint ? { background: `${tint}1a`, borderColor: `${tint}4d` } : undefined}
       // ⌘/Ctrl+Enter ต้องดักก่อน Quill (ไม่งั้นกลายเป็นขึ้นบรรทัดใหม่) · ห้าม stopPropagation ตรงนี้
       // ไม่งั้น Quill/quill-mention ไม่ได้รับ Enter ตอนเลือกชื่อ (hotkey กระดานเช็ก contentEditable เองอยู่แล้ว)
       onKeyDownCapture={(e) => {
