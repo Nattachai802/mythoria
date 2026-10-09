@@ -1098,9 +1098,9 @@ function IdeaFrameDialog({
   };
 
   const dramaCfg = SCENE_TYPES[(item.sceneType as keyof typeof SCENE_TYPES) ?? "action"] ?? SCENE_TYPES.action;
-  // ชิปคุณสมบัติ: ตั้งแล้ว = เส้นทึบ+พื้นอ่อน · ยังไม่ตั้ง = เส้นประ (ให้เห็นว่ามีฟีเจอร์นี้อยู่)
-  const chipCls = (on: boolean) => cn(
-    "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs leading-none transition-colors duration-150 motion-reduce:transition-none",
+  // ปุ่มคุณสมบัติ: ไอคอนบน-ป้ายล่าง ขนาดเท่ากันทุกปุ่ม · ตั้งแล้ว = พื้นอ่อน เส้นทึบ · ยังไม่ตั้ง = เส้นประ (ให้เห็นว่ามีฟีเจอร์นี้อยู่)
+  const tileCls = (on: boolean) => cn(
+    "flex flex-col items-center justify-center gap-1 min-w-0 rounded-md border px-1 py-1.5 text-[11px] leading-none transition-colors duration-150 motion-reduce:transition-none",
     on ? "border-border bg-muted text-foreground" : "border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/40"
   );
   const shortLabel = (l: string) => l.split(/ [(—]/)[0];
@@ -1171,21 +1171,6 @@ function IdeaFrameDialog({
                 {item.title}
               </span>
             )}
-            {onSetKeyMoment && (
-              <button
-                type="button"
-                onClick={() => { setKeyMomentDraft(item.keyMomentLabel || ""); setEditingKeyMoment(true); }}
-                aria-pressed={!!item.keyMomentLabel}
-                aria-label={item.keyMomentLabel ? `จุดสำคัญ: ${item.keyMomentLabel}` : "ทำเครื่องหมายเหตุการณ์สำคัญ"}
-                title={item.keyMomentLabel ? "แก้ไขจุดสำคัญ" : "ทำเครื่องหมายเหตุการณ์สำคัญ"}
-                className={cn(
-                  "shrink-0 rounded p-1 transition-[color,background-color,transform] duration-150 active:scale-90 hover:bg-muted",
-                  item.keyMomentLabel ? "text-[var(--forge-amber)]" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <Star className="w-4 h-4" fill={item.keyMomentLabel ? "currentColor" : "none"} />
-              </button>
-            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button type="button" aria-label="เมนูเพิ่มเติม" className="shrink-0 rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors active:scale-90">
@@ -1215,169 +1200,166 @@ function IdeaFrameDialog({
             </button>
           </div>
 
-          <div className="mt-1.5 flex flex-wrap items-center gap-1.5" role="group" aria-label="คุณสมบัติของการ์ด">
-            {onSetKeyMoment && (editingKeyMoment ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--forge-amber)]/60 px-2.5 py-0.5">
-                <Star className="w-3.5 h-3.5 shrink-0 text-[var(--forge-amber)]" fill="currentColor" />
-                <input
-                  autoFocus
-                  value={keyMomentDraft}
-                  onChange={(e) => setKeyMomentDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    e.stopPropagation();
-                    if (e.key === 'Enter') { onSetKeyMoment?.(keyMomentDraft.trim() || null); setEditingKeyMoment(false); }
-                    if (e.key === 'Escape') { setKeyMomentDraft(item.keyMomentLabel || ""); setEditingKeyMoment(false); }
-                  }}
-                  onBlur={() => { onSetKeyMoment?.(keyMomentDraft.trim() || null); setEditingKeyMoment(false); }}
-                  placeholder="เช่น พระเอกชนะ"
-                  className="h-5 w-40 min-w-0 bg-transparent text-xs text-foreground placeholder:text-muted-foreground focus:outline-none"
-                />
-              </span>
-            ) : (
-              <button
-                type="button"
-                aria-pressed={!!item.keyMomentLabel}
-                onClick={() => { setKeyMomentDraft(item.keyMomentLabel || ""); setEditingKeyMoment(true); }}
-                className={chipCls(!!item.keyMomentLabel)}
+          {/* แถวคุณสมบัติ: ปุ่มขนาดเท่ากันแถวเดียว (ตั้งแล้ว = พื้นอ่อน, ยังไม่ตั้ง = เส้นประ) · ค่าที่ตั้งไว้ขึ้นเป็นบรรทัดข้อความใต้แถว */}
+          <div className="mt-2 grid grid-flow-col auto-cols-fr gap-1.5" role="group" aria-label="คุณสมบัติของการ์ด">
+            {onSetKeyMoment && (
+              <button type="button" aria-pressed={!!item.keyMomentLabel} className={tileCls(!!item.keyMomentLabel)}
                 title={item.keyMomentLabel ? "แก้ไขจุดสำคัญ" : "ทำเครื่องหมายเหตุการณ์สำคัญ"}
-              >
-                <Star className={cn("w-3 h-3 shrink-0", item.keyMomentLabel && "text-[var(--forge-amber)]")} fill={item.keyMomentLabel ? "currentColor" : "none"} />
-                <span className="truncate max-w-[160px]">{item.keyMomentLabel || "จุดสำคัญ"}</span>
-              </button>
-            ))}
-
-            {threadBeats?.map((b) => {
-              const roleLabel = b.role === 'seed' ? 'หว่าน' : b.role === 'reinforce' ? 'ย้ำ' : b.role === 'payoff' ? 'เฉลย' : b.role;
-              return (
-                <button
-                  key={b.beatId}
-                  type="button"
-                  onClick={() => onOpenThreadBind?.()}
-                  className={chipCls(true)}
-                  title={`ปม: ${b.title} · ${roleLabel}`}
-                >
-                  <span className="h-2 w-2 rounded-full shrink-0" style={{ background: b.color ?? 'var(--forge-amber)' }} />
-                  <span className="truncate max-w-[130px]">{b.title}</span>
-                  <span className="text-muted-foreground">· {roleLabel}</span>
-                </button>
-              );
-            })}
-            {onOpenThreadBind && !(threadBeats && threadBeats.length > 0) && (
-              <button type="button" onClick={() => onOpenThreadBind()} className={chipCls(false)}>
-                <LinkIcon className="w-3 h-3 shrink-0" /> ผูกปม
+                onClick={() => { setKeyMomentDraft(item.keyMomentLabel || ""); setEditingKeyMoment(true); }}>
+                <Star className={cn("w-4 h-4", item.keyMomentLabel && "text-[var(--forge-amber)]")} fill={item.keyMomentLabel ? "currentColor" : "none"} />
+                จุดสำคัญ
               </button>
             )}
-
-              {ancestorConnections?.map((conn) => {
-                const ancestorTitle = conn.label || conn.targetIdeaTitle || conn.targetIdeaId.slice(0, 8) + '...';
-                const categoryLabels: Record<string, string> = {
-                  plot: 'พล็อต', character: 'ตัวละคร', worldbuilding: 'สร้างโลก', subplot: 'เนื้อรอง', general: 'ทั่วไป',
-                };
-                return (
-                  <Popover key={conn.id}>
-                    <PopoverTrigger asChild>
-                      <button type="button" className={chipCls(true)} title="ที่มา">
-                        <GitBranchPlus className="w-3 h-3 shrink-0" />
-                        <span className="truncate max-w-[140px]">{ancestorTitle}</span>
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent side="top" align="start" className="w-72 p-3 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <Lightbulb className="w-4 h-4 text-amber-500 shrink-0" />
-                        <p className="text-sm font-semibold truncate">{conn.targetIdeaTitle || 'Idea'}</p>
-                      </div>
-                      {conn.targetIdeaCategory && (
-                        <span className="inline-block text-[11px] text-muted-foreground border border-border rounded px-1.5 py-0.5">
-                          {categoryLabels[conn.targetIdeaCategory] || conn.targetIdeaCategory}
-                        </span>
-                      )}
-                      {conn.label && (
-                        <div className="flex items-start gap-1.5">
-                          <MessageCircle className="w-3 h-3 text-muted-foreground shrink-0 mt-0.5" />
-                          <p className="text-xs text-foreground/80 italic">{conn.label}</p>
-                        </div>
-                      )}
-                      {conn.targetIdeaContent ? (
-                        <p className="text-xs text-muted-foreground whitespace-pre-wrap line-clamp-6">{conn.targetIdeaContent}</p>
-                      ) : (
-                        <p className="text-xs text-muted-foreground/70 italic">ไม่มีเนื้อหาเพิ่มเติม</p>
-                      )}
-                      {conn.targetIdeaNotes && conn.targetIdeaNotes.length > 0 && (
-                        <div className="pt-2 border-t border-border/60 space-y-1">
-                          <p className="text-[11px] font-medium text-muted-foreground flex items-center gap-1">
-                            <BookOpen className="w-3 h-3" /> โน้ต
-                          </p>
-                          {conn.targetIdeaNotes.map((note, idx) => (
-                            <p key={idx} className="text-xs text-foreground/80 border-b border-border/40 py-1 whitespace-pre-wrap">{note}</p>
-                          ))}
-                        </div>
-                      )}
-                      {onRemoveAncestor && (
-                        <button
-                          type="button"
-                          onClick={() => onRemoveAncestor(conn.id)}
-                          className="text-xs text-muted-foreground hover:text-destructive transition-colors"
-                        >
-                          ลบการเชื่อมโยงที่มา
-                        </button>
-                      )}
-                    </PopoverContent>
-                  </Popover>
-                );
-              })}
-
+            {onOpenThreadBind && (
+              <button type="button" aria-pressed={!!(threadBeats && threadBeats.length > 0)} className={tileCls(!!(threadBeats && threadBeats.length > 0))}
+                title="ผูกปมเรื่อง" onClick={() => onOpenThreadBind()}>
+                <LinkIcon className="w-4 h-4" />
+                ผูกปม
+              </button>
+            )}
             {onSetAncestor && (
-              <button
-                type="button"
-                onClick={() => onSetAncestor()}
-                className={chipCls(false)}
-                aria-label="เชื่อมเหตุผล (ที่มา)"
-              >
-                <GitBranchPlus className="w-3 h-3 shrink-0" />
-                {ancestorConnections && ancestorConnections.length > 0 ? "+" : "ที่มา"}
+              <button type="button" aria-pressed={!!(ancestorConnections && ancestorConnections.length > 0)} className={tileCls(!!(ancestorConnections && ancestorConnections.length > 0))}
+                title="เชื่อมเหตุผล (ที่มา)" onClick={() => onSetAncestor()}>
+                <GitBranchPlus className="w-4 h-4" />
+                ที่มา
               </button>
             )}
-
-            {onSetColor && tonePresets.length > 0 && (() => {
-              const cur = tonePresets.find((t) => t.color === item.color);
-              return (
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button type="button" className={chipCls(!!item.color)} aria-label="Tone (สีการ์ด)">
-                      <span className="h-2 w-2 rounded-full shrink-0 border border-border/60" style={{ background: item.color || "transparent" }} />
-                      {cur?.label || "Tone"}
+            {onSetColor && tonePresets.length > 0 && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button type="button" aria-pressed={!!item.color} className={tileCls(!!item.color)} title="Tone (สีการ์ด)">
+                    <span className="h-4 w-4 flex items-center justify-center">
+                      <span className="h-3 w-3 rounded-full border border-border/70" style={{ background: item.color || "transparent" }} />
+                    </span>
+                    Tone
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent side="bottom" align="center" className="w-48 p-1">
+                  {tonePresets.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      className={cn("flex w-full items-center gap-2 px-2 py-1.5 rounded text-xs text-left transition-colors hover:bg-muted", item.color === t.color && "bg-muted font-medium")}
+                      onClick={() => onSetColor(t.color)}
+                    >
+                      <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: t.color }} />
+                      <span className="flex-1 truncate">{t.label}</span>
+                      {item.color === t.color && <Check className="h-3 w-3 shrink-0 text-muted-foreground" />}
                     </button>
-                  </PopoverTrigger>
-                  <PopoverContent side="bottom" align="start" className="w-48 p-1">
-                    {tonePresets.map((t) => (
-                      <button
-                        key={t.id}
-                        type="button"
-                        className={cn("flex w-full items-center gap-2 px-2 py-1.5 rounded text-xs text-left transition-colors hover:bg-muted", item.color === t.color && "bg-muted font-medium")}
-                        onClick={() => onSetColor(t.color)}
-                      >
-                        <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: t.color }} />
-                        <span className="flex-1 truncate">{t.label}</span>
-                        {item.color === t.color && <Check className="h-3 w-3 shrink-0 text-muted-foreground" />}
-                      </button>
-                    ))}
-                    {item.color && (
-                      <button type="button" className="flex w-full items-center gap-2 px-2 py-1.5 rounded text-xs text-muted-foreground hover:bg-muted transition-colors" onClick={() => onSetColor(null)}>
-                        <X className="h-3 w-3 shrink-0" /> ล้าง Tone
-                      </button>
-                    )}
-                  </PopoverContent>
-                </Popover>
-              );
-            })()}
-
+                  ))}
+                  {item.color && (
+                    <button type="button" className="flex w-full items-center gap-2 px-2 py-1.5 rounded text-xs text-muted-foreground hover:bg-muted transition-colors" onClick={() => onSetColor(null)}>
+                      <X className="h-3 w-3 shrink-0" /> ล้าง Tone
+                    </button>
+                  )}
+                </PopoverContent>
+              </Popover>
+            )}
             {onSetNarration && (
-              <button type="button" aria-pressed={!!item.isNarration} onClick={() => onSetNarration(!item.isNarration)} className={chipCls(!!item.isNarration)}>
-                <Quote className="w-3 h-3 shrink-0" fill={item.isNarration ? "currentColor" : "none"} /> คำบรรยาย
+              <button type="button" aria-pressed={!!item.isNarration} className={tileCls(!!item.isNarration)}
+                title="ทำเครื่องหมายเป็นคำบรรยาย" onClick={() => onSetNarration(!item.isNarration)}>
+                <Quote className="w-4 h-4" fill={item.isNarration ? "currentColor" : "none"} />
+                คำบรรยาย
               </button>
             )}
           </div>
 
+          {(editingKeyMoment || item.keyMomentLabel || (threadBeats && threadBeats.length > 0) || (ancestorConnections && ancestorConnections.length > 0)) && (
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              {editingKeyMoment ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Star className="w-3.5 h-3.5 shrink-0 text-[var(--forge-amber)]" fill="currentColor" />
+                  <input
+                    autoFocus
+                    value={keyMomentDraft}
+                    onChange={(e) => setKeyMomentDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === 'Enter') { onSetKeyMoment?.(keyMomentDraft.trim() || null); setEditingKeyMoment(false); }
+                      if (e.key === 'Escape') { setKeyMomentDraft(item.keyMomentLabel || ""); setEditingKeyMoment(false); }
+                    }}
+                    onBlur={() => { onSetKeyMoment?.(keyMomentDraft.trim() || null); setEditingKeyMoment(false); }}
+                    placeholder="เช่น พระเอกชนะ"
+                    className="h-6 w-52 min-w-0 bg-transparent border-b border-[var(--forge-amber)]/60 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none"
+                  />
+                </span>
+              ) : item.keyMomentLabel ? (
+                <button type="button" onClick={() => { setKeyMomentDraft(item.keyMomentLabel); setEditingKeyMoment(true); }} className="inline-flex items-center gap-1 hover:text-foreground transition-colors" title="แก้ไขจุดสำคัญ">
+                  <Star className="w-3 h-3 shrink-0 text-[var(--forge-amber)]" fill="currentColor" />
+                  <span className="truncate max-w-[200px]">{item.keyMomentLabel}</span>
+                </button>
+              ) : null}
+
+              {threadBeats?.map((b) => {
+                const roleLabel = b.role === 'seed' ? 'หว่าน' : b.role === 'reinforce' ? 'ย้ำ' : b.role === 'payoff' ? 'เฉลย' : b.role;
+                return (
+                  <button key={b.beatId} type="button" onClick={() => onOpenThreadBind?.()} className="inline-flex items-center gap-1.5 hover:text-foreground transition-colors" title={`ปม: ${b.title} · ${roleLabel}`}>
+                    <span className="h-2 w-2 rounded-full shrink-0" style={{ background: b.color ?? 'var(--forge-amber)' }} />
+                    <span className="truncate max-w-[150px]">{b.title}</span>
+                    <span>· {roleLabel}</span>
+                  </button>
+                );
+              })}
+
+            {ancestorConnections?.map((conn) => {
+                  const ancestorTitle = conn.label || conn.targetIdeaTitle || conn.targetIdeaId.slice(0, 8) + '...';
+                  const categoryLabels: Record<string, string> = {
+                    plot: 'พล็อต', character: 'ตัวละคร', worldbuilding: 'สร้างโลก', subplot: 'เนื้อรอง', general: 'ทั่วไป',
+                  };
+                  return (
+                    <Popover key={conn.id}>
+                      <PopoverTrigger asChild>
+                        <button type="button" className="inline-flex items-center gap-1 hover:text-foreground transition-colors" title="ที่มา">
+                          <GitBranchPlus className="w-3 h-3 shrink-0" />
+                          <span className="truncate max-w-[140px]">{ancestorTitle}</span>
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent side="top" align="start" className="w-72 p-3 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <Lightbulb className="w-4 h-4 text-amber-500 shrink-0" />
+                          <p className="text-sm font-semibold truncate">{conn.targetIdeaTitle || 'Idea'}</p>
+                        </div>
+                        {conn.targetIdeaCategory && (
+                          <span className="inline-block text-[11px] text-muted-foreground border border-border rounded px-1.5 py-0.5">
+                            {categoryLabels[conn.targetIdeaCategory] || conn.targetIdeaCategory}
+                          </span>
+                        )}
+                        {conn.label && (
+                          <div className="flex items-start gap-1.5">
+                            <MessageCircle className="w-3 h-3 text-muted-foreground shrink-0 mt-0.5" />
+                            <p className="text-xs text-foreground/80 italic">{conn.label}</p>
+                          </div>
+                        )}
+                        {conn.targetIdeaContent ? (
+                          <p className="text-xs text-muted-foreground whitespace-pre-wrap line-clamp-6">{conn.targetIdeaContent}</p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground/70 italic">ไม่มีเนื้อหาเพิ่มเติม</p>
+                        )}
+                        {conn.targetIdeaNotes && conn.targetIdeaNotes.length > 0 && (
+                          <div className="pt-2 border-t border-border/60 space-y-1">
+                            <p className="text-[11px] font-medium text-muted-foreground flex items-center gap-1">
+                              <BookOpen className="w-3 h-3" /> โน้ต
+                            </p>
+                            {conn.targetIdeaNotes.map((note, idx) => (
+                              <p key={idx} className="text-xs text-foreground/80 border-b border-border/40 py-1 whitespace-pre-wrap">{note}</p>
+                            ))}
+                          </div>
+                        )}
+                        {onRemoveAncestor && (
+                          <button
+                            type="button"
+                            onClick={() => onRemoveAncestor(conn.id)}
+                            className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+                          >
+                            ลบการเชื่อมโยงที่มา
+                          </button>
+                        )}
+                      </PopoverContent>
+                    </Popover>
+                  );
+                })}
+            </div>
+          )}
         </div>
 
         {/* ส่วนที่เลื่อนได้ — หัวแผง (ดาว/เมนู/ปิด) อยู่นอกกล่องนี้ จึงไม่เลื่อนหายตอนโน้ตยาว */}

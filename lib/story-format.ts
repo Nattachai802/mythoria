@@ -12,6 +12,7 @@
 
 import { normalizeLink, LINK_KINDS, type CanvasLink } from "./link-kinds";
 import { resolveNesting, type NestWorld } from "./participant-nest";
+import { hasCauseInto, type BeatJoin, type JoinKind } from "./beat-joins";
 import { noteToPlain } from "./note-text";
 
 // ─── Version ───────────────────────────────────────────────────────────
@@ -66,6 +67,8 @@ export interface FormatBeat {
     isBoardNote: boolean;
     keyMoment?: string | null;
     simultaneousWith: string[];   // รหัส ["C02"]
+    /** มีเหตุนำมาไหม ตามรอยต่อจังหวะที่ติ๊กเหตุ-ผล — ไม่มีข้อมูลรอยต่อในกระดานนี้ = ไม่ใส่ฟิลด์ (ใช้เส้นการ์ดเดิมตัดสิน) */
+    causeIn?: boolean;
     participants: BeatParticipant[];
     links: BeatLink[];
     threadTouches: ThreadTouch[];
@@ -98,6 +101,8 @@ export interface SceneFormat {
     cast: CastEntry[];
     beats: FormatBeat[];
     threads: ThreadSummary[];
+    /** ลักษณะการต่อระหว่างจังหวะ (รอยต่อที่ผู้ใช้ตั้งไว้เท่านั้น) — ไม่มีข้อมูลรอยต่อ = ไม่ใส่ฟิลด์ */
+    transitions?: Array<{ fromBeat: number; toBeat: number; kind: string; name: string; cause: boolean; label: string | null }>;
 }
 
 // ─── Label maps (ย้ายจาก handleExportMarkdown) ─────────────────────────
@@ -198,12 +203,15 @@ export interface SceneFormatInput {
     ideaNotes: Array<{ canvasItemId?: string | null; notes?: string | null }>;
     /** ความสัมพันธ์จากตารางโลก ใช้อนุมานโครงชั้น — ไม่ส่งมา = นับเฉพาะที่ผู้ใช้ผูกเอง */
     nestWorld?: NestWorld;
+    /** รอยต่อจังหวะ (lib/beat-joins.ts) — ส่งมาเฉพาะกระดานที่มีโหนดรอยต่อ */
+    joins?: BeatJoin[];
+    joinKinds?: JoinKind[];
 }
 
 // ─── buildSceneFormat ──────────────────────────────────────────────────
 
 export function buildSceneFormat(input: SceneFormatInput): SceneFormat {
-    const { event, items, lanes, threads, eventId, elementDetails, ideaNotes, nestWorld } = input;
+    const { event, items, lanes, threads, eventId, elementDetails, ideaNotes, nestWorld, joins, joinKinds } = input;
 
     const laneName = new Map(lanes.map(l => [l.id, l.name]));
     const laneOrder = new Map(lanes.map((l, i) => [l.id, i]));
@@ -345,6 +353,7 @@ export function buildSceneFormat(input: SceneFormatInput): SceneFormat {
             isBoardNote: isNote(item),
             keyMoment: item.keyMomentLabel ?? null,
             simultaneousWith: together,
+            ...(joins && joinKinds ? { causeIn: hasCauseInto(joins, joinKinds, item.beatIndex ?? 0) } : {}),
             participants,
             links: beatLinks,
             threadTouches,
@@ -398,6 +407,14 @@ export function buildSceneFormat(input: SceneFormatInput): SceneFormat {
         cast,
         beats,
         threads: threadSummaries,
+        ...(joins && joinKinds ? {
+            transitions: joins
+                .filter(j => j.kind || j.label)
+                .map(j => {
+                    const k = j.kind ? joinKinds.find(x => x.key === j.kind) : undefined;
+                    return { fromBeat: j.fromBeat, toBeat: j.fromBeat + 1, kind: j.kind ?? "", name: k?.name ?? "", cause: !!k?.cause, label: j.label ?? null };
+                }),
+        } : {}),
     };
 }
 
@@ -433,6 +450,13 @@ export function renderSceneMarkdown(format: SceneFormat): string {
 
     // ไม่ซ้ำชื่อฉากอีกรอบ — frontmatter บอกไปแล้ว พอไม่มี # heading มันก็เหลือแค่บรรทัดซ้ำเปล่า ๆ
     if (format.scene.description) L.push("", sub(format.scene.description));
+
+    if (format.transitions?.length) {
+        L.push("", "การต่อจังหวะ:");
+        format.transitions.forEach(t => {
+            L.push(`- จังหวะ ${t.fromBeat + 1} → ${t.toBeat + 1}: ${t.name || "(ยังไม่ระบุ)"}${t.cause ? " (เหตุ-ผล)" : ""}${t.label ? ` — ${sub(t.label)}` : ""}`);
+        });
+    }
 
     L.push("", "วิธีอ่านเอกสารนี้:");
     L.push("- จังหวะ = ช่วงเวลาในฉาก เรียงตามลำดับการเล่า การ์ดที่อยู่จังหวะเดียวกัน คือเหตุการณ์ที่เกิดขึ้นพร้อมกัน");

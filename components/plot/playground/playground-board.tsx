@@ -40,6 +40,7 @@ import { createPortal } from "react-dom";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import { snapSimultaneousBeats } from "@/lib/simultaneous-beats";
+import { readJoins, joinNodes, setJoin, joinStats, isJoinNodeType, DEFAULT_JOIN_KINDS, type BeatJoin, type JoinKind } from "@/lib/beat-joins";
 import { analyzeBeats, collapseByBeat } from "@/lib/beat-coach";
 import { SceneDramaticPanel } from "./scene-dramatic-panel";
 import { labelAnchor } from "@/lib/link-label";
@@ -109,6 +110,8 @@ interface Lane {
 
 interface LaneStats { count: number; longestGap: number; gapStart: number }
 
+const normalizeJoinName = (key: string) => DEFAULT_JOIN_KINDS.find(k => k.key === key)?.name ?? "";
+
 // สีเลน — เลือกได้เพื่อแยกเลนด้วยตา
 const LANE_COLORS = ["#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#f43f5e", "#f97316", "#14b8a6", "#64748b"];
 
@@ -146,7 +149,7 @@ export { normalizeLink, LINK_KINDS, type CanvasLink };
 // state ครั้งแรก ให้ popover เห็นค่าล่าสุดโดยไม่ต้อง query ซ้ำต่อการ์ด
 const SCENE_DRAMA_FIELDS = ["sceneType", "sceneTone", "pacing", "sceneGoal", "sceneConflict", "sceneOutcome", "valueShift"] as const;
 
-function buildBoardState(initialItems: any[], ideasList: any[] = []): { lanes: Lane[]; items: any[]; chapters: Chapter[] } {
+function buildBoardState(initialItems: any[], ideasList: any[] = []): { lanes: Lane[]; items: any[]; chapters: Chapter[]; joins: BeatJoin[]; joinKinds: JoinKind[] } {
     const laneItems = initialItems.filter((i: any) => i.type === 'lane');
     let lanes: Lane[] = laneItems
         .map((l: any) => ({ id: l.id, name: l.name || 'เลน', orderIndex: l.orderIndex ?? 0, color: l.color, kind: l.kind, characterId: l.characterId ?? null }))
@@ -164,7 +167,7 @@ function buildBoardState(initialItems: any[], ideasList: any[] = []): { lanes: L
         .sort((a, b) => a.startBeat - b.startBeat);
 
     // group frames เดิมเลิกใช้แล้ว (เลนทำหน้าที่จัดกลุ่มแทน) — กรองทิ้งเงียบๆ
-    let cardItems = initialItems.filter((i: any) => i.type !== 'group' && i.type !== 'lane' && i.type !== 'chapter');
+    let cardItems = initialItems.filter((i: any) => i.type !== 'group' && i.type !== 'lane' && i.type !== 'chapter' && !isJoinNodeType(i.type));
 
     const needsMigration = cardItems.some((i: any) => i.laneId == null || i.beatIndex == null);
     if (needsMigration) {
@@ -194,7 +197,8 @@ function buildBoardState(initialItems: any[], ideasList: any[] = []): { lanes: L
         return { ...it, ...drama };
     });
 
-    return { lanes, items: cardItems, chapters };
+    const { joins, kinds: joinKinds } = readJoins(initialItems);
+    return { lanes, items: cardItems, chapters, joins, joinKinds };
 }
 
 // หมุดปลายเส้น — สี่เหลี่ยมมนเลียนแบบรูสปรอกเก็ตของฟิล์ม ให้เข้าชุดกับการ์ดที่มี FilmSprockets/frame number
@@ -771,6 +775,65 @@ function AddLaneButton({ characters, onAdd }: { characters: any[]; onAdd: (kind:
     );
 }
 
+// จุดบอก "ลักษณะการต่อ" ที่ช่องแคบระหว่างจังหวะ N → N+1 — คลิกเลือกสี/ข้อความ (ไม่ผูกกับการ์ดใบไหน)
+function JoinMarker({ boundary, join, kinds, onChange }: {
+    boundary: number;
+    join?: BeatJoin;
+    kinds: JoinKind[];
+    onChange: (fromBeat: number, patch: { kind?: string | null; label?: string }) => void;
+}) {
+    const k = join?.kind ? kinds.find((x) => x.key === join.kind) : undefined;
+    const name = `จังหวะ ${boundary + 1} → ${boundary + 2}`;
+    return (
+        <Popover>
+            <PopoverTrigger asChild>
+                <button
+                    className="flex flex-col items-center justify-center gap-0.5 rounded px-1 min-w-0 max-w-full hover:bg-muted/60 transition-colors"
+                    aria-label={`การต่อ ${name}: ${k ? k.name : 'ยังไม่ได้บอก'}`}
+                    title={`${name} · ${k ? k.name : 'ยังไม่ได้บอกลักษณะการต่อ'}${join?.label ? ` · ${join.label}` : ''}`}
+                >
+                    <span
+                        className={cn("h-[18px] w-[18px] rounded-full flex items-center justify-center", !k && "border border-dashed border-muted-foreground/70 text-muted-foreground")}
+                        style={k ? { background: k.color } : undefined}
+                    >
+                        {!k && <Plus className="w-2.5 h-2.5" />}
+                    </span>
+                    {join?.label && <span className="max-w-[80px] truncate text-[9px] leading-none text-muted-foreground">{join.label}</span>}
+                </button>
+            </PopoverTrigger>
+            <PopoverContent side="bottom" align="center" className="w-56 p-3 space-y-2" onKeyDown={(e) => e.stopPropagation()}>
+                <p className="text-xs font-medium">{name}</p>
+                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="ลักษณะการต่อ">
+                    {kinds.map((kd) => (
+                        <button
+                            key={kd.key}
+                            role="radio"
+                            aria-checked={join?.kind === kd.key}
+                            aria-label={kd.name}
+                            title={kd.name}
+                            onClick={() => onChange(boundary, { kind: kd.key })}
+                            className="h-6 w-6 rounded-full border-2 border-transparent transition-transform hover:scale-110 aria-checked:border-foreground"
+                            style={{ background: kd.color }}
+                        />
+                    ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground min-h-[14px]">{k ? k.name + (k.cause ? " · นับเป็นเหตุ-ผล" : "") : "เลือกสีเพื่อบอกว่าสองจังหวะนี้ต่อกันแบบไหน"}</p>
+                <Input
+                    value={join?.label ?? ""}
+                    onChange={(e) => onChange(boundary, { label: e.target.value })}
+                    placeholder="ข้อความ (ไม่บังคับ)"
+                    className="h-7 text-xs"
+                />
+                {(join?.kind || join?.label) && (
+                    <button className="text-[11px] text-muted-foreground hover:text-destructive transition-colors" onClick={() => onChange(boundary, { kind: null, label: "" })}>
+                        ล้างการตั้งค่า
+                    </button>
+                )}
+            </PopoverContent>
+        </Popover>
+    );
+}
+
 function BeatCell({ laneId, beatIndex, laneIndex, isTrailing, laneColor, isDrafting, collapsed, dimmed, locked, onAddIdea, children }: {
     laneId: string;
     beatIndex: number;
@@ -1142,7 +1205,7 @@ export function PlaygroundBoard({
     participantLinks,
     initialSceneRecap = null,
 }: PlaygroundBoardProps) {
-    const [{ lanes, items: initialCardItems, chapters: initialChapters }] = useState(() => buildBoardState(initialItems, ideas));
+    const [{ lanes, items: initialCardItems, chapters: initialChapters, joins: initialJoins, joinKinds: initialJoinKinds }] = useState(() => buildBoardState(initialItems, ideas));
     const [lanes_, setLanes] = useState<Lane[]>(lanes);
     // สถานะมุมมองเลน (ไม่บันทึกลง DB): เลนที่พับ + เลนที่เน้น (เลนอื่นจางลง)
     const [collapsedLanes, setCollapsedLanes] = useState<Set<string>>(new Set());
@@ -1151,6 +1214,10 @@ export function PlaygroundBoard({
     const [lockedLanes, setLockedLanes] = useState<Set<string>>(new Set());
     const [boardZoom, setBoardZoom] = useState(BOARD_ZOOM_DEFAULT);
     const [playBeat, setPlayBeat] = useState<number | null>(null);
+    // รอยต่อจังหวะ: ลักษณะการต่อ N→N+1 เป็นสี (เก็บใน canvasData) · เส้นการ์ดเดิมซ่อนเป็นค่าเริ่มต้น (ข้อมูลยังอยู่ครบ)
+    const [beatJoins, setBeatJoins] = useState<BeatJoin[]>(initialJoins);
+    const [joinKinds, setJoinKinds] = useState<JoinKind[]>(initialJoinKinds);
+    const [showCardLines, setShowCardLines] = useState(false);
     const [chapters, setChapters] = useState<Chapter[]>(initialChapters);
     const [items, setItems] = useState<any[]>(initialCardItems);
     const [echoFindings, setEchoFindings] = useState<EchoFinding[]>(initialEchoFindings);
@@ -1420,6 +1487,9 @@ export function PlaygroundBoard({
         return m;
     }, [lanes_, items, beatCount]);
 
+    const joinStat = useMemo(() => joinStats(beatJoins, joinKinds, beatCount), [beatJoins, joinKinds, beatCount]);
+    const oldLinkCount = useMemo(() => items.reduce((n, i) => n + ((i.links || []).length), 0), [items]);
+
     // ยังไม่มีจังหวะในฉาก → เลือกได้แค่ "จังหวะใหม่"
     useEffect(() => {
         if (beatCount === 0 && newIdeaBeat !== 'new') setNewIdeaBeat('new');
@@ -1480,9 +1550,11 @@ export function PlaygroundBoard({
 
     // Sync เมื่อเปลี่ยนฉาก
     useEffect(() => {
-        const { lanes: newLanes, items: newItems } = buildBoardState(initialItems);
+        const { lanes: newLanes, items: newItems, joins: newJoins, joinKinds: newJoinKinds } = buildBoardState(initialItems);
         setLanes(newLanes);
         setItems(newItems);
+        setBeatJoins(newJoins);
+        setJoinKinds(newJoinKinds);
         isFirstMount.current = true;
     }, [eventId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1672,7 +1744,7 @@ export function PlaygroundBoard({
             setIsSaving(true);
             const laneNodes = lanes_.map(l => ({ id: l.id, type: 'lane', name: l.name, orderIndex: l.orderIndex, color: l.color, kind: l.kind, characterId: l.characterId ?? null }));
             const chapterNodes = chapters.map(c => ({ id: c.id, type: 'chapter', name: c.name, startBeat: c.startBeat, endBeat: c.endBeat }));
-            const result = await updateTimelineCanvas(eventId, [...items, ...laneNodes, ...chapterNodes]);
+            const result = await updateTimelineCanvas(eventId, [...items, ...laneNodes, ...chapterNodes, ...joinNodes(beatJoins, joinKinds)]);
             if (result.success) {
                 setLastSaved(new Date());
                 savePending.current = false; // ยิงพลาดยังถือว่าค้าง — ให้เตือนตอนปิดแท็บต่อไป
@@ -1682,7 +1754,7 @@ export function PlaygroundBoard({
             setIsSaving(false);
         }, 2000);
         return () => clearTimeout(timeoutId);
-    }, [items, lanes_, chapters, eventId]);
+    }, [items, lanes_, chapters, beatJoins, joinKinds, eventId]);
 
     // Linking Handlers
     const linkingStartCount = useRef(0);
@@ -1990,6 +2062,9 @@ export function PlaygroundBoard({
         if (next.has(laneId)) next.delete(laneId); else next.add(laneId);
         return next;
     });
+    const handleSetJoin = (fromBeat: number, patch: { kind?: string | null; label?: string }) => {
+        setBeatJoins(prev => setJoin(prev, fromBeat, patch));
+    };
     const toggleLaneLock = (laneId: string) => setLockedLanes(prev => {
         const next = new Set(prev);
         if (next.has(laneId)) next.delete(laneId); else next.add(laneId);
@@ -2182,6 +2257,8 @@ export function PlaygroundBoard({
             totalItems: items.length,
             chapters,          // ตอน (ช่วงจังหวะ)
             lanes: lanes_,
+            beatJoins,         // ลักษณะการต่อระหว่างจังหวะ (สี/ข้อความ)
+            joinKinds,         // ชื่อสี + ธงเหตุ-ผล ของกระดานนี้
             items: items.map(item => ({
                 id: item.id,
                 type: item.type,
@@ -2230,6 +2307,7 @@ export function PlaygroundBoard({
             event: event ?? { id: eventId },
             items,
             lanes: lanes_,
+            ...(beatJoins.length > 0 ? { joins: beatJoins, joinKinds } : {}),
             threads: threadState,
             eventId,
             elementDetails: elementDetailsMap,
@@ -2936,6 +3014,49 @@ export function PlaygroundBoard({
                         </DropdownMenu>
                     </div>
 
+                    {!isMobile && (
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border/60 bg-muted/20 px-3 py-1.5 text-xs">
+                            <span className="text-muted-foreground shrink-0" title="จุดวงกลมที่ช่องระหว่างจังหวะ = ลักษณะการต่อของสองจังหวะนั้น">การต่อจังหวะ</span>
+                            {joinKinds.map((k) => (
+                                <span key={k.key} className="inline-flex items-center gap-1.5">
+                                    <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: k.color }} />
+                                    <input
+                                        value={k.name}
+                                        onChange={(e) => setJoinKinds(prev => prev.map(x => x.key === k.key ? { ...x, name: e.target.value } : x))}
+                                        onBlur={(e) => { if (!e.target.value.trim()) setJoinKinds(prev => prev.map(x => x.key === k.key ? { ...x, name: normalizeJoinName(k.key) } : x)); }}
+                                        className="w-[78px] bg-transparent border-b border-transparent hover:border-border focus:border-[var(--forge-amber)]/60 focus:outline-none text-xs"
+                                        aria-label={`ชื่อสี ${k.name}`}
+                                    />
+                                    <label className="inline-flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer" title="นับรอยต่อสีนี้เป็นการต่อแบบเหตุ-ผล">
+                                        <input type="checkbox" checked={k.cause} onChange={(e) => setJoinKinds(prev => prev.map(x => x.key === k.key ? { ...x, cause: e.target.checked } : x))} />
+                                        เหตุ-ผล
+                                    </label>
+                                </span>
+                            ))}
+                            <span className="flex-1" />
+                            {joinStat.boundaries > 0 && (
+                                <span className="text-muted-foreground" aria-live="polite">
+                                    ยังไม่บอก {joinStat.unset}/{joinStat.boundaries}
+                                    {joinStat.longestNonCauseRun >= 3 && (
+                                        <span className="ml-2 text-amber-700 dark:text-amber-400" title="รอยต่อที่ไม่ใช่เหตุ-ผลต่อกันหลายจุด อ่านแล้วเป็น 'แล้วก็…'">
+                                            ไม่มีเหตุ-ผลติดกัน {joinStat.longestNonCauseRun} รอยต่อ
+                                        </span>
+                                    )}
+                                </span>
+                            )}
+                            {oldLinkCount > 0 && (
+                                <button
+                                    onClick={() => setShowCardLines(v => !v)}
+                                    aria-pressed={showCardLines}
+                                    className={cn("rounded-full border px-2.5 py-0.5 text-[11px] transition-colors", showCardLines ? "border-border bg-muted text-foreground" : "border-dashed border-border text-muted-foreground hover:text-foreground")}
+                                    title="เส้นเชื่อมระหว่างการ์ดแบบเดิม (ข้อมูลยังอยู่ครบ ซ่อนไว้เป็นค่าเริ่มต้น)"
+                                >
+                                    เส้นการ์ดเดิม {oldLinkCount}
+                                </button>
+                            )}
+                        </div>
+                    )}
+
                     {!isMobile && playBeat !== null && playBeat < beatCount && (
                         <div className="flex items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-1.5 text-xs" aria-live="polite">
                             <span className="font-technical text-[10px] uppercase tracking-[0.12em] text-muted-foreground shrink-0">หัวอ่าน · จังหวะ {String(playBeat + 1).padStart(2, "0")}</span>
@@ -3074,8 +3195,17 @@ export function PlaygroundBoard({
                                     {beatIndex < totalColumns - 1 && (
                                         <div
                                             style={{ gridColumn: beatGridCol(beatIndex) + 1, gridRow: 2, width: GUTTER_WIDTH }}
-                                            className="sticky top-0 z-20 bg-muted/20 border-b border-border/30"
-                                        />
+                                            className="sticky top-0 z-20 bg-muted/20 border-b border-border/30 flex items-center justify-center"
+                                        >
+                                            {beatIndex < beatCount - 1 && (
+                                                <JoinMarker
+                                                    boundary={beatIndex}
+                                                    join={beatJoins.find(j => j.fromBeat === beatIndex)}
+                                                    kinds={joinKinds}
+                                                    onChange={handleSetJoin}
+                                                />
+                                            )}
+                                        </div>
                                     )}
                                 </Fragment>
                             ))}
@@ -3149,7 +3279,15 @@ export function PlaygroundBoard({
                                             {beatIndex < totalColumns - 1 && (
                                                 <div
                                                     key={`gutter-${beatIndex}`}
-                                                    style={{ gridColumn: beatGridCol(beatIndex) + 1, gridRow: laneIndex + 3, width: GUTTER_WIDTH, background: hexA(laneColor, 0.05) }}
+                                                    style={{
+                                                        gridColumn: beatGridCol(beatIndex) + 1, gridRow: laneIndex + 3, width: GUTTER_WIDTH, background: hexA(laneColor, 0.05),
+                                                        // แถบสีของลักษณะการต่อพาดผ่านทุกเลน (inset shadow ซ้อนทับ ไม่ใช้ gradient)
+                                                        boxShadow: (() => {
+                                                            if (beatIndex >= beatCount - 1) return undefined;
+                                                            const jk = joinKinds.find(k => k.key === beatJoins.find(j => j.fromBeat === beatIndex)?.kind);
+                                                            return jk ? `inset 0 0 0 999px ${hexA(jk.color, 0.16)}` : undefined;
+                                                        })(),
+                                                    }}
                                                     className={cn("border-b border-border/30", collapsedLanes.has(lane.id) ? "min-h-[36px]" : "min-h-[140px]", soloLaneId !== null && soloLaneId !== lane.id && "opacity-40")}
                                                 />
                                             )}
@@ -3182,7 +3320,7 @@ export function PlaygroundBoard({
                                 className="absolute inset-0 pointer-events-none"
                                 style={{ width: '100%', height: '100%', overflow: 'visible', zIndex: 10 }}
                             >
-                                {connections}
+                                {showCardLines && connections}
                                 {ancestorLines}
                             </svg>
                         </div>
