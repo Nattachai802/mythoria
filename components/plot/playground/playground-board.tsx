@@ -1701,13 +1701,47 @@ export function PlaygroundBoard({
             ? { ...i, links: i.links.filter((l: any) => normalizeLink(l).targetId !== goneId) }
             : i);
 
+    // ผู้เข้าร่วมที่ส่งต่อตามเส้น: ทุกอย่างในการ์ดต้นทางยกเว้นสถานที่กับโน้ตแปะ · ไม่ซ้ำกับของที่ปลายทางมีอยู่แล้ว
+    // copiedVia = ต้นทางที่ส่งมา ใช้ถอนคืนตอนลบเส้น (ของที่ผู้ใช้เพิ่มเองที่ปลายทางไม่มี marker จึงไม่โดนถอน)
+    const participantsToCarry = (sourceItem: any, targetItem: any): any[] => {
+        const copies = (sourceItem?.children || [])
+            .filter((c: any) => c.type !== 'location' && c.type !== 'sticky-note')
+            .map((c: any) => {
+                // role/บทบาทถูกแก้ที่ detail ต่อการ์ด — ดึงค่าล่าสุดมาใส่ child ที่ก็อป ไม่งั้นได้ role ตอนสร้าง
+                const d = elementDetailsMap.get(`${sourceItem.id}-${c.type}-${c.referenceId || c.refId || c.id}`);
+                return { ...c, id: crypto.randomUUID(), role: d?.role || c.role, copiedVia: sourceItem.id };
+            });
+        const existingRefIds = new Set((targetItem?.children || []).map((c: any) => c.referenceId));
+        return copies.filter((c: any) => {
+            if (!c.referenceId) {
+                return !(targetItem?.children || []).some((ec: any) => !ec.referenceId && ec.title === c.title && ec.type === c.type);
+            }
+            return !existingRefIds.has(c.referenceId);
+        });
+    };
+    const stripCarriedParticipants = (item: any, sourceId: string) => {
+        const kept = (item.children || []).filter((c: any) => c.copiedVia !== sourceId);
+        return kept.length === (item.children || []).length ? item : { ...item, children: kept };
+    };
+
     // คืน true ถ้าเพิ่มเส้นได้ — เช็คซ้ำนอก updater เพื่อไม่ให้ toast เด้งซ้ำใน StrictMode
+    // ลากเส้นเสร็จ = ส่งต่อผู้เข้าร่วมไปการ์ดปลายทางให้เอง (พร้อมปุ่มย้อนกลับ)
     const addLink = (sourceId: string, targetId: string) => {
         if (sourceId === targetId) return false;
         if (isLinked(items, sourceId, targetId)) { toast.info("เชื่อมกันอยู่แล้ว"); return false; }
-        setItems(prev => isLinked(prev, sourceId, targetId) ? prev : prev.map(item => item.id === sourceId
-            ? { ...item, links: [...(item.links || []), { targetId, kind: "related", label: null, color: lastLinkColor }] }
-            : item));
+        const srcItem = items.find(i => i.id === sourceId);
+        const tgtItem = items.find(i => i.id === targetId);
+        const carried = srcItem && tgtItem ? participantsToCarry(srcItem, tgtItem) : [];
+        setItems(prev => isLinked(prev, sourceId, targetId) ? prev : prev.map(item => {
+            if (item.id === sourceId) return { ...item, links: [...(item.links || []), { targetId, kind: "related", label: null, color: lastLinkColor }] };
+            if (item.id === targetId && carried.length > 0) return { ...item, children: [...(item.children || []), ...carried] };
+            return item;
+        }));
+        if (carried.length > 0) {
+            toast.success(`ส่งต่อผู้เข้าร่วม ${carried.length} รายการไปการ์ด “${tgtItem?.title || ''}”`, {
+                action: { label: 'ย้อนกลับ', onClick: () => handleUnlink(sourceId, targetId) },
+            });
+        }
         return true;
     };
 
@@ -1728,11 +1762,13 @@ export function PlaygroundBoard({
         toast.info("ยกเลิกการเชื่อม");
     };
 
-    // ลบเส้น = ลบแค่เส้น (ไม่แตะผู้เข้าร่วมของการ์ดปลายทาง เส้นเก่าที่เคยก๊อปมาให้ถือเป็นข้อมูลปกติของการ์ดไปแล้ว)
+    // ลบเส้น = ลบเส้น + ถอนผู้เข้าร่วมที่เส้นนี้ส่งต่อไปให้ปลายทาง (เฉพาะที่มี copiedVia ของเก่าก่อนมี marker ไม่แตะ)
     const handleUnlink = (sourceId: string, targetId: string) => {
-        setItems(prev => prev.map(item => item.id === sourceId
-            ? { ...item, links: (item.links || []).filter((l: any) => normalizeLink(l).targetId !== targetId) }
-            : item));
+        setItems(prev => prev.map(item => {
+            if (item.id === sourceId) return { ...item, links: (item.links || []).filter((l: any) => normalizeLink(l).targetId !== targetId) };
+            if (item.id === targetId) return stripCarriedParticipants(item, sourceId);
+            return item;
+        }));
     };
 
     const handleUpdateLink = (sourceId: string, targetId: string, patch: { color?: string }) => {
