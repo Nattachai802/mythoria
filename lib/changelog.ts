@@ -13,7 +13,10 @@
  * pure data — ห้าม import อะไรเข้ามาในไฟล์นี้ ไม่งั้น `npm run check` โหลดไม่ได้
  * (ตัวรันเทสต์ resolve relative import แบบไม่ใส่นามสกุลไม่ได้ ดู task.md 9e)
  *
- * เพิ่มเวอร์ชันใหม่: แทรกไว้บนสุดของ CHANGELOG แล้วอัปเดต package.json + README ให้ตรง
+ * เพิ่มเวอร์ชันใหม่: แทรกไว้บนสุดของ CHANGELOG ด้วย `version: "next"` (และ `date: "today"` ได้) + title + entries
+ *   แล้วรัน `npm run release` — ระบบคำนวณเลขเองจากชนิดรายการ (มีแต่ fixed = patch, อย่างอื่น = minor,
+ *   major ต้องใส่ `bump: "major"`) แล้วเขียนลง changelog.ts/package.json/README/CHANGELOG.md ให้ตรงกันทั้งหมด
+ *   ดูผลก่อนด้วย `npm run release -- --dry` · กติกาอยู่ที่ lib/release-version.ts · `npm run check` จับเลขที่ไม่ตรงกติกา
  */
 
 /** ชนิดการเปลี่ยนแปลง — เรียงตามลำดับที่อยากให้แสดง */
@@ -36,9 +39,11 @@ export interface ChangelogEntry {
 }
 
 export interface ChangelogRelease {
-    /** ตรงกับ package.json + README */
+    /** ตรงกับ package.json + README · เขียน "next" ได้ แล้วให้ `npm run release` เติมเลขจริงให้ */
     version: string;
-    /** YYYY-MM-DD */
+    /** บังคับระดับเลข (ปกติไม่ต้องใส่) — ไม่ใส่ = ตามกติกา: มีแต่ fixed = patch, อย่างอื่น = minor */
+    bump?: "major" | "minor" | "patch";
+    /** YYYY-MM-DD (เขียน "today" ได้ ตอน `npm run release` จะใส่วันที่วันนี้ให้) */
     date: string;
     /** พาดหัวสั้น ๆ ของรอบนี้ ใช้เป็นชื่อรุ่นในแอป */
     title: string;
@@ -47,6 +52,18 @@ export interface ChangelogRelease {
 
 /** ใหม่สุดอยู่บนสุดเสมอ — โค้ดที่อ่าน CHANGELOG[0] ยึดกติกานี้ */
 export const CHANGELOG: ChangelogRelease[] = [
+    {
+        version: "2.10.2",
+        date: "2026-10-09",
+        title: "ถ่างช่องว่างให้เส้นดิ่งระหว่างการ์ดซ้อน",
+        entries: [
+            {
+                kind: "fixed",
+                text: "การ์ดที่ซ้อนกันในจังหวะเดียวกันและมีเส้นเชื่อมถึงกัน จะถูกถ่างช่องว่างให้เองอัตโนมัติ เส้นดิ่งกับหัวลูกศรจึงไม่อัดกันจนมองไม่เห็น",
+                detail: "ช่องว่างหดกลับเมื่อลบเส้นนั้น · มีผลเฉพาะการ์ดที่อยู่ติดกันในช่องเดียวกัน",
+            },
+        ],
+    },
     {
         version: "2.10.1",
         date: "2026-10-09",

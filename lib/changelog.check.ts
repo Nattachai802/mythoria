@@ -7,6 +7,7 @@
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
 import { CHANGELOG, CHANGE_KINDS, CURRENT_VERSION } from "./changelog.ts";
+import { nextVersion, explainBump } from "./release-version.ts";
 
 const root = new URL("..", import.meta.url);
 const read = (name: string) => readFileSync(new URL(name, root), "utf8");
@@ -16,6 +17,7 @@ assert(CHANGELOG.length > 0, "CHANGELOG ต้องมีอย่างน้�
 
 const seen = new Set<string>();
 for (const r of CHANGELOG) {
+    assert(r.version !== "next", `ยังมีรุ่น version: "next" ค้างอยู่ — รัน \`npm run release\` เพื่อให้ระบบคำนวณเลขและอัปเดตทุกไฟล์`);
     assert(/^\d+\.\d+\.\d+$/.test(r.version), `version "${r.version}" ต้องเป็นรูป x.y.z`);
     assert(!seen.has(r.version), `version "${r.version}" ซ้ำ`);
     seen.add(r.version);
@@ -35,6 +37,18 @@ for (let i = 1; i < CHANGELOG.length; i++) {
     const [bM, bm, bp] = num(CHANGELOG[i].version);
     const newer = aM !== bM ? aM > bM : am !== bm ? am > bm : ap > bp;
     assert(newer, `CHANGELOG ต้องเรียงใหม่→เก่า แต่ ${CHANGELOG[i - 1].version} ไม่ได้ใหม่กว่า ${CHANGELOG[i].version}`);
+}
+
+// ── เลขของรุ่นล่าสุดต้องตรงกติกา (กันเลขวิ่งเกินจริงตอนทำแค่แก้บั๊ก) ──
+// ตรวจเฉพาะรุ่นบนสุดเทียบกับรุ่นก่อนหน้า (รุ่นเก่ากว่านั้นออกก่อนมีกติกา) · อยากได้เลขต่างจากกติกาให้ใส่ bump ในรุ่นนั้นชัด ๆ
+if (CHANGELOG.length >= 2) {
+    const top = CHANGELOG[0];
+    const expected = nextVersion(CHANGELOG[1].version, top.entries, top.bump);
+    assert(
+        top.version === expected,
+        `รุ่น ${top.version} ควรเป็น ${expected} ตามกติกา [${explainBump(top.entries, top.bump)}] เทียบกับ ${CHANGELOG[1].version} — ` +
+            `ใช้ \`npm run release\` ให้คำนวณ หรือถ้าตั้งใจให้ต่างจากกติกาใส่ bump: "patch"|"minor"|"major" ในรุ่นนั้น`,
+    );
 }
 
 // ── เลขต้องตรงกันสามที่ ──

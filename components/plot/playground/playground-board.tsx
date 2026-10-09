@@ -128,6 +128,7 @@ interface Chapter {
 
 const COLUMN_WIDTH = 280;
 const LABEL_WIDTH = 150;
+const LINKED_STACK_GAP = 24; // ช่องว่างเพิ่มระหว่างการ์ดซ้อนที่มีเส้นเชื่อมถึงกัน (บวกกับ gap ปกติของช่อง)
 const GUTTER_WIDTH = Math.round(COLUMN_WIDTH / 3); // ช่องแคบระหว่างจังหวะ ให้เส้นเชื่อมวิ่งผ่าน
 const BOARD_ZOOM_DEFAULT = 0.8; // ponytail: native zoom out ~20% เพื่อเห็นภาพรวม, ปรับเป็น 1 ถ้าจะคืนขนาดจริง
 const beatGridCol = (beatIndex: number) => beatIndex * 2 + 2; // คอลัมน์การ์ด (เว้นช่องกัตเตอร์แทรกทุกจังหวะ)
@@ -3052,7 +3053,15 @@ export function PlaygroundBoard({
                                                 }
                                                 onAddIdea={() => setDraftCell({ laneId: lane.id, beatIndex })}
                                             >
-                                                {!collapsedLanes.has(lane.id) && cellItems.map(item => renderCard(item, lockedLanes.has(lane.id)))}
+                                                {!collapsedLanes.has(lane.id) && cellItems.map((item, idx) => (
+                                                    <Fragment key={item.id}>
+                                                        {/* การ์ดสองใบที่ซ้อนกันและมีเส้นเชื่อมถึงกัน: ถ่างช่องว่างให้เส้นดิ่งกับหัวลูกศรมีที่ (อัตโนมัติ หายเองเมื่อลบเส้น) */}
+                                                        {idx > 0 && isLinked(items, cellItems[idx - 1].id, item.id) && (
+                                                            <div aria-hidden="true" className="shrink-0" style={{ height: LINKED_STACK_GAP }} />
+                                                        )}
+                                                        {renderCard(item, lockedLanes.has(lane.id))}
+                                                    </Fragment>
+                                                ))}
 
                                                 {/* สร้างไอเดีย inline: การ์ดร่าง → skeleton ระหว่างรอ → ปุ่ม + (โผล่ตอน hover ช่อง) */}
                                                 {creatingCell?.laneId === lane.id && creatingCell?.beatIndex === beatIndex ? (

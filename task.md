@@ -498,3 +498,19 @@ redesign ทั้งใบ ไม่ใช่แค่เปลี่ยน edi
 ข้อสังเกต (ยังไม่แก้): `hasIncomingLink` ใน `server/plot-analysis.ts` อ่านเส้น **ขาออก** ของการ์ด (`beat.links`) ทั้งที่ชื่อบอกขาเข้า — ตัวเดิมก็เป็นแบบนี้ ยังไม่ได้ตรวจว่าตั้งใจหรือบั๊ก ·
 `lib/simultaneous-beats.ts` และ `LINK_KINDS` (สีตามชนิดเก่า) ยังอยู่ในโค้ดแต่กระดานไม่เรียก simultaneous แล้ว (เก็บไว้ ไม่ลบ) ·
 เส้นเก่าชนิด "เกิดพร้อมกัน" ที่เคยผูกการ์ดอยู่จังหวะเดียวกัน หลังจากนี้ลากแยกจังหวะได้อิสระ
+
+---
+
+## 16. ระบบออกเลขรุ่น (release) — 2026-10-09
+
+ปัญหา: เลขรุ่นเขียนเองตามความรู้สึก เลยวิ่งเกินจริงเวลาทำแค่แก้บั๊ก (เช่น 2.7.x → 2.10.x ในวันเดียว)
+
+ทำแล้ว: `lib/release-version.ts` (กติกา) · `scripts/release.ts` (`npm run release`, ดูผลก่อนด้วย `-- --dry`) · `lib/changelog.check.ts` จับเลขที่ไม่ตรงกติกา ·
+เทสต์ `lib/release-version.check.ts` อยู่ใน `npm run check`
+
+วิธีใช้: เขียนรุ่นใหม่ไว้บนสุดของ `lib/changelog.ts` ด้วย `version: "next"` + `date: "today"` + title + entries → `npm run release` →
+ระบบคำนวณเลข (มีแต่ `fixed` = patch · มี added/changed/removed = minor · major ต้องใส่ `bump: "major"` เอง) แล้วเขียนลง changelog.ts / package.json / README / CHANGELOG.md ให้ตรงกัน ·
+อยากให้ต่างจากกติกา (เช่นปรับเล็กน้อยแต่เป็น changed) ใส่ `bump: "patch"` ในรุ่นนั้นชัด ๆ
+
+ที่ยังไม่ทำ: กฎโปรเจกต์ (`.claude/CLAUDE.md` หัวข้อ Track & Log Changes) ยังเขียนว่าแก้เลขเอง — ควรอัปเดตเป็น "ใช้ `npm run release`" (ต้องให้ผู้ใช้สั่งแก้ไฟล์นั้นก่อน) ·
+ตรวจกติกาเฉพาะรุ่นบนสุดเทียบรุ่นก่อนหน้า รุ่นเก่ากว่านั้นไม่ย้อนตรวจ
