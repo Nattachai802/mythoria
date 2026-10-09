@@ -16,7 +16,6 @@ import {
 } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
 import { requireNovelAccess } from "@/lib/authz";
-import { readJoins, isJoinNodeType } from "@/lib/beat-joins";
 import { buildSceneFormat, type SceneFormat, type SceneFormatInput } from "@/lib/story-format";
 import type { NestWorld } from "@/lib/participant-nest";
 import {
@@ -57,7 +56,7 @@ function parseCanvasData(canvasData: unknown): {
         .map((l: any) => ({ id: l.id, name: l.name || "เลน" }))
         .sort((a: any, b: any) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
     const items = raw.filter(
-        (it: any) => it.type !== "lane" && it.type !== "group" && it.type !== "chapter" && !isJoinNodeType(it.type),
+        (it: any) => it.type !== "lane" && it.type !== "group" && it.type !== "chapter" && it.type !== "beatJoin" && it.type !== "joinLegend", // beatJoin/joinLegend = โหนดของฟีเจอร์ที่ถอดไปแล้ว ไม่ใช่การ์ด
     );
     return { items, lanes };
 }
@@ -136,11 +135,9 @@ export async function buildSceneFormatForEvent(novelId: string, sceneId: string)
     }
 
     const { items, lanes } = parseCanvasData(event.canvasData);
-    const joinData = readJoins(event.canvasData);
 
     return buildSceneFormat({
         nestWorld: await loadNestWorld(novelId),
-        ...(joinData.hasJoinNodes ? { joins: joinData.joins, joinKinds: joinData.kinds } : {}),
         event: {
             id: event.id, title: event.title, sceneGoal: event.sceneGoal,
             sceneConflict: event.sceneConflict, sceneOutcome: event.sceneOutcome,
@@ -242,10 +239,8 @@ export async function getPlotAnalysis(novelId: string): Promise<
         const nestWorld = await loadNestWorld(novelId);
         const scenes = events.map(event => {
             const { items, lanes } = parseCanvasData(event.canvasData);
-            const joinData = readJoins(event.canvasData);
             const elementDetails = detailsByScene.get(event.id) ?? new Map();
             const input: SceneFormatInput = {
-                ...(joinData.hasJoinNodes ? { joins: joinData.joins, joinKinds: joinData.kinds } : {}),
                 event: {
                     id: event.id,
                     title: event.title,
@@ -520,7 +515,7 @@ export async function runEchoScore(
                         cardId: beat.id,
                         cardTitle: beat.title,
                         beatIndex: beat.beatIndex,
-                        hasIncomingLink: beat.causeIn ?? beat.links.some(l => l.kind === "leads_to"),
+                        hasIncomingLink: beat.links.length > 0, // เส้นเชื่อมไม่มีชนิดแล้ว — มีเส้นใดก็นับ (ตัวเดิมนับเฉพาะ "นำไปสู่")
                         evidence: oldEvidence,
                     });
                 }
@@ -602,7 +597,7 @@ export async function runEchoScore(
                 cardId: beat.id,
                 cardTitle: beat.title,
                 beatIndex: beat.beatIndex,
-                hasIncomingLink: beat.causeIn ?? beat.links.some(l => l.kind === "leads_to"),
+                hasIncomingLink: beat.links.length > 0, // เส้นเชื่อมไม่มีชนิดแล้ว — มีเส้นใดก็นับ (ตัวเดิมนับเฉพาะ "นำไปสู่")
                 cast: sceneFormat.cast
                     .filter((c): c is typeof c & { alias: string } => !!c.alias)
                     .map(c => ({ alias: c.alias, name: c.name })),
@@ -629,7 +624,7 @@ export async function runEchoScore(
                 cardId: beat.id,
                 cardTitle: beat.title,
                 beatIndex: beat.beatIndex,
-                hasIncomingLink: beat.causeIn ?? beat.links.some(l => l.kind === "leads_to"),
+                hasIncomingLink: beat.links.length > 0, // เส้นเชื่อมไม่มีชนิดแล้ว — มีเส้นใดก็นับ (ตัวเดิมนับเฉพาะ "นำไปสู่")
                 evidence,
             });
         }

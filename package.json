@@ -1,6 +1,6 @@
 {
   "name": "mythoria",
-  "version": "2.9.1",
+  "version": "2.10.0",
   "private": true,
   "scripts": {
     "dev": "npm run dev:full",
@@ -22,7 +22,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "check": "cross-env TZ=Asia/Bangkok node --experimental-strip-types lib/story-date.check.ts && node --experimental-strip-types lib/invite-rules.check.ts && node --experimental-strip-types lib/travel-map.check.ts && node --experimental-strip-types lib/oauth-state.check.ts && node --experimental-strip-types lib/trash.check.ts && node --experimental-strip-types lib/chapter-report.check.ts && node --experimental-strip-types lib/plot-context.check.ts && node --experimental-strip-types lib/changelog.check.ts && node --experimental-strip-types lib/beat-coach.check.ts && node --experimental-strip-types lib/participant-types.check.ts && node --experimental-strip-types lib/participant-nest.check.ts && node --experimental-strip-types lib/echo-score.check.ts && node --experimental-strip-types lib/note-text.check.ts && node --experimental-strip-types lib/beat-joins.check.ts && esbuild lib/jev-adapters.check.ts --bundle --platform=node --format=cjs --log-level=error | node -",
+    "check": "cross-env TZ=Asia/Bangkok node --experimental-strip-types lib/story-date.check.ts && node --experimental-strip-types lib/invite-rules.check.ts && node --experimental-strip-types lib/travel-map.check.ts && node --experimental-strip-types lib/oauth-state.check.ts && node --experimental-strip-types lib/trash.check.ts && node --experimental-strip-types lib/chapter-report.check.ts && node --experimental-strip-types lib/plot-context.check.ts && node --experimental-strip-types lib/changelog.check.ts && node --experimental-strip-types lib/beat-coach.check.ts && node --experimental-strip-types lib/participant-types.check.ts && node --experimental-strip-types lib/participant-nest.check.ts && node --experimental-strip-types lib/echo-score.check.ts && node --experimental-strip-types lib/note-text.check.ts && esbuild lib/jev-adapters.check.ts --bundle --platform=node --format=cjs --log-level=error | node -",
     "changelog": "node --experimental-strip-types scripts/gen-changelog.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",

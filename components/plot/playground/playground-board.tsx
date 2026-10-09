@@ -39,11 +39,8 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { createPortal } from "react-dom";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
-import { snapSimultaneousBeats } from "@/lib/simultaneous-beats";
-import { readJoins, joinNodes, setJoin, joinStats, isJoinNodeType, DEFAULT_JOIN_KINDS, type BeatJoin, type JoinKind } from "@/lib/beat-joins";
 import { analyzeBeats, collapseByBeat } from "@/lib/beat-coach";
 import { SceneDramaticPanel } from "./scene-dramatic-panel";
-import { labelAnchor } from "@/lib/link-label";
 import { buildSceneFormat, renderSceneMarkdown } from "@/lib/story-format";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -110,8 +107,6 @@ interface Lane {
 
 interface LaneStats { count: number; longestGap: number; gapStart: number }
 
-const normalizeJoinName = (key: string) => DEFAULT_JOIN_KINDS.find(k => k.key === key)?.name ?? "";
-
 // สีเลน — เลือกได้เพื่อแยกเลนด้วยตา
 const LANE_COLORS = ["#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#f43f5e", "#f97316", "#14b8a6", "#64748b"];
 
@@ -140,7 +135,7 @@ const beatGridCol = (beatIndex: number) => beatIndex * 2 + 2; // คอลัม
 // ---- Canvas link (P-canvas): เส้นเชื่อมมีชนิด/label ----
 // ย้ายไป lib/link-kinds.ts แล้ว — re-export เพื่อไม่ให้ import path เดิมพัง
 // `export ... from` ไม่ดึงชื่อเข้า scope ของไฟล์นี้ — ต้อง import แล้ว re-export แยก
-import { normalizeLink, LINK_KINDS, type CanvasLink } from "@/lib/link-kinds";
+import { normalizeLink, LINK_KINDS, DEFAULT_LINK_COLOR, LINK_COLOR_PRESETS, LEGACY_HIDDEN_NODE_TYPES, linkColor, type CanvasLink } from "@/lib/link-kinds";
 export { normalizeLink, LINK_KINDS, type CanvasLink };
 
 // ---- Migration: ฉากเก่า (x,y อิสระ) -> lane + beatIndex ----
@@ -149,7 +144,7 @@ export { normalizeLink, LINK_KINDS, type CanvasLink };
 // state ครั้งแรก ให้ popover เห็นค่าล่าสุดโดยไม่ต้อง query ซ้ำต่อการ์ด
 const SCENE_DRAMA_FIELDS = ["sceneType", "sceneTone", "pacing", "sceneGoal", "sceneConflict", "sceneOutcome", "valueShift"] as const;
 
-function buildBoardState(initialItems: any[], ideasList: any[] = []): { lanes: Lane[]; items: any[]; chapters: Chapter[]; joins: BeatJoin[]; joinKinds: JoinKind[] } {
+function buildBoardState(initialItems: any[], ideasList: any[] = []): { lanes: Lane[]; items: any[]; chapters: Chapter[]; keptNodes: any[] } {
     const laneItems = initialItems.filter((i: any) => i.type === 'lane');
     let lanes: Lane[] = laneItems
         .map((l: any) => ({ id: l.id, name: l.name || 'เลน', orderIndex: l.orderIndex ?? 0, color: l.color, kind: l.kind, characterId: l.characterId ?? null }))
@@ -167,7 +162,7 @@ function buildBoardState(initialItems: any[], ideasList: any[] = []): { lanes: L
         .sort((a, b) => a.startBeat - b.startBeat);
 
     // group frames เดิมเลิกใช้แล้ว (เลนทำหน้าที่จัดกลุ่มแทน) — กรองทิ้งเงียบๆ
-    let cardItems = initialItems.filter((i: any) => i.type !== 'group' && i.type !== 'lane' && i.type !== 'chapter' && !isJoinNodeType(i.type));
+    let cardItems = initialItems.filter((i: any) => i.type !== 'group' && i.type !== 'lane' && i.type !== 'chapter' && !LEGACY_HIDDEN_NODE_TYPES.includes(i.type));
 
     const needsMigration = cardItems.some((i: any) => i.laneId == null || i.beatIndex == null);
     if (needsMigration) {
@@ -197,8 +192,9 @@ function buildBoardState(initialItems: any[], ideasList: any[] = []): { lanes: L
         return { ...it, ...drama };
     });
 
-    const { joins, kinds: joinKinds } = readJoins(initialItems);
-    return { lanes, items: cardItems, chapters, joins, joinKinds };
+    // โหนดของฟีเจอร์รอยต่อจังหวะที่ถอดไปแล้ว: ไม่แสดง แต่เก็บกลับลงข้อมูลตอนบันทึก (ไม่ลบข้อมูลของผู้ใช้)
+    const keptNodes = initialItems.filter((i: any) => LEGACY_HIDDEN_NODE_TYPES.includes(i.type));
+    return { lanes, items: cardItems, chapters, keptNodes };
 }
 
 // หมุดปลายเส้น — สี่เหลี่ยมมนเลียนแบบรูสปรอกเก็ตของฟิล์ม ให้เข้าชุดกับการ์ดที่มี FilmSprockets/frame number
@@ -252,8 +248,12 @@ function SpliceTape({ x, y, angleDeg }: { x: number; y: number; angleDeg: number
 // ตัวเส้นเชื่อม — แถบฟิล์มเข้ม (steel-800 เหมือนแถบ FilmSprockets บนการ์ด) + รอยต่อสไปซ์กึ่งกลาง
 // แทนเส้นลวดสีเรียบ ๆ เดิม ให้เห็นเป็น "แถบฟิล์มจริง" ทอดเชื่อมสองเฟรม ไม่ใช่ด้ายผูกกระดานสืบสวน
 // สีของแต่ละชนิดเส้น (cfg.color) ยังคงอยู่ที่หมุด/หัวลูกศร/ป้ายชื่อ พอสำหรับแยกชนิดโดยไม่ทำให้แถบฟิล์มรก
-function FilmStripPath({ points }: { points: Array<{ x: number; y: number }> }) {
+function FilmStripPath({ points, color }: { points: Array<{ x: number; y: number }>; color?: string }) {
     const d = points.map((p, i) => `${i ? "L" : "M"} ${p.x} ${p.y}`).join(" ");
+    if (color) {
+        // เส้นสีล้วน — รางสีเดียว ไม่มีรอยสไปซ์/ป้าย
+        return <path d={d} stroke={color} strokeWidth="4" strokeOpacity="0.9" fill="none" strokeLinecap="round" strokeLinejoin="round" />;
+    }
     const mid = polylineMidpoint(points);
     return (
         <>
@@ -332,17 +332,13 @@ function ConnectionLine({ start, end, kind = "related", label, onClick }: {
     );
 }
 
-// เส้นเชื่อมแบบตั้งฉาก (orthogonal) — วาด polyline หัก 90° ไม่มีเส้นเฉียง หัวลูกศรที่ปลายสุด
-function OrthoLine({ points, kind = "related", label, hideLabel = false, onClick }: {
+// เส้นเชื่อมการ์ดแบบตั้งฉาก (orthogonal) — สีล้วน: รางสี + หัวลูกศร + หมุดต้นทาง ไม่มีข้อความ/ป้ายชนิด
+function OrthoLine({ points, color, onClick }: {
     points: Array<{ x: number; y: number }>;
-    kind?: string;
-    label?: string | null;
-    /** เส้นนี้รวมบัสกับเส้นอื่นที่ป้ายเหมือนกัน — ให้เส้นแรกวาดป้ายคนเดียว */
-    hideLabel?: boolean;
+    color: string;
     onClick?: () => void;
 }) {
     if (points.length < 2) return null;
-    const cfg = LINK_KINDS[kind] || LINK_KINDS.related;
     const d = points.map((p, i) => `${i ? "L" : "M"} ${p.x} ${p.y}`).join(" ");
 
     // หัวลูกศรวางที่ปลายสุด หันตามทิศของ segment สุดท้าย
@@ -355,17 +351,13 @@ function OrthoLine({ points, kind = "related", label, hideLabel = false, onClick
     const a1y = p2.y - arrowSize * Math.sin(angle - aAng);
     const a2x = p2.x - arrowSize * Math.cos(angle + aAng);
     const a2y = p2.y - arrowSize * Math.sin(angle + aAng);
-
     const start = points[0];
-    const displayLabel = hideLabel ? null : (label || (kind !== "related" ? cfg.label : null));
-    const mid = labelAnchor(points);
 
     return (
         <g>
-            <FilmStripPath points={points} />
-            <polygon points={`${p2.x},${p2.y} ${a1x},${a1y} ${a2x},${a2y}`} fill={cfg.color} fillOpacity="0.85" />
-            <FilmPin x={start.x} y={start.y} size={7} fill={cfg.pinFill} stroke={cfg.pinStroke} />
-            {displayLabel && <LinkLabelTag x={mid.x} y={mid.y} text={displayLabel} color={cfg.color} />}
+            <FilmStripPath points={points} color={color} />
+            <polygon points={`${p2.x},${p2.y} ${a1x},${a1y} ${a2x},${a2y}`} fill={color} />
+            <circle cx={start.x} cy={start.y} r="3.5" fill={color} />
             {onClick && (
                 <path d={d} stroke="transparent" strokeWidth="16" fill="none"
                     style={{ pointerEvents: "auto", cursor: "pointer" }}
@@ -375,25 +367,23 @@ function OrthoLine({ points, kind = "related", label, hideLabel = false, onClick
     );
 }
 
-// Dialog แก้เส้นเชื่อม: เลือกชนิด + label + ลบ
-function LinkEditDialog({ sourceTitle, targetTitle, link, onSave, onDelete, onClose }: {
+// แก้เส้นเชื่อม: เลือกสี (จานสีสำเร็จรูป หรือสีอะไรก็ได้) + ลบ — เลือกแล้วใช้ทันที ไม่มีปุ่มบันทึก
+function LinkColorDialog({ sourceTitle, targetTitle, color, onPick, onDelete, onClose }: {
     sourceTitle: string;
     targetTitle: string;
-    link: CanvasLink;
-    onSave: (patch: { kind: string; label: string | null }) => void;
+    color: string;
+    onPick: (color: string, close: boolean) => void;
     onDelete: () => void;
     onClose: () => void;
 }) {
-    const [kind, setKind] = useState(link.kind);
-    const [label, setLabel] = useState(link.label || "");
-
+    const isPreset = LINK_COLOR_PRESETS.includes(color.toLowerCase());
     return (
         <Dialog open onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="max-w-sm">
+            <DialogContent className="max-w-xs">
                 <DialogHeader>
                     <DialogTitle className="text-sm flex items-center gap-2">
                         <Link2 className="w-4 h-4 text-muted-foreground" />
-                        เส้นเชื่อม
+                        สีของเส้น
                     </DialogTitle>
                     <DialogDescription className="text-xs">
                         <span className="font-medium text-foreground">{sourceTitle}</span>
@@ -401,51 +391,39 @@ function LinkEditDialog({ sourceTitle, targetTitle, link, onSave, onDelete, onCl
                         <span className="font-medium text-foreground">{targetTitle}</span>
                     </DialogDescription>
                 </DialogHeader>
-
                 <div className="space-y-3">
-                    <div className="space-y-1.5">
-                        <label className="text-[11px] font-medium text-muted-foreground">ชนิดความสัมพันธ์</label>
-                        <div className="grid grid-cols-2 gap-1.5">
-                            {Object.entries(LINK_KINDS).map(([k, cfg]) => (
-                                <button
-                                    key={k}
-                                    onClick={() => setKind(k)}
-                                    className={`h-8 rounded border text-xs transition-colors ${kind === k
-                                        ? "border-current bg-muted font-semibold"
-                                        : "border-border/60 text-muted-foreground hover:border-border"}`}
-                                    style={kind === k ? { color: cfg.color } : undefined}
-                                >
-                                    {cfg.label}
-                                </button>
-                            ))}
-                        </div>
-                        {kind === "leads_to" && link.kind !== "leads_to" && (
-                            <p className="text-[10px] text-muted-foreground">
-                                * ตั้งเป็น "นำไปสู่" จะส่งตัวละครในการ์ดต้นทางต่อไปการ์ดปลายทาง
-                            </p>
-                        )}
+                    <div className="flex flex-wrap items-center gap-2" role="radiogroup" aria-label="สีของเส้น">
+                        {LINK_COLOR_PRESETS.map(c => (
+                            <button
+                                key={c}
+                                role="radio"
+                                aria-checked={color.toLowerCase() === c}
+                                aria-label={c}
+                                onClick={() => onPick(c, true)}
+                                className="h-7 w-7 rounded-full border-2 border-transparent transition-transform hover:scale-110 aria-checked:border-foreground"
+                                style={{ background: c }}
+                            />
+                        ))}
+                        <label
+                            className={cn("relative h-7 w-7 rounded-full border-2 cursor-pointer overflow-hidden transition-transform hover:scale-110", !isPreset ? "border-foreground" : "border-dashed border-muted-foreground/60")}
+                            title="เลือกสีอื่นเอง"
+                            style={!isPreset ? { background: color } : undefined}
+                        >
+                            {isPreset && <Plus className="absolute inset-0 m-auto w-3.5 h-3.5 text-muted-foreground" />}
+                            <input
+                                type="color"
+                                value={/^#[0-9a-fA-F]{6}$/.test(color) ? color : DEFAULT_LINK_COLOR}
+                                onChange={(e) => onPick(e.target.value, false)}
+                                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                                aria-label="เลือกสีอื่นเอง"
+                            />
+                        </label>
                     </div>
-
-                    <div className="space-y-1">
-                        <label className="text-[11px] font-medium text-muted-foreground">Label บนเส้น (ไม่บังคับ)</label>
-                        <Input
-                            value={label}
-                            onChange={e => setLabel(e.target.value)}
-                            placeholder="เช่น เพราะโดนหักหลัง"
-                            className="h-8 text-xs"
-                        />
-                    </div>
-
-                    <div className="flex items-center justify-between pt-1">
+                    <div className="flex items-center justify-between">
                         <Button variant="ghost" size="sm" className="h-8 text-xs text-red-500 hover:text-red-600 hover:bg-red-500/10" onClick={onDelete}>
                             <X className="w-3.5 h-3.5 mr-1" /> ลบเส้น
                         </Button>
-                        <div className="flex gap-2">
-                            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={onClose}>ยกเลิก</Button>
-                            <Button size="sm" className="h-8 text-xs" onClick={() => onSave({ kind, label: label.trim() || null })}>
-                                <Check className="w-3.5 h-3.5 mr-1" /> บันทึก
-                            </Button>
-                        </div>
+                        <Button variant="outline" size="sm" className="h-8 text-xs" onClick={onClose}>เสร็จ</Button>
                     </div>
                 </div>
             </DialogContent>
@@ -769,65 +747,6 @@ function AddLaneButton({ characters, onAdd }: { characters: any[]; onAdd: (kind:
                             ))}
                         </div>
                     </>
-                )}
-            </PopoverContent>
-        </Popover>
-    );
-}
-
-// จุดบอก "ลักษณะการต่อ" ที่ช่องแคบระหว่างจังหวะ N → N+1 — คลิกเลือกสี/ข้อความ (ไม่ผูกกับการ์ดใบไหน)
-function JoinMarker({ boundary, join, kinds, onChange }: {
-    boundary: number;
-    join?: BeatJoin;
-    kinds: JoinKind[];
-    onChange: (fromBeat: number, patch: { kind?: string | null; label?: string }) => void;
-}) {
-    const k = join?.kind ? kinds.find((x) => x.key === join.kind) : undefined;
-    const name = `จังหวะ ${boundary + 1} → ${boundary + 2}`;
-    return (
-        <Popover>
-            <PopoverTrigger asChild>
-                <button
-                    className="flex flex-col items-center justify-center gap-0.5 rounded px-1 min-w-0 max-w-full hover:bg-muted/60 transition-colors"
-                    aria-label={`การต่อ ${name}: ${k ? k.name : 'ยังไม่ได้บอก'}`}
-                    title={`${name} · ${k ? k.name : 'ยังไม่ได้บอกลักษณะการต่อ'}${join?.label ? ` · ${join.label}` : ''}`}
-                >
-                    <span
-                        className={cn("h-[18px] w-[18px] rounded-full flex items-center justify-center", !k && "border border-dashed border-muted-foreground/70 text-muted-foreground")}
-                        style={k ? { background: k.color } : undefined}
-                    >
-                        {!k && <Plus className="w-2.5 h-2.5" />}
-                    </span>
-                    {join?.label && <span className="max-w-[80px] truncate text-[9px] leading-none text-muted-foreground">{join.label}</span>}
-                </button>
-            </PopoverTrigger>
-            <PopoverContent side="bottom" align="center" className="w-56 p-3 space-y-2" onKeyDown={(e) => e.stopPropagation()}>
-                <p className="text-xs font-medium">{name}</p>
-                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="ลักษณะการต่อ">
-                    {kinds.map((kd) => (
-                        <button
-                            key={kd.key}
-                            role="radio"
-                            aria-checked={join?.kind === kd.key}
-                            aria-label={kd.name}
-                            title={kd.name}
-                            onClick={() => onChange(boundary, { kind: kd.key })}
-                            className="h-6 w-6 rounded-full border-2 border-transparent transition-transform hover:scale-110 aria-checked:border-foreground"
-                            style={{ background: kd.color }}
-                        />
-                    ))}
-                </div>
-                <p className="text-[11px] text-muted-foreground min-h-[14px]">{k ? k.name + (k.cause ? " · นับเป็นเหตุ-ผล" : "") : "เลือกสีเพื่อบอกว่าสองจังหวะนี้ต่อกันแบบไหน"}</p>
-                <Input
-                    value={join?.label ?? ""}
-                    onChange={(e) => onChange(boundary, { label: e.target.value })}
-                    placeholder="ข้อความ (ไม่บังคับ)"
-                    className="h-7 text-xs"
-                />
-                {(join?.kind || join?.label) && (
-                    <button className="text-[11px] text-muted-foreground hover:text-destructive transition-colors" onClick={() => onChange(boundary, { kind: null, label: "" })}>
-                        ล้างการตั้งค่า
-                    </button>
                 )}
             </PopoverContent>
         </Popover>
@@ -1205,7 +1124,7 @@ export function PlaygroundBoard({
     participantLinks,
     initialSceneRecap = null,
 }: PlaygroundBoardProps) {
-    const [{ lanes, items: initialCardItems, chapters: initialChapters, joins: initialJoins, joinKinds: initialJoinKinds }] = useState(() => buildBoardState(initialItems, ideas));
+    const [{ lanes, items: initialCardItems, chapters: initialChapters, keptNodes: initialKept }] = useState(() => buildBoardState(initialItems, ideas));
     const [lanes_, setLanes] = useState<Lane[]>(lanes);
     // สถานะมุมมองเลน (ไม่บันทึกลง DB): เลนที่พับ + เลนที่เน้น (เลนอื่นจางลง)
     const [collapsedLanes, setCollapsedLanes] = useState<Set<string>>(new Set());
@@ -1214,11 +1133,9 @@ export function PlaygroundBoard({
     const [lockedLanes, setLockedLanes] = useState<Set<string>>(new Set());
     const [boardZoom, setBoardZoom] = useState(BOARD_ZOOM_DEFAULT);
     const [playBeat, setPlayBeat] = useState<number | null>(null);
-    // รอยต่อจังหวะ: ลักษณะการต่อ N→N+1 เป็นสี (เก็บใน canvasData) · เส้นการ์ดเดิมซ่อนเป็นค่าเริ่มต้น (ข้อมูลยังอยู่ครบ)
-    const [beatJoins, setBeatJoins] = useState<BeatJoin[]>(initialJoins);
-    const [joinKinds, setJoinKinds] = useState<JoinKind[]>(initialJoinKinds);
-    const [showJoins, setShowJoins] = useState(initialJoins.length > 0); // รอยต่อจังหวะเป็นตัวเลือกเสริม — ปิดเป็นค่าเริ่มต้น
-    const [showCardLines, setShowCardLines] = useState(true);
+    const [keptNodes, setKeptNodes] = useState<any[]>(initialKept);
+    // สีล่าสุดที่ผู้ใช้เลือก — เส้นใหม่ใช้สีนี้ (เลือกครั้งเดียว ลากต่อได้เลย)
+    const [lastLinkColor, setLastLinkColor] = useState<string>(DEFAULT_LINK_COLOR);
     const [chapters, setChapters] = useState<Chapter[]>(initialChapters);
     const [items, setItems] = useState<any[]>(initialCardItems);
     const [echoFindings, setEchoFindings] = useState<EchoFinding[]>(initialEchoFindings);
@@ -1488,8 +1405,6 @@ export function PlaygroundBoard({
         return m;
     }, [lanes_, items, beatCount]);
 
-    const joinStat = useMemo(() => joinStats(beatJoins, joinKinds, beatCount), [beatJoins, joinKinds, beatCount]);
-    const oldLinkCount = useMemo(() => items.reduce((n, i) => n + ((i.links || []).length), 0), [items]);
 
     // ยังไม่มีจังหวะในฉาก → เลือกได้แค่ "จังหวะใหม่"
     useEffect(() => {
@@ -1551,11 +1466,10 @@ export function PlaygroundBoard({
 
     // Sync เมื่อเปลี่ยนฉาก
     useEffect(() => {
-        const { lanes: newLanes, items: newItems, joins: newJoins, joinKinds: newJoinKinds } = buildBoardState(initialItems);
+        const { lanes: newLanes, items: newItems, keptNodes: newKept } = buildBoardState(initialItems);
         setLanes(newLanes);
         setItems(newItems);
-        setBeatJoins(newJoins);
-        setJoinKinds(newJoinKinds);
+        setKeptNodes(newKept);
         isFirstMount.current = true;
     }, [eventId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1745,7 +1659,7 @@ export function PlaygroundBoard({
             setIsSaving(true);
             const laneNodes = lanes_.map(l => ({ id: l.id, type: 'lane', name: l.name, orderIndex: l.orderIndex, color: l.color, kind: l.kind, characterId: l.characterId ?? null }));
             const chapterNodes = chapters.map(c => ({ id: c.id, type: 'chapter', name: c.name, startBeat: c.startBeat, endBeat: c.endBeat }));
-            const result = await updateTimelineCanvas(eventId, [...items, ...laneNodes, ...chapterNodes, ...joinNodes(beatJoins, joinKinds)]);
+            const result = await updateTimelineCanvas(eventId, [...items, ...laneNodes, ...chapterNodes, ...keptNodes]);
             if (result.success) {
                 setLastSaved(new Date());
                 savePending.current = false; // ยิงพลาดยังถือว่าค้าง — ให้เตือนตอนปิดแท็บต่อไป
@@ -1755,7 +1669,7 @@ export function PlaygroundBoard({
             setIsSaving(false);
         }, 2000);
         return () => clearTimeout(timeoutId);
-    }, [items, lanes_, chapters, beatJoins, joinKinds, eventId]);
+    }, [items, lanes_, chapters, keptNodes, eventId]);
 
     // Linking Handlers
     const linkingStartCount = useRef(0);
@@ -1786,7 +1700,7 @@ export function PlaygroundBoard({
         if (sourceId === targetId) return false;
         if (isLinked(items, sourceId, targetId)) { toast.info("เชื่อมกันอยู่แล้ว"); return false; }
         setItems(prev => isLinked(prev, sourceId, targetId) ? prev : prev.map(item => item.id === sourceId
-            ? { ...item, links: [...(item.links || []), { targetId, kind: "related", label: null }] }
+            ? { ...item, links: [...(item.links || []), { targetId, kind: "related", label: null, color: lastLinkColor }] }
             : item));
         return true;
     };
@@ -1808,82 +1722,17 @@ export function PlaygroundBoard({
         toast.info("ยกเลิกการเชื่อม");
     };
 
-    // ถอนของที่ leads_to ก็อปไปให้ปลายทาง (เฉพาะที่มี copiedVia — ของเก่าก่อนมี marker ไม่แตะ)
-    const stripLeadsToCopies = (item: any, sourceId: string) => {
-        const kept = (item.children || []).filter((c: any) => c.copiedVia !== sourceId);
-        return kept.length === (item.children || []).length ? item : { ...item, children: kept };
-    };
-
+    // ลบเส้น = ลบแค่เส้น (ไม่แตะผู้เข้าร่วมของการ์ดปลายทาง เส้นเก่าที่เคยก๊อปมาให้ถือเป็นข้อมูลปกติของการ์ดไปแล้ว)
     const handleUnlink = (sourceId: string, targetId: string) => {
-        setItems(prev => prev.map(item => {
-            if (item.id === sourceId)
-                return { ...item, links: (item.links || []).filter((l: any) => normalizeLink(l).targetId !== targetId) };
-            if (item.id === targetId) return stripLeadsToCopies(item, sourceId);
-            return item;
-        }));
+        setItems(prev => prev.map(item => item.id === sourceId
+            ? { ...item, links: (item.links || []).filter((l: any) => normalizeLink(l).targetId !== targetId) }
+            : item));
     };
 
-    const handleUpdateLink = (sourceId: string, targetId: string, patch: { kind?: string; label?: string | null }) => {
-        setItems(prev => {
-            const sourceItem = prev.find(i => i.id === sourceId);
-            const targetItem = prev.find(i => i.id === targetId);
-            const oldLink = (sourceItem?.links || []).map(normalizeLink).find((l: CanvasLink) => l.targetId === targetId);
-            const becomesLeadsTo = patch.kind === "leads_to" && oldLink?.kind !== "leads_to";
-            const leavesLeadsTo = !!patch.kind && patch.kind !== "leads_to" && oldLink?.kind === "leads_to";
-
-            let newChildren: any[] = [];
-            if (becomesLeadsTo) {
-                const childrenToCopy = (sourceItem?.children || [])
-                    .filter((c: any) => c.type !== 'location' && c.type !== 'sticky-note')
-                    .map((c: any) => {
-                        // role/บทบาทถูกแก้ที่ detail ต่อการ์ด — ดึงค่าล่าสุดมาใส่ child ที่ก็อป ไม่งั้นได้ role ตอนสร้าง
-                        const d = elementDetailsMap.get(`${sourceId}-${c.type}-${c.referenceId || c.refId || c.id}`);
-                        return { ...c, id: crypto.randomUUID(), role: d?.role || c.role, copiedVia: sourceId };
-                    });
-                const existingRefIds = new Set((targetItem?.children || []).map((c: any) => c.referenceId));
-                newChildren = childrenToCopy.filter((c: any) => {
-                    if (!c.referenceId) {
-                        return !(targetItem?.children || []).some(
-                            (ec: any) => !ec.referenceId && ec.title === c.title && ec.type === c.type
-                        );
-                    }
-                    return !existingRefIds.has(c.referenceId);
-                });
-            }
-
-            const next = prev.map(item => {
-                if (item.id === sourceId) {
-                    return {
-                        ...item,
-                        links: (item.links || []).map((l: any) => {
-                            const n = normalizeLink(l);
-                            return n.targetId === targetId ? { ...n, ...patch } : n;
-                        }),
-                    };
-                }
-                if (item.id === targetId) {
-                    if (leavesLeadsTo) return stripLeadsToCopies(item, sourceId);
-                    return {
-                        ...item,
-                        ...(newChildren.length > 0 ? { children: [...(item.children || []), ...newChildren] } : {}),
-                    };
-                }
-                return item;
-            });
-
-            // ยึด beat ของต้นทาง แล้วดึงทั้งกลุ่ม "เกิดพร้อมกัน" ตามมา
-            return snapSimultaneousBeats(next, [sourceId]);
-        });
-        if (patch.kind === "leads_to") toast.success('ตั้งเป็น "นำไปสู่" — ตัวละครถูกส่งต่อไปการ์ดปลายทาง');
-
-        // "เกิดพร้อมกัน" = อยู่จังหวะเดียวกัน — toast แจ้งผู้ใช้ (beat ถูกย้ายใน setItems ด้านบนแล้ว)
-        if (patch.kind === "simultaneous") {
-            const src = items.find(i => i.id === sourceId);
-            const tgt = items.find(i => i.id === targetId);
-            if (src && tgt && src.beatIndex !== tgt.beatIndex) {
-                toast.success('ตั้งเป็น "เกิดพร้อมกัน" — ย้ายมาอยู่จังหวะเดียวกันแล้ว');
-            }
-        }
+    const handleUpdateLink = (sourceId: string, targetId: string, patch: { color?: string }) => {
+        setItems(prev => prev.map(item => item.id === sourceId
+            ? { ...item, links: (item.links || []).map((l: any) => { const n = normalizeLink(l); return n.targetId === targetId ? { ...n, ...patch } : n; }) }
+            : item));
     };
 
     // Navigator: scroll การ์ดเข้าจอ (ไม่มี pan/zoom แล้ว)
@@ -1988,7 +1837,7 @@ export function PlaygroundBoard({
         toast.success(`แปลงเป็น "${real.name}" แล้ว`);
     }, [items, characters, factions, eventId, novelId]);
 
-    // เรียงลำดับ beat ตาม chain "นำไปสู่" (คงเลนเดิม แค่ปรับคอลัมน์)
+    // เรียงลำดับ beat ตามทิศของเส้นเชื่อม (ต้นทาง→ปลายทาง) คงเลนเดิม แค่ปรับคอลัมน์
     const handleAutoArrange = () => {
         if (items.length === 0) return;
         const prevState = new Map(items.map(i => [i.id, i.beatIndex]));
@@ -1997,7 +1846,6 @@ export function PlaygroundBoard({
         const leadsTo = new Map<string, string[]>();
         ideaItems.forEach(i => {
             const targets = (i.links || []).map(normalizeLink)
-                .filter((l: CanvasLink) => l.kind === 'leads_to')
                 .map((l: CanvasLink) => l.targetId)
                 .filter((tid: string) => ideaItems.some(x => x.id === tid));
             leadsTo.set(i.id, targets);
@@ -2016,14 +1864,8 @@ export function PlaygroundBoard({
         };
         ideaItems.forEach(i => depthOf(i.id));
 
-        // เรียงตาม chain แล้วค่อยดึงคู่ "เกิดพร้อมกัน" กลับมารวมจังหวะ — anchor เรียงตาม
-        // depth ตื้นไปลึก ตัวที่มาก่อนใน chain จึงเป็นคนกำหนดจังหวะของกลุ่ม
-        const anchors = [...depths.entries()].sort((a, b) => a[1] - b[1]).map(([id]) => id);
-        setItems(prev => snapSimultaneousBeats(
-            prev.map(i => i.type === 'idea' && depths.has(i.id) ? { ...i, beatIndex: depths.get(i.id) } : i),
-            anchors,
-        ));
-        toast.success('เรียง beat ตามลำดับ "นำไปสู่" แล้ว', {
+        setItems(prev => prev.map(i => i.type === 'idea' && depths.has(i.id) ? { ...i, beatIndex: depths.get(i.id) } : i));
+        toast.success('เรียงจังหวะตามทิศของเส้นเชื่อมแล้ว', {
             action: {
                 label: 'ย้อนกลับ',
                 onClick: () => setItems(cur => cur.map(i => prevState.has(i.id) ? { ...i, beatIndex: prevState.get(i.id) } : i)),
@@ -2063,9 +1905,6 @@ export function PlaygroundBoard({
         if (next.has(laneId)) next.delete(laneId); else next.add(laneId);
         return next;
     });
-    const handleSetJoin = (fromBeat: number, patch: { kind?: string | null; label?: string }) => {
-        setBeatJoins(prev => setJoin(prev, fromBeat, patch));
-    };
     const toggleLaneLock = (laneId: string) => setLockedLanes(prev => {
         const next = new Set(prev);
         if (next.has(laneId)) next.delete(laneId); else next.add(laneId);
@@ -2122,9 +1961,7 @@ export function PlaygroundBoard({
             const targetId = resolveConnectTarget(over ? String(over.id) : null, sourceId);
             setConnectingSourceId(null);
             setConnectOverId(null);
-            if (targetId && addLink(sourceId, targetId)) {
-                setEditingLink({ sourceId, targetId }); // เปิดเลือกชนิดเส้นทันที
-            }
+            if (targetId) addLink(sourceId, targetId); // ลากปุ๊ปจบ — เส้นใช้สีล่าสุด ไม่เปิดไดอะล็อก
             return;
         }
 
@@ -2170,12 +2007,7 @@ export function PlaygroundBoard({
             if (cellMatch) {
                 const [, laneId, beatIndexStr] = overId.split(':');
                 const beatIndex = Number(beatIndexStr);
-                // การ์ดที่ผูก "เกิดพร้อมกัน" ต้องย้ายจังหวะตามไปด้วย ไม่งั้นคู่แยกคอลัมน์
-                // แล้วเส้นจะไปตกที่ตัววาดแบบ cross-beat ที่ลากยาวข้ามการ์ดอื่น
-                setItems(prev => snapSimultaneousBeats(
-                    prev.map(item => item.id === active.id ? { ...item, laneId, beatIndex } : item),
-                    [String(active.id)],
-                ));
+                setItems(prev => prev.map(item => item.id === active.id ? { ...item, laneId, beatIndex } : item));
             }
             return;
         }
@@ -2258,8 +2090,6 @@ export function PlaygroundBoard({
             totalItems: items.length,
             chapters,          // ตอน (ช่วงจังหวะ)
             lanes: lanes_,
-            beatJoins,         // ลักษณะการต่อระหว่างจังหวะ (สี/ข้อความ)
-            joinKinds,         // ชื่อสี + ธงเหตุ-ผล ของกระดานนี้
             items: items.map(item => ({
                 id: item.id,
                 type: item.type,
@@ -2308,7 +2138,6 @@ export function PlaygroundBoard({
             event: event ?? { id: eventId },
             items,
             lanes: lanes_,
-            ...(beatJoins.length > 0 ? { joins: beatJoins, joinKinds } : {}),
             threads: threadState,
             eventId,
             elementDetails: elementDetailsMap,
@@ -2636,24 +2465,14 @@ export function PlaygroundBoard({
             }
         });
 
-        // เส้นหลายเส้นที่รวมเข้าการ์ดเดียวกันใช้บัสร่วมกัน ช่วงท้ายจึงทับกันสนิท —
-        // ป้ายชนิดเดียวกันซ้ำที่เดิมไม่ได้บอกอะไรเพิ่ม วาดครั้งเดียวพอ
-        // (ป้ายที่ผู้ใช้พิมพ์เองไม่ถือว่าซ้ำ ต่อให้ตกตำแหน่งเดียวกัน)
-        const drawn = new Set<string>();
-        return built.map(({ e, points }) => {
-            const a = labelAnchor(points);
-            const key = `${e.link.kind}@${Math.round(a.x / 8)},${Math.round(a.y / 8)}`;
-            const duplicate = !e.link.label && drawn.has(key);
-            if (!e.link.label) drawn.add(key);
-            return (
-                <OrthoLine
-                    key={`${e.sourceId}-${e.targetId}`}
-                    points={points}
-                    kind={e.link.kind} label={e.link.label} hideLabel={duplicate}
-                    onClick={() => setEditingLink({ sourceId: e.sourceId, targetId: e.targetId })}
-                />
-            );
-        });
+        return built.map(({ e, points }) => (
+            <OrthoLine
+                key={`${e.sourceId}-${e.targetId}`}
+                points={points}
+                color={linkColor(e.link)}
+                onClick={() => setEditingLink({ sourceId: e.sourceId, targetId: e.targetId })}
+            />
+        ));
     })();
 
     const ancestorLines = ancestorConnections.map(conn => {
@@ -2911,17 +2730,6 @@ export function PlaygroundBoard({
 
                         <div className="flex-1" />
 
-                        {!isMobile && (
-                            <button
-                                onClick={() => setShowJoins(v => !v)}
-                                aria-pressed={showJoins}
-                                title="แสดง/ซ่อนตัวบอกลักษณะการต่อระหว่างจังหวะ (จุดสีที่ช่องระหว่างจังหวะ)"
-                                className={cn("h-8 rounded-full border px-3 text-xs transition-colors", showJoins ? "border-border bg-muted text-foreground" : "border-dashed border-border text-muted-foreground hover:text-foreground")}
-                            >
-                                การต่อจังหวะ
-                            </button>
-                        )}
-
                         {/* ซูมกระดานแนวนอน/แนวตั้งพร้อมกัน — แบบไทม์ไลน์ตัดต่อ */}
                         {!isMobile && (
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -3025,49 +2833,6 @@ export function PlaygroundBoard({
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </div>
-
-                    {!isMobile && showJoins && (
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border/60 bg-muted/20 px-3 py-1.5 text-xs">
-                            <span className="text-muted-foreground shrink-0" title="จุดวงกลมที่ช่องระหว่างจังหวะ = ลักษณะการต่อของสองจังหวะนั้น">การต่อจังหวะ</span>
-                            {joinKinds.map((k) => (
-                                <span key={k.key} className="inline-flex items-center gap-1.5">
-                                    <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: k.color }} />
-                                    <input
-                                        value={k.name}
-                                        onChange={(e) => setJoinKinds(prev => prev.map(x => x.key === k.key ? { ...x, name: e.target.value } : x))}
-                                        onBlur={(e) => { if (!e.target.value.trim()) setJoinKinds(prev => prev.map(x => x.key === k.key ? { ...x, name: normalizeJoinName(k.key) } : x)); }}
-                                        className="w-[78px] bg-transparent border-b border-transparent hover:border-border focus:border-[var(--forge-amber)]/60 focus:outline-none text-xs"
-                                        aria-label={`ชื่อสี ${k.name}`}
-                                    />
-                                    <label className="inline-flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer" title="นับรอยต่อสีนี้เป็นการต่อแบบเหตุ-ผล">
-                                        <input type="checkbox" checked={k.cause} onChange={(e) => setJoinKinds(prev => prev.map(x => x.key === k.key ? { ...x, cause: e.target.checked } : x))} />
-                                        เหตุ-ผล
-                                    </label>
-                                </span>
-                            ))}
-                            <span className="flex-1" />
-                            {joinStat.boundaries > 0 && (
-                                <span className="text-muted-foreground" aria-live="polite">
-                                    ยังไม่บอก {joinStat.unset}/{joinStat.boundaries}
-                                    {joinStat.longestNonCauseRun >= 3 && (
-                                        <span className="ml-2 text-amber-700 dark:text-amber-400" title="รอยต่อที่ไม่ใช่เหตุ-ผลต่อกันหลายจุด อ่านแล้วเป็น 'แล้วก็…'">
-                                            ไม่มีเหตุ-ผลติดกัน {joinStat.longestNonCauseRun} รอยต่อ
-                                        </span>
-                                    )}
-                                </span>
-                            )}
-                            {oldLinkCount > 0 && (
-                                <button
-                                    onClick={() => setShowCardLines(v => !v)}
-                                    aria-pressed={showCardLines}
-                                    className={cn("rounded-full border px-2.5 py-0.5 text-[11px] transition-colors", showCardLines ? "border-border bg-muted text-foreground" : "border-dashed border-border text-muted-foreground hover:text-foreground")}
-                                    title="เส้นเชื่อมระหว่างการ์ดแบบเดิม (ข้อมูลยังอยู่ครบ ซ่อนไว้เป็นค่าเริ่มต้น)"
-                                >
-                                    เส้นการ์ดเดิม {oldLinkCount}
-                                </button>
-                            )}
-                        </div>
-                    )}
 
                     {!isMobile && playBeat !== null && playBeat < beatCount && (
                         <div className="flex items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-1.5 text-xs" aria-live="polite">
@@ -3209,14 +2974,6 @@ export function PlaygroundBoard({
                                             style={{ gridColumn: beatGridCol(beatIndex) + 1, gridRow: 2, width: GUTTER_WIDTH }}
                                             className="sticky top-0 z-20 bg-muted/20 border-b border-border/30 flex items-center justify-center"
                                         >
-                                            {showJoins && beatIndex < beatCount - 1 && (
-                                                <JoinMarker
-                                                    boundary={beatIndex}
-                                                    join={beatJoins.find(j => j.fromBeat === beatIndex)}
-                                                    kinds={joinKinds}
-                                                    onChange={handleSetJoin}
-                                                />
-                                            )}
                                         </div>
                                     )}
                                 </Fragment>
@@ -3291,15 +3048,7 @@ export function PlaygroundBoard({
                                             {beatIndex < totalColumns - 1 && (
                                                 <div
                                                     key={`gutter-${beatIndex}`}
-                                                    style={{
-                                                        gridColumn: beatGridCol(beatIndex) + 1, gridRow: laneIndex + 3, width: GUTTER_WIDTH, background: hexA(laneColor, 0.05),
-                                                        // แถบสีของลักษณะการต่อพาดผ่านทุกเลน (inset shadow ซ้อนทับ ไม่ใช้ gradient)
-                                                        boxShadow: (() => {
-                                                            if (!showJoins || beatIndex >= beatCount - 1) return undefined;
-                                                            const jk = joinKinds.find(k => k.key === beatJoins.find(j => j.fromBeat === beatIndex)?.kind);
-                                                            return jk ? `inset 0 0 0 999px ${hexA(jk.color, 0.16)}` : undefined;
-                                                        })(),
-                                                    }}
+                                                    style={{ gridColumn: beatGridCol(beatIndex) + 1, gridRow: laneIndex + 3, width: GUTTER_WIDTH, background: hexA(laneColor, 0.05) }}
                                                     className={cn("border-b border-border/30", collapsedLanes.has(lane.id) ? "min-h-[36px]" : "min-h-[140px]", soloLaneId !== null && soloLaneId !== lane.id && "opacity-40")}
                                                 />
                                             )}
@@ -3332,7 +3081,7 @@ export function PlaygroundBoard({
                                 className="absolute inset-0 pointer-events-none"
                                 style={{ width: '100%', height: '100%', overflow: 'visible', zIndex: 10 }}
                             >
-                                {(showCardLines || !showJoins) && connections}
+                                {connections}
                                 {ancestorLines}
                             </svg>
                         </div>
@@ -3371,11 +3120,11 @@ export function PlaygroundBoard({
                 const link = (src?.links || []).map(normalizeLink).find((l: CanvasLink) => l.targetId === editingLink.targetId);
                 if (!src || !tgt || !link) return null;
                 return (
-                    <LinkEditDialog
+                    <LinkColorDialog
                         sourceTitle={src.title}
                         targetTitle={tgt.title}
-                        link={link}
-                        onSave={(patch) => { handleUpdateLink(editingLink.sourceId, editingLink.targetId, patch); setEditingLink(null); }}
+                        color={linkColor(link)}
+                        onPick={(c, close) => { handleUpdateLink(editingLink.sourceId, editingLink.targetId, { color: c }); setLastLinkColor(c); if (close) setEditingLink(null); }}
                         onDelete={() => { handleUnlink(editingLink.sourceId, editingLink.targetId); setEditingLink(null); toast.success("ลบเส้นเชื่อมแล้ว"); }}
                         onClose={() => setEditingLink(null)}
                     />

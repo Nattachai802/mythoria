@@ -1,6 +1,5 @@
 // Run: npx tsx lib/story-format.test.ts
 import { buildSceneFormat, renderSceneMarkdown, FORMAT_VERSION, type SceneFormatInput } from "./story-format";
-import type { JoinKind } from "./beat-joins";
 
 function assert(cond: boolean, msg: string) {
     if (!cond) throw new Error("FAIL: " + msg);
@@ -169,7 +168,7 @@ assert(md.includes("ปมทั้งหมดที่ผ่านฉากน
 assert(md.includes("ปมที่ยังไม่เฉลย:"), "dangling threads section");
 assert(md.includes("ปมศัตรูลึกลับ"), "dangling thread name");
 
-assert(md.includes("นำไปสู่ → [C03]"), "link rendered with kind label");
+assert(md.includes("- [C03]"), "link rendered without kind label");
 assert(md.includes("(สาเหตุ)"), "link label in parentheses");
 
 assert(md.includes("โน้ตของนักเขียน:"), "notes section");
@@ -360,20 +359,5 @@ const flatFmt = buildSceneFormat(makeInput({
     }],
 }));
 assert(flatFmt.beats[0].participants.every(p => p.depth === 0), "no world data = flat list");
-
-// ── รอยต่อจังหวะ (beat joins) ──
-const joinKinds: JoinKind[] = [
-    { key: "cause", color: "#000000", name: "เหตุ→ผล", cause: true },
-    { key: "flow", color: "#111111", name: "ต่อเนื่อง", cause: false },
-];
-const noJoins = buildSceneFormat(makeInput());
-assert(noJoins.transitions === undefined && noJoins.beats.every(b => !("causeIn" in b)), "no join data = no transitions/causeIn fields");
-const withJoins = buildSceneFormat(makeInput({ joins: [{ fromBeat: 0, kind: "cause", label: "ศึกเริ่ม" }], joinKinds }));
-assert(withJoins.beats.find(b => b.beatIndex === 1)!.causeIn === true, "beat after a cause-flagged boundary has causeIn");
-assert(withJoins.beats.filter(b => b.beatIndex === 0).every(b => b.causeIn === false), "first beat has no cause-in");
-assert(withJoins.transitions!.length === 1 && withJoins.transitions![0].toBeat === 1 && withJoins.transitions![0].cause === true, "transitions exported");
-assert(renderSceneMarkdown(withJoins).includes("จังหวะ 1 → 2: เหตุ→ผล (เหตุ-ผล) — ศึกเริ่ม"), "markdown lists transitions");
-const flowOnly = buildSceneFormat(makeInput({ joins: [{ fromBeat: 0, kind: "flow" }], joinKinds }));
-assert(flowOnly.beats.find(b => b.beatIndex === 1)!.causeIn === false, "non-cause boundary = no cause-in");
 
 console.log("\n✅ All tests passed");
