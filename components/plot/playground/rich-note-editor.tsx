@@ -67,6 +67,9 @@ export function RichNoteEditor({
     mention: {
       allowedChars: /^[\p{L}\p{N}_ .()]*$/u, // ชื่อไทย + วงเล็บแบบ "สมาชิกทีม(ฝ่ายปัดเป่า)"
       mentionDenotationChars: ["@"],
+      // รายการ @ ลอยบน body (position: fixed) ไม่ใช่ใน editor — ไม่งั้นโดนขอบแผงที่เลื่อน/ตัดอยู่ครอบ
+      positioningStrategy: "fixed",
+      mentionContainerClass: "ql-mention-list-container rich-note-mention",
       dataAttributes: ["id", "value", "group"],
       showDenotationChar: true,
       source: (term: string, renderList: (items: unknown[], term: string) => void) => {
@@ -119,7 +122,6 @@ export function RichNoteEditor({
         "[&_.ql-editor_p]:!mb-0.5 [&_.ql-editor_p+p]:!mt-0 " +
         "[&_.ql-editor.ql-blank::before]:!not-italic [&_.ql-editor.ql-blank::before]:!font-[inherit] [&_.ql-editor.ql-blank::before]:!left-2.5 " +
         "[&_.ql-toolbar]:!px-1.5 [&_.ql-toolbar]:!py-1 [&_.ql-toolbar_button]:!h-5 [&_.ql-toolbar_button]:!w-5 [&_.ql-toolbar_button]:!p-0.5 " +
-        "[&_.ql-mention-list-container]:!text-xs [&_.ql-mention-list-item]:!h-auto [&_.ql-mention-list-item]:!py-1 [&_.ql-mention-list-item]:!leading-snug " +
         "[&_.ql-toolbar]:!border-0 [&_.ql-toolbar]:!border-b [&_.ql-toolbar]:!border-border/40 [&_.ql-container]:!border-0"
       }
       style={tint ? { background: `${tint}1a`, borderColor: `${tint}4d` } : undefined}
@@ -129,7 +131,8 @@ export function RichNoteEditor({
         if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); onSubmit(); }
       }}
       onKeyDown={(e) => {
-        const listOpen = (e.currentTarget.querySelector(".ql-mention-list-container") as HTMLElement | null)?.style.display === "block";
+        // รายการ @ อยู่บน body แล้ว (ไม่อยู่ใน wrapper นี้) — เปิดอยู่เมื่อ node ยังติดอยู่ใน DOM (ปิดแล้วถูก remove)
+        const listOpen = !!document.querySelector(".rich-note-mention");
         if (e.key === "Escape" && !listOpen) onCancel();
       }}
     >

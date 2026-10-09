@@ -777,3 +777,24 @@
     stroke-dashoffset: 0;
   }
 }
+
+/* รายการ @ ในโน้ตการ์ด (quill-mention, positioningStrategy: fixed → อยู่บน body นอกแผง) */
+.rich-note-mention {
+  width: 240px;
+  max-height: 260px;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.14);
+  font-size: 12px;
+}
+.rich-note-mention .ql-mention-list-item {
+  height: auto;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.rich-note-mention .ql-mention-list-item.selected {
+  background: var(--accent);
+}

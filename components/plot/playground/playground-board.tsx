@@ -31,11 +31,11 @@ import { SceneElementDetails } from "@/db/schema";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Link2, X, Check, Download, List, Navigation, StickyNote, GitBranchPlus, Lightbulb, Loader2, Sprout, LayoutGrid, Rows3, Repeat, Target, FileText, Sparkles, Activity } from "lucide-react";
+import { MoreHorizontal, ChevronDown, ArrowUp, ArrowDown, Eye, Lock, LockOpen, Plus, Link2, X, Check, Download, List, Navigation, StickyNote, GitBranchPlus, Lightbulb, Loader2, Sprout, LayoutGrid, Rows3, Repeat, Target, FileText, Sparkles, Activity } from "lucide-react";
 import { CreateIdeaDialog } from "@/components/project/idea/create-idea-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { createPortal } from "react-dom";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
@@ -85,12 +85,29 @@ interface PlaygroundBoardProps {
     initialSceneRecap?: { recap: string; causality?: CausalityVerdict; causalityNote?: string } | null;
 }
 
+// ชนิดเลน — ให้เลนมีความหมาย (เรื่องหลัก/รอง/มุมมองตัวละคร/ไทม์ไลน์) ไม่ใช่แค่แถวว่าง · เลนเก่าไม่มี kind = อิสระ
+type LaneKind = 'main' | 'sub' | 'pov' | 'time' | 'free';
+const LANE_KINDS: { key: LaneKind; label: string; hint: string }[] = [
+    { key: 'main', label: 'เรื่องหลัก', hint: 'เส้นเรื่องหลักของฉาก (A-plot)' },
+    { key: 'sub', label: 'เรื่องรอง', hint: 'เส้นเรื่องรองที่ไหลคู่กัน (B/C-plot)' },
+    { key: 'pov', label: 'มุมมองตัวละคร', hint: 'เล่าผ่านสายตาตัวละครคนหนึ่ง' },
+    { key: 'time', label: 'ไทม์ไลน์', hint: 'ช่วงเวลา เช่น อดีต/ปัจจุบัน' },
+    { key: 'free', label: 'อิสระ', hint: 'ไม่กำหนดความหมาย' },
+];
+const laneKindLabel = (k?: LaneKind) => LANE_KINDS.find((x) => x.key === (k ?? 'free'))?.label ?? 'อิสระ';
+// เลนเงียบ: ไม่มีการ์ดต่อเนื่องเท่านี้จังหวะ (ภายในช่วงจังหวะของฉาก) ถึงจะเตือน
+const LANE_GAP_WARN = 3;
+
 interface Lane {
     id: string;
     name: string;
     orderIndex: number;
     color?: string;
+    kind?: LaneKind;
+    characterId?: string | null;
 }
+
+interface LaneStats { count: number; longestGap: number; gapStart: number }
 
 // สีเลน — เลือกได้เพื่อแยกเลนด้วยตา
 const LANE_COLORS = ["#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#f43f5e", "#f97316", "#14b8a6", "#64748b"];
@@ -114,7 +131,7 @@ interface Chapter {
 const COLUMN_WIDTH = 280;
 const LABEL_WIDTH = 150;
 const GUTTER_WIDTH = Math.round(COLUMN_WIDTH / 3); // ช่องแคบระหว่างจังหวะ ให้เส้นเชื่อมวิ่งผ่าน
-const BOARD_ZOOM = 0.8; // ponytail: native zoom out ~20% เพื่อเห็นภาพรวม, ปรับเป็น 1 ถ้าจะคืนขนาดจริง
+const BOARD_ZOOM_DEFAULT = 0.8; // ponytail: native zoom out ~20% เพื่อเห็นภาพรวม, ปรับเป็น 1 ถ้าจะคืนขนาดจริง
 const beatGridCol = (beatIndex: number) => beatIndex * 2 + 2; // คอลัมน์การ์ด (เว้นช่องกัตเตอร์แทรกทุกจังหวะ)
 
 // ---- Canvas link (P-canvas): เส้นเชื่อมมีชนิด/label ----
@@ -132,7 +149,7 @@ const SCENE_DRAMA_FIELDS = ["sceneType", "sceneTone", "pacing", "sceneGoal", "sc
 function buildBoardState(initialItems: any[], ideasList: any[] = []): { lanes: Lane[]; items: any[]; chapters: Chapter[] } {
     const laneItems = initialItems.filter((i: any) => i.type === 'lane');
     let lanes: Lane[] = laneItems
-        .map((l: any) => ({ id: l.id, name: l.name || 'เลน', orderIndex: l.orderIndex ?? 0, color: l.color }))
+        .map((l: any) => ({ id: l.id, name: l.name || 'เลน', orderIndex: l.orderIndex ?? 0, color: l.color, kind: l.kind, characterId: l.characterId ?? null }))
         .sort((a, b) => a.orderIndex - b.orderIndex);
 
     // "ตอน" — กรอบครอบช่วงจังหวะ (เฉพาะบอร์ดนี้) เก็บเป็น node type 'chapter'
@@ -553,71 +570,224 @@ function ThreadSuggestToast({
 }
 
 // ---- Storyboard grid: เลน (แถว) x จังหวะ/beat (คอลัมน์) ----
-function LaneLabel({ lane, laneIndex, color, onRename, onRemove, onSetColor, canRemove }: {
+function LaneLabel({ lane, laneIndex, laneCount, color, stats, collapsed, locked, soloActive, isSolo, characters, onRename, onRemove, onSetColor, onSetKind, onMove, onToggleCollapse, onToggleSolo, onToggleLock, canRemove }: {
     lane: Lane;
     laneIndex: number;
+    laneCount: number;
     color: string;
+    stats: LaneStats;
+    collapsed: boolean;
+    locked: boolean;
+    soloActive: boolean;
+    isSolo: boolean;
+    characters: any[];
     onRename: (id: string, name: string) => void;
     onRemove: (id: string) => void;
     onSetColor: (id: string, color: string) => void;
+    onSetKind: (id: string, kind: LaneKind, characterId?: string | null) => void;
+    onMove: (id: string, dir: -1 | 1) => void;
+    onToggleCollapse: (id: string) => void;
+    onToggleSolo: (id: string) => void;
+    onToggleLock: (id: string) => void;
     canRemove: boolean;
 }) {
+    const kind = lane.kind ?? 'free';
+    const boundChar = lane.characterId ? characters.find((c: any) => c.id === lane.characterId) : null;
+    const silent = stats.count > 0 && stats.longestGap >= LANE_GAP_WARN;
     return (
         <div
             style={{ gridColumn: 1, gridRow: laneIndex + 3, width: LABEL_WIDTH, borderLeft: `3px solid ${color}` }}
-            className="sticky left-0 z-20 bg-muted/60 backdrop-blur-sm border-r border-b border-border/60 flex items-start gap-1 px-2.5 py-2.5 min-h-[140px]"
+            className={cn(
+                "sticky left-0 z-20 bg-muted/60 backdrop-blur-sm border-r border-b border-border/60 px-2 py-2 transition-opacity duration-200 motion-reduce:transition-none",
+                collapsed ? "min-h-[36px]" : "min-h-[140px]",
+                soloActive && !isSolo && "opacity-40"
+            )}
         >
-            <Popover>
-                <PopoverTrigger asChild>
-                    <button
-                        className="mt-[7px] h-2.5 w-2.5 rounded-full shrink-0 ring-offset-1 hover:ring-2 hover:ring-offset-background transition-shadow"
-                        style={{ background: color }}
-                        title="เปลี่ยนสีเลน"
-                    />
-                </PopoverTrigger>
-                <PopoverContent align="start" className="w-auto p-2">
-                    <div className="flex flex-wrap gap-1.5 max-w-[132px]">
-                        {LANE_COLORS.map(c => (
-                            <button
-                                key={c}
-                                onClick={() => onSetColor(lane.id, c)}
-                                className="h-5 w-5 rounded-full flex items-center justify-center transition-transform hover:scale-110"
-                                style={{ background: c, outline: lane.color === c ? `2px solid ${c}` : "none", outlineOffset: 2 }}
-                            >
-                                {lane.color === c && <Check className="h-3 w-3 text-white" />}
-                            </button>
-                        ))}
-                    </div>
-                </PopoverContent>
-            </Popover>
-            <input
-                value={lane.name}
-                onChange={e => onRename(lane.id, e.target.value)}
-                className="flex-1 min-w-0 bg-transparent text-sm font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-[var(--forge-amber)]/40 rounded px-1 py-0.5 transition-shadow"
-                placeholder="ชื่อเลน…"
-            />
-            {canRemove && (
-                <button onClick={() => onRemove(lane.id)} className="text-muted-foreground hover:text-destructive shrink-0 mt-0.5" title="ลบเลน">
-                    <X className="w-3 h-3" />
+            <div className="flex items-center gap-1">
+                <Popover>
+                    <PopoverTrigger asChild>
+                        <button
+                            className="h-2.5 w-2.5 rounded-full shrink-0 ring-offset-1 hover:ring-2 hover:ring-offset-background transition-shadow"
+                            style={{ background: color }}
+                            title="เปลี่ยนสีเลน"
+                            aria-label="เปลี่ยนสีเลน"
+                        />
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-auto p-2">
+                        <div className="flex flex-wrap gap-1.5 max-w-[132px]">
+                            {LANE_COLORS.map(c => (
+                                <button
+                                    key={c}
+                                    onClick={() => onSetColor(lane.id, c)}
+                                    className="h-5 w-5 rounded-full flex items-center justify-center transition-transform hover:scale-110"
+                                    style={{ background: c, outline: lane.color === c ? `2px solid ${c}` : "none", outlineOffset: 2 }}
+                                >
+                                    {lane.color === c && <Check className="h-3 w-3 text-white" />}
+                                </button>
+                            ))}
+                        </div>
+                    </PopoverContent>
+                </Popover>
+                <input
+                    value={lane.name}
+                    onChange={e => onRename(lane.id, e.target.value)}
+                    className="flex-1 min-w-0 bg-transparent text-sm font-semibold text-foreground focus:outline-none focus:ring-1 focus:ring-[var(--forge-amber)]/40 rounded px-1 py-0.5 transition-shadow"
+                    placeholder="ชื่อเลน…"
+                    aria-label="ชื่อเลน"
+                />
+                <button
+                    onClick={() => onToggleCollapse(lane.id)}
+                    className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                    title={collapsed ? "กางเลน" : "พับเลน"}
+                    aria-label={collapsed ? "กางเลน" : "พับเลน"}
+                    aria-expanded={!collapsed}
+                >
+                    <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-200 motion-reduce:transition-none", collapsed && "-rotate-90")} />
                 </button>
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <button className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="การกระทำของเลน" aria-label="การกระทำของเลน">
+                            <MoreHorizontal className="w-3.5 h-3.5" />
+                        </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-56">
+                        <DropdownMenuLabel className="text-[11px] font-normal text-muted-foreground">ชนิดเลน</DropdownMenuLabel>
+                        {LANE_KINDS.filter((k) => k.key !== 'pov').map((k) => (
+                            <DropdownMenuItem key={k.key} onSelect={() => onSetKind(lane.id, k.key, null)}>
+                                <span className="flex-1">{k.label}</span>
+                                {kind === k.key && <Check className="w-3.5 h-3.5 text-muted-foreground" />}
+                            </DropdownMenuItem>
+                        ))}
+                        {characters.length > 0 && (
+                            <>
+                                <DropdownMenuLabel className="text-[11px] font-normal text-muted-foreground">มุมมองตัวละคร (POV)</DropdownMenuLabel>
+                                <div className="max-h-40 overflow-y-auto">
+                                    {characters.map((c: any) => (
+                                        <DropdownMenuItem key={c.id} onSelect={() => onSetKind(lane.id, 'pov', c.id)}>
+                                            <span className="flex-1 truncate">{c.name}</span>
+                                            {kind === 'pov' && lane.characterId === c.id && <Check className="w-3.5 h-3.5 text-muted-foreground" />}
+                                        </DropdownMenuItem>
+                                    ))}
+                                </div>
+                            </>
+                        )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onSelect={() => onToggleSolo(lane.id)}>
+                            <Eye className="w-3.5 h-3.5 mr-2" />
+                            {isSolo ? "เลิกเน้นเลนนี้" : "เน้นเลนนี้เลน"}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem disabled={laneIndex === 0} onSelect={() => onMove(lane.id, -1)}>
+                            <ArrowUp className="w-3.5 h-3.5 mr-2" />ย้ายขึ้น
+                        </DropdownMenuItem>
+                        <DropdownMenuItem disabled={laneIndex === laneCount - 1} onSelect={() => onMove(lane.id, 1)}>
+                            <ArrowDown className="w-3.5 h-3.5 mr-2" />ย้ายลง
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-destructive focus:text-destructive" disabled={!canRemove} onSelect={() => onRemove(lane.id)}>
+                            <X className="w-3.5 h-3.5 mr-2" />ลบเลน
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
+            <p className="mt-1 pl-4 text-[11px] leading-snug text-muted-foreground">
+                {kind === 'pov' && boundChar ? `POV ${boundChar.name}` : kind !== 'free' ? laneKindLabel(kind) : null}
+                {kind !== 'free' && (kind !== 'pov' || boundChar) ? " · " : null}
+                {stats.count > 0 ? `${stats.count} การ์ด` : "ยังไม่มีการ์ด"}
+            </p>
+            {!collapsed && (
+                <div className="mt-1.5 pl-3 flex items-center gap-1">
+                    <button
+                        onClick={() => onToggleSolo(lane.id)}
+                        aria-pressed={isSolo}
+                        title={isSolo ? "เลิกเน้นเลนนี้" : "เน้นเลนนี้เลน (Solo)"}
+                        aria-label="เน้นเลนนี้เลน"
+                        className={cn("h-5 w-5 rounded text-[11px] font-medium transition-colors", isSolo ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground hover:bg-muted")}
+                    >S</button>
+                    <button
+                        onClick={() => onToggleLock(lane.id)}
+                        aria-pressed={locked}
+                        title={locked ? "ปลดล็อกเลน" : "ล็อกเลน (กันลากการ์ดพลาด)"}
+                        aria-label="ล็อกเลน"
+                        className={cn("h-5 w-5 rounded flex items-center justify-center transition-colors", locked ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground hover:bg-muted")}
+                    >{locked ? <Lock className="w-3 h-3" /> : <LockOpen className="w-3 h-3" />}</button>
+                </div>
+            )}
+            {!collapsed && silent && (
+                <p
+                    className="mt-0.5 pl-4 text-[11px] leading-snug text-amber-700 dark:text-amber-400"
+                    title={`เลนนี้ไม่มีการ์ดต่อเนื่อง ${stats.longestGap} จังหวะ (จังหวะที่ ${stats.gapStart + 1}–${stats.gapStart + stats.longestGap})`}
+                >
+                    เงียบ {stats.longestGap} จังหวะ
+                </p>
             )}
         </div>
     );
 }
 
-function BeatCell({ laneId, beatIndex, laneIndex, isTrailing, laneColor, isDrafting, onAddIdea, children }: {
+// ปุ่มเพิ่มเลน — เลือกชนิดก่อน (ถ้า POV เลือกตัวละครต่อ) แล้วเติมชื่อ/สีให้
+function AddLaneButton({ characters, onAdd }: { characters: any[]; onAdd: (kind: LaneKind, characterId?: string | null) => void }) {
+    const [open, setOpen] = useState(false);
+    const [pickPov, setPickPov] = useState(false);
+    const close = () => { setOpen(false); setPickPov(false); };
+    return (
+        <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setPickPov(false); }}>
+            <PopoverTrigger asChild>
+                <button
+                    className="w-full flex items-center justify-center gap-1.5 py-2 text-[11px] text-muted-foreground hover:text-[var(--forge-amber)] border border-dashed border-border/50 hover:border-[var(--forge-amber)]/50 chamfered-sm transition-colors"
+                >
+                    <Rows3 className="w-3.5 h-3.5" />เพิ่มเลน
+                </button>
+            </PopoverTrigger>
+            <PopoverContent side="right" align="start" className="w-60 p-1">
+                {!pickPov ? (
+                    <>
+                        <p className="px-2 pt-1.5 pb-1 text-[11px] text-muted-foreground">เลนนี้ไว้ทำอะไร</p>
+                        {LANE_KINDS.map((k) => (
+                            <button
+                                key={k.key}
+                                className="w-full text-left px-2 py-1.5 rounded hover:bg-muted transition-colors disabled:opacity-50"
+                                disabled={k.key === 'pov' && characters.length === 0}
+                                onClick={() => { if (k.key === 'pov') setPickPov(true); else { onAdd(k.key); close(); } }}
+                            >
+                                <span className="block text-xs font-medium">{k.label}</span>
+                                <span className="block text-[11px] text-muted-foreground">{k.hint}</span>
+                            </button>
+                        ))}
+                    </>
+                ) : (
+                    <>
+                        <button className="px-2 pt-1.5 pb-1 text-[11px] text-muted-foreground hover:text-foreground" onClick={() => setPickPov(false)}>← เลือกชนิดเลน</button>
+                        <div className="max-h-56 overflow-y-auto">
+                            {characters.map((c: any) => (
+                                <button key={c.id} className="w-full text-left px-2 py-1.5 rounded text-xs hover:bg-muted transition-colors truncate" onClick={() => { onAdd('pov', c.id); close(); }}>
+                                    {c.name}
+                                </button>
+                            ))}
+                        </div>
+                    </>
+                )}
+            </PopoverContent>
+        </Popover>
+    );
+}
+
+function BeatCell({ laneId, beatIndex, laneIndex, isTrailing, laneColor, isDrafting, collapsed, dimmed, locked, onAddIdea, children }: {
     laneId: string;
     beatIndex: number;
     laneIndex: number;
     isTrailing: boolean;
     laneColor: string;
     isDrafting?: boolean;
+    collapsed?: boolean;
+    dimmed?: boolean;
+    locked?: boolean;
     onAddIdea?: () => void;
     children: React.ReactNode;
 }) {
     const { setNodeRef, isOver } = useDroppable({
         id: `cell:${laneId}:${beatIndex}`,
         data: { acceptsCell: true, laneId, beatIndex },
+        disabled: locked,
     });
 
     return (
@@ -630,12 +800,14 @@ function BeatCell({ laneId, beatIndex, laneIndex, isTrailing, laneColor, isDraft
                 background: isOver ? undefined : hexA(laneColor, 0.05),
             }}
             className={cn(
-                "group/cell min-h-[140px] p-1.5 border-r border-b flex flex-col gap-1.5 transition-colors",
+                "group/cell p-1.5 border-r border-b flex flex-col gap-1.5 transition-colors",
+                collapsed ? "min-h-[36px] overflow-hidden" : "min-h-[140px]",
+                dimmed && "opacity-40",
                 isTrailing ? "border-dashed border-border/40" : "border-border/40",
                 isOver && "bg-[var(--forge-amber)]/8 ring-1 ring-inset ring-[var(--forge-amber)]/40"
             )}
         >
-            {isTrailing && !isDrafting && (
+            {isTrailing && !isDrafting && !collapsed && (
                 <button
                     onClick={(e) => { e.stopPropagation(); onAddIdea?.(); }}
                     onPointerDown={(e) => e.stopPropagation()}
@@ -972,6 +1144,13 @@ export function PlaygroundBoard({
 }: PlaygroundBoardProps) {
     const [{ lanes, items: initialCardItems, chapters: initialChapters }] = useState(() => buildBoardState(initialItems, ideas));
     const [lanes_, setLanes] = useState<Lane[]>(lanes);
+    // สถานะมุมมองเลน (ไม่บันทึกลง DB): เลนที่พับ + เลนที่เน้น (เลนอื่นจางลง)
+    const [collapsedLanes, setCollapsedLanes] = useState<Set<string>>(new Set());
+    const [soloLaneId, setSoloLaneId] = useState<string | null>(null);
+    // แบบแทร็กวิดีโอ: ล็อกเลน (ลากการ์ดเข้า/ออกไม่ได้) · ซูมกระดาน · หัวอ่าน (จังหวะที่กำลังดู)
+    const [lockedLanes, setLockedLanes] = useState<Set<string>>(new Set());
+    const [boardZoom, setBoardZoom] = useState(BOARD_ZOOM_DEFAULT);
+    const [playBeat, setPlayBeat] = useState<number | null>(null);
     const [chapters, setChapters] = useState<Chapter[]>(initialChapters);
     const [items, setItems] = useState<any[]>(initialCardItems);
     const [echoFindings, setEchoFindings] = useState<EchoFinding[]>(initialEchoFindings);
@@ -1179,12 +1358,12 @@ export function PlaygroundBoard({
         itemRefs.current.forEach((el, id) => {
             const r = el.getBoundingClientRect();
             // SVG overlay อยู่ใน subtree ที่โดน zoom เดียวกัน หน่วยของมันเลยถูกย่อไปแล้ว
-            // ต้องหารด้วย BOARD_ZOOM กลับเป็นหน่วย local ก่อนเอาไปวาด path ไม่งั้นเส้นจะเพี้ยนซ้อน
+            // ต้องหารด้วย boardZoom กลับเป็นหน่วย local ก่อนเอาไปวาด path ไม่งั้นเส้นจะเพี้ยนซ้อน
             next.set(id, {
-                x: (r.left - containerRect.left + r.width / 2) / BOARD_ZOOM,
-                y: (r.top - containerRect.top + r.height / 2) / BOARD_ZOOM,
-                w: r.width / BOARD_ZOOM,
-                h: r.height / BOARD_ZOOM,
+                x: (r.left - containerRect.left + r.width / 2) / boardZoom,
+                y: (r.top - containerRect.top + r.height / 2) / boardZoom,
+                w: r.width / boardZoom,
+                h: r.height / boardZoom,
             });
         });
         // ponytail: พิกัดเท่าเดิม → คืน state ตัวเดิม ไม่งั้น Map ใหม่ทุกครั้ง = re-render ทุกครั้ง
@@ -1201,12 +1380,12 @@ export function PlaygroundBoard({
             }
             return next;
         });
-    }, []);
+    }, [boardZoom]);
 
     // การ์ดสูงขึ้นหลัง note/children/ancestor โหลด async → ต้องวัดใหม่ ไม่งั้น anchor ค้างที่กึ่งกลางเก่า (เลื่อนไปด้านบน)
     useLayoutEffect(() => {
         recomputePositions();
-    }, [items, lanes_, chapters, ideaNotes, elementDetailsMap, ancestorConnections, recomputePositions]);
+    }, [items, lanes_, chapters, ideaNotes, elementDetailsMap, ancestorConnections, collapsedLanes, recomputePositions]);
 
     useEffect(() => {
         const ro = new ResizeObserver(() => recomputePositions());
@@ -1222,6 +1401,24 @@ export function PlaygroundBoard({
         [items]
     );
     const totalColumns = beatCount + 1;
+
+    // สถิติเลน: จำนวนการ์ด + ช่วงจังหวะว่างติดกันที่ยาวสุด (นับเฉพาะ 0..beatCount-1 ของฉากนี้)
+    const laneStats = useMemo(() => {
+        const m = new Map<string, LaneStats>();
+        lanes_.forEach(lane => {
+            const mine = items.filter(i => i.laneId === lane.id);
+            const occupied = new Set<number>(mine.map(i => i.beatIndex).filter((b: any) => typeof b === 'number'));
+            let longest = 0, start = 0, run = 0, runStart = 0;
+            for (let b = 0; b < beatCount; b++) {
+                if (occupied.has(b)) { run = 0; continue; }
+                if (run === 0) runStart = b;
+                run++;
+                if (run > longest) { longest = run; start = runStart; }
+            }
+            m.set(lane.id, { count: mine.length, longestGap: longest, gapStart: start });
+        });
+        return m;
+    }, [lanes_, items, beatCount]);
 
     // ยังไม่มีจังหวะในฉาก → เลือกได้แค่ "จังหวะใหม่"
     useEffect(() => {
@@ -1473,7 +1670,7 @@ export function PlaygroundBoard({
         savePending.current = true;
         const timeoutId = setTimeout(async () => {
             setIsSaving(true);
-            const laneNodes = lanes_.map(l => ({ id: l.id, type: 'lane', name: l.name, orderIndex: l.orderIndex, color: l.color }));
+            const laneNodes = lanes_.map(l => ({ id: l.id, type: 'lane', name: l.name, orderIndex: l.orderIndex, color: l.color, kind: l.kind, characterId: l.characterId ?? null }));
             const chapterNodes = chapters.map(c => ({ id: c.id, type: 'chapter', name: c.name, startBeat: c.startBeat, endBeat: c.endBeat }));
             const result = await updateTimelineCanvas(eventId, [...items, ...laneNodes, ...chapterNodes]);
             if (result.success) {
@@ -1761,9 +1958,44 @@ export function PlaygroundBoard({
         });
     };
 
-    const handleAddLane = () => {
-        setLanes(prev => [...prev, { id: crypto.randomUUID(), name: `เลน ${prev.length + 1}`, orderIndex: prev.length, color: LANE_COLORS[prev.length % LANE_COLORS.length] }]);
+    // ชื่อเริ่มต้นตามชนิดเลน — ผู้ใช้แก้ได้ทีหลัง (POV ใช้ชื่อตัวละคร)
+    const handleAddLane = (kind: LaneKind = 'free', characterId?: string | null) => {
+        setLanes(prev => {
+            const nth = prev.filter(l => (l.kind ?? 'free') === kind).length + 1;
+            const charName = characterId ? characters.find((c: any) => c.id === characterId)?.name : undefined;
+            const name = kind === 'pov' ? `POV ${charName ?? ''}`.trim()
+                : kind === 'main' ? (nth === 1 ? 'เรื่องหลัก' : `เรื่องหลัก ${nth}`)
+                : kind === 'sub' ? `เรื่องรอง ${nth}`
+                : kind === 'time' ? `ไทม์ไลน์ ${nth}`
+                : `เลน ${prev.length + 1}`;
+            return [...prev, { id: crypto.randomUUID(), name, orderIndex: prev.length, color: LANE_COLORS[prev.length % LANE_COLORS.length], kind, characterId: kind === 'pov' ? (characterId ?? null) : null }];
+        });
     };
+    const handleSetLaneKind = (laneId: string, kind: LaneKind, characterId?: string | null) => {
+        setLanes(prev => prev.map(l => l.id === laneId ? { ...l, kind, characterId: kind === 'pov' ? (characterId ?? null) : null } : l));
+    };
+    const handleMoveLane = (laneId: string, dir: -1 | 1) => {
+        setLanes(prev => {
+            const i = prev.findIndex(l => l.id === laneId);
+            const j = i + dir;
+            if (i < 0 || j < 0 || j >= prev.length) return prev;
+            const next = [...prev];
+            [next[i], next[j]] = [next[j], next[i]];
+            return next.map((l, idx) => ({ ...l, orderIndex: idx }));
+        });
+        toast.info('เลขการ์ด #LBBN เปลี่ยนตามลำดับเลน');
+    };
+    const toggleLaneCollapse = (laneId: string) => setCollapsedLanes(prev => {
+        const next = new Set(prev);
+        if (next.has(laneId)) next.delete(laneId); else next.add(laneId);
+        return next;
+    });
+    const toggleLaneLock = (laneId: string) => setLockedLanes(prev => {
+        const next = new Set(prev);
+        if (next.has(laneId)) next.delete(laneId); else next.add(laneId);
+        return next;
+    });
+    const toggleLaneSolo = (laneId: string) => setSoloLaneId(cur => cur === laneId ? null : laneId);
     const handleRenameLane = (laneId: string, name: string) => {
         setLanes(prev => prev.map(l => l.id === laneId ? { ...l, name } : l));
     };
@@ -2600,6 +2832,23 @@ export function PlaygroundBoard({
 
                         <div className="flex-1" />
 
+                        {/* ซูมกระดานแนวนอน/แนวตั้งพร้อมกัน — แบบไทม์ไลน์ตัดต่อ */}
+                        {!isMobile && (
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <span>ซูม</span>
+                                <Slider
+                                    className="w-24"
+                                    min={50}
+                                    max={120}
+                                    step={5}
+                                    value={[Math.round(boardZoom * 100)]}
+                                    onValueChange={([v]) => setBoardZoom(v / 100)}
+                                    aria-label="ซูมกระดาน"
+                                />
+                                <span className="tabular-nums w-9">{Math.round(boardZoom * 100)}%</span>
+                            </div>
+                        )}
+
                         {/* สถานะบันทึก — autosave debounce 2 วิ ทำงานอยู่แล้ว ไม่มีปุ่ม Save */}
                         <span className="text-xs text-muted-foreground tabular-nums" aria-live="polite">
                             {isSaving ? "กำลังบันทึก…" : lastSaved ? "บันทึกแล้ว" : ""}
@@ -2687,6 +2936,22 @@ export function PlaygroundBoard({
                         </DropdownMenu>
                     </div>
 
+                    {!isMobile && playBeat !== null && playBeat < beatCount && (
+                        <div className="flex items-center gap-3 border-b border-border/60 bg-muted/30 px-3 py-1.5 text-xs" aria-live="polite">
+                            <span className="font-technical text-[10px] uppercase tracking-[0.12em] text-muted-foreground shrink-0">หัวอ่าน · จังหวะ {String(playBeat + 1).padStart(2, "0")}</span>
+                            <span className="flex-1 min-w-0 truncate">
+                                {(() => {
+                                    const parts = lanes_
+                                        .map(l => ({ l, cards: items.filter(i => i.laneId === l.id && i.beatIndex === playBeat) }))
+                                        .filter(x => x.cards.length > 0)
+                                        .map(x => `${x.l.name}: ${x.cards.map(c => c.title).join(', ')}`);
+                                    return parts.length ? parts.join(' · ') : 'ไม่มีการ์ดในจังหวะนี้';
+                                })()}
+                            </span>
+                            <button onClick={() => setPlayBeat(null)} className="shrink-0 text-muted-foreground hover:text-foreground" aria-label="ซ่อนหัวอ่าน" title="ซ่อนหัวอ่าน"><X className="w-3.5 h-3.5" /></button>
+                        </div>
+                    )}
+
                     {isMobile ? (
                         <MobilePlotList
                             items={items}
@@ -2705,7 +2970,7 @@ export function PlaygroundBoard({
                                 gridTemplateColumns: `${LABEL_WIDTH}px ${Array.from({ length: totalColumns }).map((_, i) => i < totalColumns - 1 ? `${COLUMN_WIDTH}px ${GUTTER_WIDTH}px` : `${COLUMN_WIDTH}px`).join(' ')}`,
                                 gridTemplateRows: `30px 36px repeat(${lanes_.length}, auto)`,
                                 width: 'max-content',
-                                zoom: BOARD_ZOOM,
+                                zoom: boardZoom,
                             }}
                         >
                             {/* Chapter band row (ตอน) — gridRow 1 */}
@@ -2783,8 +3048,16 @@ export function PlaygroundBoard({
                                 <Fragment key={`beat-head-${beatIndex}`}>
                                     <div
                                         style={{ gridColumn: beatGridCol(beatIndex), gridRow: 2, width: COLUMN_WIDTH }}
+                                        onClick={beatIndex !== beatCount ? () => setPlayBeat(cur => cur === beatIndex ? null : beatIndex) : undefined}
+                                        onKeyDown={beatIndex !== beatCount ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPlayBeat(cur => cur === beatIndex ? null : beatIndex); } } : undefined}
+                                        role={beatIndex !== beatCount ? "button" : undefined}
+                                        tabIndex={beatIndex !== beatCount ? 0 : undefined}
+                                        aria-pressed={beatIndex !== beatCount ? playBeat === beatIndex : undefined}
+                                        title={beatIndex !== beatCount ? "คลิกเพื่อวางหัวอ่านที่จังหวะนี้" : undefined}
                                         className={cn(
                                             "sticky top-0 z-20 bg-background border-r border-b border-border/60 flex items-center justify-center gap-1.5",
+                                            beatIndex !== beatCount && "cursor-pointer hover:bg-muted/40 transition-colors",
+                                            playBeat === beatIndex && "bg-[var(--forge-amber)]/15",
                                             beatIndex === beatCount && "border-dashed"
                                         )}
                                     >
@@ -2814,10 +3087,22 @@ export function PlaygroundBoard({
                                     <LaneLabel
                                         lane={lane}
                                         laneIndex={laneIndex}
+                                        laneCount={lanes_.length}
                                         color={laneColor}
+                                        stats={laneStats.get(lane.id) ?? { count: 0, longestGap: 0, gapStart: 0 }}
+                                        collapsed={collapsedLanes.has(lane.id)}
+                                        locked={lockedLanes.has(lane.id)}
+                                        soloActive={soloLaneId !== null}
+                                        isSolo={soloLaneId === lane.id}
+                                        characters={characters}
                                         onRename={handleRenameLane}
                                         onRemove={handleRemoveLane}
                                         onSetColor={handleSetLaneColor}
+                                        onSetKind={handleSetLaneKind}
+                                        onMove={handleMoveLane}
+                                        onToggleCollapse={toggleLaneCollapse}
+                                        onToggleSolo={toggleLaneSolo}
+                                        onToggleLock={toggleLaneLock}
                                         canRemove={lanes_.length > 1}
                                     />
                                     {Array.from({ length: totalColumns }).map((_, beatIndex) => {
@@ -2830,13 +3115,16 @@ export function PlaygroundBoard({
                                                 laneIndex={laneIndex}
                                                 isTrailing={beatIndex === beatCount}
                                                 laneColor={laneColor}
+                                                collapsed={collapsedLanes.has(lane.id)}
+                                                locked={lockedLanes.has(lane.id)}
+                                                dimmed={soloLaneId !== null && soloLaneId !== lane.id}
                                                 isDrafting={
                                                     (draftCell?.laneId === lane.id && draftCell?.beatIndex === beatIndex) ||
                                                     (creatingCell?.laneId === lane.id && creatingCell?.beatIndex === beatIndex)
                                                 }
                                                 onAddIdea={() => setDraftCell({ laneId: lane.id, beatIndex })}
                                             >
-                                                {cellItems.map(item => renderCard(item))}
+                                                {!collapsedLanes.has(lane.id) && cellItems.map(item => renderCard(item, lockedLanes.has(lane.id)))}
 
                                                 {/* สร้างไอเดีย inline: การ์ดร่าง → skeleton ระหว่างรอ → ปุ่ม + (โผล่ตอน hover ช่อง) */}
                                                 {creatingCell?.laneId === lane.id && creatingCell?.beatIndex === beatIndex ? (
@@ -2848,7 +3136,7 @@ export function PlaygroundBoard({
                                                         onPick={(idea) => handlePickExistingIdea({ laneId: lane.id, beatIndex }, idea)}
                                                         unusedIdeas={unusedIdeas}
                                                     />
-                                                ) : beatIndex !== beatCount ? (
+                                                ) : beatIndex !== beatCount && !collapsedLanes.has(lane.id) ? (
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); setDraftCell({ laneId: lane.id, beatIndex }); }}
                                                         onPointerDown={(e) => e.stopPropagation()}
@@ -2862,7 +3150,7 @@ export function PlaygroundBoard({
                                                 <div
                                                     key={`gutter-${beatIndex}`}
                                                     style={{ gridColumn: beatGridCol(beatIndex) + 1, gridRow: laneIndex + 3, width: GUTTER_WIDTH, background: hexA(laneColor, 0.05) }}
-                                                    className="min-h-[140px] border-b border-border/30"
+                                                    className={cn("border-b border-border/30", collapsedLanes.has(lane.id) ? "min-h-[36px]" : "min-h-[140px]", soloLaneId !== null && soloLaneId !== lane.id && "opacity-40")}
                                                 />
                                             )}
                                         </Fragment>
@@ -2877,13 +3165,17 @@ export function PlaygroundBoard({
                                 style={{ gridColumn: 1, gridRow: lanes_.length + 3, width: LABEL_WIDTH }}
                                 className="sticky left-0 z-20 bg-muted/40 backdrop-blur-sm border-r border-b border-border/60 p-1.5"
                             >
-                                <button
-                                    onClick={handleAddLane}
-                                    className="w-full flex items-center justify-center gap-1.5 py-2 text-[11px] text-muted-foreground hover:text-[var(--forge-amber)] border border-dashed border-border/50 hover:border-[var(--forge-amber)]/50 chamfered-sm transition-colors"
-                                >
-                                    <Rows3 className="w-3.5 h-3.5" />เพิ่มเลน
-                                </button>
+                                <AddLaneButton characters={characters} onAdd={handleAddLane} />
                             </div>
+
+                            {/* หัวอ่าน — เส้นตั้งผ่านทุกเลนที่จังหวะที่เลือก */}
+                            {playBeat !== null && playBeat < beatCount && (
+                                <div
+                                    aria-hidden="true"
+                                    className="absolute top-0 bottom-0 w-0.5 bg-[var(--forge-amber)] pointer-events-none z-[15]"
+                                    style={{ left: LABEL_WIDTH + playBeat * (COLUMN_WIDTH + GUTTER_WIDTH) + COLUMN_WIDTH / 2 }}
+                                />
+                            )}
 
                             {/* เส้นเชื่อม overlay */}
                             <svg
