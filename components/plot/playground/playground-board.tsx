@@ -2325,6 +2325,34 @@ export function PlaygroundBoard({
             });
         }
 
+        // ขาแนวนอนช่วงที่ i ผ่ากลางการ์ดที่ไม่เกี่ยว → ยกไปวิ่งเหนือ/ใต้กลุ่มที่ขวาง (ฝั่งที่อ้อมน้อยกว่า)
+        // ถ้าขานั้นติดการ์ดต้น/ปลาย ยื่นออก GAP ก่อนค่อยหัก ไม่ให้ขาแนวตั้งเลียบขอบการ์ด
+        // ponytail: อ้อมชั้นเดียว — ขาที่ยกไปแล้วอาจชนการ์ดเลนข้างเคียงได้อีก ถ้าเจอบ่อยค่อยทำ routing ในร่องเลน
+        const detourH = (points: Array<{ x: number; y: number }>, i: number, e: typeof edges[number]) => {
+            const a = points[i], c = points[i + 1];
+            if (Math.abs(a.y - c.y) > 0.5) return points;
+            const x0 = Math.min(a.x, c.x), x1 = Math.max(a.x, c.x);
+            const blockers = [...linkPositions.entries()].filter(([id, p]) =>
+                id !== e.sourceId && id !== e.targetId &&
+                p.x + p.w / 2 > x0 && p.x - p.w / 2 < x1 &&
+                a.y > p.y - p.h / 2 && a.y < p.y + p.h / 2).map(([, p]) => p);
+            if (!blockers.length) return points;
+            const above = Math.min(...blockers.map(p => p.y - p.h / 2)) - 8;
+            const below = Math.max(...blockers.map(p => p.y + p.h / 2)) + 8;
+            const midY = Math.abs(above - a.y) <= Math.abs(below - a.y) ? above : below;
+            const dir = Math.sign(c.x - a.x) || 1;
+            const first = i === 0, last = i + 1 === points.length - 1;
+            const sx = first ? a.x + dir * GAP : a.x;
+            const ex = last ? c.x - dir * GAP : c.x;
+            return [
+                ...points.slice(0, i),
+                ...(first ? [a, { x: sx, y: a.y }] : []),
+                { x: sx, y: midY }, { x: ex, y: midY },
+                ...(last ? [{ x: ex, y: c.y }, c] : []),
+                ...points.slice(i + 2),
+            ];
+        };
+
         const built = edges.map((e) => {
             const converge = (inCount.get(e.targetId) ?? 0) > 1; // รวมเข้า target
             const split = !converge && (outCount.get(e.sourceId) ?? 0) > 1; // แตกจาก source (mirror)
@@ -2348,6 +2376,8 @@ export function PlaygroundBoard({
                     bY = entryY(targetMergeY.get(e.targetId)!, e.tPos, idx, n); }
                 else { busX = aX + dir * (GAP + busOffset); aY = entryY(sourceMergeY.get(e.sourceId)!, e.sPos, idx, n); bY = e.tPos.y; }
                 points = [{ x: aX, y: aY }, { x: busX, y: aY }, { x: busX, y: bY }, { x: bX, y: bY }];
+                // ขาแนวนอนยาว: converge = ขาออกจากต้นทาง (ช่วง 0), split = ขาเข้าปลายทาง (ช่วง 2)
+                points = detourH(points, converge ? 0 : 2, e);
             } else if (sItem && tItem && sItem.beatIndex === tItem.beatIndex && (() => {
                 // การ์ดอยู่ซ้อนกันในคอลัมน์เดียว และไม่มีการ์ดอื่นคั่นกลาง → เส้นดิ่งสั้น ๆ จากขอบล่างลงขอบบน
                 // (เดิมออกขวาแล้ววนเข้าขวา เป็นห่วงรูปตัว C ยึกยัก)

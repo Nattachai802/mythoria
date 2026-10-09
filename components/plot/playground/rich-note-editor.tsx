@@ -65,7 +65,7 @@ export function RichNoteEditor({
   const modules = useMemo(() => ({
     toolbar: [["bold", "italic", "strike"], [{ list: "bullet" }, { list: "ordered" }]],
     mention: {
-      allowedChars: /^[\p{L}\p{N}_ .()]*$/u, // ชื่อไทย + วงเล็บแบบ "สมาชิกทีม(ฝ่ายปัดเป่า)"
+      allowedChars: /^[\p{L}\p{M}\p{N}_ .()]*$/u, // \p{M} = สระบน/ล่าง + วรรณยุกต์ไทย · ชื่อไทย + วงเล็บแบบ "สมาชิกทีม(ฝ่ายปัดเป่า)"
       mentionDenotationChars: ["@"],
       // รายการ @ ลอยบน body (position: fixed) ไม่ใช่ใน editor — ไม่งั้นโดนขอบแผงที่เลื่อน/ตัดอยู่ครอบ
       positioningStrategy: "fixed",
