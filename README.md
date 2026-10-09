@@ -4,7 +4,7 @@
 
 **Mythoria** คือแพลตฟอร์มเขียนนิยายยุคใหม่ที่รวมพลัง Project Management + AI อัจฉริยะ + World Building เข้าไว้ในที่เดียว ออกแบบมาสำหรับนักเขียนที่ต้องการเครื่องมือจริงจัง ไม่ใช่แค่ Text Editor ทั่วไป
 
-> **Current Version: `v2.8.0`** — เลนบนกระดานมีความหมายและควบคุมได้
+> **Current Version: `v2.8.1`** — การ์ดบนกระดานเตี้ยลง
 >
 > ประวัติเวอร์ชันทั้งหมดดูที่ [CHANGELOG.md](CHANGELOG.md) — แก้ที่ `lib/changelog.ts` แล้วรัน `npm run changelog`
 >

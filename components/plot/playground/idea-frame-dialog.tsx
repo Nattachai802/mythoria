@@ -204,7 +204,7 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
       <PopoverTrigger asChild>
       <Card
         className={cn(
-          widthClass, "bg-card overflow-hidden cursor-pointer border shadow-sm hover:shadow-md transition-all duration-200 p-0",
+          widthClass, "bg-card overflow-hidden cursor-pointer border shadow-sm hover:shadow-md transition-all duration-200 p-0 gap-0",
           isOver && "ring-2 ring-[var(--forge-amber)] ring-offset-1",
           isLinkingSource && "ring-2 ring-blue-500 ring-offset-1",
           isKeyMoment && "ring-1 ring-amber-400/60 shadow-[0_0_14px_-2px] shadow-amber-500/40",
