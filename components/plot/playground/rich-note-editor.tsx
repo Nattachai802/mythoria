@@ -238,7 +238,7 @@ export function NoteView({ raw, renderPlain }: { raw: string; renderPlain: (text
   return <div className="space-y-0.5">{out}</div>;
 }
 
-/** โน้ตยาว: ตัดที่ ~6 บรรทัด + "ดูเพิ่ม" (วัดจริงหลัง render ไม่เดาจากจำนวนตัวอักษร) */
+/** โน้ตยาว: ตัดที่ ~3 บรรทัด + "ดูเพิ่ม" (วัดจริงหลัง render ไม่เดาจากจำนวนตัวอักษร) */
 export function ClampedNote({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -249,7 +249,7 @@ export function ClampedNote({ children }: { children: ReactNode }) {
   });
   return (
     <>
-      <div ref={ref} className={open ? "" : "max-h-[8.5rem] overflow-hidden"}>{children}</div>
+      <div ref={ref} className={open ? "" : "max-h-[3.1rem] overflow-hidden"}>{children}</div>
       {overflowing && (
         <button
           type="button"

@@ -1091,7 +1091,7 @@ function IdeaFrameDialog({
       onOpenAutoFocus={(e) => e.preventDefault()}
       onInteractOutside={handleInteractOutside}
       ref={contentRef}
-      className="pointer-events-auto w-[420px] max-w-[92vw] max-h-[var(--radix-popover-content-available-height)] flex flex-col overflow-hidden p-0"
+      className="pointer-events-auto w-[340px] max-w-[92vw] max-h-[min(var(--radix-popover-content-available-height),70vh)] flex flex-col overflow-hidden p-0"
       style={floatAt ? {
         // absolute ไม่ใช่ fixed — กล่องนอกของ Radix มี transform อยู่ มันเลยกลายเป็น
         // containing block ของ fixed ทำให้ left/top แบบพิกัดจอเพี้ยนกระเด็นไปไกล
@@ -1104,7 +1104,7 @@ function IdeaFrameDialog({
       } : undefined}
     >
         <FilmSprockets count={15} />
-        <div className="px-4 pt-3 pb-2 shrink-0">
+        <div className="px-3 pt-2.5 pb-2 shrink-0">
           <div
             className={cn(
               "flex items-center gap-1.5 text-left -mx-1 px-1 rounded touch-none select-none",
@@ -1132,11 +1132,11 @@ function IdeaFrameDialog({
                   if (e.key === "Enter") { e.preventDefault(); commitTitle(); }
                   if (e.key === "Escape") { e.preventDefault(); setTitleDraft(item.title ?? ""); setEditingTitle(false); }
                 }}
-                className="flex-1 min-w-0 bg-transparent text-[15px] font-medium border-b border-[var(--forge-amber)]/60 focus:outline-none"
+                className="flex-1 min-w-0 bg-transparent text-sm font-medium border-b border-[var(--forge-amber)]/60 focus:outline-none"
               />
             ) : (
               <span
-                className={`text-[15px] font-medium flex-1 min-w-0 truncate ${onRenameIdea ? "cursor-text hover:text-[var(--forge-amber)] transition-colors" : ""}`}
+                className={`text-sm font-medium flex-1 min-w-0 truncate ${onRenameIdea ? "cursor-text hover:text-[var(--forge-amber)] transition-colors" : ""}`}
                 data-no-drag
                 title={onRenameIdea ? "กดเพื่อแก้ชื่อ" : undefined}
                 onClick={onRenameIdea ? () => { setTitleDraft(item.title ?? ""); setEditingTitle(true); } : undefined}
@@ -1306,16 +1306,16 @@ function IdeaFrameDialog({
         {/* ส่วนที่เลื่อนได้ — หัวแผง (ดาว/เมนู/ปิด) อยู่นอกกล่องนี้ จึงไม่เลื่อนหายตอนโน้ตยาว */}
         <div className="min-h-0 flex-1 overflow-y-auto">
         {item.content && typeof item.content === 'string' && (
-          <p className="px-4 pb-2 text-[13px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{item.content}</p>
+          <p className="px-3 pb-2 text-xs text-muted-foreground leading-snug whitespace-pre-wrap">{item.content}</p>
         )}
 
         {/* ดราม่า — พับได้ (กางเมื่อมีข้อมูล) · animate ความสูงด้วย grid-rows ไม่แตะ layout property อื่น */}
-        <div className="px-4">
+        <div className="px-3">
           <button
             type="button"
             onClick={() => setDramaOpen((o) => !o)}
             aria-expanded={dramaOpen}
-            className="w-full flex items-center gap-2 border-t border-border/60 py-2 text-left text-[13px] transition-colors hover:text-foreground"
+            className="w-full flex items-center gap-2 border-t border-border/60 py-1.5 text-left text-xs transition-colors hover:text-foreground"
           >
             <span className="font-medium">ดราม่า</span>
             <span className={cn("flex-1 min-w-0 truncate text-xs text-muted-foreground transition-opacity duration-150 motion-reduce:transition-none", dramaOpen && "opacity-0")}>
@@ -1330,7 +1330,7 @@ function IdeaFrameDialog({
             <div className="min-h-0 overflow-hidden">
               <div className="space-y-2 pb-3">
                 {hasDrama ? (
-                  <dl className="grid grid-cols-[72px_1fr] gap-x-2.5 gap-y-1 text-[13px] leading-relaxed">
+                  <dl className="grid grid-cols-[64px_1fr] gap-x-2 gap-y-0.5 text-xs leading-snug">
                     {item.sceneGoal && (<><dt className="text-xs text-muted-foreground pt-px">{shortLabel(dramaCfg.field1Label)}</dt><dd>{item.sceneGoal}</dd></>)}
                     {item.sceneConflict && (<><dt className="text-xs text-muted-foreground pt-px">{shortLabel(dramaCfg.field2Label)}</dt><dd>{item.sceneConflict}</dd></>)}
                     {dramaOutcome && (<><dt className="text-xs text-muted-foreground pt-px">ผลลัพธ์</dt><dd className={dramaOutcome.cls}>{dramaOutcome.label}</dd></>)}
@@ -1402,7 +1402,7 @@ function IdeaFrameDialog({
               tabIndex={tab === key ? 0 : -1}
               onClick={() => setTab(key)}
               className={cn(
-                "py-2 text-[13px] transition-colors duration-150 motion-reduce:transition-none",
+                "py-1.5 text-xs transition-colors duration-150 motion-reduce:transition-none",
                 tab === key ? "text-foreground font-medium" : "text-muted-foreground hover:text-foreground"
               )}
             >
@@ -1419,7 +1419,7 @@ function IdeaFrameDialog({
           />
         </div>
 
-        <div key={tab} role="tabpanel" className="px-4 py-3 space-y-4 animate-in fade-in slide-in-from-bottom-1 duration-200 motion-reduce:animate-none">
+        <div key={tab} role="tabpanel" className="px-3 py-2.5 space-y-3 animate-in fade-in slide-in-from-bottom-1 duration-200 motion-reduce:animate-none">
           {/* องค์ประกอบในไอเดีย — เดิมเป็นลิสต์แบนแยกกอง ตอนนี้ผูกกันเป็นชั้นได้ (P-nest) */}
           {tab === "people" && treeRoots.length > 0 && (
             <div className="space-y-1">
@@ -1459,7 +1459,7 @@ function IdeaFrameDialog({
               ) : !quickNoteOpen ? (
                 <button
                   onClick={() => { setEditingNoteId(null); setQuickNote(""); setNoteBaseline(""); setQuickNoteKind(null); setQuickNoteTpl("plain"); setNoteTplBaseline("plain"); setConfirmDeleteNote(false); setQuickNoteOpen(true); }}
-                  className="flex items-center gap-1.5 w-full rounded-md border border-dashed border-border/70 px-2.5 py-2 text-[13px] text-muted-foreground hover:text-foreground hover:border-border transition-colors"
+                  className="flex items-center gap-1.5 w-full rounded-md border border-dashed border-border/70 px-2.5 py-2 text-xs text-muted-foreground hover:text-foreground hover:border-border transition-colors"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   เพิ่มโน้ต
@@ -1491,7 +1491,7 @@ function IdeaFrameDialog({
                       setDraggedNoteId(null);
                     }}
                     className={cn(
-                      "group/note relative flex gap-2.5 border-b border-border/40 px-1 py-2.5 text-[13px] leading-relaxed cursor-pointer transition-colors duration-700 hover:bg-muted/40",
+                      "group/note relative flex gap-2 border-b border-border/40 px-1 py-2 text-xs leading-snug cursor-pointer transition-colors duration-700 hover:bg-muted/40",
                       draggedNoteId === note.id && "opacity-40",
                       flashNoteId === note.id && "bg-[var(--forge-amber)]/15"
                     )}
