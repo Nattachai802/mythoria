@@ -98,3 +98,25 @@ export function noteToPlain(raw: string | null | undefined): string {
 
 /** ใช้ตรวจว่าโน้ตว่างไหม (Delta ว่างยังมี "\n" หนึ่งตัว) */
 export const noteIsEmpty = (raw: string | null | undefined) => noteToPlain(raw).trim() === "";
+
+/** โน้ตแบบ "ทั่วไป" ที่มี 2+ บรรทัดขึ้นต้นด้วย @ชื่อ — ให้เสนอสลับเป็นรูปแบบบทสนทนา (ไม่สลับเอง) */
+export function looksLikeDialogue(raw: string | null | undefined): boolean {
+    if (!raw || noteTemplate(raw) !== "plain") return false;
+    const delta = parseDelta(raw);
+    if (!delta) return raw.split("\n").filter((l) => /^\s*@\S/.test(l)).length >= 2;
+    let atStart = true;
+    let n = 0;
+    for (const op of delta.ops) {
+        if (typeof op.insert !== "string") {
+            if (atStart && op.insert?.mention?.value) n++;
+            atStart = false;
+            continue;
+        }
+        const parts = op.insert.split("\n");
+        parts.forEach((part, i) => {
+            if (part.trim()) atStart = false;
+            if (i < parts.length - 1) atStart = true;
+        });
+    }
+    return n >= 2;
+}

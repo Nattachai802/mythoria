@@ -1,4 +1,4 @@
-import { noteToPlain, isRichNote, noteIsEmpty, plainToDelta, legacyToDelta, noteTemplate, withTemplate } from "./note-text.ts";
+import { noteToPlain, isRichNote, noteIsEmpty, plainToDelta, legacyToDelta, noteTemplate, withTemplate, looksLikeDialogue } from "./note-text.ts";
 import assert from "node:assert/strict";
 
 const rich = JSON.stringify({
@@ -28,4 +28,12 @@ assert.equal(noteToPlain(dlg), noteToPlain(rich)); // template ไม่กร�
 assert.equal(noteTemplate(withTemplate(dlg, "plain", [])), "plain");
 assert.equal(withTemplate("โน้ตเก่า", "plain", []), "โน้ตเก่า"); // เลือกทั่วไป + plain = ไม่แตะ
 assert.equal(noteToPlain(withTemplate("@สมชาย พูด", "dialogue", names)), "@สมชาย พูด"); // plain → dialogue แล้วข้อความเดิม
+const m = (id: string, value: string) => ({ insert: { mention: { id, value, denotationChar: "@" } } });
+const two = JSON.stringify({ ops: [m("a", "ก"), { insert: " พูด\n" }, m("b", "ข"), { insert: " ตอบ\n" }] });
+assert.equal(looksLikeDialogue(two), true); // 2 บรรทัดขึ้นต้นด้วยชิป
+assert.equal(looksLikeDialogue(withTemplate(two, "dialogue", [])), false); // เลือกบทสนทนาแล้วไม่ต้องเสนอ
+assert.equal(looksLikeDialogue(JSON.stringify({ ops: [m("a", "ก"), { insert: " พูด แล้วเจอ " }, m("b", "ข"), { insert: "\n" }] })), false); // ชิปกลางประโยคไม่นับ
+assert.equal(looksLikeDialogue(JSON.stringify({ ops: [m("a", "ก"), { insert: " พูด\n" }] })), false); // บรรทัดเดียว
+assert.equal(looksLikeDialogue("@ก พูด\n@ข ตอบ"), true); // โน้ตเก่า plain
+assert.equal(looksLikeDialogue("ข้อความธรรมดา @ก"), false);
 console.log("note-text.check ok");

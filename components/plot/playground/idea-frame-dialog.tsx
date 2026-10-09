@@ -20,8 +20,8 @@ import {
 import Link from "next/link";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { noteToPlain, noteIsEmpty, noteTemplate, withTemplate, NOTE_TEMPLATES, type NoteTemplate } from "@/lib/note-text";
-import { RichNoteEditor, NoteView } from "./rich-note-editor";
+import { noteToPlain, noteIsEmpty, noteTemplate, withTemplate, looksLikeDialogue, NOTE_TEMPLATES, type NoteTemplate } from "@/lib/note-text";
+import { RichNoteEditor, NoteView, ClampedNote } from "./rich-note-editor";
 import { SceneElementDetails } from "@/db/schema";
 import { SceneParticipantsPanel, PromoteDummyButton } from "./scene-participants-panel";
 import { kindOf, canContainChild } from "@/lib/participant-types";
@@ -684,7 +684,7 @@ function IdeaFrameDialog({
     while ((m = re.exec(text)) !== null) {
       if (m.index > last) out.push(text.slice(last, m.index));
       out.push(
-        <span key={m.index} className="inline-flex items-center rounded bg-amber-500/20 px-1 font-medium text-amber-700 dark:text-amber-300">
+        <span key={m.index} className="rounded bg-amber-500/10 px-0.5 font-medium text-amber-700 dark:text-amber-300">
           @{m[1]}
         </span>
       );
@@ -698,6 +698,7 @@ function IdeaFrameDialog({
     if (noteIsEmpty(quickNote) || !onQuickAddNote) return;
     const text = withTemplate(quickNote, quickNoteTpl, allMentionChars);
     setSavingQuickNote(true);
+    scrollToNewNote.current = !editingNoteId;
     await onQuickAddNote(item, text, editingNoteId ?? undefined, quickNoteKind ?? undefined);
     setSavingQuickNote(false);
     resetQuickNote();
@@ -825,6 +826,23 @@ function IdeaFrameDialog({
   const thisIdeaNotes = (ideaNotes || [])
     .filter((n) => n.canvasItemId === item.id && n.elementType === 'idea_note')
     .sort((a, b) => (a.noteOrder ?? 0) - (b.noteOrder ?? 0));
+
+  // บันทึกโน้ตใหม่แล้ว เลื่อนไปโชว์โน้ตนั้น + ไฮไลต์สั้น ๆ (โน้ตใหม่ต่อท้ายรายการ ปุ่มเพิ่มอยู่บนสุด ไม่งั้นผู้ใช้ไม่รู้ว่าโน้ตไปอยู่ไหน)
+  const scrollToNewNote = useRef(false);
+  const [flashNoteId, setFlashNoteId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!scrollToNewNote.current) return;
+    scrollToNewNote.current = false;
+    const last = thisIdeaNotes[thisIdeaNotes.length - 1];
+    if (!last) return;
+    setFlashNoteId(last.id);
+    requestAnimationFrame(() => {
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      document.getElementById(`idea-note-${last.id}`)?.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
+    });
+    const t = setTimeout(() => setFlashNoteId(null), 1400);
+    return () => clearTimeout(t);
+  }, [thisIdeaNotes.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const children = item.children || [];
   // ── โครงชั้นของ children (P-nest) ─────────────────────────────────────
@@ -1073,7 +1091,7 @@ function IdeaFrameDialog({
       onOpenAutoFocus={(e) => e.preventDefault()}
       onInteractOutside={handleInteractOutside}
       ref={contentRef}
-      className="pointer-events-auto w-[420px] max-w-[92vw] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto p-0"
+      className="pointer-events-auto w-[420px] max-w-[92vw] max-h-[var(--radix-popover-content-available-height)] flex flex-col overflow-hidden p-0"
       style={floatAt ? {
         // absolute ไม่ใช่ fixed — กล่องนอกของ Radix มี transform อยู่ มันเลยกลายเป็น
         // containing block ของ fixed ทำให้ left/top แบบพิกัดจอเพี้ยนกระเด็นไปไกล
@@ -1086,7 +1104,7 @@ function IdeaFrameDialog({
       } : undefined}
     >
         <FilmSprockets count={15} />
-        <div className="px-4 pt-3 pb-2">
+        <div className="px-4 pt-3 pb-2 shrink-0">
           <div
             className={cn(
               "flex items-center gap-1.5 text-left -mx-1 px-1 rounded touch-none select-none",
@@ -1283,10 +1301,13 @@ function IdeaFrameDialog({
             </div>
           )}
 
-          {item.content && typeof item.content === 'string' && (
-            <p className="mt-2 text-[13px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{item.content}</p>
-          )}
         </div>
+
+        {/* ส่วนที่เลื่อนได้ — หัวแผง (ดาว/เมนู/ปิด) อยู่นอกกล่องนี้ จึงไม่เลื่อนหายตอนโน้ตยาว */}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+        {item.content && typeof item.content === 'string' && (
+          <p className="px-4 pb-2 text-[13px] text-muted-foreground leading-relaxed whitespace-pre-wrap">{item.content}</p>
+        )}
 
         {/* ดราม่า — พับได้ (กางเมื่อมีข้อมูล) · animate ความสูงด้วย grid-rows ไม่แตะ layout property อื่น */}
         <div className="px-4">
@@ -1357,7 +1378,18 @@ function IdeaFrameDialog({
         </div>
 
         {/* แท็บ — เส้นใต้เลื่อนตามแท็บที่เลือก (ไม่ใช้เลขกำกับ) */}
-        <div className="relative grid grid-cols-2 border-y border-border/60 bg-muted/30" role="tablist">
+        <div
+          className="sticky top-0 z-10 grid grid-cols-2 border-y border-border/60 bg-muted"
+          role="tablist"
+          aria-label="ส่วนของการ์ด"
+          onKeyDown={(e) => {
+            if (e.key !== "ArrowLeft" && e.key !== "ArrowRight" && e.key !== "Home" && e.key !== "End") return;
+            e.preventDefault();
+            const next = e.key === "Home" || e.key === "ArrowLeft" ? "people" : "notes";
+            setTab(next);
+            e.currentTarget.querySelector<HTMLButtonElement>(`[data-tab="${next}"]`)?.focus();
+          }}
+        >
           {([
             ["people", "คนในฉาก", treeKids.length],
             ["notes", "โน้ต", thisIdeaNotes.length],
@@ -1365,7 +1397,9 @@ function IdeaFrameDialog({
             <button
               key={key}
               role="tab"
+              data-tab={key}
               aria-selected={tab === key}
+              tabIndex={tab === key ? 0 : -1}
               onClick={() => setTab(key)}
               className={cn(
                 "py-2 text-[13px] transition-colors duration-150 motion-reduce:transition-none",
@@ -1385,7 +1419,7 @@ function IdeaFrameDialog({
           />
         </div>
 
-        <div key={tab} className="px-4 py-3 space-y-4 animate-in fade-in slide-in-from-bottom-1 duration-200 motion-reduce:animate-none">
+        <div key={tab} role="tabpanel" className="px-4 py-3 space-y-4 animate-in fade-in slide-in-from-bottom-1 duration-200 motion-reduce:animate-none">
           {/* องค์ประกอบในไอเดีย — เดิมเป็นลิสต์แบนแยกกอง ตอนนี้ผูกกันเป็นชั้นได้ (P-nest) */}
           {tab === "people" && treeRoots.length > 0 && (
             <div className="space-y-1">
@@ -1417,9 +1451,20 @@ function IdeaFrameDialog({
             </div>
           )}
 
-          {/* HOW — Notes */}
+          {/* HOW — Notes — ปุ่มเพิ่ม/editor ใหม่อยู่บนสุดให้เห็นชัด โน้ตใหม่ต่อท้ายรายการตามเดิมแล้วเลื่อนไปโชว์ */}
           {tab === "notes" && onQuickAddNote && (
             <div className="space-y-1.5">
+              {editingNoteId === null && quickNoteOpen ? (
+                noteEditor
+              ) : !quickNoteOpen ? (
+                <button
+                  onClick={() => { setEditingNoteId(null); setQuickNote(""); setNoteBaseline(""); setQuickNoteKind(null); setQuickNoteTpl("plain"); setNoteTplBaseline("plain"); setConfirmDeleteNote(false); setQuickNoteOpen(true); }}
+                  className="flex items-center gap-1.5 w-full rounded-md border border-dashed border-border/70 px-2.5 py-2 text-[13px] text-muted-foreground hover:text-foreground hover:border-border transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  เพิ่มโน้ต
+                </button>
+              ) : null}
               {thisIdeaNotes.map((note) => {
                 const noteColor = note.noteKind || undefined;
                 return editingNoteId === note.id ? (
@@ -1427,6 +1472,7 @@ function IdeaFrameDialog({
                 ) : (
                   <div
                     key={note.id}
+                    id={`idea-note-${note.id}`}
                     draggable={!!onReorderNotes}
                     onDragStart={() => setDraggedNoteId(note.id)}
                     onDragEnd={() => setDraggedNoteId(null)}
@@ -1445,8 +1491,9 @@ function IdeaFrameDialog({
                       setDraggedNoteId(null);
                     }}
                     className={cn(
-                      "group/note relative flex gap-2.5 border-b border-border/40 px-1 py-2.5 text-[13px] leading-relaxed cursor-pointer transition-colors hover:bg-muted/40",
-                      draggedNoteId === note.id && "opacity-40"
+                      "group/note relative flex gap-2.5 border-b border-border/40 px-1 py-2.5 text-[13px] leading-relaxed cursor-pointer transition-colors duration-700 hover:bg-muted/40",
+                      draggedNoteId === note.id && "opacity-40",
+                      flashNoteId === note.id && "bg-[var(--forge-amber)]/15"
                     )}
                     onClick={() => {
                       setEditingNoteId(note.id);
@@ -1459,29 +1506,29 @@ function IdeaFrameDialog({
                       setQuickNoteOpen(true);
                     }}
                   >
-                    <span
-                      className="mt-2 h-2 w-2 rounded-full shrink-0"
-                      style={{ background: noteColor || "var(--forge-amber)" }}
-                    />
-                    <div className="flex-1 min-w-0 text-foreground/90 pr-4"><NoteView raw={note.notes || ""} renderPlain={renderNoteMentions} /></div>
+                    {noteColor && <span className="mt-2 h-2 w-2 rounded-full shrink-0" style={{ background: noteColor }} />}
+                    <div className="flex-1 min-w-0 text-foreground/90 pr-4">
+                      <ClampedNote>
+                        <NoteView raw={note.notes || ""} renderPlain={renderNoteMentions} />
+                      </ClampedNote>
+                      {looksLikeDialogue(note.notes) && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); onQuickAddNote(item, withTemplate(note.notes || "", "dialogue", allMentionChars), note.id, note.noteKind ?? undefined); }}
+                          className="mt-1 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
+                        >
+                          ดูเหมือนบทสนทนา — เปลี่ยนเป็นรูปแบบบทสนทนา
+                        </button>
+                      )}
+                    </div>
                     <Pencil className="w-3 h-3 absolute top-1.5 right-1.5 text-muted-foreground opacity-40 group-hover/note:opacity-100 transition-opacity" />
                   </div>
                 );
               })}
-              {editingNoteId === null && quickNoteOpen ? (
-                noteEditor
-              ) : !quickNoteOpen ? (
-                <button
-                  onClick={() => { setEditingNoteId(null); setQuickNote(""); setNoteBaseline(""); setQuickNoteKind(null); setQuickNoteTpl("plain"); setNoteTplBaseline("plain"); setConfirmDeleteNote(false); setQuickNoteOpen(true); }}
-                  className="flex items-center gap-1.5 w-full py-2 text-[13px] text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  เพิ่มโน้ต
-                </button>
-              ) : null}
             </div>
           )}
 
+        </div>
         </div>
         {throughLine && novelId && (
           <CharacterThroughLine

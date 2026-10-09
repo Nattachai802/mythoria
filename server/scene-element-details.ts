@@ -3,7 +3,7 @@
 import { noteToPlain } from "@/lib/note-text";
 import { db } from "@/db/drizzle";
 import { sceneElementDetails, timelineEvents, InsertSceneElementDetails, SceneElementDetails } from "@/db/schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { PARTICIPANT_TYPES } from "@/lib/participant-types"
 
@@ -105,6 +105,19 @@ export async function upsertSceneElementDetail(data: {
 
         // If forceCreate is true (for idea_note), skip existing check and create new
         if (data.forceCreate) {
+            // โน้ตใหม่ต่อท้ายเสมอ: เดิมทุกอันได้ 0 เท่ากัน ลำดับหลังรีเฟรชเลยไม่แน่นอนจนกว่าจะลากสลับ
+            let nextOrder = data.noteOrder;
+            if (nextOrder === undefined && data.elementType === "idea_note") {
+                const [row] = await db
+                    .select({ m: sql<number>`coalesce(max(${sceneElementDetails.noteOrder}), -1)` })
+                    .from(sceneElementDetails)
+                    .where(and(
+                        eq(sceneElementDetails.sceneId, data.sceneId),
+                        eq(sceneElementDetails.elementType, "idea_note"),
+                        data.canvasItemId ? eq(sceneElementDetails.canvasItemId, data.canvasItemId) : undefined,
+                    ));
+                nextOrder = Number(row?.m ?? -1) + 1;
+            }
             const insertData: InsertSceneElementDetails = {
                 sceneId: data.sceneId,
                 elementType: data.elementType,
@@ -117,7 +130,7 @@ export async function upsertSceneElementDetail(data: {
                 role: data.role || null,
                 notes: data.notes || null,
                 noteKind: data.noteKind || null,
-                noteOrder: data.noteOrder ?? 0,
+                noteOrder: nextOrder ?? 0,
                 novelId: data.novelId,
             };
 

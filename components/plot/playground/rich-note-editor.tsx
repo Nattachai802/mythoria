@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, type ReactNode } from "react";
+import { Fragment, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import "react-quill-new/dist/quill.snow.css";
 import "quill-mention/dist/quill.mention.css";
@@ -167,7 +167,7 @@ function toLines(ops: DeltaOp[]): Line[] {
       if (m?.value) {
         if (cur.length === 0) lead = { id: m.id ?? m.value, value: m.value }; // ชิปต้นบรรทัด = ผู้พูดของ template บทสนทนา
         cur.push(
-          <span key={k++} className="inline-flex items-center rounded bg-amber-500/20 px-1 font-medium text-amber-700 dark:text-amber-300">
+          <span key={k++} className="rounded bg-amber-500/10 px-0.5 font-medium text-amber-700 dark:text-amber-300">
             @{m.value}
           </span>
         );
@@ -191,20 +191,24 @@ function toLines(ops: DeltaOp[]): Line[] {
 // สีประจำตัวละคร: hash จาก id → hue คงที่ ตัวละครเดียวกันได้สีเดียวกันทุกโน้ต
 const hueOf = (id: string) => { let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 
-/** template บทสนทนา: บรรทัดที่ขึ้นต้นด้วยชิป = บับเบิลของคนนั้น · บรรทัดอื่น = บรรทัดบรรยาย */
+/**
+ * template บทสนทนา: บรรทัดที่ขึ้นต้นด้วยชิป = ตาพูดของคนนั้น · บรรทัดอื่น = บรรทัดบรรยาย (เต็มความกว้าง)
+ * grid สองคอลัมน์ทั้งโน้ต — คอลัมน์ชื่อกว้างตามชื่อที่ยาวสุด (เพดาน 38%) ข้อความทุกตาเลยเรียงแนวเดียวกัน
+ * และบรรทัดที่ยาวพับกลับมาตรงคอลัมน์ข้อความ ไม่ลอดใต้ชื่อ
+ */
 function DialogueView({ lines }: { lines: Line[] }) {
+  const rows = lines.filter((l) => l.inline.length > 0);
   return (
-    <div className="space-y-1">
-      {lines.map((l, i) => {
-        if (l.inline.length === 0) return null;
-        if (!l.lead) return <p key={i} className="italic text-muted-foreground">{l.inline}</p>;
+    <div className="grid grid-cols-[fit-content(38%)_1fr] gap-x-3">
+      {rows.map((l, i) => {
+        const sep = i > 0 ? "border-t border-border/40 " : "";
+        if (!l.lead) return <p key={i} className={sep + "col-span-2 py-1.5 italic text-muted-foreground"}>{l.inline}</p>;
         const hue = hueOf(l.lead.id);
-        // minimal: แค่ชื่อผู้พูดเป็นตัวอักษรสี ไม่มีกล่อง/พื้นหลัง/เส้น
         return (
-          <div key={i}>
-            <span className="mr-1.5 text-[11px] font-semibold" style={{ color: `hsl(${hue} 60% 38%)` }}>{l.lead.value}</span>
-            {l.inline.slice(1)}
-          </div>
+          <Fragment key={i}>
+            <span className={sep + "py-1.5 text-[11px] font-semibold break-words"} style={{ color: `hsl(${hue} 60% 38%)` }}>{l.lead.value}</span>
+            <div className={sep + "py-1.5 min-w-0"}>{l.inline.slice(1)}</div>
+          </Fragment>
         );
       })}
     </div>
@@ -232,4 +236,29 @@ export function NoteView({ raw, renderPlain }: { raw: string; renderPlain: (text
     }
   }
   return <div className="space-y-0.5">{out}</div>;
+}
+
+/** โน้ตยาว: ตัดที่ ~6 บรรทัด + "ดูเพิ่ม" (วัดจริงหลัง render ไม่เดาจากจำนวนตัวอักษร) */
+export function ClampedNote({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [overflowing, setOverflowing] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el) setOverflowing(el.scrollHeight > el.clientHeight + 1 || open);
+  });
+  return (
+    <>
+      <div ref={ref} className={open ? "" : "max-h-[8.5rem] overflow-hidden"}>{children}</div>
+      {overflowing && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+          className="mt-1 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
+        >
+          {open ? "ย่อ" : "ดูเพิ่ม"}
+        </button>
+      )}
+    </>
+  );
 }
