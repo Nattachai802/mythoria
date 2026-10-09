@@ -251,8 +251,13 @@ function SpliceTape({ x, y, angleDeg }: { x: number; y: number; angleDeg: number
 function FilmStripPath({ points, color }: { points: Array<{ x: number; y: number }>; color?: string }) {
     const d = points.map((p, i) => `${i ? "L" : "M"} ${p.x} ${p.y}`).join(" ");
     if (color) {
-        // เส้นสีล้วน — รางสีเดียว ไม่มีรอยสไปซ์/ป้าย
-        return <path d={d} stroke={color} strokeWidth="4" strokeOpacity="0.9" fill="none" strokeLinecap="round" strokeLinejoin="round" />;
+        // เส้นสีล้วนในธีมฟิล์ม — รางสีที่ผู้ใช้เลือก + รูสปรอกเก็ตขาวเรียงกลางราง (เหมือนจุดขาวบนแถบฟิล์มของการ์ด)
+        return (
+            <>
+                <path d={d} stroke={color} strokeWidth="6" strokeOpacity="0.92" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                <path d={d} stroke="#fff" strokeWidth="2.2" strokeOpacity="0.8" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="0.01 7" />
+            </>
+        );
     }
     const mid = polylineMidpoint(points);
     return (
@@ -332,7 +337,7 @@ function ConnectionLine({ start, end, kind = "related", label, onClick }: {
     );
 }
 
-// เส้นเชื่อมการ์ดแบบตั้งฉาก (orthogonal) — สีล้วน: รางสี + หัวลูกศร + หมุดต้นทาง ไม่มีข้อความ/ป้ายชนิด
+// เส้นเชื่อมการ์ดแบบตั้งฉาก (orthogonal) — สีล้วนในธีมฟิล์ม: รางสีมีรูสปรอกเก็ตขาว + หัวลูกศร + หมุดสี่เหลี่ยมต้นทาง ไม่มีข้อความ/ป้ายชนิด
 function OrthoLine({ points, color, onClick }: {
     points: Array<{ x: number; y: number }>;
     color: string;
@@ -356,8 +361,8 @@ function OrthoLine({ points, color, onClick }: {
     return (
         <g>
             <FilmStripPath points={points} color={color} />
-            <polygon points={`${p2.x},${p2.y} ${a1x},${a1y} ${a2x},${a2y}`} fill={color} />
-            <circle cx={start.x} cy={start.y} r="3.5" fill={color} />
+            <polygon points={`${p2.x},${p2.y} ${a1x},${a1y} ${a2x},${a2y}`} fill={color} stroke="#18181b" strokeOpacity="0.55" strokeWidth="0.75" strokeLinejoin="round" />
+            <FilmPin x={start.x} y={start.y} size={8} fill={color} stroke="#18181b" />
             {onClick && (
                 <path d={d} stroke="transparent" strokeWidth="16" fill="none"
                     style={{ pointerEvents: "auto", cursor: "pointer" }}
@@ -2232,6 +2237,10 @@ export function PlaygroundBoard({
             return dl >= 0 ? 'down' : 'up';
         };
         const SIDE_VEC: Record<Side, [number, number]> = { right: [1, 0], left: [-1, 0], up: [0, -1], down: [0, 1] };
+        // จุดต่อซ้าย/ขวาวัดจากขอบบนของการ์ด (แถวชื่อ) ไม่ใช่กึ่งกลาง — การ์ดที่ขอบบนเท่ากันแต่ความสูงต่างกัน
+        // (ผู้เข้าร่วมยาว 1 vs 2 บรรทัด) จะได้เส้นตรงระดับเดียวกัน ไม่ต้องหักขึ้นลงเล็ก ๆ ระหว่างทาง
+        const SIDE_ANCHOR_FROM_TOP = 44;
+        const sideAnchorY = (pos: { y: number; h: number }) => pos.y - pos.h / 2 + Math.min(SIDE_ANCHOR_FROM_TOP, pos.h / 2);
         const anchorOn = (pos: { x: number; y: number; w: number; h: number }, side: Side) =>
             side === 'right' ? { x: pos.x + pos.w / 2, y: pos.y }
                 : side === 'left' ? { x: pos.x - pos.w / 2, y: pos.y }
@@ -2338,6 +2347,24 @@ export function PlaygroundBoard({
                     bY = entryY(targetMergeY.get(e.targetId)!, e.tPos, idx, n); }
                 else { busX = aX + dir * (GAP + busOffset); aY = entryY(sourceMergeY.get(e.sourceId)!, e.sPos, idx, n); bY = e.tPos.y; }
                 points = [{ x: aX, y: aY }, { x: busX, y: aY }, { x: busX, y: bY }, { x: bX, y: bY }];
+            } else if (sItem && tItem && sItem.beatIndex === tItem.beatIndex && (() => {
+                // การ์ดอยู่ซ้อนกันในคอลัมน์เดียว และไม่มีการ์ดอื่นคั่นกลาง → เส้นดิ่งสั้น ๆ จากขอบล่างลงขอบบน
+                // (เดิมออกขวาแล้ววนเข้าขวา เป็นห่วงรูปตัว C ยึกยัก)
+                if (Math.abs(e.sPos.x - e.tPos.x) > 6) return false;
+                const down = e.tPos.y > e.sPos.y;
+                const yA = down ? e.sPos.y + e.sPos.h / 2 : e.sPos.y - e.sPos.h / 2;
+                const yB = down ? e.tPos.y - e.tPos.h / 2 : e.tPos.y + e.tPos.h / 2;
+                const lo = Math.min(yA, yB), hi = Math.max(yA, yB);
+                if ((down && yB < yA) || (!down && yB > yA)) return false; // การ์ดทับกัน ใช้เส้นอ้อมเดิม
+                return ![...linkPositions.entries()].some(([id, p]) =>
+                    id !== e.sourceId && id !== e.targetId &&
+                    Math.abs(p.x - e.sPos.x) < p.w / 2 && p.y + p.h / 2 > lo && p.y - p.h / 2 < hi);
+            })()) {
+                const down = e.tPos.y > e.sPos.y;
+                points = [
+                    { x: e.sPos.x, y: down ? e.sPos.y + e.sPos.h / 2 : e.sPos.y - e.sPos.h / 2 },
+                    { x: e.sPos.x, y: down ? e.tPos.y - e.tPos.h / 2 : e.tPos.y + e.tPos.h / 2 },
+                ];
             } else if (sItem && tItem && sItem.beatIndex === tItem.beatIndex) {
                 // จังหวะเดียวกัน (คอลัมน์เดียว) → ออกขวาทั้งคู่ แล้ววิ่งบัสในร่อง gutter ด้านขวา
                 // ไม่ลากดิ่งผ่ากลางคอลัมน์ (จะทับการ์ดที่คั่นอยู่ระหว่าง source กับ target)
@@ -2365,8 +2392,10 @@ export function PlaygroundBoard({
                 // จึงไม่ต้องมีสาขาแยก และ ps อ้าง e.sPos อย่างเดียว — ปลายทางเปลี่ยนไม่กระทบจุดเริ่ม
                 const sSide = sideToCard(sItem, tItem);
                 const tSide = sideToCard(tItem, sItem);
-                const ps = anchorOn(e.sPos, sSide);
-                const pt = anchorOn(e.tPos, tSide);
+                const ps0 = anchorOn(e.sPos, sSide);
+                const pt0 = anchorOn(e.tPos, tSide);
+                const ps = sSide === 'right' || sSide === 'left' ? { x: ps0.x, y: sideAnchorY(e.sPos) } : ps0;
+                const pt = tSide === 'right' || tSide === 'left' ? { x: pt0.x, y: sideAnchorY(e.tPos) } : pt0;
                 const s1 = { x: ps.x + SIDE_VEC[sSide][0] * GAP, y: ps.y };
                 const t1 = { x: pt.x + SIDE_VEC[tSide][0] * GAP, y: pt.y };
                 // ขาแนวนอนยาวที่ y ของต้นทางผ่ากลางการ์ดที่คั่นอยู่ระหว่างจังหวะ →
