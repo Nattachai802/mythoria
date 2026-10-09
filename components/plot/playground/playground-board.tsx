@@ -1217,7 +1217,8 @@ export function PlaygroundBoard({
     // รอยต่อจังหวะ: ลักษณะการต่อ N→N+1 เป็นสี (เก็บใน canvasData) · เส้นการ์ดเดิมซ่อนเป็นค่าเริ่มต้น (ข้อมูลยังอยู่ครบ)
     const [beatJoins, setBeatJoins] = useState<BeatJoin[]>(initialJoins);
     const [joinKinds, setJoinKinds] = useState<JoinKind[]>(initialJoinKinds);
-    const [showCardLines, setShowCardLines] = useState(false);
+    const [showJoins, setShowJoins] = useState(initialJoins.length > 0); // รอยต่อจังหวะเป็นตัวเลือกเสริม — ปิดเป็นค่าเริ่มต้น
+    const [showCardLines, setShowCardLines] = useState(true);
     const [chapters, setChapters] = useState<Chapter[]>(initialChapters);
     const [items, setItems] = useState<any[]>(initialCardItems);
     const [echoFindings, setEchoFindings] = useState<EchoFinding[]>(initialEchoFindings);
@@ -2910,6 +2911,17 @@ export function PlaygroundBoard({
 
                         <div className="flex-1" />
 
+                        {!isMobile && (
+                            <button
+                                onClick={() => setShowJoins(v => !v)}
+                                aria-pressed={showJoins}
+                                title="แสดง/ซ่อนตัวบอกลักษณะการต่อระหว่างจังหวะ (จุดสีที่ช่องระหว่างจังหวะ)"
+                                className={cn("h-8 rounded-full border px-3 text-xs transition-colors", showJoins ? "border-border bg-muted text-foreground" : "border-dashed border-border text-muted-foreground hover:text-foreground")}
+                            >
+                                การต่อจังหวะ
+                            </button>
+                        )}
+
                         {/* ซูมกระดานแนวนอน/แนวตั้งพร้อมกัน — แบบไทม์ไลน์ตัดต่อ */}
                         {!isMobile && (
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -3014,7 +3026,7 @@ export function PlaygroundBoard({
                         </DropdownMenu>
                     </div>
 
-                    {!isMobile && (
+                    {!isMobile && showJoins && (
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border/60 bg-muted/20 px-3 py-1.5 text-xs">
                             <span className="text-muted-foreground shrink-0" title="จุดวงกลมที่ช่องระหว่างจังหวะ = ลักษณะการต่อของสองจังหวะนั้น">การต่อจังหวะ</span>
                             {joinKinds.map((k) => (
@@ -3197,7 +3209,7 @@ export function PlaygroundBoard({
                                             style={{ gridColumn: beatGridCol(beatIndex) + 1, gridRow: 2, width: GUTTER_WIDTH }}
                                             className="sticky top-0 z-20 bg-muted/20 border-b border-border/30 flex items-center justify-center"
                                         >
-                                            {beatIndex < beatCount - 1 && (
+                                            {showJoins && beatIndex < beatCount - 1 && (
                                                 <JoinMarker
                                                     boundary={beatIndex}
                                                     join={beatJoins.find(j => j.fromBeat === beatIndex)}
@@ -3283,7 +3295,7 @@ export function PlaygroundBoard({
                                                         gridColumn: beatGridCol(beatIndex) + 1, gridRow: laneIndex + 3, width: GUTTER_WIDTH, background: hexA(laneColor, 0.05),
                                                         // แถบสีของลักษณะการต่อพาดผ่านทุกเลน (inset shadow ซ้อนทับ ไม่ใช้ gradient)
                                                         boxShadow: (() => {
-                                                            if (beatIndex >= beatCount - 1) return undefined;
+                                                            if (!showJoins || beatIndex >= beatCount - 1) return undefined;
                                                             const jk = joinKinds.find(k => k.key === beatJoins.find(j => j.fromBeat === beatIndex)?.kind);
                                                             return jk ? `inset 0 0 0 999px ${hexA(jk.color, 0.16)}` : undefined;
                                                         })(),
@@ -3320,7 +3332,7 @@ export function PlaygroundBoard({
                                 className="absolute inset-0 pointer-events-none"
                                 style={{ width: '100%', height: '100%', overflow: 'visible', zIndex: 10 }}
                             >
-                                {showCardLines && connections}
+                                {(showCardLines || !showJoins) && connections}
                                 {ancestorLines}
                             </svg>
                         </div>
