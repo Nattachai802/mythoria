@@ -37,7 +37,7 @@ export async function POST(request: NextRequest, { params }: Props) {
         pyFetch(`/spell-check-note`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ noteId, novelId, text, entities }),
+            body: JSON.stringify({ noteId, novelId, text, entities, setStatus: true }),
         }).catch((e) => console.error("[SpellCheckTrigger] Python call failed:", e));
 
         return NextResponse.json({ success: true, triggered: true });

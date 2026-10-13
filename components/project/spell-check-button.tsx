@@ -10,7 +10,7 @@ interface SpellCheckButtonProps {
   novelId: string;
   noteId: string;
   getPlainText: () => string; // ดึง Quill getText() — index ตรงกับ editor.setSelection
-  onComplete: () => void;     // callback refresh list (เรียกได้หลายครั้ง — progressive)
+  onComplete: () => void;     // callback refresh list เมื่อตรวจเสร็จ
 }
 
 export function SpellCheckButton({ novelId, noteId, getPlainText, onComplete }: SpellCheckButtonProps) {
@@ -30,18 +30,17 @@ export function SpellCheckButton({ novelId, noteId, getPlainText, onComplete }: 
         noteId,
         fullText,
         onProgress: (msg) => toast.info(msg),
-        onBatchDone: onComplete,
       });
 
       if (summary.totalErrors === 0) {
-        toast.success(`ตรวจสอบ ${summary.totalWords} คำ — ไม่พบคำผิด`);
+        toast.success("ตรวจเสร็จ — ไม่พบคำผิด");
       } else {
-        toast.success(`เสร็จสิ้น — พบคำผิด ${summary.totalErrors} คำ เพิ่มในรายการตรวจทานแล้ว`);
+        toast.success(`ตรวจเสร็จ — พบ ${summary.totalErrors} จุด เพิ่มในรายการตรวจทานแล้ว`);
       }
       onComplete();
     } catch (e) {
       console.error("[SpellCheck] ❌ Error:", e);
-      toast.error("เชื่อมต่อระบบตรวจสอบคำผิดไม่ได้ กรุณาตรวจสอบว่า Python service ทำงานอยู่");
+      toast.error(e instanceof Error && e.message ? e.message : "ตรวจคำผิดไม่สำเร็จ");
     } finally {
       setIsChecking(false);
     }

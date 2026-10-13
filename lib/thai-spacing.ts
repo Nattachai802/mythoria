@@ -5,7 +5,8 @@
 // ตัด rule เอกสารทางการทิ้ง (จำกัด/มหาชน, ถนน/จังหวัด, หน่วยมาตรา, อักษรย่อ ก.ข.)
 // — เพิ่มกลับเมื่อ data จากนิยายจริงบอกว่าต้องการ
 
-export type SpacingType = "NONE" | "SMALL" | "UNKNOWN";
+// MULTI = เว้นหลายช่องติดกัน (ใช้เป็น actual เท่านั้น — ควรเหลือช่องเดียว)
+export type SpacingType = "NONE" | "SMALL" | "MULTI" | "UNKNOWN";
 
 export interface Token {
     text: string;
@@ -148,6 +149,22 @@ export function checkSpacing(text: string): SpacingError[] {
 
         const actual = measureSpace(space);
         const { spacing: expected, ruleId } = classifyPair(left, right);
+
+        // เว้นหลายช่องติดกัน — กฎราชบัณฑิตฯ มีแค่วรรคเล็ก/วรรคใหญ่ ไม่มี "สองเคาะ" ในเนื้อความ
+        // ข้ามเมื่อกฎอื่นบอกว่าไม่ควรมีช่องว่างเลย (กฎนั้นลบทั้งก้อนให้อยู่แล้ว) และช่องที่มีขึ้นบรรทัด
+        if (space && expected !== "NONE" && /^[ \t\u00a0]{2,}$/.test(space.text)) {
+            errors.push({
+                position: space.start,
+                gapLength: space.text.length,
+                leftToken: left,
+                rightToken: right,
+                actual: "MULTI",
+                expected: "SMALL",
+                ruleId: "multi-space",
+                message: `เว้นวรรค ${space.text.length} ช่องระหว่าง "${left.text}" กับ "${right.text}" — ควรเหลือช่องเดียว`,
+            });
+            continue;
+        }
         if (expected === "UNKNOWN" || expected === actual) continue;
 
         errors.push({

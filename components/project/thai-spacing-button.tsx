@@ -49,7 +49,9 @@ export function ThaiSpacingButton({ editorRef }: ThaiSpacingButtonProps) {
     const fix = (e: SpacingError) => {
         const editor = editorRef.current?.getEditor();
         if (!editor) return;
-        if (e.expected === "SMALL") {
+        if (e.actual === "MULTI") {
+            editor.deleteText(e.position + 1, e.gapLength - 1); // เหลือช่องว่างช่องเดียว
+        } else if (e.expected === "SMALL") {
             editor.insertText(e.position, " ");          // เพิ่มช่องว่างที่ขาด
         } else if (e.expected === "NONE") {
             editor.deleteText(e.position, e.gapLength);   // ลบช่องว่างที่ไม่ควรมี

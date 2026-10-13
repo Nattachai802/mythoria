@@ -18,4 +18,10 @@ eq(checkSpacing("ข้าวเหนือSmilaxในวงศ์X").length, 
 eq(checkSpacing('เขาพูดว่า “สวัสดี”').length, 0, "อัญประกาศเว้นถูก");
 eq(checkSpacing("กรุงเทพฯ-เชียงใหม่").length, 0, "ฯ ก่อนยัติภังค์ → NONE");
 
+eq(checkSpacing("เขาเดิน  ไป").length, 1, "เว้นสองช่อง → flag");
+eq(checkSpacing("เขาเดิน  ไป")[0].actual === "MULTI" ? 1 : 0, 1, "เว้นสองช่อง → actual MULTI");
+eq(checkSpacing("เขาเดิน ไป").length, 0, "เว้นช่องเดียว → ไม่ flag");
+eq(checkSpacing("เขาเดิน\n\nไป").length, 0, "ขึ้นบรรทัดใหม่ → ไม่ใช่เว้นหลายช่อง");
+eq(checkSpacing("ก  -  ข").length, 2, "รอบยัติภังค์ → กฎ NONE ลบทั้งก้อน ไม่ซ้ำ MULTI");
+
 console.log("\nOK: thai-spacing self-check passed");

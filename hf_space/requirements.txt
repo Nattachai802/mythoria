@@ -6,6 +6,9 @@ pythainlp
 attacut
 spylls
 sentencepiece
+protobuf
+deepcut
+onnxruntime
 transformers
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch

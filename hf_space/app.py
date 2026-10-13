@@ -41,6 +41,7 @@ def _require_key(request: Request):
 
 class CheckRequest(BaseModel):
     text: str
+    hints: list[dict] | None = None  # คำที่ Longdo ขีดมา [{word, offset, suggestions}] — ให้กรองซ้ำ
 
 
 def health():
@@ -49,7 +50,7 @@ def health():
 
 def spell_check_local(req: CheckRequest, request: Request):
     _require_key(request)
-    return {"errors": [asdict(e) for e in NovelSpellChecker().check_local(req.text)]}
+    return {"errors": [asdict(e) for e in NovelSpellChecker().check_local(req.text, hints=req.hints)]}
 
 
 # โหลดโมเดลตอนตื่น ไม่ใช่ตอน request แรก

@@ -1008,6 +1008,7 @@ class SpellErrorResponse(BaseModel):
     suggestions: list[str]
     sentence: str
     sentence_index: int
+    kind: str = "spelling"   # spelling | style (ทับศัพท์) | double_vowel (สระซ้อน) | elongation (ลากเสียง) | spacing (วรรคกลางคำ)
 
 
 class SpellCheckResponse(BaseModel):
@@ -1054,6 +1055,7 @@ async def spell_check_endpoint(request: SpellCheckRequest):
                     suggestions=e.suggestions,
                     sentence=e.sentence,
                     sentence_index=e.sentence_index,
+                    kind=e.kind,
                 )
                 for e in result.errors
             ],
@@ -1091,9 +1093,15 @@ async def spell_check_word_endpoint(request: WordCheckRequest):
 class SpellCheckNoteRequest(BaseModel):
     noteId: str
     novelId: str
-    text: str                    # HTML content จาก note
+    text: str                    # HTML จาก DB (ตรวจตอนเปลี่ยนสถานะ) หรือข้อความล่าสุดจาก editor (ปุ่มตรวจ)
     customWords: list[str] = []
     entities: list[dict] = []    # [{text, type}]
+    setStatus: bool = False      # True = ตรวจจากการเปลี่ยนสถานะ -> เสร็จแล้วตั้ง user_verify
+
+
+# สถานะงานตรวจต่อโน้ต — อยู่ในหน่วยความจำ: Render restart แล้วหาย หน้าจอเห็น "unknown" ให้กดใหม่
+# ponytail: dict ในโปรเซส ใช้ได้เพราะ Render รันโปรเซสเดียว ถ้าขยายหลาย instance ต้องย้ายไป DB/Redis
+SPELL_JOBS: dict = {}
 
 
 @app.post("/spell-check-note")
@@ -1102,67 +1110,84 @@ async def spell_check_note_endpoint(
     background_tasks: BackgroundTasks,
 ):
     """Trigger background spell check สำหรับ note เดียว — return ทันที"""
-    background_tasks.add_task(
-        process_spell_check_task,
-        request.noteId,
-        request.novelId,
-        request.text,
-        request.customWords,
-        request.entities,
-    )
-    return {"success": True, "message": "Background spell check triggered."}
+    if SPELL_JOBS.get(request.noteId, {}).get("state") == "running":
+        return {"success": True, "message": "กำลังตรวจอยู่แล้ว", "state": "running"}
+    import time
+    SPELL_JOBS[request.noteId] = {"state": "running", "startedAt": time.time()}
+    background_tasks.add_task(process_spell_check_task, request)
+    return {"success": True, "message": "Background spell check triggered.", "state": "running"}
 
 
-async def process_spell_check_task(
-    note_id: str,
-    novel_id: str,
-    text: str,
-    custom_words: list[str],
-    entities: list[dict] | None = None,
-):
-    """Worker: spell check note ใน background → save issues → set status user_verify"""
-    nextjs_base_url = os.getenv("NEXT_PUBLIC_BASE_URL", "http://localhost:3000")
-    print(f"[SpellCheckWorker] เริ่มตรวจ note {note_id} ({len(text)} chars, {len(custom_words)} custom words)")
+@app.get("/spell-check-note/status/{note_id}")
+async def spell_check_note_status(note_id: str):
+    """สถานะงานตรวจของโน้ต — running | done | error | unknown (ไม่เคยสั่ง หรือ service restart ไปแล้ว)"""
+    return SPELL_JOBS.get(note_id, {"state": "unknown"})
 
+
+def _issue_description(err) -> str:
+    sug = err.suggestions
+    if err.kind == "repeated":
+        return (f"คำนี้ถูกขีด {err.count} ครั้งในบทนี้ — เป็นชื่อ/ศัพท์ในเรื่องหรือเปล่า? "
+                f"ถ้าใช่ เพิ่มในข้อมูลตัวละคร/ศัพท์แล้วตรวจใหม่"
+                + (f" · ถ้าสะกดผิด แนะนำ: {sug[0]}" if sug else ""))
+    if err.kind == "style":
+        return f"ทับศัพท์ไม่ตรงหลักราชบัณฑิตฯ — แนะนำ: {sug[0]} (แก้หรือไม่ก็ได้)"
+    if err.kind == "double_vowel":
+        return f"สระ/วรรณยุกต์ซ้อน — แนะนำ: {', '.join(sug[:3])}"
+    if err.kind == "elongation":
+        return f"ลากเสียงยาว ตั้งใจหรือเปล่า? — ถ้าไม่ตั้งใจ: {sug[0]}"
+    if err.kind == "spacing":
+        return f"เว้นวรรคกลางคำ — ควรเป็น: {sug[0]}"
+    if sug:
+        return f"คำสะกดผิด — แนะนำ: {', '.join(sug[:3])}"
+    return "อาจสะกดผิด — ไม่มีคำแนะนำอัตโนมัติ โปรดตรวจสอบเอง"
+
+
+def process_spell_check_task(req: SpellCheckNoteRequest):
+    """
+    Worker: ตรวจ -> เขียน note_audit_issues ลง Neon ตรง (ลบของเก่า + ใส่ใหม่ใน transaction เดียว)
+
+    def ธรรมดา (ไม่ใช่ async) ให้ FastAPI รันใน threadpool — งานนี้กิน CPU/เรียก HF นาน
+    ถ้าเป็น async จะขวาง event loop ทั้ง service
+
+    เดิมยิงกลับไปที่ API ของ Next (/audit-issues, /status) แต่ route พวกนั้นต้องมี session ผู้ใช้
+    Python ไม่มี cookie จึงได้ 401 เงียบ ๆ ผลไม่เคยถูกบันทึก — เขียน DB เองตรงนี้แทน
+    """
+    import time
+    from lance_client import _connect
+    t0 = time.time()
+    print(f"[SpellCheckWorker] เริ่มตรวจ note {req.noteId} ({len(req.text)} chars, {len(req.entities)} entities)")
     try:
-        # 1. spell check (check_novel_text strip HTML ใน _preprocess อยู่แล้ว)
-        result = check_novel_text(text=text, custom_words=custom_words or None, entities=entities or None)
-        print(f"[SpellCheckWorker] พบคำผิด {result.error_count} คำ จาก {result.total_words} คำ")
-
-        async with httpx.AsyncClient() as client:
-            base = f"{nextjs_base_url}/api/novel/{novel_id}/note/{note_id}"
-
-            # 2. dedup — ลบ spelling issues เก่า
-            await client.delete(f"{base}/audit-issues", params={"category": "spelling"}, timeout=30.0)
-
-            # 3. save คำผิดใหม่ เรียงตามลำดับพบ (offset) — client จะ re-map เป็น Quill index
-            ordered = sorted(result.errors, key=lambda e: e.offset)
-            saved = 0
-            for err in ordered:
-                has_suggestion = len(err.suggestions) > 0
-                body = {
-                    "level": "proofreading" if has_suggestion else "line",
-                    "category": "spelling",
-                    "startIndex": err.offset,
-                    "endIndex": err.offset + len(err.word),
-                    "flaggedText": err.word,
-                    "issueDescription": (
-                        f"คำสะกดผิด — แนะนำ: {', '.join(err.suggestions[:3])}"
-                        if has_suggestion
-                        else "อาจสะกดผิด — ไม่มีคำแนะนำอัตโนมัติ โปรดตรวจสอบเอง"
-                    ),
-                    "suggestedText": err.suggestions[0] if has_suggestion else None,
-                    "suggestionNotes": None if has_suggestion else "PyThaiNLP หาคำที่ถูกต้องไม่ได้",
-                }
-                res = await client.post(f"{base}/audit-issues", json=body, timeout=30.0)
-                if res.status_code in (200, 201):
-                    saved += 1
-
-            # 4. set status → user_verify
-            await client.patch(f"{base}/status", json={"status": "user_verify"}, timeout=30.0)
-            print(f"[SpellCheckWorker] เสร็จ — saved {saved} issues, status → user_verify")
-
+        result = check_novel_text(text=req.text, custom_words=req.customWords or None,
+                                  entities=req.entities or None)
+        conn = _connect()
+        try:
+            with conn, conn.cursor() as cur:  # with conn = commit ทั้งก้อน หรือ rollback ทั้งก้อน
+                cur.execute("DELETE FROM note_audit_issues WHERE note_id = %s AND novel_id = %s AND category = 'spelling'",
+                            (req.noteId, req.novelId))
+                for err in result.errors:
+                    has = bool(err.suggestions)
+                    cur.execute(
+                        """INSERT INTO note_audit_issues
+                           (novel_id, note_id, level, category, start_index, end_index, flagged_text,
+                            issue_description, suggested_text, suggestion_notes)
+                           VALUES (%s, %s, %s, 'spelling', %s, %s, %s, %s, %s, %s)""",
+                        (req.novelId, req.noteId, "proofreading" if has else "line",
+                         err.offset, err.offset + len(err.word), err.word, _issue_description(err),
+                         err.suggestions[0] if has else None,
+                         None if has else "ระบบหาคำที่ถูกต้องไม่ได้"),
+                    )
+                if req.setStatus:
+                    cur.execute("UPDATE notes SET status = 'user_verify', updated_at = now() WHERE id = %s",
+                                (req.noteId,))
+        finally:
+            conn.close()
+        SPELL_JOBS[req.noteId] = {"state": "done", "count": len(result.errors), "seconds": round(time.time() - t0, 1)}
+        print(f"[SpellCheckWorker] เสร็จ — {len(result.errors)} issues, {time.time() - t0:.1f}s"
+              + (", status → user_verify" if req.setStatus else ""))
     except Exception as e:
+        # ไม่แตะรายการเดิม (DELETE อยู่ใน transaction เดียวกับ INSERT ถ้าล้มก็ rollback ทั้งคู่)
+        SPELL_JOBS[req.noteId] = {"state": "error", "error": str(e)[:200]}
         print(f"[SpellCheckWorker] Error: {e}")
         import traceback
         traceback.print_exc()

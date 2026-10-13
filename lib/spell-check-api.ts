@@ -8,6 +8,8 @@ export interface SpellError {
   suggestions: string[];
   sentence: string;
   sentence_index: number;
+  // style = ทับศัพท์ไม่ตรงหลักราชบัณฑิตฯ · double_vowel = สระ/วรรณยุกต์ซ้อน · elongation = ลากเสียง (ซ้ำ 3+)
+  kind?: "spelling" | "style" | "double_vowel" | "elongation" | "spacing"; // spacing = วรรคแทรกกลางคำ
 }
 
 export interface SpellCheckResult {
@@ -52,117 +54,57 @@ export function htmlToPlainText(html: string): string {
 }
 
 // ============================================================
-// runSpellCheck — แกนหลักของการตรวจคำผิด
-// ใช้ร่วมกันทั้งปุ่ม "ตรวจคำผิด" และ auto-check ตอนเปลี่ยนสถานะเป็น proofreading
+// runSpellCheck — ปุ่ม "ตรวจคำผิด": สั่งงานเบื้องหลังแล้วถามสถานะจนเสร็จ
+//
+// เดิมหน้าจอยิงตรวจทีละ 10 ย่อหน้าแล้วบันทึกเอง ผู้ใช้ต้องรอทั้งบท — ตอนนี้ตัวตรวจต้องผ่าน Longdo + HF
+// (หลายสิบวินาทีต่อบท) จึงให้ Python ทำเบื้องหลังและเขียน note_audit_issues เอง หน้าจอแค่ถามว่าเสร็จหรือยัง
+// งานเดียวกับที่ตรวจอัตโนมัติตอนเปลี่ยนสถานะ (ต่างกันแค่ setStatus)
 // ============================================================
-
-const BATCH_SIZE = 10; // ย่อหน้าต่อ batch
 
 export interface RunSpellCheckParams {
   novelId: string;
   noteId: string;
-  fullText: string;              // Quill getText() — index ตรงกับ editor.setSelection
-  onProgress?: (msg: string) => void;  // toast ความคืบหน้า
-  onBatchDone?: () => void;            // refresh list หลังแต่ละ batch
+  fullText: string;              // Quill getText() — ข้อความล่าสุดในหน้าจอ (อาจยังไม่ได้บันทึก)
+  onProgress?: (msg: string) => void;
 }
 
 export interface RunSpellCheckSummary {
-  totalWords: number;
   totalErrors: number;
-  totalSaved: number;
+  seconds?: number;
 }
+
+const POLL_MS = 3000;
+const POLL_LIMIT_MS = 15 * 60 * 1000; // ponytail: เกินนี้ถือว่างานหาย (service restart) ให้ผู้ใช้กดใหม่
 
 export async function runSpellCheck({
   novelId,
   noteId,
   fullText,
   onProgress,
-  onBatchDone,
 }: RunSpellCheckParams): Promise<RunSpellCheckSummary> {
-  // 1. ดึงคำเฉพาะของเรื่อง (ตัวละคร ฝ่าย สถานที่ สิ่งของ สิ่งมีชีวิต พลัง ระบบ ตำนาน)
+  // 1. คำเฉพาะของเรื่อง (ตัวละคร ฝ่าย สถานที่ สิ่งของ สิ่งมีชีวิต พลัง ระบบ ตำนาน) — ถูก mask ก่อนตรวจ
   const entRes = await fetch(`/api/novel/${novelId}/spell-entities`);
   const entities: SpellEntity[] = (await entRes.json()).entities ?? [];
 
-  // 2. แบ่งย่อหน้า พร้อมเก็บตำแหน่งเริ่มต้นใน fullText
-  const paragraphs: { text: string; start: number }[] = [];
-  {
-    let pos = 0;
-    for (const part of fullText.split("\n")) {
-      if (part.trim().length > 0) paragraphs.push({ text: part, start: pos });
-      pos += part.length + 1;
-    }
+  // 2. สั่งงาน — Python ตอบทันที
+  const start = await fetch(`${PYTHON_SERVICE_URL}/spell-check-note`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ noteId, novelId, text: fullText, entities, setStatus: false }),
+  });
+  if (!start.ok) throw new Error(`Spell check service error: ${start.status}`);
+  onProgress?.("กำลังตรวจคำผิดเบื้องหลัง — เขียนต่อได้เลย");
+
+  // 3. ถามสถานะจนเสร็จ
+  const deadline = Date.now() + POLL_LIMIT_MS;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, POLL_MS));
+    const res = await fetch(`${PYTHON_SERVICE_URL}/spell-check-note/status/${noteId}`);
+    if (!res.ok) continue; // สะดุดชั่วคราว ถามใหม่รอบหน้า
+    const job = await res.json();
+    if (job.state === "done") return { totalErrors: job.count ?? 0, seconds: job.seconds };
+    if (job.state === "error") throw new Error(job.error || "ตรวจไม่สำเร็จ");
+    if (job.state === "unknown") throw new Error("งานตรวจหายไป (ระบบเพิ่งรีสตาร์ต) — กดตรวจใหม่อีกครั้ง");
   }
-  if (paragraphs.length === 0) {
-    return { totalWords: 0, totalErrors: 0, totalSaved: 0 };
-  }
-
-  const batches: { text: string; start: number }[][] = [];
-  for (let i = 0; i < paragraphs.length; i += BATCH_SIZE) {
-    batches.push(paragraphs.slice(i, i + BATCH_SIZE));
-  }
-
-  // 3. dedup — ลบ spelling issues เก่าก่อน (เขียนทับ)
-  const delRes = await fetch(
-    `/api/novel/${novelId}/note/${noteId}/audit-issues?category=spelling`,
-    { method: "DELETE" }
-  );
-  if (delRes.ok) onBatchDone?.();
-
-  // 4. ตรวจทีละ batch — save + refresh ทันที (progressive)
-  let totalWords = 0;
-  let totalErrors = 0;
-  let totalSaved = 0;
-
-  for (let b = 0; b < batches.length; b++) {
-    const batch = batches[b];
-    const batchText = batch.map(p => p.text).join("\n");
-
-    const result = await callSpellCheck(batchText, entities, novelId);
-    if (!result.success) continue;
-
-    totalWords += result.total_words;
-    totalErrors += result.errors.length;
-
-    // offset จาก Python อ้างกับ batchText — แปลงกลับเป็นตำแหน่งใน fullText ทีละย่อหน้า
-    // (เดิมใช้ indexOf ไล่หา ทำให้ชิ้นคำอย่าง "เสี" ไปตรงกับ "เสียง" คำแรกที่เจอ)
-    let batchSaved = 0;
-    for (const err of result.errors) {
-      let local = err.offset;
-      let idx = -1;
-      for (const p of batch) {
-        if (local <= p.text.length) { idx = p.start + local; break; }
-        local -= p.text.length + 1;
-      }
-      if (idx < 0 || fullText.slice(idx, idx + err.word.length) !== err.word) continue;
-
-      const hasSuggestion = err.suggestions.length > 0;
-      const body = {
-        level: hasSuggestion ? "proofreading" : "line",
-        category: "spelling",
-        startIndex: idx,
-        endIndex: idx + err.word.length,
-        flaggedText: err.word,
-        issueDescription: hasSuggestion
-          ? `คำสะกดผิด — แนะนำ: ${err.suggestions.slice(0, 3).join(", ")}`
-          : `อาจสะกดผิด — ไม่มีคำแนะนำอัตโนมัติ โปรดตรวจสอบเอง`,
-        suggestedText: hasSuggestion ? err.suggestions[0] : null,
-        suggestionNotes: hasSuggestion ? null : "PyThaiNLP หาคำที่ถูกต้องไม่ได้",
-      };
-
-      const res = await fetch(`/api/novel/${novelId}/note/${noteId}/audit-issues`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (res.ok) {
-        batchSaved++;
-        totalSaved++;
-      }
-    }
-
-    if (batchSaved > 0) onBatchDone?.();
-    if (totalErrors > 0) onProgress?.(`ตรวจแล้ว ${b + 1}/${batches.length} ส่วน — พบ ${totalErrors} คำ`);
-  }
-
-  return { totalWords, totalErrors, totalSaved };
+  throw new Error("ตรวจนานเกินไป — กดตรวจใหม่อีกครั้ง");
 }
