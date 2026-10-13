@@ -6,11 +6,13 @@ Thai Novel Spell Checker
 
 import os
 import re
+import html
+from collections import Counter
 from typing import List, Optional
 from dataclasses import dataclass, field
 from pythainlp.spell import spell, correct
 from pythainlp.tokenize import word_tokenize, sent_tokenize
-from pythainlp.util import normalize, dict_trie
+from pythainlp.util import dict_trie
 from pythainlp.corpus.common import thai_words
 
 import longdo_client
@@ -88,6 +90,140 @@ def _get_tokenizer():
     return _ATTACUT
 
 
+
+
+# ตัวยืนยันด้วยบริบท: WangchanBERTa (masked LM ภาษาไทย ~420 MB)
+#
+# ปัญหาเดิม: "ไม่อยู่ในพจนานุกรม = ผิด" ทำให้คำประสมที่ถูก ("เสียงกลอง", "ข้างถนน")
+# กับชิ้นคำที่ attacut ตัดแตก ("เสี", "เธ") โดนขีดแดงเป็นส่วนใหญ่ — วัดจาก DB จริง
+# จับถูกราว 10% เท่านั้น ชั้นนี้ให้ LM เทียบ "คำเดิม" กับ "คำแนะนำ" ในประโยคเดียวกัน
+# แล้วขีดแดงเฉพาะเมื่อคำแนะนำเข้าบริบทกว่าชัด ๆ
+#
+# เปิดด้วย SPELL_LM=1 เท่านั้น (ตั้งบน HF Space) — Replit RAM ไม่พอ ปิดไว้ก็ทำงานแบบเดิม
+_LM = None
+_LM_TRIED = False
+LM_MODEL = os.getenv("SPELL_LM_MODEL", "airesearch/wangchanberta-base-att-spm-uncased")
+# ponytail: เกณฑ์ตั้งจากสามัญสำนึก ยังไม่ได้จูนกับชุดทดสอบ — ปรับผ่าน env ได้
+LM_MARGIN = float(os.getenv("SPELL_LM_MARGIN", "1.5"))
+LM_CONTEXT_CHARS = 120
+
+
+def _get_lm():
+    global _LM, _LM_TRIED
+    if not _LM_TRIED:
+        _LM_TRIED = True
+        if os.getenv("SPELL_LM") != "1":
+            return None
+        try:
+            import torch
+            from transformers import AutoTokenizer, AutoModelForMaskedLM
+            tok = AutoTokenizer.from_pretrained(LM_MODEL)
+            model = AutoModelForMaskedLM.from_pretrained(LM_MODEL).eval()
+            _LM = (tok, model, torch)
+            print(f"[SpellChecker] context LM: {LM_MODEL}")
+        except Exception as e:
+            _LM = None
+            print(f"[SpellChecker] context LM ใช้ไม่ได้: {e}")
+    return _LM
+
+
+def _lm_score(left: str, word: str, right: str) -> float:
+    """
+    ค่าเฉลี่ย log-prob ของ subword ของ word เมื่อปิดทีละตัว (pseudo-log-likelihood)
+    ยิ่งสูง ยิ่งเข้ากับบริบท — เทียบได้เฉพาะระหว่างคำที่อยู่ช่องเดียวกัน
+    """
+    tok, model, torch = _LM
+    enc = lambda s: tok(s.replace(" ", "<_>"), add_special_tokens=False)["input_ids"]
+    l_ids, w_ids, r_ids = enc(left)[-60:], enc(word), enc(right)[:60]
+    if not w_ids:
+        return float("-inf")
+    ids = [tok.cls_token_id] + l_ids + w_ids + r_ids + [tok.sep_token_id]
+    start = 1 + len(l_ids)
+    batch = torch.tensor([ids] * len(w_ids))
+    for i in range(len(w_ids)):
+        batch[i, start + i] = tok.mask_token_id
+    with torch.no_grad():
+        logits = model(input_ids=batch).logits
+    logp = torch.log_softmax(logits, dim=-1)
+    total = sum(logp[i, start + i, w_ids[i]].item() for i in range(len(w_ids)))
+    return total / len(w_ids)
+
+
+# ============================================================
+# Masking คำเฉพาะของเรื่อง
+# ============================================================
+#
+# แทนชื่อในเรื่องด้วยคำไทยธรรมดาก่อนตรวจ แทนการกรองทีหลังด้วย whitelist
+# เพราะตัวตัดคำแตกชื่อจนกรองไม่เจอ: "เรย์กะ" ถูกตัดเป็น "เรย์|กะ" แล้ว "เรย์"
+# โดนขีดแดง 41 ครั้งใน DB ทั้งที่ชื่ออยู่ใน whitelist — mask ก่อนตัดคำจึงหายทั้งก้อน
+# และชื่อในเรื่องไม่ถูกส่งออกไปภายนอก (Longdo / HF) ด้วย
+#
+# ponytail: สรรพนามตัวเดียวต่อประเภทพอสำหรับตรวจสะกด เปลี่ยนเป็นชื่อสามัญถ้า LM ให้คะแนนเพี้ยน
+MASK_BY_TYPE = {
+    "character": "เขา",
+    "faction": "พวกเขา",
+    "location": "ที่นั่น",
+    "item": "สิ่งนั้น",
+    "creature": "มัน",
+}
+DEFAULT_MASK = "สิ่งนั้น"   # power / system / lore / คำแต่งอื่น ๆ
+
+
+@dataclass
+class EntitySpan:
+    start: int        # ตำแหน่งใน text ก่อน mask
+    end: int
+    mstart: int       # ตำแหน่งใน text หลัง mask
+    mend: int
+    name: str
+    type: str
+
+
+def mask_entities(text: str, entities: List[dict]) -> tuple:
+    """
+    คืน (masked_text, spans) — จับชื่อที่ยาวที่สุดก่อน ("เรย์กะ" ชนะ "เรย์")
+
+    ชื่อสั้นที่เป็นคำทั่วไป (เช่นตัวละครชื่อ "ฟ้า") ไม่ mask เพราะจะกลบคำนั้นทั้งเรื่อง
+    """
+    names: dict = {}
+    for e in entities:
+        name = (e.get("text") or "").strip()
+        if len(name) >= 2 and name not in names:
+            names[name] = e.get("type") or "term"
+    keep = [n for n in names if len(n) >= 3 or n not in _get_thai_dict()]
+    if not keep:
+        return text, []
+
+    pattern = re.compile("|".join(re.escape(n) for n in sorted(keep, key=len, reverse=True)))
+    out: List[str] = []
+    spans: List[EntitySpan] = []
+    last = 0
+    shift = 0
+    for m in pattern.finditer(text):
+        etype = names[m.group()]
+        placeholder = MASK_BY_TYPE.get(etype, DEFAULT_MASK)
+        out.append(text[last:m.start()])
+        out.append(placeholder)
+        mstart = m.start() + shift
+        spans.append(EntitySpan(m.start(), m.end(), mstart, mstart + len(placeholder), m.group(), etype))
+        shift += len(placeholder) - (m.end() - m.start())
+        last = m.end()
+    out.append(text[last:])
+    return "".join(out), spans
+
+
+def unmask_offset(offset: int, spans: List[EntitySpan]) -> Optional[int]:
+    """แปลงตำแหน่งใน masked text กลับเป็นตำแหน่งเดิม — None ถ้าตกอยู่ในช่วงที่ mask"""
+    delta = 0
+    for s in spans:
+        if offset < s.mstart:
+            break
+        if offset < s.mend:
+            return None
+        delta = s.end - s.mend
+    return offset + delta
+
+
 # ============================================================
 # Data Classes
 # ============================================================
@@ -95,11 +231,11 @@ def _get_tokenizer():
 @dataclass
 class SpellError:
     word: str                        # คำที่ผิด
-    position: int                    # index ใน token list
-    offset: int                      # char offset ใน text ดั้งเดิม
+    position: int                    # index ใน token list (-1 ถ้าไม่มี)
+    offset: int                      # char offset ใน text ที่ส่งเข้ามา (หลังลบ HTML)
     suggestions: List[str]           # คำที่น่าจะถูก
-    sentence: str                    # ประโยคที่พบ (context)
-    sentence_index: int              # ประโยคที่ n
+    sentence: str                    # บรรทัดที่พบ (context)
+    sentence_index: int              # บรรทัดที่ n
 
 
 @dataclass
@@ -108,7 +244,8 @@ class SpellCheckResult:
     errors: List[SpellError]
     total_words: int
     error_count: int
-    custom_words_used: List[str]     # คำ custom ที่ skip ไป
+    custom_words_used: List[str]     # คำเฉพาะที่เจอในข้อความ
+    entities_found: List[dict] = field(default_factory=list)  # [{name, type, count, offsets}]
 
 
 # ============================================================
@@ -118,9 +255,8 @@ class SpellCheckResult:
 class NovelSpellChecker:
     """
     Spell checker สำหรับนิยายไทย
-    - ใช้ PyThaiNLP NorvigSpellChecker เป็น backend
-    - รองรับ whitelist คำเฉพาะของเรื่อง (ชื่อตัวละคร, สถานที่, คำแต่ง)
-    - กรองคำที่ไม่ต้องตรวจ (ตัวเลข, อังกฤษ, เครื่องหมาย)
+
+    ลำดับ: ลบ HTML -> mask คำเฉพาะ -> Longdo / HF / ในเครื่อง -> แปลง offset กลับ
     """
 
     # Pattern ที่ skip การตรวจ
@@ -129,6 +265,9 @@ class NovelSpellChecker:
         re.compile(r'^\d+$'),                     # ตัวเลข
         re.compile(r'^[^฀-๿]+$'),      # ไม่ใช่ภาษาไทยเลย
         re.compile(r'^["\'\"\"\'\'「」『』《》【】\[\]()（）\-–—_.,!?:;…]+$'),  # เครื่องหมาย
+        # ponytail: เดาคำเลียนเสียงจากรูป (อักษรซ้ำ 3+ / ไม้ตรี-จัตวาในคำสั้น) — พลาดคำผิดจริงที่หน้าตาแบบนี้ได้
+        re.compile(r'(.)\1\1'),                   # "มมมมมม", "ฮึ่มมม"
+        re.compile(r'^(?=.*[๊๋]).{1,4}$'),  # "อ๊าด", "ปั๋ง"
     ]
 
     # คำทั่วไปที่ pythainlp มักตีว่าผิดแต่จริงๆ ถูก (common false positives)
@@ -143,27 +282,39 @@ class NovelSpellChecker:
         "ฮ่าๆ", "ฮ่า", "ฮะ", "หะ", "งั้น", "อ่า", "เอ่อ", "แง", "อ๋อ",
         # คำซ้ำ (ๆ)
         "ๆ",
+        # คำแทนจาก MASK_BY_TYPE ต้องไม่โดนขีดแดงเอง
+        *MASK_BY_TYPE.values(), DEFAULT_MASK,
     }
 
-    def __init__(self, custom_words: Optional[List[str]] = None):
+    def __init__(
+        self,
+        custom_words: Optional[List[str]] = None,
+        entities: Optional[List[dict]] = None,
+    ):
         """
-        custom_words: ชื่อตัวละคร, สถานที่, คำเฉพาะของเรื่อง
+        entities: [{text, type}] คำเฉพาะของเรื่องพร้อมประเภท (character/location/...)
+        custom_words: รูปเดิม — list ชื่อล้วน ถือเป็น character
         """
         self.custom_whitelist: set = set(self.BUILTIN_WHITELIST)
+        self.entities: List[dict] = list(entities or [])
 
-        if custom_words:
-            for w in custom_words:
-                if w and w.strip():
-                    self.custom_whitelist.add(w.strip())
-                    # เพิ่มรูปแบบย่อย เช่น "เอริส ไรกะ" → "เอริส", "ไรกะ"
-                    for part in w.strip().split():
-                        if part:
-                            self.custom_whitelist.add(part)
+        for w in custom_words or []:
+            if w and w.strip():
+                self.entities.append({"text": w.strip(), "type": "character"})
+
+        # เพิ่มรูปแบบย่อย เช่น "เอริส ไรกะ" -> "เอริส", "ไรกะ"
+        for e in list(self.entities):
+            name = (e.get("text") or "").strip()
+            self.custom_whitelist.add(name)
+            parts = name.split()
+            if len(parts) > 1:
+                for part in parts:
+                    self.entities.append({"text": part, "type": e.get("type")})
+                    self.custom_whitelist.add(part)
 
         # trie สร้างตอนใช้ครั้งแรก ไม่ใช่ตอน __init__ — มันกิน ~65 MB (62,101 คำ)
         # และใช้เฉพาะทาง fallback ในเครื่อง ทาง Longdo ไม่ต้องใช้เลย
         self._trie = None
-
 
     def _get_custom_trie(self):
         """
@@ -184,146 +335,154 @@ class NovelSpellChecker:
         if len(word) <= 1:
             return True
         for pattern in self.SKIP_PATTERNS:
-            if pattern.match(word):
+            if pattern.search(word):
                 return True
         return False
-
-    def _get_char_offset(self, text: str, tokens: List[str], token_index: int) -> int:
-        """หา character offset ของ token ใน text ดั้งเดิม"""
-        pos = 0
-        for i, token in enumerate(tokens):
-            idx = text.find(token, pos)
-            if idx == -1:
-                idx = pos
-            if i == token_index:
-                return idx
-            pos = idx + len(token)
-        return -1
 
     def check_text(self, text: str) -> SpellCheckResult:
         """
         ตรวจสอบ text ทั้งหมด
 
-        ลอง Longdo ก่อน ถ้าไม่ได้ค่อยตกมาที่ตัวในเครื่อง — ทางแรกไม่โหลดอะไรเข้า RAM
-        เลย ส่วนทางที่สองปลุก attacut (184 MB) + hunspell (34 MB) ขึ้นมาตอนนั้น
-        ทั้งคู่ lazy อยู่แล้ว การไม่เรียกจึงแปลว่าไม่กิน
+        ลอง Longdo ก่อน ถ้าไม่ได้ค่อยไปทางสำรอง: HF Space (ถ้าตั้ง SPELL_FALLBACK_URL)
+        หรือตัวในเครื่อง — ทุกทางตรวจบน masked text แล้วแปลง offset กลับทีหลัง
         """
         import time
         t0 = time.time()
 
         cleaned = self._preprocess(text)
+        masked, spans = mask_entities(cleaned, self.entities)
 
-        remote = self._check_via_longdo(cleaned, text)
-        if remote is not None:
-            elapsed = time.time() - t0
-            print(f"[SpellChecker] longdo -- {remote.error_count} errors, {elapsed:.2f}s")
-            return remote
-
-        sentences = sent_tokenize(cleaned, engine="whitespace+newline")
-
-        print(f"[SpellChecker] text length      : {len(text)} chars")
-        print(f"[SpellChecker] sentences        : {len(sentences)}")
-        print(f"[SpellChecker] whitelist size   : {len(self.custom_whitelist)}")
-        print(f"[SpellChecker] thai dict size   : {len(_get_thai_dict())} words")
+        raw = self._check_via_longdo(masked)
+        engine = "longdo"
+        if raw is None:
+            if os.getenv("SPELL_FALLBACK_URL"):
+                raw, engine = self._check_via_remote(masked), "remote"
+            else:
+                raw, engine = self.check_local(masked), "local"
 
         errors: List[SpellError] = []
-        total_words = 0
-        custom_words_found: set = set()
+        for e in raw:
+            start = unmask_offset(e.offset, spans)
+            end = unmask_offset(e.offset + len(e.word) - 1, spans)
+            if start is None or end is None or cleaned[start:start + len(e.word)] != e.word:
+                continue  # ชนช่วงที่ mask หรือแปลงตำแหน่งไม่ลง — ทิ้ง ไม่เดา
+            line_start = cleaned.rfind("\n", 0, start) + 1
+            line_end = cleaned.find("\n", start)
+            e.offset = start
+            e.sentence = cleaned[line_start:line_end if line_end != -1 else len(cleaned)].strip()
+            e.sentence_index = cleaned.count("\n", 0, start)
+            errors.append(e)
 
-        char_offset_base = 0
+        found: dict = {}
+        for s in spans:
+            f = found.setdefault(s.name, {"name": s.name, "type": s.type, "count": 0, "offsets": []})
+            f["count"] += 1
+            f["offsets"].append(s.start)
 
-        for sent_idx, sentence in enumerate(sentences):
-            tokens = self._tokenize(sentence)
-            real_tokens = [t for t in tokens if self._is_real_word(t)]
-            total_words += len(real_tokens)
-
-            print(f"[SpellChecker] sent[{sent_idx}] tokens={real_tokens}")
-
-            for tok_idx, word in enumerate(tokens):
-                if not self._is_real_word(word):
-                    continue
-
-                if word in self.custom_whitelist:
-                    custom_words_found.add(word)
-                    print(f"[SpellChecker]   SKIP (whitelist): {word!r}")
-                    continue
-
-                if self._should_skip(word):
-                    print(f"[SpellChecker]   SKIP (pattern)  : {word!r}")
-                    continue
-
-                # ตรวจสอบด้วย dictionary lookup (O(1)) — เร็วกว่า spell() มาก
-                in_dict = (word in _get_thai_dict()) or (word in self.custom_whitelist)
-
-                if not in_dict:
-                    # หา suggestions เฉพาะคำที่ผิด — เร็วพอจนไม่ต้อง cache (ดูหมายเหตุบนสุด)
-                    suggestions = _suggest(word)
-
-                    offset = self._get_char_offset(sentence, tokens, tok_idx)
-
-                    print(f"[SpellChecker]   ERROR: {word!r} -> suggestions={suggestions}")
-                    errors.append(SpellError(
-                        word=word,
-                        position=tok_idx,
-                        offset=char_offset_base + offset,
-                        suggestions=suggestions,
-                        sentence=sentence.strip(),
-                        sentence_index=sent_idx,
-                    ))
-                else:
-                    print(f"[SpellChecker]   OK   : {word!r}")
-
-            char_offset_base += len(sentence)
-
-        elapsed = time.time() - t0
-        print(f"[SpellChecker] done -- {total_words} words, {len(errors)} errors, {elapsed:.2f}s")
+        print(f"[SpellChecker] {engine} -- {len(errors)} errors, "
+              f"{len(spans)} masked, {time.time() - t0:.2f}s")
 
         return SpellCheckResult(
             original_text=text,
             errors=errors,
-            total_words=total_words,
+            total_words=self._count_words(masked),
             error_count=len(errors),
-            custom_words_used=sorted(custom_words_found),
+            custom_words_used=sorted(found),
+            entities_found=list(found.values()),
         )
 
-    def _check_via_longdo(self, cleaned: str, original: str) -> Optional[SpellCheckResult]:
+    def check_local(self, masked: str) -> List[SpellError]:
         """
-        ตรวจด้วย Longdo แล้วแปลงผลให้เข้ารูป SpellCheckResult เดิม
+        ตัวตรวจในเครื่อง — offset ของผลอ้างกับ masked text ที่รับเข้ามา
 
-        คืน None ถ้าเรียกไม่ได้ ให้ผู้เรียกไปใช้ทางในเครื่องแทน
-
-        ต้องกรองด้วย whitelist เอง เพราะ API ไม่รับพจนานุกรมเฉพาะเรื่อง —
-        ไม่กรองแล้วชื่อตัวละครกับคำที่ประดิษฐ์ขึ้นจะโดนขีดแดงทุกหน้า
+        HF Space เรียกฟังก์ชันนี้ตรง ๆ (masking ทำที่ Replit แล้ว ชื่อไม่หลุดออกไป)
         """
-        hits = longdo_client.proof(cleaned)
+        lm = _get_lm()
+        errors: List[SpellError] = []
+        dictionary = _get_thai_dict()
+        cursor = 0
+        for line in masked.split("\n"):
+            line_start = cursor
+            cursor += len(line) + 1
+            if not line.strip():
+                continue
+            pos = line_start
+            for tok_idx, word in enumerate(self._tokenize(line)):
+                idx = masked.find(word, pos)
+                if idx == -1:
+                    continue
+                pos = idx + len(word)
+                # attacut บางทีติดเครื่องหมายมากับคำ ("โทษ”") — ตัดขอบที่ไม่ใช่อักษรไทยออก
+                core = re.match(r'^([^฀-๿]*)(.*?)[^฀-๿]*$', word)
+                idx, word = idx + len(core.group(1)), core.group(2)
+                if not self._is_real_word(word) or self._should_skip(word) or word in dictionary:
+                    continue
+
+                # ตัดคำแนะนำแบบแยกคำ ("ป ปาฏิหาริย์", "ป-ปาฏิหาริย์") — hunspell ชอบเสนอ แต่ไม่เคยเป็นคำตอบที่ถูกในภาษาไทย
+                suggestions = [
+                    s for s in _suggest(word)
+                    if " " not in s and "-" not in s and self._edit_distance(word, s) <= 2
+                ]
+
+                if lm is not None:
+                    # ไม่มีคำแนะนำ = LM เทียบไม่ได้ — ปล่อยผ่าน ดีกว่าขีดแดงชิ้นคำมั่ว
+                    if not suggestions:
+                        continue
+                    left = masked[max(0, idx - LM_CONTEXT_CHARS):idx]
+                    right = masked[pos:pos + LM_CONTEXT_CHARS]
+                    base = _lm_score(left, word, right)
+                    scored = sorted(((_lm_score(left, s, right), s) for s in suggestions), reverse=True)
+                    if scored[0][0] - base < LM_MARGIN:
+                        continue
+                    suggestions = [s for _, s in scored]
+
+                errors.append(SpellError(
+                    word=word,
+                    position=tok_idx,
+                    offset=idx,
+                    suggestions=suggestions,
+                    sentence="",
+                    sentence_index=-1,
+                ))
+        return errors
+
+    def _check_via_remote(self, masked: str) -> List[SpellError]:
+        """ส่ง masked text ไปตรวจที่ HF Space — ล้มให้ throw ผู้เรียกตอบ success=False"""
+        import httpx
+        res = httpx.post(
+            os.environ["SPELL_FALLBACK_URL"].rstrip("/") + "/spell/check-local",
+            json={"text": masked},
+            headers={
+                "x-internal-key": os.getenv("INTERNAL_API_KEY", ""),
+                # Space แบบ private ต้องมี HF token (read) ไม่งั้น HF ตอบ 404 ก่อนถึงแอป
+                **({"Authorization": f"Bearer {os.environ['HF_TOKEN']}"} if os.getenv("HF_TOKEN") else {}),
+            },
+            timeout=180.0,  # เผื่อ Space ตื่นจากหลับ + โหลดโมเดล
+        )
+        res.raise_for_status()
+        return [SpellError(**e) for e in res.json()["errors"]]
+
+    def _check_via_longdo(self, masked: str) -> Optional[List[SpellError]]:
+        """
+        ตรวจด้วย Longdo — คืน None ถ้าเรียกไม่ได้ ให้ผู้เรียกไปทางสำรอง
+
+        ชื่อในเรื่องถูก mask ไปแล้ว จึงกรองแค่ pattern ที่ไม่ต้องตรวจ
+        """
+        hits = longdo_client.proof(masked)
         if hits is None:
             return None
-
-        errors: List[SpellError] = []
-        custom_found: set = set()
-        for h in hits:
-            word = h["word"]
-            if word in self.custom_whitelist:
-                custom_found.add(word)
-                continue
-            if self._should_skip(word) or not self._is_real_word(word):
-                continue
-            errors.append(SpellError(
-                word=word,
+        return [
+            SpellError(
+                word=h["word"],
                 position=-1,           # Longdo ให้ offset ตัวอักษร ไม่ให้ลำดับ token
                 offset=h["offset"],
                 suggestions=h["suggestions"],
-                sentence="",           # ไม่ได้แบ่งประโยค จึงไม่มี context ให้แนบ
+                sentence="",
                 sentence_index=-1,
-            ))
-
-        return SpellCheckResult(
-            original_text=original,
-            errors=errors,
-            total_words=len(cleaned.split()),
-            error_count=len(errors),
-            custom_words_used=sorted(custom_found),
-        )
+            )
+            for h in hits
+            if not self._should_skip(h["word"]) and self._is_real_word(h["word"])
+        ]
 
     def check_word(self, word: str) -> dict:
         """ตรวจคำเดียว — ใช้สำหรับ inline check"""
@@ -340,28 +499,30 @@ class NovelSpellChecker:
             "suggestions": _suggest(word),
         }
 
-    def add_custom_words(self, words: List[str]):
-        """เพิ่มคำ whitelist หลัง init"""
-        for w in words:
-            if w and w.strip():
-                self.custom_whitelist.add(w.strip())
-                for part in w.strip().split():
-                    if part:
-                        self.custom_whitelist.add(part)
-        # ทิ้ง trie เดิมให้สร้างใหม่ตอนใช้ — เดิมบรรทัดนี้ประกอบ trie จาก whitelist
-        # อย่างเดียว ซึ่งเป็นบั๊กเดียวกับที่แก้ไปใน __init__ (ตัวตัดคำจะรู้จักแค่ ~50 คำ)
-        self._trie = None
-
     # ============================================================
     # Private helpers
     # ============================================================
 
+    # แท็กที่จบบรรทัดใน Quill — แทนด้วย \n ไม่งั้นท้ายย่อหน้าจะติดต้นย่อหน้าถัดไป
+    # (ที่มาของ "วและ", "เองห" ในผลเก่า)
+    _BLOCK_TAG = re.compile(r'</(p|div|h[1-6]|li|blockquote|pre)>|<br\s*/?>', re.I)
+
     def _preprocess(self, text: str) -> str:
-        """Clean text ก่อนตรวจ"""
-        text = re.sub(r'<[^>]*>', '', text)           # ลบ HTML tags
-        text = text.replace("\xa0", " ")              # Non-breaking space
-        text = normalize(text)                        # PyThaiNLP normalize
-        return text
+        """
+        ลบ HTML ให้เหลือข้อความล้วน
+
+        ไม่ normalize() แล้ว — มันลบ/สลับสระวรรณยุกต์ ทำให้ offset ไม่ตรงกับ editor
+        และกลบคำที่พิมพ์สระซ้อนผิดซึ่งเป็นคำผิดที่ควรเห็นเอง
+        """
+        if "<" in text:
+            text = self._BLOCK_TAG.sub("\n", text)
+            text = re.sub(r'<[^>]*>', '', text)
+            text = html.unescape(text)
+        return text.replace("\xa0", " ")
+
+    def _count_words(self, text: str) -> int:
+        # ponytail: นับคร่าว ๆ ด้วย newmm (เร็ว) — ใช้แค่แสดงผล ไม่ต้องแม่น
+        return sum(1 for t in word_tokenize(text, engine="newmm") if self._is_real_word(t))
 
     def _tokenize(self, text: str) -> List[str]:
         """Tokenize — ใช้ attacut ถ้ามี, fallback newmm (จับคำผิดได้น้อยกว่ามาก ดูหมายเหตุด้านบน)"""
@@ -408,18 +569,17 @@ class NovelSpellChecker:
 def check_novel_text(
     text: str,
     custom_words: Optional[List[str]] = None,
+    entities: Optional[List[dict]] = None,
 ) -> SpellCheckResult:
     """
     ฟังก์ชั่นหลักสำหรับตรวจคำผิดในนิยาย
 
     Args:
-        text: เนื้อหานิยาย
-        custom_words: ชื่อตัวละคร, สถานที่ ฯลฯ ที่ไม่ต้องตรวจ
-
-    Returns:
-        SpellCheckResult พร้อม errors และ suggestions
+        text: เนื้อหานิยาย (HTML หรือข้อความล้วน)
+        custom_words: ชื่อล้วน (รูปเดิม ถือเป็น character)
+        entities: [{text, type}] คำเฉพาะพร้อมประเภท
     """
-    checker = NovelSpellChecker(custom_words=custom_words)
+    checker = NovelSpellChecker(custom_words=custom_words, entities=entities)
     return checker.check_text(text)
 
 
@@ -427,3 +587,21 @@ def quick_check(word: str) -> dict:
     """ตรวจคำเดียวแบบเร็ว ไม่ต้อง init checker"""
     checker = NovelSpellChecker()
     return checker.check_word(word)
+
+
+if __name__ == "__main__":
+    # เช็คตัวเอง (ไม่แตะ Longdo / LM) — รัน: python spell_checker.py
+    ents = [{"text": "เรย์กะ", "type": "character"}, {"text": "เรย์", "type": "character"},
+            {"text": "หอคอยนิรันดร์", "type": "location"}]
+    src = "ดาบของเรย์กะพริบ ณ หอคอยนิรันดร์ แล้วอนุญาติ"
+    masked, spans = mask_entities(src, ents)
+    assert masked == "ดาบของเขาพริบ ณ ที่นั่น แล้วอนุญาติ", masked
+    assert [s.name for s in spans] == ["เรย์กะ", "หอคอยนิรันดร์"]  # ยาวสุดชนะ
+    i = masked.index("อนุญาติ")
+    assert src[unmask_offset(i, spans):].startswith("อนุญาติ")
+    assert unmask_offset(masked.index("เขา") + 1, spans) is None   # ในช่วง mask -> ทิ้ง
+
+    c = NovelSpellChecker(entities=ents)
+    assert c._preprocess("<p>เองห</p><p>และ&amp;</p>") == "เองห\nและ&\n"
+    assert c._should_skip("มมมมมม") and c._should_skip("อ๊าด") and not c._should_skip("อนุญาติ")
+    print("✅ spell_checker self-check ผ่าน")

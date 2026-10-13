@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+httpx
+spaces
+pythainlp
+attacut
+spylls
+sentencepiece
+transformers
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch

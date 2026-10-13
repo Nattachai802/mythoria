@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { guardNovel } from "@/lib/authz";
 import { db } from "@/db/drizzle";
-import { notes, characters, locations } from "@/db/schema";
+import { notes } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 import { pyFetch } from "@/lib/python-service";
+import { getSpellEntities } from "@/lib/spell-entities";
 
 type Props = {
     params: Promise<{ novelId: string; noteId: string }>;
@@ -30,24 +31,13 @@ export async function POST(request: NextRequest, { params }: Props) {
             return NextResponse.json({ success: false, error: "Note ว่างเปล่า" }, { status: 400 });
         }
 
-        const [novelCharacters, novelLocations] = await Promise.all([
-            db.select().from(characters).where(eq(characters.novelId, novelId)),
-            db.select().from(locations).where(eq(locations.novelId, novelId)),
-        ]);
-
-        const customWords: string[] = [
-            ...novelCharacters.flatMap((c: any) => [
-                c.name,
-                ...(((c.aliases as string[] | null) ?? [])),
-            ]),
-            ...novelLocations.map((l: any) => l.name),
-        ].filter(Boolean);
+        const entities = await getSpellEntities(novelId);
 
         // 2. ยิงไป Python — ไม่รอผล (Python ใช้ BackgroundTasks return ทันที)
         pyFetch(`/spell-check-note`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ noteId, novelId, text, customWords }),
+            body: JSON.stringify({ noteId, novelId, text, entities }),
         }).catch((e) => console.error("[SpellCheckTrigger] Python call failed:", e));
 
         return NextResponse.json({ success: true, triggered: true });

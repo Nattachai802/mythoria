@@ -996,7 +996,8 @@ from spell_checker import NovelSpellChecker, check_novel_text
 
 class SpellCheckRequest(BaseModel):
     text: str
-    custom_words: list[str] = []     # ชื่อตัวละคร, สถานที่, คำเฉพาะของเรื่อง
+    custom_words: list[str] = []     # รูปเดิม — ชื่อล้วน ถือเป็นตัวละคร
+    entities: list[dict] = []        # [{text, type}] คำเฉพาะของเรื่อง — ถูก mask ก่อนตรวจ
     novel_id: str = ""               # optional — ใช้สำหรับ logging
 
 
@@ -1015,6 +1016,7 @@ class SpellCheckResponse(BaseModel):
     error_count: int
     errors: list[SpellErrorResponse]
     custom_words_used: list[str]
+    entities_found: list[dict] = []  # [{name, type, count, offsets}] — ไว้ทำไฮไลต์/ผูกฉาก
 
 
 @app.post("/spell-check", response_model=SpellCheckResponse)
@@ -1037,6 +1039,7 @@ async def spell_check_endpoint(request: SpellCheckRequest):
         result = check_novel_text(
             text=request.text,
             custom_words=request.custom_words if request.custom_words else None,
+            entities=request.entities or None,
         )
 
         return SpellCheckResponse(
@@ -1055,6 +1058,7 @@ async def spell_check_endpoint(request: SpellCheckRequest):
                 for e in result.errors
             ],
             custom_words_used=result.custom_words_used,
+            entities_found=result.entities_found,
         )
 
     except Exception as e:
@@ -1089,6 +1093,7 @@ class SpellCheckNoteRequest(BaseModel):
     novelId: str
     text: str                    # HTML content จาก note
     customWords: list[str] = []
+    entities: list[dict] = []    # [{text, type}]
 
 
 @app.post("/spell-check-note")
@@ -1103,6 +1108,7 @@ async def spell_check_note_endpoint(
         request.novelId,
         request.text,
         request.customWords,
+        request.entities,
     )
     return {"success": True, "message": "Background spell check triggered."}
 
@@ -1112,6 +1118,7 @@ async def process_spell_check_task(
     novel_id: str,
     text: str,
     custom_words: list[str],
+    entities: list[dict] | None = None,
 ):
     """Worker: spell check note ใน background → save issues → set status user_verify"""
     nextjs_base_url = os.getenv("NEXT_PUBLIC_BASE_URL", "http://localhost:3000")
@@ -1119,7 +1126,7 @@ async def process_spell_check_task(
 
     try:
         # 1. spell check (check_novel_text strip HTML ใน _preprocess อยู่แล้ว)
-        result = check_novel_text(text=text, custom_words=custom_words or None)
+        result = check_novel_text(text=text, custom_words=custom_words or None, entities=entities or None)
         print(f"[SpellCheckWorker] พบคำผิด {result.error_count} คำ จาก {result.total_words} คำ")
 
         async with httpx.AsyncClient() as client:

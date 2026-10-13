@@ -16,17 +16,20 @@ export interface SpellCheckResult {
   error_count: number;
   errors: SpellError[];
   custom_words_used: string[];
+  entities_found?: { name: string; type: string; count: number; offsets: number[] }[];
 }
+
+export type SpellEntity = { text: string; type: string };
 
 export async function callSpellCheck(
   text: string,
-  customWords: string[],
+  entities: SpellEntity[],
   novelId: string
 ): Promise<SpellCheckResult> {
   const res = await fetch(`${PYTHON_SERVICE_URL}/spell-check`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, custom_words: customWords, novel_id: novelId }),
+    body: JSON.stringify({ text, entities, novel_id: novelId }),
   });
 
   if (!res.ok) {
@@ -76,16 +79,9 @@ export async function runSpellCheck({
   onProgress,
   onBatchDone,
 }: RunSpellCheckParams): Promise<RunSpellCheckSummary> {
-  // 1. ดึง custom_words (characters + locations)
-  const charRes = await fetch(`/api/novel/${novelId}/characters`);
-  const charData = await charRes.json();
-  const customWords: string[] = [
-    ...((charData.characters ?? []) as any[]).flatMap((c: any) => [
-      c.name,
-      ...((c.aliases as string[] | null) ?? []),
-    ]),
-    ...((charData.locations ?? []) as any[]).map((l: any) => l.name),
-  ].filter(Boolean);
+  // 1. ดึงคำเฉพาะของเรื่อง (ตัวละคร ฝ่าย สถานที่ สิ่งของ สิ่งมีชีวิต พลัง ระบบ ตำนาน)
+  const entRes = await fetch(`/api/novel/${novelId}/spell-entities`);
+  const entities: SpellEntity[] = (await entRes.json()).entities ?? [];
 
   // 2. แบ่งย่อหน้า พร้อมเก็บตำแหน่งเริ่มต้นใน fullText
   const paragraphs: { text: string; start: number }[] = [];
@@ -116,24 +112,28 @@ export async function runSpellCheck({
   let totalWords = 0;
   let totalErrors = 0;
   let totalSaved = 0;
-  let searchPointer = 0;
 
   for (let b = 0; b < batches.length; b++) {
     const batch = batches[b];
     const batchText = batch.map(p => p.text).join("\n");
 
-    const result = await callSpellCheck(batchText, customWords, novelId);
+    const result = await callSpellCheck(batchText, entities, novelId);
     if (!result.success) continue;
 
     totalWords += result.total_words;
     totalErrors += result.errors.length;
-    searchPointer = Math.max(searchPointer, batch[0].start);
 
+    // offset จาก Python อ้างกับ batchText — แปลงกลับเป็นตำแหน่งใน fullText ทีละย่อหน้า
+    // (เดิมใช้ indexOf ไล่หา ทำให้ชิ้นคำอย่าง "เสี" ไปตรงกับ "เสียง" คำแรกที่เจอ)
     let batchSaved = 0;
     for (const err of result.errors) {
-      const idx = fullText.indexOf(err.word, searchPointer);
-      if (idx === -1) continue;
-      searchPointer = idx + err.word.length;
+      let local = err.offset;
+      let idx = -1;
+      for (const p of batch) {
+        if (local <= p.text.length) { idx = p.start + local; break; }
+        local -= p.text.length + 1;
+      }
+      if (idx < 0 || fullText.slice(idx, idx + err.word.length) !== err.word) continue;
 
       const hasSuggestion = err.suggestions.length > 0;
       const body = {

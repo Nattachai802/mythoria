@@ -581,18 +581,20 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
         const fullText: string = editor ? editor.getText() : "";
         if (!fullText) return rawIssues; // editor ยังไม่พร้อม — ใช้ค่าเดิมไปก่อน
 
-        // แยก spelling ออกมา เรียงตามลำดับพบ (startIndex จาก server) แล้วเดิน sequential search
-        const spelling = rawIssues
-            .filter(i => i.category === "spelling")
-            .sort((a, b) => a.startIndex - b.startIndex);
+        // offset จาก server ใกล้เคียงของจริงแล้ว (คลาดได้นิดหน่อยจากบรรทัดว่าง/แท็ก)
+        // จึงเลือกจุดที่เจอคำนั้น "ใกล้ startIndex เดิมที่สุด" แทนการไล่หาจากต้นเรื่อง
+        // ที่เคยทำให้ชิ้นคำสั้น ๆ ไปเกาะคำแรกที่หน้าตาคล้ายกัน
+        const spelling = rawIssues.filter(i => i.category === "spelling");
         const others = rawIssues.filter(i => i.category !== "spelling");
 
-        let pointer = 0;
         const remapped = spelling.map(issue => {
-            const idx = fullText.indexOf(issue.flaggedText, pointer);
-            if (idx === -1) return issue; // หาไม่เจอ (content เปลี่ยน) — คงค่าเดิม
-            pointer = idx + issue.flaggedText.length;
-            return { ...issue, startIndex: idx, endIndex: idx + issue.flaggedText.length };
+            const w = issue.flaggedText;
+            let best = -1;
+            for (let i = fullText.indexOf(w); i !== -1; i = fullText.indexOf(w, i + 1)) {
+                if (best === -1 || Math.abs(i - issue.startIndex) < Math.abs(best - issue.startIndex)) best = i;
+            }
+            if (best === -1) return issue; // หาไม่เจอ (content เปลี่ยน) — คงค่าเดิม
+            return { ...issue, startIndex: best, endIndex: best + w.length };
         });
 
         return [...others, ...remapped];
