@@ -26,7 +26,8 @@ import { ProjectHeaderActions } from "@/components/project/project-header-action
 import { CreateChapterDialog } from "@/components/project/create-chapter-dialog"
 import { CreateNoteDialog } from "@/components/project/create-note-dialog"
 import { getNovelByIdLight } from "@/server/novel"
-import { getNotes } from "@/server/note"
+import { getNotes, getSpellIssueCounts } from "@/server/note"
+import { SpellStatusBadge } from "@/components/project/spell-status-badge"
 import { getIdeasCount } from "@/server/idea"
 import { getWritingStreak, getAnalyticsSummary, getWritingActivity } from "@/server/analytics"
 import { Button } from "@/components/ui/button"
@@ -87,7 +88,7 @@ export default async function ProjectOverviewPage({ params }: Props) {
     const { id } = await params
 
     // Parallel fetching with light queries
-    const [novelResult, notesResult, ideasCountResult, streakResult, summaryResult, activityResult, stylometryResult] = await Promise.all([
+    const [novelResult, notesResult, ideasCountResult, streakResult, summaryResult, activityResult, stylometryResult, spellCounts] = await Promise.all([
         getNovelByIdLight(id),
         getNotes(id),
         getIdeasCount(id),
@@ -95,6 +96,7 @@ export default async function ProjectOverviewPage({ params }: Props) {
         getAnalyticsSummary(id),
         getWritingActivity(id, 14), // Last 14 days for mini calendar
         getNovelStylometry(id),
+        getSpellIssueCounts(id),
     ])
 
     if (!novelResult.success || !novelResult.novel) {
@@ -121,7 +123,11 @@ export default async function ProjectOverviewPage({ params }: Props) {
         return hasTitle && isLinked && isNotAnalyzed
     })
 
-    const needsRewriteNotes = notes.filter((n: any) => n.status === "needs_rewrite")
+    // คิวแก้ไข: กำลังตรวจคำผิด -> ตรวจเสร็จรอดู -> รอ rewrite
+    const QUEUE_ORDER = ["proofreading", "user_verify", "needs_rewrite"]
+    const needsRewriteNotes = notes
+        .filter((n) => QUEUE_ORDER.includes(n.status ?? ""))
+        .sort((a, b) => QUEUE_ORDER.indexOf(a.status ?? "") - QUEUE_ORDER.indexOf(b.status ?? ""))
 
     // Calculate stats
     const totalWords = novel.wordCount || 0
@@ -438,7 +444,7 @@ export default async function ProjectOverviewPage({ params }: Props) {
 
                         <TabsContent value="rewrite" className="space-y-3 mt-0 border-none p-0">
                             <p className="text-sm text-muted-foreground">
-                                {needsRewriteNotes.length} ตอนรอการแก้ไข
+                                {needsRewriteNotes.length} ตอนในคิว (ตรวจคำผิด / รอ rewrite)
                             </p>
 
                             {/* Rewrite Queue Content */}
@@ -450,7 +456,7 @@ export default async function ProjectOverviewPage({ params }: Props) {
                                         </div>
                                         <h3 className="text-lg font-display font-semibold mb-2">ไม่มีงานในคิว</h3>
                                         <p className="text-sm text-muted-foreground max-w-sm">
-                                            ตั้งสถานะโน้ตเป็น "รอแก้ไข" ในหน้าเขียน เพื่อให้โน้ตนั้นปรากฏในคิวนี้
+                                            ตั้งสถานะโน้ตเป็น "รอพิสูจน์อักษร" (ตรวจคำผิดอัตโนมัติ) หรือ "รอ Rewrite" ในหน้าเขียน เพื่อให้โน้ตนั้นปรากฏในคิวนี้
                                         </p>
                                     </div>
                                 ) : (
@@ -468,6 +474,14 @@ export default async function ProjectOverviewPage({ params }: Props) {
                                                                 <Badge variant="secondary" className="text-xs">
                                                                     {noteItem.linkedChapter.title}
                                                                 </Badge>
+                                                            )}
+                                                            {noteItem.status !== "needs_rewrite" && (
+                                                                <SpellStatusBadge
+                                                                    novelId={id}
+                                                                    noteId={noteItem.id}
+                                                                    status={noteItem.status ?? ""}
+                                                                    unresolvedCount={spellCounts[noteItem.id] ?? 0}
+                                                                />
                                                             )}
                                                         </div>
                                                         <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
@@ -488,7 +502,7 @@ export default async function ProjectOverviewPage({ params }: Props) {
                                                             className="inline-flex items-center justify-center rounded-md text-xs font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3"
                                                         >
                                                             <PenTool className="h-3.5 w-3.5 mr-1.5 text-amber-500" />
-                                                            ตรวจแก้ (Rewrite)
+                                                            {noteItem.status === "needs_rewrite" ? "ตรวจแก้ (Rewrite)" : "ดูผลตรวจ"}
                                                         </Link>
                                                     </div>
                                                 </div>

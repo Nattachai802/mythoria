@@ -1,7 +1,7 @@
 "use server";
 
 import { db } from "@/db/drizzle";
-import { notes, InsertNote } from "@/db/schema";
+import { notes, InsertNote, noteAuditIssues } from "@/db/schema";
 import { eq, desc, and, or, like, gt, lt, ne, asc, isNull, sql } from "drizzle-orm";
 import { syncChapterCharactersFromNotes } from "./analysis-helper";
 import { recalculateNovelWordCountFromNotes } from "./word-count";
@@ -387,3 +387,26 @@ export const getPreviousNote = async (
         return { success: false, message: "Failed to navigate to previous note" };
     }
 };
+
+/**
+ * จำนวนจุดตรวจคำผิดที่ยังไม่แก้ ต่อโน้ต — ใช้แสดงในคิวแก้ไข ("ตรวจเสร็จ · N จุดรอดู")
+ * query เดียว group by note_id · ไม่ผ่าน cache เพราะ worker ฝั่ง Python เขียนตารางนี้ตรง (ไม่มีใคร revalidate ให้)
+ */
+export async function getSpellIssueCounts(novelId: string): Promise<Record<string, number>> {
+    try {
+        await requireNovelAccess(novelId);
+        const rows = await db
+            .select({ noteId: noteAuditIssues.noteId, n: sql<number>`count(*)::int` })
+            .from(noteAuditIssues)
+            .where(and(
+                eq(noteAuditIssues.novelId, novelId),
+                eq(noteAuditIssues.category, "spelling"),
+                eq(noteAuditIssues.status, "unresolved"),
+            ))
+            .groupBy(noteAuditIssues.noteId);
+        return Object.fromEntries(rows.map((r) => [r.noteId, r.n]));
+    } catch (error) {
+        console.error("Get spell issue counts error:", error);
+        return {};
+    }
+}
