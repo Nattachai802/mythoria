@@ -18,6 +18,27 @@ from pythainlp.corpus.common import thai_words
 
 import longdo_client
 
+# เวลาแยกตามขั้น — HF ส่งกลับในแต่ละคำขอไว้หาว่าขั้นไหนช้า (นับแบบรวมขั้นย่อย: variants รวมเวลา newmm ข้างในด้วย)
+import time as _time
+TIMINGS: dict = {}
+
+
+def _timed(name):
+    def wrap(fn):
+        def inner(*a, **k):
+            t = _time.perf_counter()
+            try:
+                return fn(*a, **k)
+            finally:
+                rec = TIMINGS.setdefault(name, [0.0, 0])
+                rec[0] += _time.perf_counter() - t
+                rec[1] += 1
+        inner.__wrapped__ = fn
+        inner.__name__ = fn.__name__
+        return inner
+    return wrap
+
+
 # ตัวแนะนำคำ: Hunspell (spylls = Hunspell เขียนใหม่ด้วย Python ล้วน ไม่ต้องลง lib ระบบ)
 #
 # ใช้แทน pythainlp.spell() เฉพาะขั้น "แนะนำคำที่น่าจะถูก" เท่านั้น ส่วนขั้น "คำนี้ผิดไหม"
@@ -59,6 +80,7 @@ def _suggest_cached(word: str, limit: int) -> tuple:
     return tuple(_suggest_uncached(word, limit))
 
 
+@_timed("hunspell")
 def _suggest_uncached(word: str, limit: int) -> List[str]:
     hs = _get_hunspell()
     if hs is not None:
@@ -302,6 +324,7 @@ TYPO_PRIOR = float(os.getenv("SPELL_TYPO_PRIOR", "2.0"))  # ponytail: ตั้�
 REAL_WORD_CONTEXT_CHARS = int(os.getenv("SPELL_REAL_WORD_CONTEXT", "40"))
 
 
+@_timed("typo_fixes")
 def _typo_fixes(word: str, dictionary) -> List[str]:
     """
     รูปที่น่าจะตั้งใจพิมพ์ของคำที่สระ/วรรณยุกต์ซ้อน — "เเพื่อน" อาจเป็น "แพื่อน" หรือ "เพื่อน"
@@ -338,6 +361,7 @@ def _typo_fixes(word: str, dictionary) -> List[str]:
     return [s for s in _suggest(base) if " " not in s][:3] or [base]
 
 
+@_timed("newmm_validate")
 def _is_real_text(text: str, dictionary) -> bool:
     """เป็นคำจริง หรือแยกเป็นคำจริงยาว 2 ตัวขึ้นไปได้หมด ("ให้|เห็น")"""
     if text in dictionary:
@@ -354,6 +378,7 @@ def _is_deletion(word: str, cand: str) -> bool:
     return all(ch in it for ch in cand)
 
 
+@_timed("variants")
 def _confusable_variants(word: str, dictionary, loose: bool = False) -> List[str]:
     """
     รูปที่ได้จากการสลับ/เติมตัวที่คนไทยพิมพ์สับสนบ่อย
@@ -375,13 +400,41 @@ def _confusable_variants(word: str, dictionary, loose: bool = False) -> List[str
 
 
 _DEEPCUT_OK = True
+_ORT_PATCHED = False
 
 
+def _cap_onnx_threads():
+    """
+    deepcut ของ PyThaiNLP รันด้วย onnxruntime ซึ่งเปิด thread ตามจำนวน core ที่ "เห็น" ไม่ใช่ที่ได้จริง
+    บน HF เห็น 192 core แต่ container ได้ 16 → thread แย่งกันจน deepcut ช้า ~67 เท่า (20.8 วิ -> 0.31 วิ
+    ต่อก้อน วัด 2026-10-14) — กำหนด thread ผ่าน SessionOptions ก่อน PyThaiNLP สร้าง session
+    (onnxruntime ไม่สน OMP_NUM_THREADS) · ปรับได้ด้วย SPELL_ORT_THREADS
+    """
+    global _ORT_PATCHED
+    if _ORT_PATCHED:
+        return
+    _ORT_PATCHED = True
+    try:
+        import onnxruntime as ort
+        n = int(os.getenv("SPELL_ORT_THREADS", "4"))
+        orig = ort.InferenceSession
+
+        def session(path, sess_options=None, **kw):
+            so = sess_options or ort.SessionOptions()
+            so.intra_op_num_threads, so.inter_op_num_threads = n, 1
+            return orig(path, sess_options=so, **kw)
+        ort.InferenceSession = session
+    except Exception as e:
+        print(f"[SpellChecker] จำกัด thread ของ onnxruntime ไม่ได้: {e}")
+
+
+@_timed("deepcut")
 def _deepcut(text: str) -> List[str]:
     """ตัดคำด้วย deepcut (ตัวที่สอง) — ไม่มีให้ใช้ก็คืน [] ตัวตรวจทำงานด้วย attacut ตัวเดียวต่อ"""
     global _DEEPCUT_OK
     if not _DEEPCUT_OK:
         return []
+    _cap_onnx_threads()
     try:
         return word_tokenize(text, engine="deepcut")
     except Exception as e:
@@ -413,6 +466,7 @@ def _get_lm():
     return _LM
 
 
+@_timed("lm_prepare")
 def _prepare_rows(reqs: List[tuple]) -> tuple:
     """
     แปลงคำขอให้คะแนน [(left, words, right)] เป็นแถว input ของ LM (งาน CPU ล้วน — ทำนอก GPU)
@@ -438,6 +492,7 @@ def _prepare_rows(reqs: List[tuple]) -> tuple:
     return rows, positions, targets, owners
 
 
+@_timed("lm_score")
 def score_rows(rows: List[List[int]], positions: List[int], targets: List[int], chunk: int = 256) -> List[float]:
     """
     log-prob ของ subword ที่ถูกปิดในแต่ละแถว — ส่วนเดียวที่ต้องใช้ LM จริง
@@ -891,6 +946,7 @@ class NovelSpellChecker:
         cands += _confusable_variants(word, dictionary, loose=True)
         return list(dict.fromkeys(cands))
 
+    @_timed("merge")
     def _merge_adjacent(self, errors: List[SpellError], masked: str, dictionary) -> List[SpellError]:
         """
         รวมจุดที่ติดกันเป็นจุดเดียว — คำผิดคำเดียวที่ตัวตัดคำแตกเป็นชิ้น ("โศ"+"กด"+"ศร้า")
@@ -912,6 +968,7 @@ class NovelSpellChecker:
                 merged.append(e)
         return merged
 
+    @_timed("candidates")
     def _candidates(self, masked: str, line: str, line_start: int, dictionary) -> List[tuple]:
         """
         (offset, คำ) ที่จะตรวจในบรรทัดนี้ เรียงตามตำแหน่ง
@@ -946,6 +1003,7 @@ class NovelSpellChecker:
         return sorted(oov + known)
 
     @staticmethod
+    @_timed("newmm_compound")
     def _is_compound(word: str, dictionary) -> bool:
         """แยกด้วยพจนานุกรมแล้วได้คำจริงยาว 2 ตัวขึ้นไปทุกชิ้น — เช่น "ข้าง|ถนน" ไม่ใช่ "ป|ปาฏิหาริย์" """
         parts = word_tokenize(word, engine="newmm")
@@ -1049,6 +1107,7 @@ class NovelSpellChecker:
         # ponytail: นับคร่าว ๆ ด้วย newmm (เร็ว) — ใช้แค่แสดงผล ไม่ต้องแม่น
         return sum(1 for t in word_tokenize(text, engine="newmm") if self._is_real_word(t))
 
+    @_timed("attacut")
     def _tokenize(self, text: str) -> List[str]:
         """Tokenize — ใช้ attacut ถ้ามี, fallback newmm (จับคำผิดได้น้อยกว่ามาก ดูหมายเหตุด้านบน)"""
         tok = _get_tokenizer()

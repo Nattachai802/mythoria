@@ -96,6 +96,7 @@ def health():
 def spell_check_local(req: CheckRequest, request: Request):
     _require_key(request)
     t0 = time.time()
+    sc.TIMINGS.clear()
     scorer = _Scorer()
     errors = [asdict(e) for e in NovelSpellChecker().check_local(req.text, hints=req.hints, scorer=scorer)]
     return {
@@ -103,6 +104,8 @@ def spell_check_local(req: CheckRequest, request: Request):
         "mode": scorer.mode,                            # gpu | cpu — Render แสดงในแผงติดตาม
         "seconds": round(time.time() - t0, 1),
         "gpuSeconds": scorer.gpu_seconds,               # เวลาที่ใช้ GPU จริง (นับโควต้า) ของก้อนนี้
+        # เวลาแยกตามขั้น {ขั้น: [วินาที, จำนวนครั้ง]} — ไว้หาคอขวด (คะแนน LM บน GPU ดูที่ gpuSeconds)
+        "timings": {k: [round(v[0], 2), v[1]] for k, v in sorted(sc.TIMINGS.items(), key=lambda kv: -kv[1][0])},
         "gpuCooldownUntil": _gpu_retry_at if _gpu_retry_at > time.time() else None,
         "gpuAvailable": _GPU_LM is not None,
     }
