@@ -53,8 +53,8 @@ export interface ChangelogRelease {
 /** ใหม่สุดอยู่บนสุดเสมอ — โค้ดที่อ่าน CHANGELOG[0] ยึดกติกานี้ */
 export const CHANGELOG: ChangelogRelease[] = [
     {
-        version: "next",
-        date: "today",
+        version: "2.15.0.8636109136",
+        date: "2026-10-14",
         title: "แผงติดตามตรวจคำผิด + โหมดเร่งความเร็ว GPU",
         entries: [
             {
