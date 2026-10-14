@@ -40,7 +40,12 @@ const GPU_DAILY_SECONDS = 300; // ZeroGPU บัญชีฟรี 5 นาท�
 const fmtMin = (s: number) => (s < 60 ? `${Math.max(1, Math.round(s))} วิ` : `${Math.round(s / 60)} นาที`);
 const fmtClock = (ts: number) => new Date(ts * 1000).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
 
-export function SpellCheckQueueButton({ novelId, items }: { novelId: string; items: QueueItem[] }) {
+export function SpellCheckQueueButton({ novelId, items, variant = "button" }: {
+    novelId: string;
+    items: QueueItem[];
+    /** button = ปุ่มในแท็บคิวแก้ไข · monitor = แผงติดตามในคอลัมน์ซ้าย (แทนสถิติการเขียน) */
+    variant?: "button" | "monitor";
+}) {
     const router = useRouter();
     const [ask, choiceDialog] = useChoiceDialog();
     const [ov, setOv] = useState<Overview | null>(null);
@@ -70,10 +75,13 @@ export function SpellCheckQueueButton({ novelId, items }: { novelId: string; ite
         if (mineActive > 0) { wasMine.current = true; return; }
         if (wasMine.current) {
             wasMine.current = false;
-            toast.success("ตรวจคำผิดในคิวเสร็จแล้ว");
-            router.refresh();
+            // สองที่บนหน้าเดียวกันถามสถานะคู่กัน — ให้แผงติดตามเป็นคนแจ้ง/โหลดหน้าใหม่ที่เดียว
+            if (variant === "monitor") {
+                toast.success("ตรวจคำผิดในคิวเสร็จแล้ว");
+                router.refresh();
+            }
         }
-    }, [mineActive, router]);
+    }, [mineActive, router, variant]);
 
     const run = async () => {
         const checked = items.filter((i) => i.checked).length;
@@ -123,63 +131,71 @@ export function SpellCheckQueueButton({ novelId, items }: { novelId: string; ite
         poll();
     };
 
-    if (items.length === 0) return null;
-
     const cooling = !!ov?.gpuCooldownUntil; // Python ส่งมาเฉพาะตอนที่ยังพัก GPU อยู่
     const mode = ov?.running?.mode ?? ov?.mode ?? "unknown";
     const t = ov?.today;
 
+    // ── แท็บคิวแก้ไข: แค่ปุ่ม (ความคืบหน้าอยู่ในแผงติดตามฝั่งซ้าย) ──
+    if (variant === "button") {
+        if (items.length === 0) return null;
+        return (
+            <>
+                {choiceDialog}
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs gap-1.5"
+                    onClick={run}
+                    disabled={mineActive > 0}
+                    title="ส่งทุกตอนเข้าคิวตรวจคำผิด — ระบบตรวจทีละตอนเบื้องหลัง ปิดหน้าได้"
+                >
+                    {mineActive > 0
+                        ? <><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> กำลังตรวจทั้งคิว ({mineActive})</>
+                        : <><SpellCheck className="h-3.5 w-3.5" aria-hidden /> ตรวจคำผิดทั้งคิว</>}
+                </Button>
+            </>
+        );
+    }
+
+    // ── แผงติดตาม (คอลัมน์ซ้าย แทนสถิติการเขียน) ──
     return (
-        <div className="w-full space-y-2">
-            {choiceDialog}
-            <div className="flex flex-wrap items-center justify-between gap-2">
-                {/* โหมดตอนนี้ */}
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                    {!ov ? null : !anyActive ? (
-                        <span className="inline-flex items-center gap-1 text-muted-foreground">
-                            <Pause className="h-3.5 w-3.5" aria-hidden /> ระบบตรวจคำผิดว่าง
-                        </span>
-                    ) : mode === "gpu" ? (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-medium text-amber-600 dark:text-amber-400">
-                            <Zap className="h-3.5 w-3.5" aria-hidden /> โหมดเร่งความเร็ว (GPU)
-                        </span>
-                    ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium text-muted-foreground">
-                            <Gauge className="h-3.5 w-3.5" aria-hidden /> โหมดปกติ (CPU)
-                        </span>
-                    )}
-                    {cooling && (
-                        <span className="text-muted-foreground">
-                            โควต้า GPU วันนี้หมด · ลองเร่งความเร็วอีกครั้ง {fmtClock(ov!.gpuCooldownUntil!)}
-                        </span>
-                    )}
-                </div>
-                {mineActive === 0 && (
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 text-xs gap-1.5"
-                        onClick={run}
-                        title="ส่งทุกตอนเข้าคิวตรวจคำผิด — ระบบตรวจทีละตอนเบื้องหลัง ปิดหน้าได้"
-                    >
-                        <SpellCheck className="h-3.5 w-3.5" aria-hidden /> ตรวจคำผิดทั้งคิว
-                    </Button>
+        <div className="space-y-2 pt-2">
+            <div className="flex items-center justify-between">
+                <span className="font-technical text-[9px] uppercase tracking-[0.2em] text-muted-foreground">ตรวจคำผิด</span>
+                {!ov ? null : !anyActive ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <Pause className="h-3 w-3" aria-hidden /> ว่าง
+                    </span>
+                ) : mode === "gpu" ? (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                        <Zap className="h-3 w-3" aria-hidden /> เร่งความเร็ว (GPU)
+                    </span>
+                ) : (
+                    <span className="inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        <Gauge className="h-3 w-3" aria-hidden /> ปกติ (CPU)
+                    </span>
                 )}
             </div>
 
+            {cooling && (
+                <p className="text-[10px] text-muted-foreground">
+                    โควต้า GPU วันนี้หมด · ลองเร่งความเร็วอีกครั้ง {fmtClock(ov!.gpuCooldownUntil!)}
+                </p>
+            )}
+
             {ov && anyActive && (
-                <div className="rounded-md border border-purple-500/30 bg-purple-500/5 px-3 py-2 text-xs space-y-1.5" role="status">
+                <div className="rounded-md border border-purple-500/30 bg-purple-500/5 px-2.5 py-2 text-xs space-y-1.5" role="status">
                     {ov.running && (
                         <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                                <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-500 shrink-0" aria-hidden />
+                            <div className="flex items-center gap-1.5 min-w-0">
+                                <Loader2 className="h-3 w-3 animate-spin text-purple-500 shrink-0" aria-hidden />
                                 <span className="font-medium truncate">
-                                    กำลังตรวจ: {titles.get(ov.running.noteId) ?? "ตอนจากโปรเจกต์อื่น"}
+                                    {titles.get(ov.running.noteId) ?? "ตอนจากโปรเจกต์อื่น"}
                                 </span>
-                                <span className="text-muted-foreground shrink-0">
-                                    {ov.running.chunks ? `ส่วนที่ ${Math.min(ov.running.chunk + 1, ov.running.chunks)}/${ov.running.chunks} · ` : ""}
-                                    {fmtMin(ov.running.elapsed)}
-                                </span>
+                            </div>
+                            <div className="flex justify-between text-[10px] text-muted-foreground">
+                                <span>{ov.running.chunks ? `ส่วนที่ ${Math.min(ov.running.chunk + 1, ov.running.chunks)}/${ov.running.chunks}` : "กำลังเริ่ม…"}</span>
+                                <span>{fmtMin(ov.running.elapsed)}</span>
                             </div>
                             {ov.running.chunks ? (
                                 <div className="h-1 rounded-full bg-muted overflow-hidden">
@@ -191,32 +207,41 @@ export function SpellCheckQueueButton({ novelId, items }: { novelId: string; ite
                             ) : null}
                         </div>
                     )}
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-muted-foreground">
+                    <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
                         <span>
                             รอคิว {ov.queued.length} ตอน
                             {mineQueued.length !== ov.queued.length && ` (ของโปรเจกต์นี้ ${mineQueued.length})`}
-                            {" · "}เหลือราว {fmtMin(ov.etaSeconds)} ({ov.secondsPerChunk} วิ/ส่วน)
-                            {" · "}ปิดหน้านี้ได้
+                            {" · "}เหลือราว {fmtMin(ov.etaSeconds)}
                         </span>
                         {mineQueued.length > 0 && (
-                            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs gap-1" onClick={stop}>
-                                <Square className="h-3 w-3" aria-hidden /> หยุดที่เหลือ
+                            <Button variant="ghost" size="sm" className="h-5 px-1.5 text-[10px] gap-1" onClick={stop}>
+                                <Square className="h-2.5 w-2.5" aria-hidden /> หยุด
                             </Button>
                         )}
                     </div>
+                    <p className="text-[10px] text-muted-foreground">ปิดหน้านี้ได้ งานยังเดินต่อ</p>
                 </div>
             )}
 
-            {t && (t.done > 0 || t.errors > 0) && (
-                <p className="text-[11px] text-muted-foreground">
-                    วันนี้ตรวจแล้ว {t.done} ตอน
-                    {t.avgNoteSeconds > 0 && ` · เฉลี่ย ${fmtMin(t.avgNoteSeconds)}/ตอน`}
-                    {" · "}GPU ใช้ไป {Math.round(t.gpuSeconds)}/{GPU_DAILY_SECONDS} วิ ({t.chunksGpu} ส่วน) · CPU {t.chunksCpu} ส่วน
-                    {t.errors > 0 && (
-                        <span className="text-amber-600 dark:text-amber-400" title={t.lastError?.message}>
-                            {" · "}ล้ม {t.errors} ครั้ง
-                        </span>
-                    )}
+            <div className="flex items-center justify-between py-1.5 border-b border-border/50">
+                <span className="text-xs text-muted-foreground">ตรวจแล้ววันนี้</span>
+                <span className="text-sm font-semibold tabular-nums">
+                    {t?.done ?? 0} <span className="text-xs font-normal text-muted-foreground">ตอน</span>
+                </span>
+            </div>
+            <div className="flex items-center justify-between py-1.5 border-b border-border/50">
+                <span className="text-xs text-muted-foreground">เฉลี่ยต่อตอน</span>
+                <span className="text-sm font-semibold tabular-nums">{t?.avgNoteSeconds ? fmtMin(t.avgNoteSeconds) : "—"}</span>
+            </div>
+            <div className="flex items-center justify-between py-1.5">
+                <span className="text-xs text-muted-foreground">โควต้า GPU วันนี้</span>
+                <span className="text-sm font-semibold tabular-nums">
+                    {Math.round(t?.gpuSeconds ?? 0)} <span className="text-xs font-normal text-muted-foreground">/ {GPU_DAILY_SECONDS} วิ</span>
+                </span>
+            </div>
+            {t && t.errors > 0 && (
+                <p className="text-[10px] text-amber-600 dark:text-amber-400" title={t.lastError?.message}>
+                    ตรวจไม่สำเร็จวันนี้ {t.errors} ครั้ง
                 </p>
             )}
         </div>

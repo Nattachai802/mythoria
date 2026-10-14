@@ -16,7 +16,6 @@ import {
     Target,
     TrendingUp,
     Pen,
-    Flame,
     PenTool,
     BarChart3,
     Check,
@@ -30,7 +29,7 @@ import { getNotes, getSpellIssueCounts } from "@/server/note"
 import { SpellStatusBadge } from "@/components/project/spell-status-badge"
 import { SpellCheckQueueButton } from "@/components/project/spell-check-queue-button"
 import { getIdeasCount } from "@/server/idea"
-import { getWritingStreak, getAnalyticsSummary, getWritingActivity } from "@/server/analytics"
+import { getAnalyticsSummary, getWritingActivity } from "@/server/analytics"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -89,11 +88,10 @@ export default async function ProjectOverviewPage({ params }: Props) {
     const { id } = await params
 
     // Parallel fetching with light queries
-    const [novelResult, notesResult, ideasCountResult, streakResult, summaryResult, activityResult, stylometryResult, spellCounts] = await Promise.all([
+    const [novelResult, notesResult, ideasCountResult, summaryResult, activityResult, stylometryResult, spellCounts] = await Promise.all([
         getNovelByIdLight(id),
         getNotes(id),
         getIdeasCount(id),
-        getWritingStreak(id),
         getAnalyticsSummary(id),
         getWritingActivity(id, 14), // Last 14 days for mini calendar
         getNovelStylometry(id),
@@ -107,7 +105,6 @@ export default async function ProjectOverviewPage({ params }: Props) {
     const { novel } = novelResult
     const notes = notesResult.notes || []
     const ideasCount = ideasCountResult.count || 0
-    const streak = streakResult
     const analytics = summaryResult.summary
     const activityData = activityResult.activity || []
     const analyzedNoteIds = new Set((stylometryResult.data || []).map((s: any) => s.noteId))
@@ -129,6 +126,11 @@ export default async function ProjectOverviewPage({ params }: Props) {
     const needsRewriteNotes = notes
         .filter((n) => QUEUE_ORDER.includes(n.status ?? ""))
         .sort((a, b) => QUEUE_ORDER.indexOf(a.status ?? "") - QUEUE_ORDER.indexOf(b.status ?? ""))
+    const queueItems = needsRewriteNotes.map((n) => ({
+        id: n.id,
+        title: n.title || "Untitled Note",
+        checked: (spellCounts[n.id]?.total ?? 0) > 0,
+    }))
 
     // Calculate stats
     const totalWords = novel.wordCount || 0
@@ -185,33 +187,8 @@ export default async function ProjectOverviewPage({ params }: Props) {
 
                     {/* Stats + AI tools — โผล่เมื่อเริ่มเขียนแล้ว (earned disclosure) */}
                     {hasContent && (<>
-                    {/* Writing Stats Section */}
-                    <div className="space-y-1.5 pt-2">
-                        <div className="flex items-center justify-between mb-2">
-                            <span className="font-technical text-[9px] uppercase tracking-[0.2em] text-muted-foreground">สถิติการเขียน</span>
-                            <Link
-                                href={`/dashboard/project/${id}/analytics`}
-                                className="text-[10px] text-primary hover:underline"
-                            >
-                                ดูทั้งหมด
-                            </Link>
-                        </div>
-                        <div className="flex items-center justify-between py-1.5 border-b border-border/50">
-                            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
-                                <Flame className="h-3 w-3 text-orange-500" />
-                                ต่อเนื่อง
-                            </span>
-                            <span className="text-sm font-semibold tabular-nums">{streak.currentStreak} <span className="text-xs font-normal text-muted-foreground">วัน</span></span>
-                        </div>
-                        <div className="flex items-center justify-between py-1.5 border-b border-border/50">
-                            <span className="text-xs text-muted-foreground">วันนี้</span>
-                            <span className="text-sm font-semibold tabular-nums">{(analytics?.todayWords || 0).toLocaleString()} <span className="text-xs font-normal text-muted-foreground">คำ</span></span>
-                        </div>
-                        <div className="flex items-center justify-between py-1.5">
-                            <span className="text-xs text-muted-foreground">สัปดาห์นี้</span>
-                            <span className="text-sm font-semibold tabular-nums">{(analytics?.weekWords || 0).toLocaleString()} <span className="text-xs font-normal text-muted-foreground">คำ</span></span>
-                        </div>
-                    </div>
+                    {/* แผงติดตามตรวจคำผิด (แทนสถิติการเขียนเดิม — สถิติดูได้ที่หน้า analytics ลิงก์ในหัวข้อกิจกรรม) */}
+                    <SpellCheckQueueButton variant="monitor" novelId={id} items={queueItems} />
 
                     {/* Today's Goal & Status */}
                     {analytics?.todayGoal != null && analytics.goalStatus !== 'no_target' && (
@@ -246,7 +223,9 @@ export default async function ProjectOverviewPage({ params }: Props) {
                     <div className="space-y-2 pt-2">
                         <div className="flex items-center justify-between">
                             <span className="font-technical text-[9px] uppercase tracking-[0.2em] text-muted-foreground">กิจกรรม 14 วัน</span>
-                            {/* ลิงก์ "ดูทั้งหมด → analytics" มีอยู่แล้วที่ส่วนสถิติด้านบน — ไม่ซ้ำ */}
+                            <Link href={`/dashboard/project/${id}/analytics`} className="text-[10px] text-primary hover:underline">
+                                สถิติทั้งหมด
+                            </Link>
                         </div>
                         <div className="grid grid-cols-7 gap-1">
                             {activityData.slice(-14).map((day: { date: string; count: number }, i: number) => (
@@ -448,15 +427,7 @@ export default async function ProjectOverviewPage({ params }: Props) {
                                 <p className="text-sm text-muted-foreground">
                                     {needsRewriteNotes.length} ตอนในคิว (ตรวจคำผิด / รอ rewrite)
                                 </p>
-                                <SpellCheckQueueButton
-                                    novelId={id}
-                                    items={needsRewriteNotes.map((n) => ({
-                                        id: n.id,
-                                        title: n.title || "Untitled Note",
-                                        status: n.status ?? "",
-                                        checked: (spellCounts[n.id]?.total ?? 0) > 0,
-                                    }))}
-                                />
+                                <SpellCheckQueueButton novelId={id} items={queueItems} />
                             </div>
 
                             {/* Rewrite Queue Content */}
