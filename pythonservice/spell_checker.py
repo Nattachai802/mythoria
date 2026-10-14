@@ -389,6 +389,10 @@ def _get_lm():
             from transformers import AutoTokenizer, AutoModelForMaskedLM
             tok = AutoTokenizer.from_pretrained(LM_MODEL)
             model = AutoModelForMaskedLM.from_pretrained(LM_MODEL).eval()
+            # int8 แบบ dynamic: เร็วขึ้น ~2.5 เท่าบน CPU แต่ปิดไว้ — วัดแล้วคะแนนเพี้ยน จับได้ 15/16 -> 11/16
+            # และปรับเกณฑ์ไม่ช่วย (2026-10-14) เปิดลองได้ด้วย SPELL_LM_QUANTIZE=1
+            if os.getenv("SPELL_LM_QUANTIZE") == "1":
+                model = torch.ao.quantization.quantize_dynamic(model, {torch.nn.Linear}, dtype=torch.qint8)
             _LM = (tok, model, torch)
             print(f"[SpellChecker] context LM: {LM_MODEL}")
         except Exception as e:

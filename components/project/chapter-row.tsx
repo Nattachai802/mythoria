@@ -27,6 +27,7 @@ import { NoteStatus, NOTE_STATUS_CONFIG } from "@/lib/note-constants";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { maybeTriggerSpellCheck } from "@/lib/spell-trigger";
+import { useChoiceDialog, askSpellRecheck } from "@/components/project/choice-dialog";
 
 const NOTES_PER_PAGE = 10;
 const CHARS_PER_PAGE = 1500;
@@ -80,6 +81,7 @@ export function ChapterRow({
     const router = useRouter();
     const [currentPage, setCurrentPage] = useState(1);
     const [isPending, startTransition] = useTransition();
+    const [ask, choiceDialog] = useChoiceDialog();
 
     // Local state สำหรับ optimistic updates
     const [noteStatuses, setNoteStatuses] = useState<Record<string, NoteStatus>>(() => {
@@ -126,7 +128,7 @@ export function ChapterRow({
             }
 
             // 4. "รอพิสูจน์อักษร" / "รอ Rewrite" → ตรวจคำผิดเบื้องหลัง (เคยตรวจแล้วถามก่อน)
-            const spell = await maybeTriggerSpellCheck(novelId, noteId, newStatus);
+            const spell = await maybeTriggerSpellCheck(novelId, noteId, newStatus, askSpellRecheck(ask));
             if (spell === "started") toast.info("เริ่มตรวจคำผิดอัตโนมัติเบื้องหลัง...");
             if (spell === "failed") toast.error("เริ่มตรวจคำผิดไม่สำเร็จ");
         });
@@ -134,6 +136,7 @@ export function ChapterRow({
 
     return (
         <Collapsible className="group/chapter">
+            {choiceDialog}
             <div className="group flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors">
                 {/* Chapter Number */}
                 <div className="w-8 h-8 rounded-lg bg-muted/50 flex items-center justify-center text-xs font-medium text-muted-foreground shrink-0">

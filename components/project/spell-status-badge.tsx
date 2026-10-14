@@ -13,7 +13,7 @@ import { triggerSpellCheck } from "@/lib/spell-trigger";
 // สถานะงานอยู่ในหน่วยความจำของ Python: Render restart แล้วได้ "unknown"
 // ปุ่ม "ตรวจทั้งคิว" สั่งงานแล้วส่ง event "spell-job-started" มา — badge ของตอนนั้นจะเริ่มหมุนเอง
 
-type JobState = "running" | "done" | "error" | "unknown";
+type JobState = "queued" | "running" | "done" | "error" | "unknown";
 const POLL_MS = 5000;
 
 interface Props {
@@ -25,7 +25,7 @@ interface Props {
 
 export function SpellStatusBadge({ novelId, noteId, status, unresolvedCount }: Props) {
     const router = useRouter();
-    const [job, setJob] = useState<{ state: JobState; count?: number } | null>(
+    const [job, setJob] = useState<{ state: JobState; count?: number; position?: number } | null>(
         status === "proofreading" ? { state: "running" } : null,
     );
     const refreshed = useRef(false);
@@ -35,7 +35,7 @@ export function SpellStatusBadge({ novelId, noteId, status, unresolvedCount }: P
         if (status !== "needs_rewrite") return;
         fetch(`/api/py/spell-check-note/status/${noteId}`)
             .then((r) => (r.ok ? r.json() : null))
-            .then((j) => { if (j?.state === "running") setJob({ state: "running" }); })
+            .then((j) => { if (j?.state === "running" || j?.state === "queued") setJob(j); })
             .catch(() => {});
     }, [status, noteId]);
 
@@ -51,14 +51,18 @@ export function SpellStatusBadge({ novelId, noteId, status, unresolvedCount }: P
     }, [noteId]);
 
     useEffect(() => {
-        if (job?.state !== "running") return;
+        const waiting = job?.state === "running" || job?.state === "queued";
+        if (!waiting) return;
         let alive = true;
         const tick = async () => {
             try {
                 const res = await fetch(`/api/py/spell-check-note/status/${noteId}`);
                 if (!res.ok || !alive) return; // สะดุดชั่วคราว (เช่น service กำลังตื่น) ถามใหม่รอบหน้า
                 const j = await res.json();
-                if (j.state === "running") return;
+                if (j.state === "running" || j.state === "queued") {
+                    setJob((prev) => (prev?.state === j.state && prev?.position === j.position ? prev : j));
+                    return;
+                }
                 setJob({ state: j.state, count: j.count });
                 // worker เขียนผล/สถานะลง DB แล้ว — โหลดหน้าใหม่ครั้งเดียวให้ตัวเลขจาก DB ตรง
                 // (getNotes cache 30 วิ อาจยังเห็นสถานะเก่า แต่ badge แสดงผลจาก state นี้ไปก่อนแล้ว)
@@ -71,7 +75,7 @@ export function SpellStatusBadge({ novelId, noteId, status, unresolvedCount }: P
         const timer = setInterval(tick, POLL_MS);
         tick();
         return () => { alive = false; clearInterval(timer); };
-    }, [job?.state, noteId, router]);
+    }, [job?.state === "running" || job?.state === "queued", noteId, router]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const retry = async () => {
         if (!(await triggerSpellCheck(novelId, noteId, status))) toast.error("เริ่มตรวจคำผิดไม่สำเร็จ");
@@ -79,6 +83,14 @@ export function SpellStatusBadge({ novelId, noteId, status, unresolvedCount }: P
 
     const pill = "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium";
 
+    if (job?.state === "queued") {
+        return (
+            <span className={`${pill} border-purple-500/20 bg-purple-500/5 text-purple-600/80 dark:text-purple-400/80`} role="status">
+                <Loader2 className="h-3 w-3" aria-hidden />
+                รอคิวตรวจ{job.position ? ` #${job.position}` : ""}
+            </span>
+        );
+    }
     if (job?.state === "running") {
         return (
             <span className={`${pill} border-purple-500/30 bg-purple-500/10 text-purple-600 dark:text-purple-400`} role="status">

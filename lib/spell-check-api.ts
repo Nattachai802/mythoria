@@ -74,7 +74,8 @@ export interface RunSpellCheckSummary {
 }
 
 const POLL_MS = 3000;
-const POLL_LIMIT_MS = 15 * 60 * 1000; // ponytail: เกินนี้ถือว่างานหาย (service restart) ให้ผู้ใช้กดใหม่
+// ponytail: เกินนี้ถือว่างานหาย ให้ผู้ใช้กดใหม่ — นานเพราะอาจต้องรอคิวกลาง (ทีละบท ~2 นาที)
+const POLL_LIMIT_MS = 60 * 60 * 1000;
 
 export async function runSpellCheck({
   novelId,
@@ -97,12 +98,17 @@ export async function runSpellCheck({
 
   // 3. ถามสถานะจนเสร็จ
   const deadline = Date.now() + POLL_LIMIT_MS;
+  let lastPosition = 0;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, POLL_MS));
     const res = await fetch(`${PYTHON_SERVICE_URL}/spell-check-note/status/${noteId}`);
     if (!res.ok) continue; // สะดุดชั่วคราว ถามใหม่รอบหน้า
     const job = await res.json();
     if (job.state === "done") return { totalErrors: job.count ?? 0, seconds: job.seconds };
+    if (job.state === "queued" && job.position && job.position !== lastPosition) {
+      lastPosition = job.position;
+      onProgress?.(`รอคิวตรวจ ลำดับที่ ${job.position}`);
+    }
     if (job.state === "error") throw new Error(job.error || "ตรวจไม่สำเร็จ");
     if (job.state === "unknown") throw new Error("งานตรวจหายไป (ระบบเพิ่งรีสตาร์ต) — กดตรวจใหม่อีกครั้ง");
   }

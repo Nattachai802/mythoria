@@ -51,6 +51,7 @@ import { GitCompare, BookOpen, ChevronUp, ChevronDown, Plus, ArrowUp, ArrowDown,
 
 import "react-quill-new/dist/quill.snow.css";
 import { maybeTriggerSpellCheck } from "@/lib/spell-trigger";
+import { useChoiceDialog, askSpellRecheck } from "@/components/project/choice-dialog";
 
 const ReactQuill = dynamic(() => import("react-quill-new"), { ssr: false }) as any;
 
@@ -225,6 +226,7 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
     }, [isDraggingRight]);
 
     const quillRef = useRef<any>(null);
+    const [ask, choiceDialog] = useChoiceDialog();
     const editorContainerRef = useRef<HTMLDivElement>(null);
     const lastSavedContent = useRef(initialNote.content?.text || "");
     const lastSavedTitle = useRef(initialNote.title || "");
@@ -738,7 +740,7 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                 router.refresh();
 
                 // "รอพิสูจน์อักษร" / "รอ Rewrite" → ตรวจคำผิดเบื้องหลัง (เคยตรวจแล้วถามก่อน)
-                const spell = await maybeTriggerSpellCheck(novelId, note.id, newStatus);
+                const spell = await maybeTriggerSpellCheck(novelId, note.id, newStatus, askSpellRecheck(ask));
                 if (spell === "started") toast.info(newStatus === "proofreading"
                     ? "เริ่มตรวจคำผิดอัตโนมัติเบื้องหลัง — สถานะจะเปลี่ยนเป็น 'รอตรวจสอบ' เมื่อเสร็จ"
                     : "เริ่มตรวจคำผิดเบื้องหลัง — ผลจะขึ้นในรายการตรวจทาน");
@@ -901,6 +903,7 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
 
     return (
         <div className="flex flex-col h-[calc(100vh-6rem)] bg-background border border-steel-800 rounded-lg overflow-hidden mt-2 shadow-md noise-texture relative">
+            {choiceDialog}
             {/* Header section */}
             <div className="flex items-center justify-between border-b border-steel-800 px-4 py-3 bg-muted/20 shrink-0 relative">
                 {/* Tech line indicator */}

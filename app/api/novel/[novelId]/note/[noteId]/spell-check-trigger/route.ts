@@ -36,14 +36,17 @@ export async function POST(request: NextRequest, { params }: Props) {
 
         const entities = await getSpellEntities(novelId);
 
-        // 2. ยิงไป Python — ไม่รอผล (Python ใช้ BackgroundTasks return ทันที)
-        pyFetch(`/spell-check-note`, {
+        // 2. ใส่คิวตรวจของ Python — ตอบทันที (แค่เข้าคิว) จึง await ได้
+        // เดิมยิงแบบไม่รอ ซึ่งบน serverless ฟังก์ชันอาจจบก่อนคำขอออกไปถึง Python
+        const res = await pyFetch(`/spell-check-note`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ noteId, novelId, text, entities, setStatus }),
-        }).catch((e) => console.error("[SpellCheckTrigger] Python call failed:", e));
-
-        return NextResponse.json({ success: true, triggered: true });
+        });
+        if (!res.ok) {
+            return NextResponse.json({ success: false, error: "Spell check service unavailable" }, { status: 503 });
+        }
+        return NextResponse.json({ success: true, triggered: true, ...(await res.json()) });
     } catch (error) {
         console.error("Error triggering spell check:", error);
         return NextResponse.json({ success: false, error: "Failed to trigger spell check" }, { status: 500 });

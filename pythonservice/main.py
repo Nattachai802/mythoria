@@ -1021,7 +1021,7 @@ class SpellCheckResponse(BaseModel):
 
 
 @app.post("/spell-check", response_model=SpellCheckResponse)
-async def spell_check_endpoint(request: SpellCheckRequest):
+def spell_check_endpoint(request: SpellCheckRequest):
     """
     ตรวจจับคำผิดในเนื้อหานิยาย
     - รองรับ custom_words เพื่อ whitelist ชื่อตัวละคร/สถานที่
@@ -1080,7 +1080,7 @@ class WordCheckRequest(BaseModel):
 
 
 @app.post("/spell-check/word")
-async def spell_check_word_endpoint(request: WordCheckRequest):
+def spell_check_word_endpoint(request: WordCheckRequest):
     """ตรวจคำเดียว — สำหรับ inline real-time check"""
     checker = NovelSpellChecker(custom_words=request.custom_words or None)
     return checker.check_word(request.word)
@@ -1099,29 +1099,99 @@ class SpellCheckNoteRequest(BaseModel):
     setStatus: bool = False      # True = ตรวจจากการเปลี่ยนสถานะ -> เสร็จแล้วตั้ง user_verify
 
 
-# สถานะงานตรวจต่อโน้ต — อยู่ในหน่วยความจำ: Render restart แล้วหาย หน้าจอเห็น "unknown" ให้กดใหม่
-# ponytail: dict ในโปรเซส ใช้ได้เพราะ Render รันโปรเซสเดียว ถ้าขยายหลาย instance ต้องย้ายไป DB/Redis
-SPELL_JOBS: dict = {}
+# คิวตรวจคำผิดกลางของทั้ง service — worker เดียว ทำทีละบท
+#
+# วัดแล้ว (2026-10-14): ตรวจบทละ ~100-160 วิ (HF CPU เป็นคอขวด) และหลายงานพร้อมกันก็แค่ต่อคิวกันที่ HF
+# อยู่ดี (4 งานพร้อมกัน งานสุดท้าย 417 วิ) การรันทีละงานจึงไม่ช้าลง แต่คุมโหลดได้ และบอกลำดับคิวให้ผู้ใช้เห็นได้
+# งานจากปุ่มตรวจ / เปลี่ยนสถานะ / ตรวจทั้งคิว เข้าคิวเดียวกันหมด ผู้ใช้ปิดหน้าหรือ logout งานก็ยังเดินต่อ
+#
+# ponytail: คิว + สถานะอยู่ในหน่วยความจำ — Render restart แล้วหายทั้งคู่ (หน้าจอเห็น "unknown" ให้กดใหม่)
+# ถ้าต้องรอด restart ให้ย้ายไป Redis (Upstash มีอยู่แล้วแต่ยังไม่ได้ตั้ง REDIS_URL บน Render)
+import threading
+from collections import deque
+
+SPELL_JOBS: dict = {}          # noteId -> {state: queued|running|done|error, ...}
+SPELL_QUEUE: deque = deque()   # SpellCheckNoteRequest ที่รอตรวจ
+_SPELL_LOCK = threading.Lock()
+_SPELL_WAKE = threading.Event()
+_SPELL_WORKER = None
+
+
+def _spell_worker_loop():
+    while True:
+        _SPELL_WAKE.wait()
+        while True:
+            with _SPELL_LOCK:
+                if not SPELL_QUEUE:
+                    _SPELL_WAKE.clear()
+                    break
+                req = SPELL_QUEUE.popleft()
+                SPELL_JOBS[req.noteId] = {"state": "running", "startedAt": __import__("time").time()}
+            process_spell_check_task(req)
+
+
+def _enqueue_spell(req) -> dict:
+    """ใส่คิว — ตอนที่รอคิว/กำลังตรวจอยู่แล้วไม่ใส่ซ้ำ (รอคิวอยู่ = อัปเดตข้อความ/ตัวเลือกเป็นของล่าสุด)"""
+    global _SPELL_WORKER
+    with _SPELL_LOCK:
+        state = SPELL_JOBS.get(req.noteId, {}).get("state")
+        if state == "running":
+            return {"state": "running"}
+        for i, q in enumerate(SPELL_QUEUE):
+            if q.noteId == req.noteId:
+                SPELL_QUEUE[i] = req
+                return {"state": "queued", "position": i + 1}
+        SPELL_QUEUE.append(req)
+        SPELL_JOBS[req.noteId] = {"state": "queued"}
+        if _SPELL_WORKER is None or not _SPELL_WORKER.is_alive():
+            _SPELL_WORKER = threading.Thread(target=_spell_worker_loop, daemon=True, name="spell-worker")
+            _SPELL_WORKER.start()
+        _SPELL_WAKE.set()
+        return {"state": "queued", "position": len(SPELL_QUEUE)}
+
+
+def _job_status(note_id: str) -> dict:
+    job = dict(SPELL_JOBS.get(note_id, {"state": "unknown"}))
+    if job["state"] == "queued":
+        pos = next((i + 1 for i, q in enumerate(SPELL_QUEUE) if q.noteId == note_id), None)
+        job["position"] = pos
+    return job
 
 
 @app.post("/spell-check-note")
-async def spell_check_note_endpoint(
-    request: SpellCheckNoteRequest,
-    background_tasks: BackgroundTasks,
-):
-    """Trigger background spell check สำหรับ note เดียว — return ทันที"""
-    if SPELL_JOBS.get(request.noteId, {}).get("state") == "running":
-        return {"success": True, "message": "กำลังตรวจอยู่แล้ว", "state": "running"}
-    import time
-    SPELL_JOBS[request.noteId] = {"state": "running", "startedAt": time.time()}
-    background_tasks.add_task(process_spell_check_task, request)
-    return {"success": True, "message": "Background spell check triggered.", "state": "running"}
+def spell_check_note_endpoint(request: SpellCheckNoteRequest):
+    """ใส่โน้ตเข้าคิวตรวจ — ตอบทันที พร้อมลำดับคิว"""
+    return {"success": True, **_enqueue_spell(request)}
 
 
 @app.get("/spell-check-note/status/{note_id}")
-async def spell_check_note_status(note_id: str):
-    """สถานะงานตรวจของโน้ต — running | done | error | unknown (ไม่เคยสั่ง หรือ service restart ไปแล้ว)"""
-    return SPELL_JOBS.get(note_id, {"state": "unknown"})
+def spell_check_note_status(note_id: str):
+    """queued (+position) | running | done | error | unknown (ไม่เคยสั่ง หรือ service restart ไปแล้ว)"""
+    return _job_status(note_id)
+
+
+@app.get("/spell-queue/status")
+def spell_queue_status(ids: str = ""):
+    """สถานะหลายโน้ตในคำขอเดียว (แผงความคืบหน้าในคิวแก้ไข) — ids คั่นด้วย ,"""
+    return {"jobs": {i: _job_status(i) for i in ids.split(",") if i},
+            "queueLength": len(SPELL_QUEUE)}
+
+
+class SpellQueueCancelRequest(BaseModel):
+    noteIds: list[str]
+
+
+@app.post("/spell-queue/cancel")
+def spell_queue_cancel(request: SpellQueueCancelRequest):
+    """ถอนตอนที่ยังรอคิวออก — ตอนที่กำลังตรวจอยู่ตรวจต่อจนเสร็จ"""
+    ids = set(request.noteIds)
+    with _SPELL_LOCK:
+        removed = [q.noteId for q in SPELL_QUEUE if q.noteId in ids]
+        for q in [q for q in SPELL_QUEUE if q.noteId in ids]:
+            SPELL_QUEUE.remove(q)
+        for i in removed:
+            SPELL_JOBS.pop(i, None)
+    return {"success": True, "cancelled": len(removed)}
 
 
 def _issue_description(err) -> str:
@@ -1147,8 +1217,7 @@ def process_spell_check_task(req: SpellCheckNoteRequest):
     """
     Worker: ตรวจ -> เขียน note_audit_issues ลง Neon ตรง (ลบของเก่า + ใส่ใหม่ใน transaction เดียว)
 
-    def ธรรมดา (ไม่ใช่ async) ให้ FastAPI รันใน threadpool — งานนี้กิน CPU/เรียก HF นาน
-    ถ้าเป็น async จะขวาง event loop ทั้ง service
+    รันใน thread ของ worker คิว (_spell_worker_loop) ไม่ใช่ใน event loop — งานนี้เรียก HF นาน ~2 นาที/บท
 
     เดิมยิงกลับไปที่ API ของ Next (/audit-issues, /status) แต่ route พวกนั้นต้องมี session ผู้ใช้
     Python ไม่มี cookie จึงได้ 401 เงียบ ๆ ผลไม่เคยถูกบันทึก — เขียน DB เองตรงนี้แทน

@@ -31,14 +31,17 @@ export async function triggerSpellCheck(novelId: string, noteId: string, status:
 }
 
 /**
- * หลังเปลี่ยนสถานะ: ถ้าเป็นสถานะที่ต้องตรวจ — เคยตรวจแล้วถามก่อน แล้วค่อยสั่ง
+ * หลังเปลี่ยนสถานะ: ถ้าเป็นสถานะที่ต้องตรวจ — เคยตรวจแล้วถามก่อน (confirmRecheck) แล้วค่อยสั่ง
  * คืน "started" | "skipped" | "failed" | "none" (สถานะนี้ไม่ต้องตรวจ)
  */
-export async function maybeTriggerSpellCheck(novelId: string, noteId: string, status: string) {
+export async function maybeTriggerSpellCheck(
+    novelId: string,
+    noteId: string,
+    status: string,
+    confirmRecheck: (existing: number) => Promise<boolean>,
+) {
     if (!(SPELL_CHECK_STATUSES as readonly string[]).includes(status)) return "none" as const;
     const existing = await countSpellIssues(novelId, noteId);
-    if (existing > 0 && !window.confirm(
-        `ตอนนี้ตรวจคำผิดไว้แล้ว (${existing} รายการ)\n\nตรวจใหม่ไหม? ผลตรวจเดิมทั้งหมดของตอนนี้ (รวมที่แก้แล้ว) จะถูกแทนที่ด้วยผลใหม่`,
-    )) return "skipped" as const;
+    if (existing > 0 && !(await confirmRecheck(existing))) return "skipped" as const;
     return (await triggerSpellCheck(novelId, noteId, status)) ? "started" as const : "failed" as const;
 }
