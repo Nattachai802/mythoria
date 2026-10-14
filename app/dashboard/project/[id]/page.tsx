@@ -16,7 +16,6 @@ import {
     Target,
     TrendingUp,
     Pen,
-    PenTool,
     BarChart3,
     Check,
     Zap,
@@ -26,8 +25,8 @@ import { CreateChapterDialog } from "@/components/project/create-chapter-dialog"
 import { CreateNoteDialog } from "@/components/project/create-note-dialog"
 import { getNovelByIdLight } from "@/server/novel"
 import { getNotes, getSpellIssueCounts } from "@/server/note"
-import { SpellStatusBadge } from "@/components/project/spell-status-badge"
 import { SpellCheckQueueButton } from "@/components/project/spell-check-queue-button"
+import { RewriteQueue } from "@/components/project/rewrite-queue"
 import { getIdeasCount } from "@/server/idea"
 import { getAnalyticsSummary, getWritingActivity } from "@/server/analytics"
 import { Button } from "@/components/ui/button"
@@ -156,8 +155,9 @@ export default async function ProjectOverviewPage({ params }: Props) {
                 items={[{ label: "Overview" }]}
             />
 
-            {/* Main Layout: Sidebar + Main Content */}
-            <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
+            {/* Main Layout: Sidebar + Main Content
+                Tabs ครอบทั้งสองคอลัมน์ — คอลัมน์ซ้ายเปลี่ยนตามแท็บ: "บท" = สถิติ/เครื่องมือ AI · "คิวแก้ไข" = แผงตรวจคำผิดอย่างเดียว */}
+            <Tabs defaultValue="chapters" className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
 
                 {/* LEFT SIDEBAR - Stats & Info */}
                 <div className="space-y-4">
@@ -185,10 +185,14 @@ export default async function ProjectOverviewPage({ params }: Props) {
                         </div>
                     </div>
 
-                    {/* Stats + AI tools — โผล่เมื่อเริ่มเขียนแล้ว (earned disclosure) */}
+                    {/* แท็บคิวแก้ไข: แผงติดตามตรวจคำผิดอย่างเดียว */}
+                    <TabsContent value="rewrite" className="mt-0">
+                        <SpellCheckQueueButton variant="monitor" novelId={id} items={queueItems} />
+                    </TabsContent>
+
+                    {/* แท็บบท: สถิติ + เครื่องมือ AI — โผล่เมื่อเริ่มเขียนแล้ว (earned disclosure) */}
+                    <TabsContent value="chapters" className="mt-0 space-y-4">
                     {hasContent && (<>
-                    {/* แผงติดตามตรวจคำผิด (แทนสถิติการเขียนเดิม — สถิติดูได้ที่หน้า analytics ลิงก์ในหัวข้อกิจกรรม) */}
-                    <SpellCheckQueueButton variant="monitor" novelId={id} items={queueItems} />
 
                     {/* Today's Goal & Status */}
                     {analytics?.todayGoal != null && analytics.goalStatus !== 'no_target' && (
@@ -294,11 +298,12 @@ export default async function ProjectOverviewPage({ params }: Props) {
                             </ol>
                         </div>
                     )}
+                    </TabsContent>
                 </div>
 
                 {/* RIGHT MAIN - Chapters & Rewrite Queue */}
                 <div className="space-y-4">
-                    <Tabs defaultValue="chapters" className="w-full space-y-4">
+                    <div className="w-full space-y-4">
                         <div className="flex items-center justify-between border-b pb-2">
                             <TabsList className="bg-muted/50">
                                 <TabsTrigger value="chapters" className="flex items-center gap-2">
@@ -423,79 +428,43 @@ export default async function ProjectOverviewPage({ params }: Props) {
                         </TabsContent>
 
                         <TabsContent value="rewrite" className="space-y-3 mt-0 border-none p-0">
-                            <div className="space-y-2">
-                                <p className="text-sm text-muted-foreground">
-                                    {needsRewriteNotes.length} ตอนในคิว (ตรวจคำผิด / รอ rewrite)
-                                </p>
+                            <div className="flex justify-end">
                                 <SpellCheckQueueButton novelId={id} items={queueItems} />
                             </div>
 
-                            {/* Rewrite Queue Content */}
-                            <div className="chamfered border bg-card/50">
-                                {needsRewriteNotes.length === 0 ? (
-                                    <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-                                        <div className="p-4 rounded-full bg-muted/50 mb-4">
-                                            <History className="h-8 w-8 text-muted-foreground" />
-                                        </div>
-                                        <h3 className="text-lg font-display font-semibold mb-2">ไม่มีงานในคิว</h3>
-                                        <p className="text-sm text-muted-foreground max-w-sm">
-                                            ตั้งสถานะโน้ตเป็น "รอพิสูจน์อักษร" (ตรวจคำผิดอัตโนมัติ) หรือ "รอ Rewrite" ในหน้าเขียน เพื่อให้โน้ตนั้นปรากฏในคิวนี้
-                                        </p>
+                            {needsRewriteNotes.length === 0 ? (
+                                <div className="chamfered border bg-card/50 flex flex-col items-center justify-center py-16 px-4 text-center">
+                                    <div className="p-4 rounded-full bg-muted/50 mb-4">
+                                        <History className="h-8 w-8 text-muted-foreground" />
                                     </div>
-                                ) : (
-                                    <div className="divide-y divide-border/50">
-                                        {needsRewriteNotes.map((noteItem, index) => {
-                                            const wordCount = getWordCount((noteItem.content as any)?.text);
-                                            const updatedDate = noteItem.updatedAt ? format(new Date(noteItem.updatedAt), "PPp") : "Never";
-                                            return (
-                                                <div key={noteItem.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 hover:bg-muted/20 transition-colors">
-                                                    <div className="space-y-1">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-sm font-semibold text-muted-foreground">#{index + 1}</span>
-                                                            <span className="font-semibold text-foreground text-sm sm:text-base">{noteItem.title || "Untitled Note"}</span>
-                                                            {noteItem.linkedChapter && (
-                                                                <Badge variant="secondary" className="text-xs">
-                                                                    {noteItem.linkedChapter.title}
-                                                                </Badge>
-                                                            )}
-                                                            <SpellStatusBadge
-                                                                novelId={id}
-                                                                noteId={noteItem.id}
-                                                                status={noteItem.status ?? ""}
-                                                                unresolvedCount={spellCounts[noteItem.id]?.unresolved ?? 0}
-                                                            />
-                                                        </div>
-                                                        <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-                                                            <span>แก้ไขล่าสุด: {updatedDate}</span>
-                                                            <span>•</span>
-                                                            <span>{wordCount.toLocaleString()} คำ</span>
-                                                            {(noteItem.plotHoleCount ?? 0) > 0 && (
-                                                                <>
-                                                                    <span>•</span>
-                                                                    <span className="text-amber-500 font-medium">พบ {noteItem.plotHoleCount} plot holes</span>
-                                                                </>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                    <div className="shrink-0 flex items-center gap-2">
-                                                        <Link
-                                                            href={`/dashboard/project/${id}/note/${noteItem.id}/rewrite`}
-                                                            className="inline-flex items-center justify-center rounded-md text-xs font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3"
-                                                        >
-                                                            <PenTool className="h-3.5 w-3.5 mr-1.5 text-amber-500" />
-                                                            {noteItem.status === "needs_rewrite" ? "ตรวจแก้ (Rewrite)" : "ดูผลตรวจ"}
-                                                        </Link>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                            </div>
+                                    <h3 className="text-lg font-display font-semibold mb-2">ไม่มีงานในคิว</h3>
+                                    <p className="text-sm text-muted-foreground max-w-sm">
+                                        ตั้งสถานะโน้ตเป็น "รอพิสูจน์อักษร" (ตรวจคำผิดอัตโนมัติ) หรือ "รอ Rewrite" ในหน้าเขียน เพื่อให้โน้ตนั้นปรากฏในคิวนี้
+                                    </p>
+                                </div>
+                            ) : (
+                                <RewriteQueue
+                                    novelId={id}
+                                    rows={needsRewriteNotes.map((n) => ({
+                                        id: n.id,
+                                        title: n.title || "Untitled Note",
+                                        status: n.status ?? "",
+                                        chapterTitle: n.linkedChapter?.title ?? null,
+                                        chapterOrder: n.linkedChapter?.orderIndex ?? Number.MAX_SAFE_INTEGER,
+                                        noteOrder: n.orderIndex ?? 0,
+                                        updatedAt: n.updatedAt ? new Date(n.updatedAt).toISOString() : null,
+                                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                        wordCount: getWordCount((n.content as any)?.text),
+                                        plotHoleCount: n.plotHoleCount ?? 0,
+                                        unresolved: spellCounts[n.id]?.unresolved ?? 0,
+                                        total: spellCounts[n.id]?.total ?? 0,
+                                    }))}
+                                />
+                            )}
                         </TabsContent>
-                    </Tabs>
+                    </div>
                 </div>
-            </div>
+            </Tabs>
         </div>
     )
 }

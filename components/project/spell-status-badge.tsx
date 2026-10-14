@@ -21,9 +21,11 @@ interface Props {
     noteId: string;
     status: string;
     unresolvedCount: number;
+    /** เคยมีผลตรวจคำผิดแล้ว — แยก "ยังไม่ตรวจ" ออกจาก "ตรวจแล้วไม่พบ" (ไม่ส่ง = ไม่รู้ ไม่แสดงป้ายยังไม่ตรวจ) */
+    checked?: boolean;
 }
 
-export function SpellStatusBadge({ novelId, noteId, status, unresolvedCount }: Props) {
+export function SpellStatusBadge({ novelId, noteId, status, unresolvedCount, checked }: Props) {
     const router = useRouter();
     const [job, setJob] = useState<{ state: JobState; count?: number; position?: number } | null>(
         status === "proofreading" ? { state: "running" } : null,
@@ -118,8 +120,12 @@ export function SpellStatusBadge({ novelId, noteId, status, unresolvedCount }: P
     }
     const n = job?.state === "done" ? job.count ?? 0 : unresolvedCount;
     if (status === "needs_rewrite") {
-        // รอ Rewrite: ไม่มีจุดค้าง = ไม่ต้องมีป้าย (แยกไม่ออกว่ายังไม่เคยตรวจ หรือตรวจแล้วสะอาด)
-        if (n === 0 && job?.state !== "done") return null;
+        if (n === 0 && job?.state !== "done") {
+            if (checked === false) {
+                return <span className={`${pill} text-muted-foreground`}>ยังไม่ตรวจคำผิด</span>;
+            }
+            if (!checked) return null; // ไม่รู้ว่าเคยตรวจไหม — ไม่แสดงอะไร
+        }
         return (
             <span className={`${pill} border-cyan-500/30 bg-cyan-500/10 text-cyan-600 dark:text-cyan-400`}>
                 <SpellCheck className="h-3 w-3" aria-hidden />
