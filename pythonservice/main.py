@@ -1187,8 +1187,9 @@ def _record_chunk(hf: dict, job: dict):
     st["chunksGpu" if mode == "gpu" else "chunksCpu"] += 1
     if secs is not None:
         st["secondsGpu" if mode == "gpu" else "secondsCpu"].append(secs)
-        if mode == "gpu":
-            st["gpuSeconds"] += secs
+    # โควต้านับเฉพาะเวลาที่ใช้ GPU จริง (HF รุ่นใหม่ส่ง gpuSeconds มา · รุ่นเก่านับทั้งก้อน)
+    if mode == "gpu":
+        st["gpuSeconds"] += hf.get("gpuSeconds", secs or 0)
     if "gpuCooldownUntil" in hf:
         st["gpuCooldownUntil"] = hf["gpuCooldownUntil"]
 

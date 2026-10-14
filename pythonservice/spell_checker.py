@@ -413,41 +413,78 @@ def _get_lm():
     return _LM
 
 
-def _lm_scores(left: str, words: List[str], right: str) -> List[float]:
+def _prepare_rows(reqs: List[tuple]) -> tuple:
     """
-    คะแนนความเข้ากับบริบทของแต่ละคำใน words เมื่อวางไว้ช่องเดียวกัน (pseudo-log-likelihood)
+    แปลงคำขอให้คะแนน [(left, words, right)] เป็นแถว input ของ LM (งาน CPU ล้วน — ทำนอก GPU)
+    แต่ละ subword ของแต่ละคำ = 1 แถว ที่ปิด (mask) ตัวนั้นไว้
+    คืน (rows, positions, targets, owners) · owners[i] = (ลำดับคำขอ, ลำดับคำ)
+    """
+    tok = _LM[0]
+    enc = lambda s: tok(s.replace(" ", "<_>"), add_special_tokens=False)["input_ids"]
+    rows, positions, targets, owners = [], [], [], []
+    for ri, (left, words, right) in enumerate(reqs):
+        l_ids, r_ids = enc(left)[-32:], enc(right)[:32]
+        start = 1 + len(l_ids)
+        for wi, w in enumerate(words):
+            w_ids = enc(w)
+            ids = [tok.cls_token_id] + l_ids + w_ids + r_ids + [tok.sep_token_id]
+            for i, t in enumerate(w_ids):
+                row = list(ids)
+                row[start + i] = tok.mask_token_id
+                rows.append(row)
+                positions.append(start + i)
+                targets.append(t)
+                owners.append((ri, wi))
+    return rows, positions, targets, owners
 
-    ปิด subword ของคำทีละตัวแล้วดู log-prob ของตัวที่ถูกปิด รวมทุกคำเป็น batch เดียว
-    ยิ่งสูง ยิ่งเข้ากับบริบท — เทียบได้เฉพาะระหว่างคำในชุดเดียวกัน
+
+def score_rows(rows: List[List[int]], positions: List[int], targets: List[int], chunk: int = 256) -> List[float]:
+    """
+    log-prob ของ subword ที่ถูกปิดในแต่ละแถว — ส่วนเดียวที่ต้องใช้ LM จริง
+    บน HF ห่อฟังก์ชันนี้ด้วย @spaces.GPU (เรียกครั้งเดียวต่อก้อนข้อความ) ส่วนอื่นทำบน CPU
     """
     tok, model, torch = _LM
-    enc = lambda s: tok(s.replace(" ", "<_>"), add_special_tokens=False)["input_ids"]
-    l_ids, r_ids = enc(left)[-32:], enc(right)[:32]
-    start = 1 + len(l_ids)
-    rows, owners, targets = [], [], []
-    for wi, w in enumerate(words):
-        w_ids = enc(w)
-        ids = [tok.cls_token_id] + l_ids + w_ids + r_ids + [tok.sep_token_id]
-        for i, t in enumerate(w_ids):
-            row = list(ids)
-            row[start + i] = tok.mask_token_id
-            rows.append(row)
-            owners.append(wi)
-            targets.append((start + i, t))
-    if not rows:
-        return [float("-inf")] * len(words)
-    width = max(len(r) for r in rows)
-    # อุปกรณ์ตามโมเดล — บน HF อาจเป็น GPU (ใน @spaces.GPU) หรือ CPU (fallback)
-    batch = torch.tensor([r + [tok.pad_token_id] * (width - len(r)) for r in rows]).to(model.device)
-    with torch.no_grad():
-        logp = torch.log_softmax(model(input_ids=batch, attention_mask=(batch != tok.pad_token_id)).logits, dim=-1)
-    sums = [0.0] * len(words)
-    counts = [0] * len(words)
-    for r, (wi, (pos, t)) in enumerate(zip(owners, targets)):
-        sums[wi] += logp[r, pos, t].item()
-        counts[wi] += 1
-    # ponytail: ใช้ผลรวม (ไม่ใช่ค่าเฉลี่ย) — คำผิดมักแตกเป็น subword เยอะ ค่าเฉลี่ยจะช่วยมันไม่ควร
-    return [sums[i] if counts[i] else float("-inf") for i in range(len(words))]
+    out: List[float] = []
+    for i in range(0, len(rows), chunk):
+        part = rows[i:i + chunk]
+        width = max(len(r) for r in part)
+        # อุปกรณ์ตามโมเดล — GPU (ใน @spaces.GPU) หรือ CPU (fallback/Render)
+        batch = torch.tensor([r + [tok.pad_token_id] * (width - len(r)) for r in part]).to(model.device)
+        pos = torch.tensor(positions[i:i + chunk], device=model.device)
+        tgt = torch.tensor(targets[i:i + chunk], device=model.device)
+        with torch.no_grad():
+            logits = model(input_ids=batch, attention_mask=(batch != tok.pad_token_id)).logits
+            picked = logits[torch.arange(len(part), device=model.device), pos]  # เฉพาะตำแหน่งที่ปิดไว้
+            out.extend(torch.log_softmax(picked.float(), dim=-1).gather(1, tgt[:, None]).squeeze(1).tolist())
+    return out
+
+
+def _lm_scores_many(reqs: List[tuple], scorer=None) -> List[List[float]]:
+    """
+    ให้คะแนนหลายคำขอในการเรียก LM ครั้งเดียว — คืน list ต่อคำขอ ตามลำดับคำใน words
+    คะแนนคำ = ผลรวม log-prob ของ subword (pseudo-log-likelihood) ยิ่งสูงยิ่งเข้ากับบริบท
+    ponytail: ใช้ผลรวม (ไม่ใช่ค่าเฉลี่ย) — คำผิดมักแตกเป็น subword เยอะ ค่าเฉลี่ยจะช่วยมันไม่ควร
+    """
+    rows, positions, targets, owners = _prepare_rows(reqs)
+    sums = [[0.0] * len(r[1]) for r in reqs]
+    counts = [[0] * len(r[1]) for r in reqs]
+    if rows:
+        for (ri, wi), lp in zip(owners, (scorer or score_rows)(rows, positions, targets)):
+            sums[ri][wi] += lp
+            counts[ri][wi] += 1
+    return [[s if c else float("-inf") for s, c in zip(ss, cc)] for ss, cc in zip(sums, counts)]
+
+
+def _lm_scores(left: str, words: List[str], right: str) -> List[float]:
+    """คะแนนของคำใน words เมื่อวางในช่องเดียวกัน — ทางลัดของ _lm_scores_many คำขอเดียว"""
+    return _lm_scores_many([(left, words, right)])[0]
+
+
+@dataclass
+class _Pending:
+    """คำที่ต้องให้ LM ตัดสิน — เก็บไว้ก่อน แล้วให้คะแนนทั้งก้อนในการเรียก LM ครั้งเดียว"""
+    req: tuple                       # (left, words, right)
+    finalize: object                 # (scores) -> คำแนะนำ | None
 
 
 # ============================================================
@@ -717,11 +754,12 @@ class NovelSpellChecker:
             entities_found=list(found.values()),
         )
 
-    def check_local(self, masked: str, hints: Optional[List[dict]] = None) -> List[SpellError]:
+    def check_local(self, masked: str, hints: Optional[List[dict]] = None, scorer=None) -> List[SpellError]:
         """
         ตัวตรวจในเครื่อง — offset ของผลอ้างกับ masked text ที่รับเข้ามา
 
         HF Space เรียกฟังก์ชันนี้ตรง ๆ (masking ทำที่ Replit แล้ว ชื่อไม่หลุดออกไป)
+        scorer = ตัวให้คะแนน LM แทน score_rows (HF ส่งตัวที่รันบน GPU มา) · None = ใช้โมเดลที่โหลดไว้
 
         hints = คำที่ Longdo ขีดมา [{word, offset, suggestions}] — Longdo จับเก่ง (15/16 ในชุดทดสอบ)
         แต่ขีดคำประสมที่ถูกเยอะ (17 จุด) จึงให้ตัวนี้กรองซ้ำด้วยเกณฑ์เดียวกับคำที่หาเอง
@@ -737,22 +775,29 @@ class NovelSpellChecker:
         lm = _get_lm()
         dictionary = _get_thai_dict()
         errors: List[SpellError] = []
+        pending: List[tuple] = []        # (idx, word, tok_idx, _Pending) — รอคะแนน LM
+        claimed: List[tuple] = []        # ช่วงที่มีเจ้าของแล้ว (ทั้งตัดสินแล้วและรอ LM)
 
         def add(idx: int, word: str, tok_idx: int, hint: Optional[List[str]] = None):
             # ตัดตัวเลข/อังกฤษที่ติดขอบคำทิ้ง ("เกิน4", "DMสอบถาม") — คำจาก Longdo มาแบบนี้บ่อย
             core = re.match(r'^([^฀-๿]*)(.*?)[^฀-๿]*$', word)
             idx, word = idx + len(core.group(1)), core.group(2)
-            if not word or any(e.offset < idx + len(word) and idx < e.offset + len(e.word) for e in errors):
+            if not word or any(a < idx + len(word) and idx < b for a, b in claimed):
                 return
             style = _style_fix(word, dictionary) if hint is not None else None
             if style:
                 errors.append(SpellError(word=word, position=tok_idx, offset=idx, suggestions=[style],
                                          sentence="", sentence_index=-1, kind="style"))
+                claimed.append((idx, idx + len(word)))
                 return
-            suggestions = self._judge(masked, idx, word, dictionary, lm, hint)
-            if suggestions is not None:
+            res = self._judge(masked, idx, word, dictionary, lm, hint)
+            if isinstance(res, _Pending):
+                pending.append((idx, word, tok_idx, res))
+                claimed.append((idx, idx + len(word)))
+            elif res is not None:
                 errors.append(SpellError(word=word, position=tok_idx, offset=idx,
-                                         suggestions=suggestions, sentence="", sentence_index=-1))
+                                         suggestions=res, sentence="", sentence_index=-1))
+                claimed.append((idx, idx + len(word)))
 
         for h in hints or []:
             add(h["offset"], h["word"], -1, [c for c in h.get("suggestions", []) if " " not in c])
@@ -765,11 +810,24 @@ class NovelSpellChecker:
                 continue
             for tok_idx, (idx, word) in enumerate(self._candidates(masked, line, line_start, dictionary)):
                 add(idx, word, tok_idx)
+
+        # ให้คะแนน LM ทุกคำที่รอในการเรียกครั้งเดียว — บน HF คือ GPU call เดียวต่อก้อน (เดิมเรียกทีละคำ
+        # หลายร้อยครั้ง และงานตัดคำ/hunspell ถูกนับเป็นเวลา GPU ไปด้วย: 2 บทกินโควต้า 244/300 วิ)
+        if pending:
+            all_scores = _lm_scores_many([p.req for _, _, _, p in pending], scorer)
+            for (idx, word, tok_idx, p), scores in zip(pending, all_scores):
+                suggestions = p.finalize(scores)
+                if suggestions is not None:
+                    errors.append(SpellError(word=word, position=tok_idx, offset=idx,
+                                             suggestions=suggestions, sentence="", sentence_index=-1))
         return self._merge_adjacent(errors, masked, dictionary)
 
     def _judge(self, masked: str, idx: int, word: str, dictionary, lm,
-               hint: Optional[List[str]] = None) -> Optional[List[str]]:
-        """คืนคำแนะนำถ้าตัดสินว่าผิด · None ถ้าผ่าน — hint คือคำแนะนำจาก Longdo (มี = Longdo ขีดมา)"""
+               hint: Optional[List[str]] = None):
+        """
+        คืนคำแนะนำถ้าตัดสินว่าผิด · None ถ้าผ่าน · _Pending ถ้าต้องรอคะแนน LM (ให้คะแนนรวมทีหลัง)
+        hint คือคำแนะนำจาก Longdo (มี = Longdo ขีดมา)
+        """
         if not self._is_real_word(word) or self._should_skip(word) or word in NOVEL_LOANWORDS:
             return None
         left = masked[max(0, idx - LM_CONTEXT_CHARS):idx]
@@ -787,9 +845,11 @@ class NovelSpellChecker:
                 return None
             # บริบทสั้นกว่าปกติ — ชั้นนี้เรียก LM เกือบทุกคำ ความยาวคือเวลาตรง ๆ
             k = REAL_WORD_CONTEXT_CHARS
-            scores = _lm_scores(left[-k:], [word] + variants, right[:k])
-            best_score, best = max(zip(scores[1:], variants))
-            return [best] if best_score - scores[0] >= REAL_WORD_MARGIN else None
+
+            def decide_real(scores):
+                best_score, best = max(zip(scores[1:], variants))
+                return [best] if best_score - scores[0] >= REAL_WORD_MARGIN else None
+            return _Pending((left[-k:], [word] + variants, right[:k]), decide_real)
 
         # คำจริงที่ Longdo ขีด ("นั้นเอง") ถือเหมือนคำประสม — ต้องให้ LM ยืนยัน
         compound = word in dictionary or self._is_compound(word, dictionary)
@@ -798,25 +858,28 @@ class NovelSpellChecker:
             # LM คิดคะแนนเป็นผลรวม คำที่สั้นกว่าจึงได้เปรียบ — คำประสมที่ถูกโดนเสนอ
             # "คำเดิมตัดบางส่วนทิ้ง" แล้วชนะ ("จอจบ"->"จอบ", "พบเจอ"->"เจอ") ตัดรูปพวกนี้ทิ้ง
             suggestions = [c for c in suggestions if not _is_deletion(word, c)]
-        margin = None
-        if lm is not None and suggestions:
-            # ส่งให้ LM แค่ไม่กี่ตัวแรก: ของ Longdo ก่อน รูปพิมพ์สับสนแบบไทย แล้วค่อยที่ hunspell เสนอ
-            typo_like = set(_confusable_variants(word, dictionary, loose=True))
-            suggestions = sorted(suggestions, key=lambda c: (c not in (hint or []), c not in typo_like))
-            suggestions = suggestions[:LM_MAX_CANDIDATES]
-            scores = _lm_scores(left, [word] + suggestions, right)
+        if lm is None or not suggestions:
+            # ไม่มี LM ยืนยัน: คำประสมปล่อยผ่าน คำที่แยกเป็นคำไม่ได้ขีดไปเลย
+            return None if compound else suggestions
+
+        # ส่งให้ LM แค่ไม่กี่ตัวแรก: ของ Longdo ก่อน รูปพิมพ์สับสนแบบไทย แล้วค่อยที่ hunspell เสนอ
+        typo_like = set(_confusable_variants(word, dictionary, loose=True))
+        suggestions = sorted(suggestions, key=lambda c: (c not in (hint or []), c not in typo_like))
+        suggestions = suggestions[:LM_MAX_CANDIDATES]
+
+        def decide(scores):
             # แต้มต่อใช้เรียงคำแนะนำเท่านั้น — ตัดสินว่าผิดไหมยังใช้คะแนน LM ล้วน
             # (เคยใส่ไว้ใน margin ด้วย คำประสมที่ถูกอย่าง "จอจบ" "ปิดตา" เลยโดนขีด)
             margin = max(scores[1:]) - scores[0]
+            # คำประสมจากคำจริง ("ส้ม|แดง") ขีดเฉพาะเมื่อ LM ยืนยันว่าคำแนะนำเข้าบริบทกว่าชัด ๆ
+            # ถ้า Longdo ขีดมาด้วย ใช้เกณฑ์ต่ำกว่า เพราะมีหลักฐานสองทาง
+            if compound and margin < (HINT_MARGIN if hinted else LM_MARGIN):
+                return None
             ranked = sorted(zip(scores[1:], suggestions),
                             key=lambda p: p[0] + (TYPO_PRIOR if p[1] in typo_like else 0.0),
                             reverse=True)
-            suggestions = [c for _, c in ranked]
-        # คำประสมจากคำจริง ("ส้ม|แดง") ขีดเฉพาะเมื่อ LM ยืนยันว่าคำแนะนำเข้าบริบทกว่าชัด ๆ
-        # ถ้า Longdo ขีดมาด้วย ใช้เกณฑ์ต่ำกว่า เพราะมีหลักฐานสองทาง
-        if compound and (margin is None or margin < (HINT_MARGIN if hinted else LM_MARGIN)):
-            return None
-        return suggestions
+            return [c for _, c in ranked]
+        return _Pending((left, [word] + suggestions, right), decide)
 
     def _suggestions(self, word: str, dictionary) -> List[str]:
         """คำแนะนำจาก hunspell + รูปที่ได้จากการพิมพ์สับสนแบบไทย ("เวี่ยง"->"เหวี่ยง", "มึ"->"มี")"""
