@@ -50,6 +50,7 @@ import { diff_match_patch } from "diff-match-patch";
 import { GitCompare, BookOpen, ChevronUp, ChevronDown, Plus, ArrowUp, ArrowDown, Search, Eye, EyeOff, Bookmark } from "lucide-react";
 
 import "react-quill-new/dist/quill.snow.css";
+import { maybeTriggerSpellCheck } from "@/lib/spell-trigger";
 
 const ReactQuill = dynamic(() => import("react-quill-new"), { ssr: false }) as any;
 
@@ -736,13 +737,12 @@ export function RewriteWorkspace({ initialNote, novelId }: RewriteWorkspaceProps
                 toast.success(`เปลี่ยนสถานะเป็น: ${NOTE_STATUS_CONFIG[newStatus].label}`);
                 router.refresh();
 
-                // ตั้งสถานะ "รอพิสูจน์อักษร" → trigger background spell check (server-side)
-                if (newStatus === "proofreading") {
-                    toast.info("เริ่มตรวจคำผิดอัตโนมัติเบื้องหลัง — สถานะจะเปลี่ยนเป็น 'รอตรวจสอบ' เมื่อเสร็จ");
-                    fetch(`/api/novel/${novelId}/note/${note.id}/spell-check-trigger`, {
-                        method: "POST",
-                    }).catch(() => toast.error("เริ่มตรวจคำผิดไม่สำเร็จ"));
-                }
+                // "รอพิสูจน์อักษร" / "รอ Rewrite" → ตรวจคำผิดเบื้องหลัง (เคยตรวจแล้วถามก่อน)
+                const spell = await maybeTriggerSpellCheck(novelId, note.id, newStatus);
+                if (spell === "started") toast.info(newStatus === "proofreading"
+                    ? "เริ่มตรวจคำผิดอัตโนมัติเบื้องหลัง — สถานะจะเปลี่ยนเป็น 'รอตรวจสอบ' เมื่อเสร็จ"
+                    : "เริ่มตรวจคำผิดเบื้องหลัง — ผลจะขึ้นในรายการตรวจทาน");
+                if (spell === "failed") toast.error("เริ่มตรวจคำผิดไม่สำเร็จ");
             }
         } catch (e) {
             toast.error("เปลี่ยนสถานะไม่สำเร็จ");

@@ -16,6 +16,9 @@ export async function POST(request: NextRequest, { params }: Props) {
     try {
         const { novelId, noteId } = await params;
         const denied = await guardNovel(novelId); if (denied) return denied;
+        // setStatus: true = ตรวจเสร็จแล้วตั้ง "รอตรวจสอบ" (รอพิสูจน์อักษร) · false = คงสถานะเดิม (รอ Rewrite / ตรวจทั้งคิว)
+        const body = await request.json().catch(() => ({}));
+        const setStatus = body?.setStatus !== false;
 
         // 1. ดึง note content + custom words จาก DB
         const [note] = await db.select().from(notes).where(and(eq(notes.id, noteId), isNull(notes.deletedAt)));
@@ -37,7 +40,7 @@ export async function POST(request: NextRequest, { params }: Props) {
         pyFetch(`/spell-check-note`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ noteId, novelId, text, entities, setStatus: true }),
+            body: JSON.stringify({ noteId, novelId, text, entities, setStatus }),
         }).catch((e) => console.error("[SpellCheckTrigger] Python call failed:", e));
 
         return NextResponse.json({ success: true, triggered: true });

@@ -26,6 +26,7 @@ import { updateNoteStatus } from "@/server/note";
 import { NoteStatus, NOTE_STATUS_CONFIG } from "@/lib/note-constants";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { maybeTriggerSpellCheck } from "@/lib/spell-trigger";
 
 const NOTES_PER_PAGE = 10;
 const CHARS_PER_PAGE = 1500;
@@ -124,13 +125,10 @@ export function ChapterRow({
                 return;
             }
 
-            // 4. ตั้งเป็น "รอพิสูจน์อักษร" → trigger background spell check
-            if (newStatus === "proofreading") {
-                toast.info("เริ่มตรวจคำผิดอัตโนมัติเบื้องหลัง...");
-                fetch(`/api/novel/${novelId}/note/${noteId}/spell-check-trigger`, {
-                    method: "POST",
-                }).catch(() => toast.error("เริ่มตรวจคำผิดไม่สำเร็จ"));
-            }
+            // 4. "รอพิสูจน์อักษร" / "รอ Rewrite" → ตรวจคำผิดเบื้องหลัง (เคยตรวจแล้วถามก่อน)
+            const spell = await maybeTriggerSpellCheck(novelId, noteId, newStatus);
+            if (spell === "started") toast.info("เริ่มตรวจคำผิดอัตโนมัติเบื้องหลัง...");
+            if (spell === "failed") toast.error("เริ่มตรวจคำผิดไม่สำเร็จ");
         });
     };
 

@@ -2,13 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, CheckCircle2, AlertTriangle, RotateCw } from "lucide-react";
+import { Loader2, CheckCircle2, AlertTriangle, RotateCw, SpellCheck } from "lucide-react";
 import { toast } from "sonner";
+import { triggerSpellCheck } from "@/lib/spell-trigger";
 
 // สถานะตรวจคำผิดของโน้ตในคิวแก้ไข
-//   proofreading = สั่งตรวจอัตโนมัติแล้ว → ถามสถานะงานจาก Python ทุก 5 วิ จนเสร็จ/ล้ม
-//   user_verify  = worker ตรวจเสร็จและบันทึกผลแล้ว → แสดงจำนวนจุดที่ยังไม่แก้ (จาก DB)
-// สถานะงานอยู่ในหน่วยความจำของ Python: Render restart แล้วได้ "unknown" → ให้กดตรวจใหม่
+//   proofreading  = สั่งตรวจอัตโนมัติแล้ว → ถามสถานะงานจาก Python ทุก 5 วิ จนเสร็จ/ล้ม
+//   user_verify   = worker ตรวจเสร็จและเปลี่ยนสถานะแล้ว → จำนวนจุดที่ยังไม่แก้ (จาก DB)
+//   needs_rewrite = ตรวจตอนตั้งสถานะ แต่สถานะไม่เปลี่ยน → ถามครั้งเดียวว่ากำลังตรวจอยู่ไหม ไม่งั้นโชว์จุดค้างจาก DB
+// สถานะงานอยู่ในหน่วยความจำของ Python: Render restart แล้วได้ "unknown"
+// ปุ่ม "ตรวจทั้งคิว" สั่งงานแล้วส่ง event "spell-job-started" มา — badge ของตอนนั้นจะเริ่มหมุนเอง
 
 type JobState = "running" | "done" | "error" | "unknown";
 const POLL_MS = 5000;
@@ -27,6 +30,26 @@ export function SpellStatusBadge({ novelId, noteId, status, unresolvedCount }: P
     );
     const refreshed = useRef(false);
 
+    // รอ Rewrite: ไม่รู้ว่ามีงานค้างไหม — ถามครั้งเดียว ถ้ากำลังตรวจอยู่ค่อยเข้าโหมดถามซ้ำ
+    useEffect(() => {
+        if (status !== "needs_rewrite") return;
+        fetch(`/api/py/spell-check-note/status/${noteId}`)
+            .then((r) => (r.ok ? r.json() : null))
+            .then((j) => { if (j?.state === "running") setJob({ state: "running" }); })
+            .catch(() => {});
+    }, [status, noteId]);
+
+    useEffect(() => {
+        const onStart = (e: Event) => {
+            if ((e as CustomEvent<string>).detail === noteId) {
+                refreshed.current = false;
+                setJob({ state: "running" });
+            }
+        };
+        window.addEventListener("spell-job-started", onStart);
+        return () => window.removeEventListener("spell-job-started", onStart);
+    }, [noteId]);
+
     useEffect(() => {
         if (job?.state !== "running") return;
         let alive = true;
@@ -37,7 +60,7 @@ export function SpellStatusBadge({ novelId, noteId, status, unresolvedCount }: P
                 const j = await res.json();
                 if (j.state === "running") return;
                 setJob({ state: j.state, count: j.count });
-                // worker เปลี่ยนสถานะโน้ตใน DB แล้ว — โหลดหน้าใหม่ครั้งเดียวให้แถวเป็น "รอตรวจสอบ"
+                // worker เขียนผล/สถานะลง DB แล้ว — โหลดหน้าใหม่ครั้งเดียวให้ตัวเลขจาก DB ตรง
                 // (getNotes cache 30 วิ อาจยังเห็นสถานะเก่า แต่ badge แสดงผลจาก state นี้ไปก่อนแล้ว)
                 if (j.state === "done" && !refreshed.current) {
                     refreshed.current = true;
@@ -51,27 +74,11 @@ export function SpellStatusBadge({ novelId, noteId, status, unresolvedCount }: P
     }, [job?.state, noteId, router]);
 
     const retry = async () => {
-        const res = await fetch(`/api/novel/${novelId}/note/${noteId}/spell-check-trigger`, { method: "POST" })
-            .catch(() => null);
-        if (!res?.ok) {
-            toast.error("เริ่มตรวจคำผิดไม่สำเร็จ");
-            return;
-        }
-        refreshed.current = false;
-        setJob({ state: "running" });
+        if (!(await triggerSpellCheck(novelId, noteId, status))) toast.error("เริ่มตรวจคำผิดไม่สำเร็จ");
     };
 
     const pill = "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium";
 
-    if (status === "user_verify" || job?.state === "done") {
-        const n = status === "user_verify" ? unresolvedCount : job?.count ?? 0;
-        return (
-            <span className={`${pill} border-cyan-500/30 bg-cyan-500/10 text-cyan-600 dark:text-cyan-400`}>
-                <CheckCircle2 className="h-3 w-3" aria-hidden />
-                {n > 0 ? `ตรวจเสร็จ · ${n} จุดรอดู` : "ตรวจเสร็จ · ไม่พบคำผิด"}
-            </span>
-        );
-    }
     if (job?.state === "running") {
         return (
             <span className={`${pill} border-purple-500/30 bg-purple-500/10 text-purple-600 dark:text-purple-400`} role="status">
@@ -80,7 +87,7 @@ export function SpellStatusBadge({ novelId, noteId, status, unresolvedCount }: P
             </span>
         );
     }
-    if (job?.state === "error" || job?.state === "unknown") {
+    if (job?.state === "error" || (job?.state === "unknown" && status === "proofreading")) {
         return (
             <span className="inline-flex items-center gap-1.5">
                 <span className={`${pill} border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400`}>
@@ -94,6 +101,25 @@ export function SpellStatusBadge({ novelId, noteId, status, unresolvedCount }: P
                 >
                     <RotateCw className="h-3 w-3" aria-hidden /> ตรวจใหม่
                 </button>
+            </span>
+        );
+    }
+    const n = job?.state === "done" ? job.count ?? 0 : unresolvedCount;
+    if (status === "needs_rewrite") {
+        // รอ Rewrite: ไม่มีจุดค้าง = ไม่ต้องมีป้าย (แยกไม่ออกว่ายังไม่เคยตรวจ หรือตรวจแล้วสะอาด)
+        if (n === 0 && job?.state !== "done") return null;
+        return (
+            <span className={`${pill} border-cyan-500/30 bg-cyan-500/10 text-cyan-600 dark:text-cyan-400`}>
+                <SpellCheck className="h-3 w-3" aria-hidden />
+                {n > 0 ? `${n} จุดคำผิดค้าง` : "ตรวจแล้ว · ไม่พบคำผิด"}
+            </span>
+        );
+    }
+    if (status === "user_verify" || job?.state === "done") {
+        return (
+            <span className={`${pill} border-cyan-500/30 bg-cyan-500/10 text-cyan-600 dark:text-cyan-400`}>
+                <CheckCircle2 className="h-3 w-3" aria-hidden />
+                {n > 0 ? `ตรวจเสร็จ · ${n} จุดรอดู` : "ตรวจเสร็จ · ไม่พบคำผิด"}
             </span>
         );
     }

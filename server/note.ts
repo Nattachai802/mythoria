@@ -389,22 +389,23 @@ export const getPreviousNote = async (
 };
 
 /**
- * จำนวนจุดตรวจคำผิดที่ยังไม่แก้ ต่อโน้ต — ใช้แสดงในคิวแก้ไข ("ตรวจเสร็จ · N จุดรอดู")
+ * จำนวนรายการตรวจคำผิดต่อโน้ต — ใช้ในคิวแก้ไข
+ *   unresolved = ยังไม่แก้ ("ตรวจเสร็จ · N จุดรอดู") · total = ทุกสถานะ (>0 = เคยตรวจแล้ว ใช้ตอนตรวจทั้งคิว)
  * query เดียว group by note_id · ไม่ผ่าน cache เพราะ worker ฝั่ง Python เขียนตารางนี้ตรง (ไม่มีใคร revalidate ให้)
  */
-export async function getSpellIssueCounts(novelId: string): Promise<Record<string, number>> {
+export async function getSpellIssueCounts(novelId: string): Promise<Record<string, { unresolved: number; total: number }>> {
     try {
         await requireNovelAccess(novelId);
         const rows = await db
-            .select({ noteId: noteAuditIssues.noteId, n: sql<number>`count(*)::int` })
+            .select({
+                noteId: noteAuditIssues.noteId,
+                total: sql<number>`count(*)::int`,
+                unresolved: sql<number>`count(*) filter (where ${noteAuditIssues.status} = 'unresolved')::int`,
+            })
             .from(noteAuditIssues)
-            .where(and(
-                eq(noteAuditIssues.novelId, novelId),
-                eq(noteAuditIssues.category, "spelling"),
-                eq(noteAuditIssues.status, "unresolved"),
-            ))
+            .where(and(eq(noteAuditIssues.novelId, novelId), eq(noteAuditIssues.category, "spelling")))
             .groupBy(noteAuditIssues.noteId);
-        return Object.fromEntries(rows.map((r) => [r.noteId, r.n]));
+        return Object.fromEntries(rows.map((r) => [r.noteId, { unresolved: r.unresolved, total: r.total }]));
     } catch (error) {
         console.error("Get spell issue counts error:", error);
         return {};

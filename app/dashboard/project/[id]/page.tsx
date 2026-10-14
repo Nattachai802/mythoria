@@ -28,6 +28,7 @@ import { CreateNoteDialog } from "@/components/project/create-note-dialog"
 import { getNovelByIdLight } from "@/server/novel"
 import { getNotes, getSpellIssueCounts } from "@/server/note"
 import { SpellStatusBadge } from "@/components/project/spell-status-badge"
+import { SpellCheckQueueButton } from "@/components/project/spell-check-queue-button"
 import { getIdeasCount } from "@/server/idea"
 import { getWritingStreak, getAnalyticsSummary, getWritingActivity } from "@/server/analytics"
 import { Button } from "@/components/ui/button"
@@ -443,9 +444,20 @@ export default async function ProjectOverviewPage({ params }: Props) {
                         </TabsContent>
 
                         <TabsContent value="rewrite" className="space-y-3 mt-0 border-none p-0">
-                            <p className="text-sm text-muted-foreground">
-                                {needsRewriteNotes.length} ตอนในคิว (ตรวจคำผิด / รอ rewrite)
-                            </p>
+                            <div className="flex items-center justify-between gap-2">
+                                <p className="text-sm text-muted-foreground">
+                                    {needsRewriteNotes.length} ตอนในคิว (ตรวจคำผิด / รอ rewrite)
+                                </p>
+                                <SpellCheckQueueButton
+                                    novelId={id}
+                                    items={needsRewriteNotes.map((n) => ({
+                                        id: n.id,
+                                        title: n.title || "Untitled Note",
+                                        status: n.status ?? "",
+                                        checked: (spellCounts[n.id]?.total ?? 0) > 0,
+                                    }))}
+                                />
+                            </div>
 
                             {/* Rewrite Queue Content */}
                             <div className="chamfered border bg-card/50">
@@ -475,14 +487,12 @@ export default async function ProjectOverviewPage({ params }: Props) {
                                                                     {noteItem.linkedChapter.title}
                                                                 </Badge>
                                                             )}
-                                                            {noteItem.status !== "needs_rewrite" && (
-                                                                <SpellStatusBadge
-                                                                    novelId={id}
-                                                                    noteId={noteItem.id}
-                                                                    status={noteItem.status ?? ""}
-                                                                    unresolvedCount={spellCounts[noteItem.id] ?? 0}
-                                                                />
-                                                            )}
+                                                            <SpellStatusBadge
+                                                                novelId={id}
+                                                                noteId={noteItem.id}
+                                                                status={noteItem.status ?? ""}
+                                                                unresolvedCount={spellCounts[noteItem.id]?.unresolved ?? 0}
+                                                            />
                                                         </div>
                                                         <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
                                                             <span>แก้ไขล่าสุด: {updatedDate}</span>
