@@ -6,8 +6,8 @@
  */
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
-import { CHANGELOG, CHANGE_KINDS, CURRENT_VERSION } from "./changelog.ts";
-import { nextVersion, explainBump } from "./release-version.ts";
+import { CHANGELOG, RELEASED, CHANGE_KINDS, CURRENT_VERSION } from "./changelog.ts";
+import { nextVersion, explainBump, parseVersion, semverOf } from "./release-version.ts";
 
 const root = new URL("..", import.meta.url);
 const read = (name: string) => readFileSync(new URL(name, root), "utf8");
@@ -16,12 +16,19 @@ const read = (name: string) => readFileSync(new URL(name, root), "utf8");
 assert(CHANGELOG.length > 0, "CHANGELOG ต้องมีอย่างน้อยหนึ่งรุ่น");
 
 const seen = new Set<string>();
+// รุ่น "next" = รายการที่สะสมรอออกรุ่น — push ได้ (ข้อตกลง 2026-10-14) แต่มีได้รุ่นเดียวและต้องอยู่บนสุด
+assert(CHANGELOG.filter((r) => r.version === "next").length <= 1, 'มีรุ่น "next" ได้รุ่นเดียว');
+assert(CHANGELOG.findIndex((r) => r.version === "next") <= 0, 'รุ่น "next" ต้องอยู่บนสุดของ CHANGELOG');
+assert(RELEASED.length > 0, "ต้องมีรุ่นที่ออกแล้วอย่างน้อยหนึ่งรุ่น");
+
 for (const r of CHANGELOG) {
-    assert(r.version !== "next", `ยังมีรุ่น version: "next" ค้างอยู่ — รัน \`npm run release\` เพื่อให้ระบบคำนวณเลขและอัปเดตทุกไฟล์`);
-    assert(/^\d+\.\d+\.\d+$/.test(r.version), `version "${r.version}" ต้องเป็นรูป x.y.z`);
+    if (r.version !== "next") {
+        assert(parseVersion(r.version), `version "${r.version}" ต้องเป็นรูป Major.Minor.Function.Bugfix (รุ่นเก่า x.y.z)`);
+    }
     assert(!seen.has(r.version), `version "${r.version}" ซ้ำ`);
     seen.add(r.version);
-    assert(/^\d{4}-\d{2}-\d{2}$/.test(r.date), `date ของ ${r.version} ต้องเป็น YYYY-MM-DD`);
+    assert(r.version === "next" ? /^(today|\d{4}-\d{2}-\d{2})$/.test(r.date) : /^\d{4}-\d{2}-\d{2}$/.test(r.date),
+        `date ของ ${r.version} ต้องเป็น YYYY-MM-DD`);
     assert(r.title.trim().length > 0, `${r.version} ต้องมี title`);
     assert(r.entries.length > 0, `${r.version} ต้องมีรายการเปลี่ยนแปลงอย่างน้อยหนึ่งข้อ`);
     for (const e of r.entries) {
@@ -30,32 +37,33 @@ for (const r of CHANGELOG) {
     }
 }
 
-// ใหม่สุดต้องอยู่บนสุด — CURRENT_VERSION กับหน้าในแอปยึด CHANGELOG[0]
-const num = (v: string) => v.split(".").map(Number);
-for (let i = 1; i < CHANGELOG.length; i++) {
-    const [aM, am, ap] = num(CHANGELOG[i - 1].version);
-    const [bM, bm, bp] = num(CHANGELOG[i].version);
-    const newer = aM !== bM ? aM > bM : am !== bm ? am > bm : ap > bp;
-    assert(newer, `CHANGELOG ต้องเรียงใหม่→เก่า แต่ ${CHANGELOG[i - 1].version} ไม่ได้ใหม่กว่า ${CHANGELOG[i].version}`);
+// ใหม่สุดต้องอยู่บนสุด — CURRENT_VERSION กับหน้าในแอปยึด RELEASED[0]
+// เทียบแค่ Major.Minor.Function (Bugfix สุ่ม) · เท่ากัน = รุ่นแก้บั๊กต่อกัน ดูวันที่แทน
+for (let i = 1; i < RELEASED.length; i++) {
+    const a = parseVersion(RELEASED[i - 1].version)!, b = parseVersion(RELEASED[i].version)!;
+    const cmp = a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+    assert(cmp > 0 || (cmp === 0 && RELEASED[i - 1].date >= RELEASED[i].date),
+        `CHANGELOG ต้องเรียงใหม่→เก่า แต่ ${RELEASED[i - 1].version} ไม่ได้ใหม่กว่า ${RELEASED[i].version}`);
 }
 
 // ── เลขของรุ่นล่าสุดต้องตรงกติกา (กันเลขวิ่งเกินจริงตอนทำแค่แก้บั๊ก) ──
 // ตรวจเฉพาะรุ่นบนสุดเทียบกับรุ่นก่อนหน้า (รุ่นเก่ากว่านั้นออกก่อนมีกติกา) · อยากได้เลขต่างจากกติกาให้ใส่ bump ในรุ่นนั้นชัด ๆ
-if (CHANGELOG.length >= 2) {
-    const top = CHANGELOG[0];
-    const expected = nextVersion(CHANGELOG[1].version, top.entries, top.bump);
+// เทียบแค่ Major.Minor.Function — Bugfix สุ่มทุกรุ่น · รุ่นรูป x.y.z ออกก่อนกติกา 4 ส่วน (ก่อน 2026-10-14) ไม่ตรวจ
+if (RELEASED.length >= 2 && parseVersion(RELEASED[0].version)![3] !== null) {
+    const top = RELEASED[0];
+    const expected = semverOf(nextVersion(RELEASED[1].version, top.entries, top.bump));
     assert(
-        top.version === expected,
+        semverOf(top.version) === expected,
         `รุ่น ${top.version} ควรเป็น ${expected} ตามกติกา [${explainBump(top.entries, top.bump)}] เทียบกับ ${CHANGELOG[1].version} — ` +
-            `ใช้ \`npm run release\` ให้คำนวณ หรือถ้าตั้งใจให้ต่างจากกติกาใส่ bump: "patch"|"minor"|"major" ในรุ่นนั้น`,
+            `ใช้ \`npm run release\` ให้คำนวณ หรือถ้าผู้ใช้สั่งให้ต่างจากกติกาใส่ bump: "major"|"minor"|"function"|"bugfix" ในรุ่นนั้น`,
     );
 }
 
 // ── เลขต้องตรงกันสามที่ ──
 const pkg = JSON.parse(read("package.json")) as { version: string };
 assert(
-    pkg.version === CURRENT_VERSION,
-    `package.json version = "${pkg.version}" แต่ CHANGELOG ล่าสุด = "${CURRENT_VERSION}" — แก้ให้ตรงกัน`,
+    pkg.version === semverOf(CURRENT_VERSION), // npm รับ semver 3 ส่วนเท่านั้น จึงไม่มี Bugfix
+    `package.json version = "${pkg.version}" แต่ CHANGELOG ล่าสุด = "${CURRENT_VERSION}" (ต้องเป็น ${semverOf(CURRENT_VERSION)}) — แก้ให้ตรงกัน`,
 );
 
 const readme = read("README.md");
@@ -80,4 +88,5 @@ assert(
     `CHANGELOG.md ยังไม่มีรุ่น ${CURRENT_VERSION} — รัน \`npm run changelog\``,
 );
 
-console.log(`✅ changelog ผ่านทั้งหมด (v${CURRENT_VERSION}, ${CHANGELOG.length} รุ่น)`);
+const pending = CHANGELOG[0].version === "next" ? ` · รอออกรุ่น ${CHANGELOG[0].entries.length} รายการ` : "";
+console.log(`✅ changelog ผ่านทั้งหมด (v${CURRENT_VERSION}, ${RELEASED.length} รุ่น${pending})`);

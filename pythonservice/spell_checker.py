@@ -8,6 +8,7 @@ import os
 import re
 import html
 from collections import Counter
+from functools import lru_cache
 from typing import List, Optional
 from dataclasses import dataclass, field
 from pythainlp.spell import spell, correct
@@ -47,7 +48,18 @@ def _get_hunspell():
 
 
 def _suggest(word: str, limit: int = 5) -> List[str]:
-    """คำที่น่าจะถูกสำหรับ word — เรียงคำที่ใกล้ที่สุดก่อน"""
+    """คำที่น่าจะถูกสำหรับ word — เรียงคำที่ใกล้ที่สุดก่อน (คืน list ใหม่ทุกครั้ง แก้ได้ไม่กระทบ cache)"""
+    return list(_suggest_cached(word, limit))
+
+
+@lru_cache(maxsize=5000)
+def _suggest_cached(word: str, limit: int) -> tuple:
+    # hunspell กินเวลา ~15% ของการตรวจ และคำผิดเดิมซ้ำบ่อย (ในบทเดียวกัน/ข้ามบทใน worker เดียวกัน)
+    # ผลขึ้นกับคำอย่างเดียว จึง cache ได้ไม่กระทบผลตรวจ
+    return tuple(_suggest_uncached(word, limit))
+
+
+def _suggest_uncached(word: str, limit: int) -> List[str]:
     hs = _get_hunspell()
     if hs is not None:
         try:
@@ -425,7 +437,8 @@ def _lm_scores(left: str, words: List[str], right: str) -> List[float]:
     if not rows:
         return [float("-inf")] * len(words)
     width = max(len(r) for r in rows)
-    batch = torch.tensor([r + [tok.pad_token_id] * (width - len(r)) for r in rows])
+    # อุปกรณ์ตามโมเดล — บน HF อาจเป็น GPU (ใน @spaces.GPU) หรือ CPU (fallback)
+    batch = torch.tensor([r + [tok.pad_token_id] * (width - len(r)) for r in rows]).to(model.device)
     with torch.no_grad():
         logp = torch.log_softmax(model(input_ids=batch, attention_mask=(batch != tok.pad_token_id)).logits, dim=-1)
     sums = [0.0] * len(words)
@@ -604,6 +617,9 @@ class NovelSpellChecker:
                 for part in parts:
                     self.entities.append({"text": part, "type": e.get("type")})
                     self.custom_whitelist.add(part)
+
+        # ผู้เรียก (worker คิว) ตั้งไว้เพื่อรับความคืบหน้ารายก้อน: on_progress(ก้อนที่เสร็จ, ทั้งหมด, ผลจาก HF|None)
+        self.on_progress = None
 
         # trie สร้างตอนใช้ครั้งแรก ไม่ใช่ตอน __init__ — มันกิน ~65 MB (62,101 คำ)
         # และใช้เฉพาะทาง fallback ในเครื่อง ทาง Longdo ไม่ต้องใช้เลย
@@ -886,8 +902,11 @@ class NovelSpellChecker:
             # Space แบบ private ต้องมี HF token (read) ไม่งั้น HF ตอบ 404 ก่อนถึงแอป
             **({"Authorization": f"Bearer {os.environ['HF_TOKEN']}"} if os.getenv("HF_TOKEN") else {}),
         }
+        chunks = _line_chunks(masked, REMOTE_CHUNK_CHARS)
         with httpx.Client(timeout=180.0) as client:  # เผื่อ Space ตื่นจากหลับ + โหลดโมเดล
-            for base, chunk in _line_chunks(masked, REMOTE_CHUNK_CHARS):
+            for i, (base, chunk) in enumerate(chunks):
+                if self.on_progress:
+                    self.on_progress(i, len(chunks), None)
                 body = {"text": chunk}
                 if hints is not None:
                     body["hints"] = [dict(h, offset=h["offset"] - base) for h in hints
@@ -895,10 +914,14 @@ class NovelSpellChecker:
                 res = client.post(os.environ["SPELL_FALLBACK_URL"].rstrip("/") + "/spell/check-local",
                                   json=body, headers=headers)
                 res.raise_for_status()
-                for e in res.json()["errors"]:
+                data = res.json()
+                for e in data["errors"]:
                     err = SpellError(**e)
                     err.offset += base
                     out.append(err)
+                if self.on_progress:
+                    # mode: gpu | cpu จาก HF (รุ่นเก่าไม่ส่งมา = cpu) — ไว้แสดงในแผงติดตาม
+                    self.on_progress(i + 1, len(chunks), data)
         return out
 
     def _check_via_longdo(self, masked: str) -> Optional[List[SpellError]]:

@@ -59,6 +59,8 @@ Track & Log Changes: ทุกครั้งที่สร้างหรื�
 
 Version Numbering: เลขรุ่นไม่ต้องคิดเอง — AI ห้ามเลือก/เดา/พิมพ์เลขรุ่นเองเด็ดขาด ให้ระบบคำนวณทั้งหมด
 - ขั้นตอน: เขียนรุ่นใหม่ไว้บนสุดของ lib/changelog.ts ด้วย `version: "next"` + `date: "today"` + title + entries → รัน `npm run release` (ดูผลก่อนด้วย `npm run release -- --dry`) ระบบคิดเลขแล้วเขียนลง lib/changelog.ts / package.json / README และ generate CHANGELOG.md ให้ตรงกันทั้งหมด (`npm run check` บังคับอยู่) ห้ามแก้เลขในไฟล์เหล่านี้ด้วยมือ
+- ออกรุ่นเฉพาะตอนผู้ใช้สั่ง "ออกรุ่น" เท่านั้น — ระหว่างทำงานสะสมรายการไว้ใต้ `version: "next"` ก้อนเดียว push ได้โดยไม่รัน `npm run release` (`npm run check` ยอมให้มี "next" ค้างได้หนึ่งรุ่นบนสุด)
+- package.json เก็บแค่ Major.Minor.Function (npm รับ semver 3 ส่วน) เลขเต็ม 4 ส่วนอยู่ใน lib/changelog.ts / README / CHANGELOG.md
 - รูปเลข: `Major.Minor.Function.Bugfix` เช่น `2.11.3.4829105736`
   - Major: ยกเครื่องใหญ่/ของเดิมใช้ไม่ได้ — ไม่ขึ้นเอง ต้องมี `bump: "major"` ที่ผู้ใช้สั่ง
   - Minor: รุ่นที่มีรายการ `added` (ฟีเจอร์ใหม่) → Minor +1 และ Function รีเซ็ตเป็น 0

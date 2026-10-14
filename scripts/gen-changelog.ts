@@ -5,7 +5,7 @@
  * แก้ที่ lib/changelog.ts แล้วรันคำสั่งนี้ · `npm run check` จะเตือนถ้าลืมรัน
  */
 import { writeFileSync } from "node:fs";
-import { CHANGELOG, CHANGE_KINDS, CHANGE_KIND_LABEL, type ChangeKind } from "../lib/changelog.ts";
+import { RELEASED, CHANGE_KINDS, CHANGE_KIND_LABEL, type ChangeKind } from "../lib/changelog.ts";
 
 const lines: string[] = [
     "# Changelog",
@@ -14,7 +14,7 @@ const lines: string[] = [
     "",
 ];
 
-for (const release of CHANGELOG) {
+for (const release of RELEASED) { // รุ่น "next" ที่ยังไม่ออกไม่ลงไฟล์
     lines.push(`## [${release.version}] — ${release.date}`, "", `**${release.title}**`, "");
 
     for (const kind of CHANGE_KINDS) {
@@ -31,4 +31,4 @@ for (const release of CHANGELOG) {
 
 const out = new URL("../CHANGELOG.md", import.meta.url);
 writeFileSync(out, lines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd() + "\n", "utf8");
-console.log(`เขียน CHANGELOG.md แล้ว — ${CHANGELOG.length} รุ่น ล่าสุด v${CHANGELOG[0].version}`);
+console.log(`เขียน CHANGELOG.md แล้ว — ${RELEASED.length} รุ่น ล่าสุด v${RELEASED[0].version}`);

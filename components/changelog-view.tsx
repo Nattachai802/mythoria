@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Sparkles, Wrench, Bug, Trash2, History } from "lucide-react"
-import { CHANGELOG, CHANGE_KINDS, CHANGE_KIND_LABEL, CURRENT_VERSION, type ChangeKind } from "@/lib/changelog"
+import { RELEASED, CHANGE_KINDS, CHANGE_KIND_LABEL, CURRENT_VERSION, type ChangeKind } from "@/lib/changelog"
 import { readSeenVersion, markSeen } from "@/lib/changelog-seen"
 import { cn } from "@/lib/utils"
 
@@ -42,7 +42,7 @@ export function ChangelogView() {
             <p className="text-sm text-muted-foreground mb-8">บันทึกการเปลี่ยนแปลงของ Mythoria ทุกรุ่น ใหม่สุดอยู่บนสุด</p>
 
             <div className="space-y-10">
-                {CHANGELOG.map(release => {
+                {RELEASED.map(release => {
                     // "ใหม่" = รุ่นที่ออกหลังจากครั้งล่าสุดที่ผู้ใช้เปิดหน้านี้
                     const isUnread = seenBefore !== null && seenBefore !== release.version && release.version === CURRENT_VERSION
                     return (

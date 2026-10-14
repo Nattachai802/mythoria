@@ -1,11 +1,11 @@
 /**
  * ออกรุ่นใหม่ — รันด้วย `npm run release` (ดูผลก่อนด้วย `npm run release -- --dry`)
  *
- * วิธีใช้: เขียนรุ่นใหม่ไว้บนสุดของ lib/changelog.ts ด้วย `version: "next"` (และ `date: "today"` ได้)
- * ใส่ title + entries ให้ครบ แล้วรันคำสั่งนี้ — ไม่ต้องเลือกเลขเอง:
- *   1. คำนวณเลขจากชนิดรายการ (lib/release-version.ts: มีแต่ fixed = patch, อย่างอื่น = minor,
- *      major ต้องเขียน `bump: "major"` เอง) เทียบกับรุ่นก่อนหน้า
- *   2. เขียนเลขลง lib/changelog.ts, package.json และบรรทัด Current Version ใน README.md
+ * วิธีใช้ (ข้อตกลง 2026-10-14): ระหว่างทำงานสะสมรายการไว้ในรุ่น `version: "next"` บนสุดของ lib/changelog.ts
+ * push ได้เรื่อย ๆ โดยยังไม่ออกรุ่น — รันคำสั่งนี้เฉพาะตอนผู้ใช้สั่ง "ออกรุ่น" ไม่ต้องเลือกเลขเอง:
+ *   1. คำนวณเลข Major.Minor.Function.Bugfix จากชนิดรายการ (lib/release-version.ts: added = Minor,
+ *      changed/removed = Function, มีแต่ fixed = Bugfix สุ่ม · major ต้องเขียน `bump: "major"` ตามที่ผู้ใช้สั่ง)
+ *   2. เขียนเลขลง lib/changelog.ts, README.md และ package.json (เฉพาะ Major.Minor.Function — npm รับแค่ 3 ส่วน)
  *   3. generate CHANGELOG.md ใหม่
  * เลขที่ผ่านคำสั่งนี้จะผ่าน `npm run check` (lib/changelog.check.ts) เสมอ
  */
@@ -13,7 +13,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { CHANGELOG } from "../lib/changelog.ts";
-import { nextVersion, explainBump } from "../lib/release-version.ts";
+import { nextVersion, explainBump, semverOf } from "../lib/release-version.ts";
 
 const dry = process.argv.includes("--dry");
 const rootUrl = new URL("..", import.meta.url);
@@ -62,7 +62,7 @@ writeFileSync(changelogPath, src, "utf8");
 const pkgPath = path("package.json");
 const pkg = readFileSync(pkgPath, "utf8");
 if (!/"version":\s*"[^"]*"/.test(pkg)) throw new Error('หา "version" ใน package.json ไม่เจอ');
-writeFileSync(pkgPath, pkg.replace(/"version":\s*"[^"]*"/, `"version": "${version}"`), "utf8");
+writeFileSync(pkgPath, pkg.replace(/"version":\s*"[^"]*"/, `"version": "${semverOf(version)}"`), "utf8");
 
 // 3) README.md — บรรทัด Current Version + พาดหัวรุ่น
 const readmePath = path("README.md");

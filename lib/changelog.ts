@@ -41,8 +41,8 @@ export interface ChangelogEntry {
 export interface ChangelogRelease {
     /** ตรงกับ package.json + README · เขียน "next" ได้ แล้วให้ `npm run release` เติมเลขจริงให้ */
     version: string;
-    /** บังคับระดับเลข (ปกติไม่ต้องใส่) — ไม่ใส่ = ตามกติกา: มีแต่ fixed = patch, อย่างอื่น = minor */
-    bump?: "major" | "minor" | "patch";
+    /** บังคับระดับเลข (ปกติไม่ต้องใส่ ผู้ใช้เป็นคนสั่ง) — ไม่ใส่ = ตามกติกาใน lib/release-version.ts · "patch" = ชื่อเดิมของ "function" */
+    bump?: "major" | "minor" | "function" | "bugfix" | "patch";
     /** YYYY-MM-DD (เขียน "today" ได้ ตอน `npm run release` จะใส่วันที่วันนี้ให้) */
     date: string;
     /** พาดหัวสั้น ๆ ของรอบนี้ ใช้เป็นชื่อรุ่นในแอป */
@@ -52,6 +52,31 @@ export interface ChangelogRelease {
 
 /** ใหม่สุดอยู่บนสุดเสมอ — โค้ดที่อ่าน CHANGELOG[0] ยึดกติกานี้ */
 export const CHANGELOG: ChangelogRelease[] = [
+    {
+        version: "next",
+        date: "today",
+        title: "แผงติดตามตรวจคำผิด + โหมดเร่งความเร็ว GPU",
+        entries: [
+            {
+                kind: "added",
+                text: "แผงติดตามการตรวจคำผิดในคิวแก้ไข",
+                detail: "บอกโหมดตอนนี้ (เร่งความเร็ว GPU / ปกติ CPU), ตอนที่กำลังตรวจและส่วนที่ i/n, คิวที่รอ, เวลาที่เหลือ และสถิติวันนี้ (ตรวจไปกี่ตอน ใช้ GPU ไปเท่าไร ล้มกี่ครั้ง)",
+            },
+            {
+                kind: "changed",
+                text: "ตรวจคำผิดใช้ GPU เร่งความเร็วเมื่อมีโควต้า หมดแล้วกลับไปโหมดปกติเองโดยไม่สะดุด",
+            },
+            {
+                kind: "changed",
+                text: "(ภายใน) จำคำแนะนำคำผิดที่เคยหาแล้ว ไม่ต้องคำนวณซ้ำ",
+            },
+            {
+                kind: "changed",
+                text: "(ภายใน) เลขรุ่นเป็นแบบ 4 ส่วน Major.Minor.Function.Bugfix และออกรุ่นเฉพาะเมื่อสั่ง",
+                detail: "ระหว่างพัฒนาสะสมรายการไว้แล้วค่อยออกเป็นรุ่นเดียว เลขจึงไม่วิ่งเร็วเกินจริง",
+            },
+        ],
+    },
     {
         version: "2.14.0",
         date: "2026-10-14",
@@ -859,5 +884,11 @@ export const CHANGELOG: ChangelogRelease[] = [
     },
 ];
 
+/**
+ * รุ่นที่ออกแล้ว — ไม่รวมรุ่น "next" ที่ยังสะสมรายการอยู่ (push ได้โดยยังไม่ออกรุ่น ออกเมื่อสั่ง `npm run release`)
+ * หน้าในแอปและ CHANGELOG.md แสดงเฉพาะรุ่นที่ออกแล้ว
+ */
+export const RELEASED = CHANGELOG.filter((r) => r.version !== "next");
+
 /** เวอร์ชันปัจจุบัน — ที่เดียวที่โค้ดอื่นควรอ้าง */
-export const CURRENT_VERSION = CHANGELOG[0].version;
+export const CURRENT_VERSION = RELEASED[0].version;

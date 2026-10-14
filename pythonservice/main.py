@@ -1158,6 +1158,80 @@ def _job_status(note_id: str) -> dict:
     return job
 
 
+# สถิติสำหรับแผงติดตามในคิวแก้ไข — อยู่ในหน่วยความจำ เริ่มนับใหม่ทุกวัน (และเมื่อ service restart)
+SPELL_STATS: dict = {}
+
+
+def _stats_today() -> dict:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    day = datetime.now(ZoneInfo("Asia/Bangkok")).strftime("%Y-%m-%d")
+    if SPELL_STATS.get("day") != day:
+        SPELL_STATS.clear()
+        SPELL_STATS.update(day=day, done=0, errors=0, chunksGpu=0, chunksCpu=0, gpuSeconds=0.0,
+                           secondsGpu=[], secondsCpu=[], noteSeconds=[], lastMode=None,
+                           gpuCooldownUntil=None, lastError=None)
+    return SPELL_STATS
+
+
+def _stat(key: str, n: int = 1):
+    _stats_today()[key] += n
+
+
+def _record_chunk(hf: dict, job: dict):
+    """ผลรายก้อนจาก HF: mode gpu/cpu + เวลาที่ใช้ — HF รุ่นเก่าไม่ส่ง mode มา ถือเป็น cpu"""
+    st = _stats_today()
+    mode = hf.get("mode") or "cpu"
+    secs = hf.get("seconds")
+    job["mode"] = st["lastMode"] = mode
+    st["chunksGpu" if mode == "gpu" else "chunksCpu"] += 1
+    if secs is not None:
+        st["secondsGpu" if mode == "gpu" else "secondsCpu"].append(secs)
+        if mode == "gpu":
+            st["gpuSeconds"] += secs
+    if "gpuCooldownUntil" in hf:
+        st["gpuCooldownUntil"] = hf["gpuCooldownUntil"]
+
+
+def _avg(xs: list, default: float) -> float:
+    xs = xs[-20:]
+    return sum(xs) / len(xs) if xs else default
+
+
+@app.get("/spell-queue/overview")
+def spell_queue_overview():
+    """ภาพรวมคิวตรวจคำผิด (แผงติดตามในคิวแก้ไข) — งานที่กำลังตรวจ, คิว, โหมด GPU/CPU, เวลาที่เหลือ, สถิติวันนี้"""
+    import math, time
+    from spell_checker import REMOTE_CHUNK_CHARS
+    st = _stats_today()
+    now = time.time()
+    cooldown = st["gpuCooldownUntil"] if (st["gpuCooldownUntil"] or 0) > now else None
+    mode = "cpu" if cooldown else (st["lastMode"] or "unknown")
+    per_chunk = _avg(st["secondsGpu"], 10.0) if mode == "gpu" else _avg(st["secondsCpu"], 40.0)
+
+    running = None
+    for nid, job in SPELL_JOBS.items():
+        if job.get("state") == "running":
+            running = {"noteId": nid, "chunk": job.get("chunk", 0), "chunks": job.get("chunks"),
+                       "mode": job.get("mode"), "elapsed": round(now - job.get("startedAt", now))}
+            break
+    with _SPELL_LOCK:
+        queued = [{"noteId": q.noteId, "chunks": max(1, math.ceil(len(q.text) / REMOTE_CHUNK_CHARS))} for q in SPELL_QUEUE]
+    remaining_chunks = sum(q["chunks"] for q in queued)
+    if running and running["chunks"]:
+        remaining_chunks += running["chunks"] - running["chunk"]
+    return {
+        "mode": mode,                      # gpu | cpu | unknown (ยังไม่เคยตรวจวันนี้)
+        "gpuCooldownUntil": cooldown,      # โควต้า GPU หมด — ลอง GPU อีกครั้งหลังเวลานี้
+        "running": running,
+        "queued": queued,
+        "etaSeconds": round(remaining_chunks * per_chunk),
+        "secondsPerChunk": round(per_chunk, 1),
+        "today": {k: st[k] for k in ("done", "errors", "chunksGpu", "chunksCpu", "lastError")}
+                 | {"gpuSeconds": round(st["gpuSeconds"]), "avgNoteSeconds": round(_avg(st["noteSeconds"], 0))},
+    }
+
+
 @app.post("/spell-check-note")
 def spell_check_note_endpoint(request: SpellCheckNoteRequest):
     """ใส่โน้ตเข้าคิวตรวจ — ตอบทันที พร้อมลำดับคิว"""
@@ -1227,8 +1301,17 @@ def process_spell_check_task(req: SpellCheckNoteRequest):
     t0 = time.time()
     print(f"[SpellCheckWorker] เริ่มตรวจ note {req.noteId} ({len(req.text)} chars, {len(req.entities)} entities)")
     try:
-        result = check_novel_text(text=req.text, custom_words=req.customWords or None,
-                                  entities=req.entities or None)
+        checker = NovelSpellChecker(custom_words=req.customWords or None, entities=req.entities or None)
+
+        def on_progress(done: int, total: int, hf: dict | None):
+            job = SPELL_JOBS.get(req.noteId, {})
+            job.update(chunk=done, chunks=total)
+            if hf is not None:
+                _record_chunk(hf, job)
+            SPELL_JOBS[req.noteId] = job
+
+        checker.on_progress = on_progress
+        result = checker.check_text(req.text)
         conn = _connect()
         try:
             with conn, conn.cursor() as cur:  # with conn = commit ทั้งก้อน หรือ rollback ทั้งก้อน
@@ -1252,11 +1335,15 @@ def process_spell_check_task(req: SpellCheckNoteRequest):
         finally:
             conn.close()
         SPELL_JOBS[req.noteId] = {"state": "done", "count": len(result.errors), "seconds": round(time.time() - t0, 1)}
+        _stat("done")
+        SPELL_STATS["noteSeconds"].append(round(time.time() - t0, 1))
         print(f"[SpellCheckWorker] เสร็จ — {len(result.errors)} issues, {time.time() - t0:.1f}s"
               + (", status → user_verify" if req.setStatus else ""))
     except Exception as e:
         # ไม่แตะรายการเดิม (DELETE อยู่ใน transaction เดียวกับ INSERT ถ้าล้มก็ rollback ทั้งคู่)
         SPELL_JOBS[req.noteId] = {"state": "error", "error": str(e)[:200]}
+        _stat("errors")
+        SPELL_STATS["lastError"] = {"at": time.time(), "message": str(e)[:200]}
         print(f"[SpellCheckWorker] Error: {e}")
         import traceback
         traceback.print_exc()

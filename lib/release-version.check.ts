@@ -1,30 +1,36 @@
 import assert from "node:assert/strict";
-import { parseVersion, bumpFor, applyBump, nextVersion, explainBump } from "./release-version.ts";
+import { parseVersion, bumpFor, applyBump, nextVersion, explainBump, semverOf, randomBugfix } from "./release-version.ts";
 
-assert.deepEqual(parseVersion("2.10.1"), [2, 10, 1]);
+assert.deepEqual(parseVersion("2.10.1"), [2, 10, 1, null]);                  // รุ่นเก่า 3 ส่วน
+assert.deepEqual(parseVersion("2.11.3.4829105736"), [2, 11, 3, "4829105736"]);
 assert.equal(parseVersion("next"), null);
 assert.equal(parseVersion("2.10"), null);
+assert.equal(parseVersion("2.10.1.123"), null);                               // Bugfix ต้อง 10 หลัก
 
-// กติกา: มีแต่ fixed = patch · มีอย่างอื่นปนแม้ข้อเดียว = minor
-assert.equal(bumpFor([{ kind: "fixed" }, { kind: "fixed" }]), "patch");
-assert.equal(bumpFor([{ kind: "fixed" }, { kind: "changed" }]), "minor");
-assert.equal(bumpFor([{ kind: "added" }]), "minor");
-assert.equal(bumpFor([{ kind: "removed" }, { kind: "fixed" }]), "minor");
-assert.equal(bumpFor([{ kind: "fixed" }], "minor"), "minor"); // override ชนะ
-assert.equal(bumpFor([{ kind: "added" }], "patch"), "patch");
+// กติกา: added = minor · changed/removed = function · มีแต่ fixed = bugfix
+assert.equal(bumpFor([{ kind: "fixed" }, { kind: "fixed" }]), "bugfix");
+assert.equal(bumpFor([{ kind: "fixed" }, { kind: "changed" }]), "function");
+assert.equal(bumpFor([{ kind: "removed" }]), "function");
+assert.equal(bumpFor([{ kind: "added" }, { kind: "changed" }]), "minor");
+assert.equal(bumpFor([{ kind: "added" }], "function"), "function");          // override ชนะ
+assert.equal(bumpFor([{ kind: "fixed" }], "patch"), "function");             // ชื่อเดิม
 assert.equal(bumpFor([{ kind: "fixed" }], "major"), "major");
 
-// applyBump: ขึ้นแล้วเลขหลังต้องรีเซ็ต
-assert.equal(applyBump("2.10.1", "patch"), "2.10.2");
-assert.equal(applyBump("2.10.1", "minor"), "2.11.0");
-assert.equal(applyBump("2.10.1", "major"), "3.0.0");
-assert.equal(applyBump("0.9.9", "patch"), "0.9.10"); // ไม่ใช่เลขหลักเดียว
-assert.throws(() => applyBump("next", "patch"));
+const B = "4829105736";
+assert.equal(applyBump("2.14.0", "bugfix", B), `2.14.0.${B}`);
+assert.equal(applyBump("2.14.0", "function", B), `2.14.1.${B}`);
+assert.equal(applyBump("2.14.3.1111111111", "minor", B), `2.15.0.${B}`);    // Function รีเซ็ต
+assert.equal(applyBump("2.14.3.1111111111", "major", B), `3.0.0.${B}`);
+assert.notEqual(applyBump(`2.14.0.${B}`, "bugfix", B), `2.14.0.${B}`);      // Bugfix ต้องเปลี่ยนเสมอ
+assert.throws(() => applyBump("next", "bugfix"));
 
-assert.equal(nextVersion("2.9.1", [{ kind: "fixed" }]), "2.9.2");
-assert.equal(nextVersion("2.9.1", [{ kind: "added" }, { kind: "fixed" }]), "2.10.0");
+assert.equal(semverOf(nextVersion("2.14.0", [{ kind: "added" }])), "2.15.0");
+assert.equal(semverOf(nextVersion("2.14.0", [{ kind: "changed" }, { kind: "fixed" }])), "2.14.1");
+assert.equal(semverOf(nextVersion("2.14.1.1234567890", [{ kind: "fixed" }])), "2.14.1");
+assert.match(randomBugfix(), /^[1-9]\d{9}$/);
 
-assert.match(explainBump([{ kind: "fixed" }]), /patch/);
-assert.match(explainBump([{ kind: "added" }, { kind: "changed" }]), /minor.*added\/changed/);
+assert.match(explainBump([{ kind: "fixed" }]), /bugfix/);
+assert.match(explainBump([{ kind: "changed" }]), /function/);
+assert.match(explainBump([{ kind: "added" }]), /minor/);
 assert.match(explainBump([{ kind: "fixed" }], "minor"), /ตั้งเอง/);
 console.log("release-version.check ok");

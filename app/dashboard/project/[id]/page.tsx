@@ -444,7 +444,7 @@ export default async function ProjectOverviewPage({ params }: Props) {
                         </TabsContent>
 
                         <TabsContent value="rewrite" className="space-y-3 mt-0 border-none p-0">
-                            <div className="flex items-center justify-between gap-2">
+                            <div className="space-y-2">
                                 <p className="text-sm text-muted-foreground">
                                     {needsRewriteNotes.length} ตอนในคิว (ตรวจคำผิด / รอ rewrite)
                                 </p>
