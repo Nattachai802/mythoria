@@ -53,8 +53,8 @@ export interface ChangelogRelease {
 /** ใหม่สุดอยู่บนสุดเสมอ — โค้ดที่อ่าน CHANGELOG[0] ยึดกติกานี้ */
 export const CHANGELOG: ChangelogRelease[] = [
     {
-        version: "next",
-        date: "today",
+        version: "2.15.1.6722291166",
+        date: "2026-10-15",
         title: "แผงตรวจคำผิดย้ายมาคอลัมน์ซ้าย",
         entries: [
             {
