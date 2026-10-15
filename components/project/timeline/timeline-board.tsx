@@ -38,7 +38,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { PlotThreadLedger } from "./plot-thread-ledger"
+import { PlotThreadLedgerButton } from "./plot-thread-ledger"
 import { StoryStructureCheatSheet } from "./story-structure-cheatsheet"
 import { StructureOverlay, POSITIONAL_STRUCTURES } from "./structure-overlay"
 import type { ThreadWithBeats } from "@/server/plot-threads"
@@ -379,7 +379,7 @@ export function TimelineBoard({
                     <div role="toolbar" aria-label="เครื่องมือกระดานพล็อต" className="flex flex-wrap items-center gap-2">
                         <StoryStructureCheatSheet />
                         <PlotUndoMenu novelId={novelId} />
-                        <PlotThreadLedger
+                        <PlotThreadLedgerButton
                             novelId={novelId}
                             threads={threads}
                             events={events}

@@ -4,14 +4,11 @@ import type { ChapterForBoard } from "./types"
 import { useState, useMemo, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { TimelineEvent, Chapter } from "@/db/schema"
-import {
-    Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetTrigger,
-} from "@/components/ui/sheet"
+import Link from "next/link"
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import {
     Sprout, Repeat, Target, Plus, Trash2, AlertTriangle, Clock, Unlink, Link2, X,
     ChevronRight, CheckCircle2, Circle, ListTree, TrendingDown, ArrowRight, Shuffle,
@@ -22,7 +19,7 @@ import { cn } from "@/lib/utils"
 import { analyzeThread, analyzeThreadNetwork, makeEventChapterOrder, type ThreadWarning } from "@/lib/plot-thread-analysis"
 import { toast } from "sonner"
 import {
-    deleteThread, updateThread, addBeat, deleteBeat, updateBeat,
+    createThread, deleteThread, updateThread, addBeat, deleteBeat, updateBeat,
     addPoint, updatePoint, deletePoint, addLink, deleteLink,
     type ThreadWithBeats,
 } from "@/server/plot-threads"
@@ -60,32 +57,14 @@ interface Props {
     chapters: ChapterForBoard[]
 }
 
-export function PlotThreadLedger({ novelId, threads, events, chapters }: Props) {
-    const router = useRouter()
-    const [open, setOpen] = useState(false)
-
-    // คลิก beat → กระโดดไปกระดานของฉากนั้น (Go-to)
-    const goto = (eventId: string) => {
-        setOpen(false)
-        router.push(`/dashboard/project/${novelId}/plot/${eventId}`)
-    }
-
-    // eventId → chapter order, for warnings + labels
-    const chapterTitleById = useMemo(() => {
-        const m = new Map<string, string>()
-        chapters.forEach(c => m.set(c.id, c.title))
-        return m
-    }, [chapters])
-    const eventById = useMemo(() => {
-        const m = new Map<string, TimelineEvent>()
-        events.forEach(e => m.set(e.id, e))
-        return m
-    }, [events])
+/** ตรรกะร่วมของปุ่มบนกระดานกับแท็บปมเรื่อง — นับเตือนจากสูตรเดียวกัน */
+function useThreadLedger({ threads, events, chapters }: Omit<Props, "novelId">) {
+    const chapterTitleById = useMemo(() => new Map(chapters.map(c => [c.id, c.title])), [chapters])
+    const eventById = useMemo(() => new Map(events.map(e => [e.id, e])), [events])
     const maxChapterOrder = useMemo(
         () => chapters.reduce((mx, c) => Math.max(mx, c.orderIndex), 0),
         [chapters]
     )
-
     const eventChapterOrder = useMemo(
         () => makeEventChapterOrder(events, chapters),
         [events, chapters]
@@ -94,7 +73,6 @@ export function PlotThreadLedger({ novelId, threads, events, chapters }: Props) 
     // ── L2 warnings per thread ── (ตรรกะอยู่ที่ lib/plot-thread-analysis.ts
     // เพราะรายงานรายตอนฝั่ง server ใช้ตัวเดียวกัน)
     const analyze = (t: ThreadWithBeats) => analyzeThread(t, eventChapterOrder, maxChapterOrder)
-
     // คำเตือนเครือข่าย (ลำดับเฉลย / ปมหลอก / ประเด็นค้าง / ความตึงจืด)
     const netWarnings = useMemo(() => {
         const m = new Map<string, ThreadWarning[]>()
@@ -133,6 +111,7 @@ export function PlotThreadLedger({ novelId, threads, events, chapters }: Props) 
         return a.dangling || a.stale || a.orphanPayoff || netWarnings.has(t.id)
     }).length
 
+
     const sceneLabel = (eventId: string) => {
         const ev = eventById.get(eventId)
         if (!ev) return "(ฉากถูกลบ)"
@@ -140,61 +119,90 @@ export function PlotThreadLedger({ novelId, threads, events, chapters }: Props) 
         return ch ? `${ch} · ${ev.title}` : ev.title
     }
 
+    return { analyze, netWarnings, ordered, warnCount, sceneLabel }
+}
+
+/** ปุ่มบนกระดาน → แท็บปมเรื่อง */
+export function PlotThreadLedgerButton({ novelId, threads, events, chapters }: Props) {
+    const { warnCount } = useThreadLedger({ threads, events, chapters })
     return (
-        <Sheet open={open} onOpenChange={setOpen}>
-            <SheetTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
-                    <Link2 className="h-3.5 w-3.5" />
-                    สมุดปม
-                    {threads.length > 0 && (
-                        <span className="tabular-nums text-muted-foreground">({threads.length})</span>
-                    )}
-                    {warnCount > 0 && (
-                        <span className="ml-0.5 inline-flex items-center gap-0.5 text-[var(--forge-amber)]">
-                            <AlertTriangle className="h-3 w-3" />{warnCount}
-                        </span>
-                    )}
-                </Button>
-            </SheetTrigger>
+        <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
+            <Link href={`/dashboard/project/${novelId}/plot?tab=threads`}>
+                <Link2 className="h-3.5 w-3.5" />
+                สมุดปม
+                {threads.length > 0 && (
+                    <span className="tabular-nums text-muted-foreground">({threads.length})</span>
+                )}
+                {warnCount > 0 && (
+                    <span className="ml-0.5 inline-flex items-center gap-0.5 text-[var(--forge-amber)]">
+                        <AlertTriangle className="h-3 w-3" />{warnCount}
+                    </span>
+                )}
+            </Link>
+        </Button>
+    )
+}
 
-            <SheetContent className="w-full sm:max-w-md flex flex-col p-0">
-                <SheetHeader className="p-4 border-b">
-                    <SheetTitle className="font-display flex items-center gap-2">
-                        <Link2 className="h-4 w-4 text-[var(--forge-gold)]" />สมุดปมเรื่อง
-                    </SheetTitle>
-                    <SheetDescription>
-                        ติดตามปมที่หว่านไว้ — กันลืมว่าผูกอะไรไปแล้วบ้าง
-                        {warnCount > 0 && <span className="text-[var(--forge-amber)] font-medium"> · {warnCount} ปมต้องดู</span>}
-                    </SheetDescription>
-                </SheetHeader>
+/** แท็บ "ปมเรื่อง" ในหน้า plot */
+export function PlotThreadsView({ novelId, threads, events, chapters }: Props) {
+    const router = useRouter()
+    const { analyze, netWarnings, ordered, warnCount, sceneLabel } = useThreadLedger({ threads, events, chapters })
+    const [newTitle, setNewTitle] = useState("")
+    const [isPending, startTransition] = useTransition()
 
-                {/* List */}
-                <ScrollArea className="flex-1">
-                    <div className="p-4 space-y-3">
-                        {threads.length === 0 && (
-                            <div className="text-center text-sm text-muted-foreground py-10">
-                                ยังไม่มีปม — สร้างปมได้ที่การ์ดไอเดียบนกระดานพล็อต
-                            </div>
-                        )}
-                        {ordered.map(({ thread: t, depth }) => (
-                            <ThreadRow
-                                key={t.id}
-                                thread={t}
-                                depth={depth}
-                                allThreads={threads}
-                                netWarnings={netWarnings.get(t.id) ?? []}
-                                novelId={novelId}
-                                events={events}
-                                analysis={analyze(t)}
-                                sceneLabel={sceneLabel}
-                                onGoto={goto}
-                                onChanged={() => router.refresh()}
-                            />
-                        ))}
-                    </div>
-                </ScrollArea>
-            </SheetContent>
-        </Sheet>
+    const goto = (eventId: string) => router.push(`/dashboard/project/${novelId}/plot/${eventId}`)
+
+    const create = (e: React.FormEvent) => {
+        e.preventDefault()
+        const title = newTitle.trim()
+        if (!title) return
+        startTransition(async () => {
+            const res = await createThread({ novelId, title })
+            if (!res.success) { toast.error(res.error || "สร้างปมไม่สำเร็จ"); return }
+            setNewTitle("")
+            router.refresh()
+        })
+    }
+
+    return (
+        <div className="mx-auto w-full max-w-3xl space-y-4">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+                <p className="text-sm text-muted-foreground">
+                    ปมที่หว่านไว้ทั้งเรื่อง · {threads.length} ปม
+                    {warnCount > 0 && <span className="text-[var(--forge-amber)] font-medium"> · {warnCount} ปมต้องดู</span>}
+                </p>
+                <form onSubmit={create} className="flex gap-1.5 w-full sm:w-auto">
+                    <Input value={newTitle} onChange={e => setNewTitle(e.target.value)}
+                        placeholder="ชื่อปมใหม่…" className="h-8 text-sm sm:w-64" aria-label="ชื่อปมใหม่" />
+                    <Button type="submit" size="sm" className="h-8" disabled={isPending || !newTitle.trim()}>
+                        <Plus className="h-3.5 w-3.5 mr-1" />สร้างปม
+                    </Button>
+                </form>
+            </div>
+
+            {threads.length === 0 && (
+                <div className="text-center text-sm text-muted-foreground py-16 border border-dashed rounded-md">
+                    ยังไม่มีปม — สร้างจากช่องด้านบน หรือจากเมนูการ์ดไอเดียบนกระดานพล็อต
+                </div>
+            )}
+            <div className="space-y-3">
+                {ordered.map(({ thread: t, depth }) => (
+                    <ThreadRow
+                        key={t.id}
+                        thread={t}
+                        depth={depth}
+                        allThreads={threads}
+                        netWarnings={netWarnings.get(t.id) ?? []}
+                        novelId={novelId}
+                        events={events}
+                        analysis={analyze(t)}
+                        sceneLabel={sceneLabel}
+                        onGoto={goto}
+                        onChanged={() => router.refresh()}
+                    />
+                ))}
+            </div>
+        </div>
     )
 }
 

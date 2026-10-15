@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 
 interface PlotPageTabsProps {
     novelId: string;
-    activeTab: "board" | "analysis";
+    activeTab: "board" | "threads";
 }
 
 export function PlotPageTabs({ novelId, activeTab }: PlotPageTabsProps) {
@@ -12,7 +12,7 @@ export function PlotPageTabs({ novelId, activeTab }: PlotPageTabsProps) {
 
     const tabs = [
         { id: "board" as const, label: "กระดาน", href: `/dashboard/project/${novelId}/plot` },
-        { id: "analysis" as const, label: "วิเคราะห์", href: `/dashboard/project/${novelId}/plot?tab=analysis` },
+        { id: "threads" as const, label: "ปมเรื่อง", href: `/dashboard/project/${novelId}/plot?tab=threads` },
     ];
 
     return (
