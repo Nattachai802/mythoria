@@ -544,3 +544,18 @@ redesign ทั้งใบ ไม่ใช่แค่เปลี่ยน edi
   summary, ประเด็น, ปมแม่, ลิงก์ระหว่างปม, pointId/tension ของ beat หายถาวร ต้องขยาย payload ของ snapshot
 - การ์ด playground / thread-ribbon ยังไม่โชว์ประเด็นและความตึง
 - E (ความยุติธรรมของการเฉลย) + F (ส่งประเด็น/คำตอบให้ AI ผ่าน story-format) = เฟสถัดไป
+
+## 19. ระบบเส้นเวลา (timeline) — พักไว้ 2026-10-16 (ใหญ่เกิน ยังไม่เริ่ม)
+
+สำรวจแล้ว: มีเส้นเวลาหลายเส้นที่ไม่คุยกัน
+- ลำดับเล่า: `chapters.orderIndex` + `timelineEvents.orderIndex` (ปม/pacing ใช้ตัวนี้)
+- เวลาในโลก: `timelineEvents.storyTimeIndex` / `storyDate` (+ `novels.timelineEpoch`) / `eventDate` / `eraId` — ใช้ใน `chrono-timeline-sheet.tsx`
+- ประวัติศาสตร์โลก: `eras` + `loreEntries`
+- ข้อมูลโลกผูกกับ "บท" (ลำดับเล่า ไม่ใช่เวลาจริง): `character_factions` / `character_powers` (start/endChapterId), `relationship_history.chapterId`, `storyArcs`
+- สถานะตัวละครผูกกับ "ตอนที่เขียน": `character_states.noteId` · ตรวจขัดแย้ง `server/timeline-conflicts.ts`
+
+ข้อเสนอที่คุยไว้: นาฬิกา 2 เรือน (ลำดับเล่า vs เวลาในโลก) ให้ทุกอย่างที่เปลี่ยนตามเวลาอ้างเวลาในโลกผ่านฉาก
+→ ต่อยอด "ภาพโลก ณ ฉากนี้", ตรวจความต่อเนื่อง, มุมมองเทียบลำดับเล่า/เวลาจริง
+
+คำถามที่ยังไม่ได้ตอบ (ถามก่อนเริ่ม): ใช้ทำอะไรก่อน · ความละเอียดเวลา (วันที่จริง vs ก่อน/หลัง) ·
+อะไรบ้างที่เปลี่ยนตามเวลา · เริ่มจากแกนหรือจากหน้าจอ — ตั้งใจเขียนเป็นเอกสารแผนใน docs/ ก่อนแตกรอบ

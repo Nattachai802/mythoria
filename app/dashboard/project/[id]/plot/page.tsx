@@ -7,6 +7,7 @@ import { getThreadsByNovelId } from "@/server/plot-threads"
 import { getArcsByNovelId } from "@/server/story-arcs"
 import { getErasByNovelId } from "@/server/eras"
 import { TimelineBoard } from "@/components/project/timeline/timeline-board"
+import { PLOT_HEADER_SLOT_ID } from "@/components/project/timeline/types"
 import { PlotThreadsView } from "@/components/project/timeline/plot-thread-ledger"
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb"
 import { PlotPageTabs } from "@/components/plot/analysis/plot-page-tabs"
@@ -46,17 +47,25 @@ export default async function PlotPage({ params, searchParams }: Props) {
 
     return (
         <div className="flex flex-col h-[calc(100vh-4rem)]">
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 pt-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                <div className="flex flex-col gap-1 pb-0">
-                    <ProjectBreadcrumb
+            {/* Header — แถวเดียว: breadcrumb + แท็บ ซ้าย · เครื่องมือกระดานขวา (TimelineBoard portal เข้า slot) */}
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-6 pt-3 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+                <div className="flex flex-wrap items-end gap-x-6 gap-y-1">
+                    <div className="pb-2">
+                        <ProjectBreadcrumb
+                            novelId={id}
+                            novelTitle={novel.title}
+                            items={[{ label: "กระดานพล็อต" }]}
+                        />
+                    </div>
+                    <PlotPageTabs
                         novelId={id}
-                        novelTitle={novel.title}
-                        items={[{ label: "กระดานพล็อต" }]}
+                        activeTab={isThreadsTab ? "threads" : "board"}
+                        threads={threads}
+                        events={events}
+                        chapters={novel.chapters}
                     />
-                    <h1 className="text-lg font-display font-semibold">กระดานพล็อต</h1>
                 </div>
-                <PlotPageTabs novelId={id} activeTab={isThreadsTab ? "threads" : "board"} />
+                <div id={PLOT_HEADER_SLOT_ID} className="pb-2" />
             </div>
 
             {/* Content — ตาม tab */}

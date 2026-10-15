@@ -4,13 +4,12 @@ import type { ChapterForBoard } from "./types"
 import { useState, useMemo, useTransition, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { TimelineEvent } from "@/db/schema"
-import Link from "next/link"
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import {
-    Sprout, Repeat, Target, Plus, Trash2, AlertTriangle, Clock, Unlink, Link2, X,
+    Sprout, Repeat, Target, Plus, Trash2, AlertTriangle, Clock, Unlink, X,
     CheckCircle2, Circle, ListTree, TrendingDown, ArrowRight, Shuffle, ArrowLeft, CalendarClock,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
@@ -154,25 +153,9 @@ function useThreadLedger({ threads, events, chapters }: Omit<Props, "novelId">) 
     return { analyses, netWarnings, ordered, warnCount, warnCountOf, sceneLabel, eventChapterOrder, cardSequence }
 }
 
-/** ปุ่มบนกระดาน → แท็บปมเรื่อง */
-export function PlotThreadLedgerButton({ novelId, threads, events, chapters }: Props) {
-    const { warnCount } = useThreadLedger({ threads, events, chapters })
-    return (
-        <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
-            <Link href={`/dashboard/project/${novelId}/plot?tab=threads`}>
-                <Link2 className="h-3.5 w-3.5" />
-                สมุดปม
-                {threads.length > 0 && (
-                    <span className="tabular-nums text-muted-foreground">({threads.length})</span>
-                )}
-                {warnCount > 0 && (
-                    <span className="ml-0.5 inline-flex items-center gap-0.5 text-[var(--forge-amber)]">
-                        <AlertTriangle className="h-3 w-3" />{warnCount}
-                    </span>
-                )}
-            </Link>
-        </Button>
-    )
+/** จำนวนปมที่มีเตือน — ป้ายบนแท็บ "ปมเรื่อง" (plot-page-tabs.tsx) ใช้สูตรเดียวกับแท็บ */
+export function useThreadWarnCount({ threads, events, chapters }: Omit<Props, "novelId">) {
+    return useThreadLedger({ threads, events, chapters }).warnCount
 }
 
 /** แท็บ "ปมเรื่อง": ลิสต์ซ้าย รายละเอียดขวา · ปมที่เลือกอยู่ใน URL (?thread=) */

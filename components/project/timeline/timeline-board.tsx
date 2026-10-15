@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useSyncExternalStore } from "react"
+import { createPortal } from "react-dom"
 import {
     DndContext,
     DragOverlay,
@@ -21,7 +22,7 @@ import {
 } from "@dnd-kit/sortable"
 import Link from "next/link"
 import { TimelineEvent, Character, Location, Era, LoreEntry } from "@/db/schema"
-import type { ChapterForBoard } from "./types"
+import { PLOT_HEADER_SLOT_ID, type ChapterForBoard } from "./types"
 import { ChapterColumn } from "./chapter-column"
 import { EventCard } from "./event-card"
 import { Clock, CheckCircle2, FolderOpen, SlidersHorizontal, Eye, X, Activity, AlertTriangle, Route, Loader2, BookPlus } from "lucide-react"
@@ -38,7 +39,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { PlotThreadLedgerButton } from "./plot-thread-ledger"
 import { StoryStructureCheatSheet } from "./story-structure-cheatsheet"
 import { StructureOverlay, POSITIONAL_STRUCTURES } from "./structure-overlay"
 import type { ThreadWithBeats } from "@/server/plot-threads"
@@ -357,8 +357,8 @@ export function TimelineBoard({
             onDragEnd={handleDragEnd}
         >
             <div className="h-full flex flex-col relative">
-                {/* Overview + Filter toolbar */}
-                <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-border/60">
+                {/* Overview + Filter toolbar — ขึ้นไปอยู่แถว header ของหน้า (portal) */}
+                <PlotHeaderSlot>
                     {/* Overview stats — เหลือเฉพาะที่ต้องลงมือ: ความคืบหน้า + บทที่ยังว่าง */}
                     <div className="flex items-center divide-x divide-border/60 chamfered-sm border border-border bg-card/50">
                         <Stat
@@ -379,12 +379,6 @@ export function TimelineBoard({
                     <div role="toolbar" aria-label="เครื่องมือกระดานพล็อต" className="flex flex-wrap items-center gap-2">
                         <StoryStructureCheatSheet />
                         <PlotUndoMenu novelId={novelId} />
-                        <PlotThreadLedgerButton
-                            novelId={novelId}
-                            threads={threads}
-                            events={events}
-                            chapters={chapters}
-                        />
 
                         {/* ข้อขัดแย้ง timeline (B1) — เดินทางข้ามสถานที่เร็วเกินจริง */}
                         <Popover>
@@ -600,7 +594,7 @@ export function TimelineBoard({
                             </PopoverContent>
                         </Popover>
                     </div>
-                </div>
+                </PlotHeaderSlot>
 
                 {/* Timeline Area — เลื่อนแนวตั้งเดียวทั้ง board (ทุกคอลัมน์เลื่อนพร้อมกัน) */}
                 <div className="flex-1 overflow-auto px-8 pt-4 pb-8">
@@ -668,3 +662,15 @@ export function TimelineBoard({
         </DndContext>
     )
 }
+/** portal แถบเครื่องมือขึ้น header ของหน้า plot — ไม่เจอช่อง = วางเป็นแถบเดิมในกระดาน */
+function PlotHeaderSlot({ children }: { children: React.ReactNode }) {
+    // server snapshot = null → hydrate ตรงกับ HTML ฝั่ง server ก่อน แล้วค่อยย้ายขึ้น header ฝั่ง client
+    const slot = useSyncExternalStore(noopSubscribe, () => document.getElementById(PLOT_HEADER_SLOT_ID), () => null)
+    const row = <div className="flex flex-wrap items-center justify-end gap-3">{children}</div>
+    // ponytail: portal ข้าม server component — ถ้า header ย้ายเข้า client ทั้งก้อนวันไหน ค่อยส่งเป็น prop แทน
+    return slot
+        ? createPortal(row, slot)
+        : <div className="px-4 py-3 border-b border-border/60">{row}</div>
+}
+
+const noopSubscribe = () => () => {}

@@ -10,3 +10,6 @@ import type { Chapter } from "@/db/schema"
  * compiler จะเตือนเองถ้าลืมข้างใดข้างหนึ่ง
  */
 export type ChapterForBoard = Pick<Chapter, "id" | "title" | "orderIndex" | "novelId" | "status">
+
+/** ช่องใน header หน้า plot ที่ TimelineBoard portal แถบเครื่องมือขึ้นไป — อยู่ไฟล์นี้ (ไม่ใช่ "use client") ให้ server component import ค่าได้ */
+export const PLOT_HEADER_SLOT_ID = "plot-header-slot"
