@@ -1265,7 +1265,7 @@ export function PlaygroundBoard({
         const res = await addBeat({ threadId, eventId, role, canvasItemId: cardId, novelId });
         if (res.success && res.data) {
             setThreadState(prev => prev.map(t => t.id === threadId
-                ? { ...t, beats: [...t.beats, { id: res.data.id, eventId, canvasItemId: cardId, role, note: null, orderIndex: null }] }
+                ? { ...t, beats: [...t.beats, { id: res.data.id, eventId, canvasItemId: cardId, role, note: null, pointId: null, tension: null, orderIndex: null }] }
                 : t));
             toast.success("ผูกปมกับการ์ดแล้ว");
         } else toast.error("ผูกปมไม่สำเร็จ");
@@ -1286,7 +1286,8 @@ export function PlaygroundBoard({
         const thread = res.data;
         setThreadState(prev => [...prev, {
             id: thread.id, novelId, title: thread.title, type: thread.type, status: thread.status,
-            importance: thread.importance, color: thread.color, note: thread.note, beats: [],
+            importance: thread.importance, color: thread.color, note: thread.note,
+            summary: thread.summary, parentThreadId: thread.parentThreadId, beats: [], points: [], links: [],
         }]);
         await handleBindThread(cardId, thread.id, role);
     }, [novelId, handleBindThread]);

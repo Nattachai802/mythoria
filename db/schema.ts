@@ -711,6 +711,11 @@ export const plotThreads = pgTable("plot_threads", {
   importance: text("importance").notNull().default("minor"), // major | minor
   color: text("color").default("#f59e0b"),
   note: text("note"),
+  // ปมนี้คืออะไร — คำอธิบายยาว (note เดิมเป็นโน้ตสั้น)
+  summary: text("summary"),
+  // ปมย่อยใต้ปมใหญ่ ลบแม่แล้วลูกขึ้นมาเป็นปมระดับบน
+  parentThreadId: text("parent_thread_id")
+    .references((): AnyPgColumn => plotThreads.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()
@@ -718,6 +723,36 @@ export const plotThreads = pgTable("plot_threads", {
     .notNull(),
 }, (table) => ({
   novelIdIdx: index("plot_threads_novel_id_idx").on(table.novelId),
+}));
+
+// ประเด็นของปม: สิ่งที่ปมนี้ต้องตอบ/คลี่ทีละข้อ
+export const plotThreadPoints = pgTable("plot_thread_points", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  threadId: text("thread_id")
+    .notNull()
+    .references(() => plotThreads.id, { onDelete: "cascade" }),
+  text: text("text").notNull(),
+  status: text("status").notNull().default("open"), // open | resolved
+  orderIndex: integer("order_index").default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  threadIdIdx: index("plot_thread_points_thread_id_idx").on(table.threadId),
+}));
+
+// ความสัมพันธ์ระหว่างปม: before = ต้องเฉลย from ก่อน to, misdirects = from เป็นปมหลอกของ to
+export const plotThreadLinks = pgTable("plot_thread_links", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  fromThreadId: text("from_thread_id")
+    .notNull()
+    .references(() => plotThreads.id, { onDelete: "cascade" }),
+  toThreadId: text("to_thread_id")
+    .notNull()
+    .references(() => plotThreads.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(), // before | misdirects
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  fromIdx: index("plot_thread_links_from_idx").on(table.fromThreadId),
+  pairUnique: uniqueIndex("plot_thread_links_pair_unique").on(table.fromThreadId, table.toThreadId, table.kind),
 }));
 
 // จุดสัมผัสของปมกับฉาก (หลายจุดต่อปม): หว่าน / ย้ำ / เฉลย
@@ -733,6 +768,11 @@ export const plotThreadBeats = pgTable("plot_thread_beats", {
   canvasItemId: text("canvas_item_id"),
   role: text("role").notNull().default("seed"), // seed | reinforce | payoff
   note: text("note"),
+  // beat นี้ขยับประเด็นไหน (null = ไม่ระบุ)
+  pointId: text("point_id")
+    .references(() => plotThreadPoints.id, { onDelete: "set null" }),
+  // ความตึง/เดิมพัน 1-5 (null = ไม่ให้คะแนน ไม่นับในเส้น)
+  tension: integer("tension"),
   orderIndex: integer("order_index").default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
@@ -742,6 +782,11 @@ export const plotThreadBeats = pgTable("plot_thread_beats", {
 export const plotThreadRelations = relations(plotThreads, ({ one, many }) => ({
   novel: one(novels, { fields: [plotThreads.novelId], references: [novels.id] }),
   beats: many(plotThreadBeats),
+  points: many(plotThreadPoints),
+}));
+
+export const plotThreadPointRelations = relations(plotThreadPoints, ({ one }) => ({
+  thread: one(plotThreads, { fields: [plotThreadPoints.threadId], references: [plotThreads.id] }),
 }));
 
 export const plotThreadBeatRelations = relations(plotThreadBeats, ({ one }) => ({
@@ -751,6 +796,8 @@ export const plotThreadBeatRelations = relations(plotThreadBeats, ({ one }) => (
 
 export type PlotThread = typeof plotThreads.$inferSelect;
 export type PlotThreadBeat = typeof plotThreadBeats.$inferSelect;
+export type PlotThreadPoint = typeof plotThreadPoints.$inferSelect;
+export type PlotThreadLink = typeof plotThreadLinks.$inferSelect;
 
 // ============================================
 // STORY ARC TABLES
