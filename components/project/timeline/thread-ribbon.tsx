@@ -5,6 +5,7 @@ import { useMemo } from "react"
 import { Chapter, TimelineEvent } from "@/db/schema"
 import { type ThreadWithBeats } from "@/server/plot-threads"
 import { cn } from "@/lib/utils"
+import { threadNeedsPayoff } from "@/lib/plot-thread-analysis"
 
 const COLUMN_WIDTH = 260 // ต้องตรงกับ chapter column / tension curve
 const LANE_HEIGHT = 26
@@ -55,7 +56,7 @@ export function ThreadRibbon({ threads, chapters, events }: ThreadRibbonProps) {
 
                 const firstIdx = touched[0]
                 const lastIdx = touched[touched.length - 1]
-                const isOpen = thread.status !== "paid" && thread.status !== "abandoned"
+                const isOpen = threadNeedsPayoff(thread)
 
                 // gap เงียบระหว่าง beat ติดกัน + ช่วงท้ายถ้าปมยังเปิดค้าง
                 const staleRanges: Array<[number, number]> = []

@@ -24,6 +24,42 @@ export interface ThreadLike {
     status: string;
     importance?: string;
     beats: BeatLike[];
+    points?: Array<{ id: string; text: string; status: string }>;
+}
+
+// ── เจตนา (ผู้เขียนตั้ง) vs ความคืบหน้า (คำนวณจากฉาก) ──
+
+export const THREAD_INTENTS = ["active", "on_hold", "open_ended", "abandoned"] as const;
+export type ThreadIntent = (typeof THREAD_INTENTS)[number];
+
+/** ค่า status เก่า (planted/developing/paid) อ่านเป็น active — ความคืบหน้าย้ายไปคำนวณจากฉากแล้ว */
+export function threadIntent(status: string): ThreadIntent {
+    return (THREAD_INTENTS as readonly string[]).includes(status) ? (status as ThreadIntent) : "active";
+}
+
+export type ThreadProgress = "unseeded" | "seeded" | "developing" | "partial" | "paid";
+
+/**
+ * ยังไม่หว่าน → หว่านแล้ว → กำลังสาน (มีฉากย้ำ) → เฉลยบางส่วน → เฉลยครบ
+ * เฉลยบางส่วน = มีฉากเฉลยแต่ประเด็นยังเปิด หรือยังไม่มีฉากเฉลยแต่คลี่ประเด็นไปบ้างแล้ว
+ */
+export function threadProgress(t: ThreadLike): ThreadProgress {
+    const has = (role: string) => t.beats.some((b) => b.role === role);
+    const points = t.points ?? [];
+    const open = points.filter((p) => p.status !== "resolved").length;
+    const resolved = points.length - open;
+    if (has("payoff")) return open === 0 ? "paid" : "partial";
+    if (resolved > 0) return "partial";
+    if (has("reinforce")) return "developing";
+    if (has("seed")) return "seeded";
+    return "unseeded";
+}
+
+/** ปมนี้ยังต้องเฉลยไหม — ตั้งใจค้าง/ทิ้ง หรือมีฉากเฉลยแล้ว = ไม่ต้อง */
+export function threadNeedsPayoff(t: Pick<ThreadLike, "status" | "beats">): boolean {
+    const intent = threadIntent(t.status);
+    if (intent === "open_ended" || intent === "abandoned") return false;
+    return !t.beats.some((b) => b.role === "payoff");
 }
 
 export interface ThreadAnalysis {
@@ -33,6 +69,9 @@ export interface ThreadAnalysis {
     stale: boolean;
     /** เฉลยโดยไม่เคยหว่าน */
     orphanPayoff: boolean;
+    /** เลยบทที่ตั้งใจจะเฉลยแล้ว ยังไม่มีฉากเฉลย */
+    overdue: boolean;
+    progress: ThreadProgress;
     /** บทที่หว่านครั้งแรก (null ถ้าไม่มี beat ที่ผูกกับบท) */
     seedOrder: number | null;
     /** บทที่แตะล่าสุด */
@@ -65,14 +104,15 @@ export function makeEventChapterOrder(
  *   - ledger ทั้งเล่มส่ง maxChapterOrder
  *   - รายงานรายตอนส่งบทที่กำลังรีวิว เพราะคำถามคือ "ณ ตอนนี้ ปมค้างมากี่บทแล้ว"
  *
- * หมายเหตุ: อนุมาน dangling จาก beats เป็นหลัก แล้วค่อยเคารพ status ที่ผู้ใช้ตั้งเอง
- * (paid/abandoned) เพราะ auto-advance ใน server/plot-threads.ts ทำครึ่งเดียว —
- * ตั้ง paid ตอนเพิ่ม payoff แต่ไม่ถอยกลับตอนลบ beat นั้นทิ้ง
+ * @param targetOrder ลำดับบทที่ตั้งใจจะเฉลย (null = ไม่ได้ตั้ง)
+ *
+ * dangling มาจากฉาก + เจตนา (threadNeedsPayoff) — "พักไว้" ยังนับว่าค้าง แต่ไม่เตือนว่าถูกลืม
  */
 export function analyzeThread(
     thread: ThreadLike,
     eventChapterOrder: (eventId: string) => number | null,
     referenceOrder: number,
+    targetOrder: number | null = null,
 ): ThreadAnalysis {
     const hasPayoff = thread.beats.some((b) => b.role === "payoff");
     const hasSeed = thread.beats.some((b) => b.role === "seed");
@@ -84,14 +124,16 @@ export function analyzeThread(
     const lastOrder = allOrders.length ? Math.max(...allOrders) : null;
     const seedOrder = seedOrders.length ? Math.min(...seedOrders) : null;
 
-    const closedByAuthor = thread.status === "paid" || thread.status === "abandoned";
-    const dangling = !closedByAuthor && !hasPayoff;
+    const dangling = threadNeedsPayoff(thread);
+    const onHold = threadIntent(thread.status) === "on_hold";
     const gap = lastOrder != null ? referenceOrder - lastOrder : null;
 
     return {
         dangling,
-        stale: dangling && gap != null && gap >= STALE_GAP,
+        stale: dangling && !onHold && gap != null && gap >= STALE_GAP,
         orphanPayoff: hasPayoff && !hasSeed,
+        overdue: dangling && !onHold && targetOrder != null && referenceOrder > targetOrder,
+        progress: threadProgress(thread),
         seedOrder,
         lastOrder,
         gap,
@@ -101,7 +143,6 @@ export function analyzeThread(
 // ── คำเตือนระดับเครือข่ายปม (ประเด็น / ความสัมพันธ์ / ความตึง) ──
 
 export interface NetworkThreadLike extends ThreadLike {
-    points?: Array<{ id: string; text: string; status: string }>;
     links?: Array<{ toThreadId: string; kind: string }>; // ปมนี้เป็น from
 }
 
@@ -154,10 +195,10 @@ export function analyzeThreadNetwork(
             if (!late) continue;
             if (l.kind === "before") out.push({ kind: "order_violation", threadId: t.id, otherId: other.id });
             // ปมหลอกที่ผู้เขียนตั้งใจทิ้งไม่ต้องคลี่
-            else if (l.kind === "misdirects" && t.status !== "abandoned") out.push({ kind: "decoy_after_truth", threadId: t.id, otherId: other.id });
+            else if (l.kind === "misdirects" && threadNeedsPayoff(t)) out.push({ kind: "decoy_after_truth", threadId: t.id, otherId: other.id });
         }
 
-        const paid = t.status === "paid" || t.beats.some((b) => b.role === "payoff");
+        const paid = t.beats.some((b) => b.role === "payoff");
         const open = (t.points ?? []).filter((p) => p.status !== "resolved");
         if (paid && open.length) out.push({ kind: "open_points_after_payoff", threadId: t.id, pointTexts: open.map((p) => p.text) });
 

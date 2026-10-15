@@ -11,6 +11,7 @@ import { eq, inArray, and } from "drizzle-orm";
 import { requireNovelAccess } from "@/lib/authz";
 import type { EchoEvidence } from "@/lib/echo-score";
 import type { CausalityVerdict } from "@/lib/plot-recap";
+import { threadNeedsPayoff } from "@/lib/plot-thread-analysis";
 
 export type ChecklistKind =
     | "dangling_thread"
@@ -67,9 +68,7 @@ export async function getChapterChecklist(novelId: string, chapterId: string): P
                 const beats = allBeats.filter(b => b.threadId === t.id);
                 const touchesChapter = beats.some(b => eventIds.includes(b.eventId));
                 if (!touchesChapter) continue;
-                const closedByAuthor = t.status === "paid" || t.status === "abandoned";
-                const hasPayoff = beats.some(b => b.role === "payoff");
-                if (!closedByAuthor && !hasPayoff) {
+                if (threadNeedsPayoff({ status: t.status, beats })) {
                     items.push({ kind: "dangling_thread", threadId: t.id, threadTitle: t.title });
                 }
             }

@@ -1287,7 +1287,7 @@ export function PlaygroundBoard({
         setThreadState(prev => [...prev, {
             id: thread.id, novelId, title: thread.title, type: thread.type, status: thread.status,
             importance: thread.importance, color: thread.color, note: thread.note,
-            summary: thread.summary, parentThreadId: thread.parentThreadId, beats: [], points: [], links: [],
+            summary: thread.summary, parentThreadId: thread.parentThreadId, targetChapterId: thread.targetChapterId, beats: [], points: [], links: [],
         }]);
         await handleBindThread(cardId, thread.id, role);
     }, [novelId, handleBindThread]);

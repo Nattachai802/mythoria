@@ -1,7 +1,8 @@
 "use server"
 
 import { db } from "@/db/drizzle"
-import { plotThreads, plotThreadBeats, plotThreadPoints, plotThreadLinks } from "@/db/schema"
+import { plotThreads, plotThreadBeats, plotThreadPoints, plotThreadLinks, chapters } from "@/db/schema"
+import { THREAD_INTENTS } from "@/lib/plot-thread-analysis"
 import { eq, and, inArray, asc } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { requireNovelAccess } from "@/lib/authz"
@@ -42,6 +43,7 @@ export interface ThreadWithBeats {
     note: string | null
     summary: string | null
     parentThreadId: string | null
+    targetChapterId: string | null
     beats: ThreadBeat[]
     points: ThreadPoint[]
     /** ลิงก์ที่ปมนี้เป็นต้นทาง (from) */
@@ -78,6 +80,7 @@ export async function getThreadsByNovelId(novelId: string): Promise<{ success: b
             note: t.note,
             summary: t.summary,
             parentThreadId: t.parentThreadId,
+            targetChapterId: t.targetChapterId,
             beats: beats
                 .filter((b: typeof beats[number]) => b.threadId === t.id)
                 .map((b: typeof beats[number]) => ({ id: b.id, eventId: b.eventId, canvasItemId: b.canvasItemId, role: b.role, note: b.note, pointId: b.pointId, tension: b.tension, orderIndex: b.orderIndex })),
@@ -135,10 +138,18 @@ export async function createThread(data: {
 export async function updateThread(
     id: string,
     novelId: string,
-    patch: Partial<{ title: string; type: string; status: string; importance: string; note: string; color: string; summary: string; parentThreadId: string | null }>
+    patch: Partial<{ title: string; type: string; status: string; importance: string; note: string; color: string; summary: string; parentThreadId: string | null; targetChapterId: string | null }>
 ) {
     try {
         await requireNovelAccess(novelId)
+        if (patch.status !== undefined && !(THREAD_INTENTS as readonly string[]).includes(patch.status)) {
+            return { success: false, error: "สถานะไม่ถูกต้อง" }
+        }
+        if (patch.targetChapterId) {
+            const [ch] = await db.select({ id: chapters.id }).from(chapters)
+                .where(and(eq(chapters.id, patch.targetChapterId), eq(chapters.novelId, novelId))).limit(1)
+            if (!ch) return { success: false, error: "ไม่พบบทนี้ในนิยาย" }
+        }
         if (patch.parentThreadId) {
             if (!(await ownThreads([patch.parentThreadId], novelId))) return { success: false, error: "ไม่พบปมแม่ในนิยายนี้" }
             if (await wouldCycle(id, patch.parentThreadId, novelId)) return { success: false, error: "ตั้งปมแม่แบบนี้จะวนกลับมาที่ตัวเอง" }
@@ -194,10 +205,7 @@ export async function addBeat(data: {
             })
             .returning()
 
-        // auto-advance status: เพิ่ม payoff → paid, มี beat แรก → developing
-        if (data.role === "payoff") {
-            await db.update(plotThreads).set({ status: "paid" }).where(eq(plotThreads.id, data.threadId))
-        }
+        // ไม่แตะ status แล้ว — ความคืบหน้าคำนวณจากฉาก (lib/plot-thread-analysis.ts threadProgress)
         revalidatePath(plotPath(data.novelId))
         return { success: true, data: beat }
     } catch (error) {

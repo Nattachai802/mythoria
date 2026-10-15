@@ -1,5 +1,5 @@
 // Run: node --experimental-strip-types lib/plot-thread-analysis.check.ts
-import { analyzeThreadNetwork, type NetworkThreadLike } from "./plot-thread-analysis.ts";
+import { analyzeThread, analyzeThreadNetwork, threadIntent, threadProgress, type NetworkThreadLike } from "./plot-thread-analysis.ts";
 
 function assert(cond: boolean, msg: string) {
     if (!cond) throw new Error("FAIL: " + msg);
@@ -32,7 +32,7 @@ assert(kinds([D({ beats: [{ eventId: "ev4", role: "payoff" }] }), B]).length ===
 
 // ประเด็นค้างหลังเฉลย
 const pts = [{ id: "p1", text: "ใครเป็นคนส่งจดหมาย", status: "open" }, { id: "p2", text: "x", status: "resolved" }];
-const w = analyzeThreadNetwork([t("P", { status: "paid", points: pts })], order);
+const w = analyzeThreadNetwork([t("P", { beats: [{ eventId: "ev3", role: "payoff" }], points: pts })], order);
 assert(w.length === 1 && w[0].kind === "open_points_after_payoff" && w[0].pointTexts.length === 1, "เฉลยแล้วเหลือประเด็นเปิด 1 ข้อ → เตือนพร้อมข้อความ");
 assert(kinds([t("P", { points: pts })]).length === 0, "ยังไม่เฉลย ประเด็นเปิดได้ → ไม่เตือน");
 
@@ -43,5 +43,30 @@ assert(kinds([t("T", { beats: beats(2, 2, 4) })]).length === 0, "ความต
 assert(kinds([t("T", { beats: beats(3, null, null) })]).length === 0, "คะแนนจุดเดียว → ไม่ตัดสิน");
 assert(kinds([t("T", { beats: [{ eventId: "ev5", role: "seed", tension: 1 }, { eventId: "ev2", role: "seed", tension: 4 }] })]).includes("flat_tension"),
     "เรียงตามบท ไม่ใช่ลำดับใน array → บท 2=4 บท 5=1 จืด");
+
+// เจตนา: ค่าเก่าอ่านเป็น active
+assert(threadIntent("paid") === "active" && threadIntent("planted") === "active" && threadIntent("on_hold") === "on_hold", "status เก่า → active · ค่าใหม่คงเดิม");
+
+// ความคืบหน้า: คำนวณจากฉาก + ประเด็น
+const prog = (over: Partial<NetworkThreadLike>) => threadProgress(t("X", over));
+assert(prog({}) === "unseeded", "ไม่มีฉาก → ยังไม่หว่าน");
+assert(prog({ beats: [{ eventId: "ev1", role: "seed" }] }) === "seeded", "มีหว่าน → หว่านแล้ว");
+assert(prog({ beats: [{ eventId: "ev1", role: "seed" }, { eventId: "ev2", role: "reinforce" }] }) === "developing", "มีย้ำ → กำลังสาน");
+assert(prog({ beats: [{ eventId: "ev1", role: "seed" }], points: pts }) === "partial", "ยังไม่เฉลยแต่คลี่ประเด็นบางข้อ → บางส่วน");
+assert(prog({ beats: [{ eventId: "ev5", role: "payoff" }], points: pts }) === "partial", "เฉลยแต่ประเด็นค้าง → บางส่วน");
+assert(prog({ beats: [{ eventId: "ev5", role: "payoff" }] }) === "paid", "เฉลยไม่มีประเด็นค้าง → เฉลยครบ");
+assert(prog({ status: "paid" }) === "unseeded", "กด paid เอง (ค่าเก่า) ไม่ทำให้นับว่าเฉลย");
+
+// analyzeThread: เจตนา + บทเป้า
+const seeded = (status: string) => t("S", { status, beats: [{ eventId: "ev1", role: "seed" }] });
+assert(analyzeThread(seeded("active"), order, 10).stale, "active ไม่แตะ 9 บท → stale");
+assert(!analyzeThread(seeded("on_hold"), order, 10).stale, "พักไว้ → ไม่ stale");
+assert(analyzeThread(seeded("on_hold"), order, 10).dangling, "พักไว้ → ยังนับว่าค้าง");
+assert(!analyzeThread(seeded("open_ended"), order, 10).dangling, "ปลายเปิด → ไม่ค้าง");
+assert(!analyzeThread(seeded("abandoned"), order, 10).dangling, "ทิ้ง → ไม่ค้าง");
+assert(analyzeThread(seeded("active"), order, 6, 5).overdue, "เป้าบท 5 อยู่บท 6 ยังไม่เฉลย → เลยเป้า");
+assert(!analyzeThread(seeded("active"), order, 5, 5).overdue, "ยังอยู่บทเป้า → ไม่เตือน");
+assert(!analyzeThread(seeded("on_hold"), order, 6, 5).overdue, "พักไว้ → ไม่เตือนเลยเป้า");
+assert(!analyzeThread(seeded("active"), order, 6, null).overdue, "ไม่ตั้งเป้า → ไม่เตือน");
 
 console.log("plot-thread-analysis: all passed");

@@ -61,7 +61,7 @@ export default async function PlotPage({ params, searchParams }: Props) {
 
             {/* Content — ตาม tab */}
             {isThreadsTab ? (
-                <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+                <div className="flex-1 min-h-0 overflow-hidden">
                     <PlotThreadsView
                         novelId={novel.id}
                         threads={threads}

@@ -707,7 +707,10 @@ export const plotThreads = pgTable("plot_threads", {
     .references(() => novels.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   type: text("type").notNull().default("foreshadow"), // mystery | foreshadow | chekhov | character_arc | promise
-  status: text("status").notNull().default("planted"), // planted | developing | paid | abandoned
+  // เจตนาของผู้เขียน: active | on_hold | open_ended | abandoned
+  // ค่าเก่า planted/developing/paid อ่านเป็น active (lib/plot-thread-analysis.ts threadIntent)
+  // ความคืบหน้า (หว่าน/สาน/เฉลย) ไม่เก็บ — คำนวณจากฉากเสมอ
+  status: text("status").notNull().default("active"),
   importance: text("importance").notNull().default("minor"), // major | minor
   color: text("color").default("#f59e0b"),
   note: text("note"),
@@ -716,6 +719,9 @@ export const plotThreads = pgTable("plot_threads", {
   // ปมย่อยใต้ปมใหญ่ ลบแม่แล้วลูกขึ้นมาเป็นปมระดับบน
   parentThreadId: text("parent_thread_id")
     .references((): AnyPgColumn => plotThreads.id, { onDelete: "set null" }),
+  // บทที่ตั้งใจจะเฉลย (ไม่บังคับ) — เลยบทนี้แล้วยังไม่มีฉากเฉลย = เตือน
+  targetChapterId: text("target_chapter_id")
+    .references(() => chapters.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()

@@ -13,6 +13,7 @@
 import { normalizeLink, LINK_KINDS, type CanvasLink } from "./link-kinds";
 import { resolveNesting, type NestWorld } from "./participant-nest";
 import { noteToPlain } from "./note-text";
+import { threadNeedsPayoff } from "./plot-thread-analysis";
 
 // ─── Version ───────────────────────────────────────────────────────────
 export const FORMAT_VERSION = "1";
@@ -358,9 +359,7 @@ export function buildSceneFormat(input: SceneFormatInput): SceneFormat {
     // ระดับนิยาย ฉากอื่นปล่อยไว้ไม่เฉลยก็ต้องเห็นที่นี่
     const threadSummaries: ThreadSummary[] = threads.map(t => {
         const sceneBeats = t.beats.filter(b => b.eventId === eventId);
-        const hasPayoff = t.beats.some(b => b.role === "payoff");
-        const closedByAuthor = t.status === "paid" || t.status === "abandoned";
-        const dangling = !closedByAuthor && !hasPayoff;
+        const dangling = threadNeedsPayoff(t);
         const roles = sceneBeats.map(b => ROLE_LABEL[b.role] ?? b.role);
         const danglingAtCards = dangling
             ? sceneBeats
