@@ -357,26 +357,10 @@ export function TimelineBoard({
             onDragEnd={handleDragEnd}
         >
             <div className="h-full flex flex-col relative">
-                {/* Overview + Filter toolbar — ขึ้นไปอยู่แถว header ของหน้า (portal) */}
+                {/* เครื่องมือกระดาน — portal เข้าแถบแท็บของหน้า หน้าตาเดียวกับแท็บ */}
                 <PlotHeaderSlot>
-                    {/* Overview stats — เหลือเฉพาะที่ต้องลงมือ: ความคืบหน้า + บทที่ยังว่าง */}
-                    <div className="flex items-center divide-x divide-border/60 chamfered-sm border border-border bg-card/50">
-                        <Stat
-                            icon={<CheckCircle2 className="h-3 w-3" />}
-                            label="เสร็จแล้ว"
-                            value={`${completedPct}%`}
-                            sub={`${completedScenes}/${totalScenes} ฉาก`}
-                        />
-                        <Stat
-                            icon={<FolderOpen className="h-3 w-3" />}
-                            label="บทที่ยังว่าง"
-                            value={emptyChapters}
-                            highlight={emptyChapters > 0}
-                        />
-                    </div>
-
                     {/* Tools · Filters · Views */}
-                    <div role="toolbar" aria-label="เครื่องมือกระดานพล็อต" className="flex flex-wrap items-center gap-2">
+                    <div role="toolbar" aria-label="เครื่องมือกระดานพล็อต" className={TAB_LIKE_TOOLS}>
                         <StoryStructureCheatSheet />
                         <PlotUndoMenu novelId={novelId} />
 
@@ -596,6 +580,26 @@ export function TimelineBoard({
                     </div>
                 </PlotHeaderSlot>
 
+                {/* สถิติภาพรวม — อยู่ในกระดาน (ไม่ขึ้น header) */}
+                <div className="flex items-center px-8 pt-3">
+                    {/* Overview stats — เหลือเฉพาะที่ต้องลงมือ: ความคืบหน้า + บทที่ยังว่าง */}
+                    <div className="flex items-center divide-x divide-border/60 chamfered-sm border border-border bg-card/50">
+                        <Stat
+                            icon={<CheckCircle2 className="h-3 w-3" />}
+                            label="เสร็จแล้ว"
+                            value={`${completedPct}%`}
+                            sub={`${completedScenes}/${totalScenes} ฉาก`}
+                        />
+                        <Stat
+                            icon={<FolderOpen className="h-3 w-3" />}
+                            label="บทที่ยังว่าง"
+                            value={emptyChapters}
+                            highlight={emptyChapters > 0}
+                        />
+                    </div>
+
+                </div>
+
                 {/* Timeline Area — เลื่อนแนวตั้งเดียวทั้ง board (ทุกคอลัมน์เลื่อนพร้อมกัน) */}
                 <div className="flex-1 overflow-auto px-8 pt-4 pb-8">
                     <div className="min-w-max flex flex-col min-h-full">
@@ -666,11 +670,25 @@ export function TimelineBoard({
 function PlotHeaderSlot({ children }: { children: React.ReactNode }) {
     // server snapshot = null → hydrate ตรงกับ HTML ฝั่ง server ก่อน แล้วค่อยย้ายขึ้น header ฝั่ง client
     const slot = useSyncExternalStore(noopSubscribe, () => document.getElementById(PLOT_HEADER_SLOT_ID), () => null)
-    const row = <div className="flex flex-wrap items-center justify-end gap-3">{children}</div>
+    const row = <>{children}</>
     // ponytail: portal ข้าม server component — ถ้า header ย้ายเข้า client ทั้งก้อนวันไหน ค่อยส่งเป็น prop แทน
     return slot
         ? createPortal(row, slot)
-        : <div className="px-4 py-3 border-b border-border/60">{row}</div>
+        : <div className="flex justify-end px-4 border-b border-border/60">{row}</div>
 }
 
 const noopSubscribe = () => () => {}
+
+/**
+ * เครื่องมือให้หน้าตาเหมือนแท็บ (plot-page-tabs.tsx): ตัวอักษร technical 13px ไม่มีกรอบ/พื้น
+ * เส้นใต้ทองเมื่อเปิดอยู่ (data-state=open ของ Radix popover/sheet)
+ * ponytail: ทับสไตล์ปุ่มของแต่ละ component ด้วย selector ลูก — ไม่ต้องไล่แก้ trigger ทีละไฟล์
+ */
+const TAB_LIKE_TOOLS = cn(
+    "flex flex-wrap items-center",
+    "[&_button]:h-auto [&_button]:rounded-none [&_button]:border-0 [&_button]:border-b-2 [&_button]:border-transparent",
+    "[&_button]:bg-transparent [&_button]:shadow-none [&_button]:px-3 [&_button]:py-2 [&_button]:-mb-px",
+    "[&_button]:font-technical [&_button]:text-[13px] [&_button]:normal-case [&_button]:tracking-normal [&_button]:text-muted-foreground",
+    "[&_button:hover]:text-foreground [&_button:hover]:bg-transparent",
+    "[&_button[data-state=open]]:border-[var(--forge-gold)] [&_button[data-state=open]]:text-foreground",
+)

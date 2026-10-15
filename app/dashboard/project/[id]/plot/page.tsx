@@ -47,16 +47,17 @@ export default async function PlotPage({ params, searchParams }: Props) {
 
     return (
         <div className="flex flex-col h-[calc(100vh-4rem)]">
-            {/* Header — แถวเดียว: breadcrumb + แท็บ ซ้าย · เครื่องมือกระดานขวา (TimelineBoard portal เข้า slot) */}
-            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-6 pt-3 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                <div className="flex flex-wrap items-end gap-x-6 gap-y-1">
-                    <div className="pb-2">
-                        <ProjectBreadcrumb
-                            novelId={id}
-                            novelTitle={novel.title}
-                            items={[{ label: "กระดานพล็อต" }]}
-                        />
-                    </div>
+            {/* Header — แท็บ + เครื่องมือกระดาน (TimelineBoard portal เข้า slot) อยู่แถวเดียวกัน */}
+            <div className="flex items-center justify-between px-6 pt-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+                <div className="flex flex-col gap-1 pb-0">
+                    <ProjectBreadcrumb
+                        novelId={id}
+                        novelTitle={novel.title}
+                        items={[{ label: "กระดานพล็อต" }]}
+                    />
+                    <h1 className="text-lg font-display font-semibold">กระดานพล็อต</h1>
+                </div>
+                <div className="flex flex-wrap items-end justify-end self-end">
                     <PlotPageTabs
                         novelId={id}
                         activeTab={isThreadsTab ? "threads" : "board"}
@@ -64,8 +65,8 @@ export default async function PlotPage({ params, searchParams }: Props) {
                         events={events}
                         chapters={novel.chapters}
                     />
+                    <div id={PLOT_HEADER_SLOT_ID} className="flex items-end empty:hidden ml-2 pl-2 border-l border-border/60" />
                 </div>
-                <div id={PLOT_HEADER_SLOT_ID} className="pb-2" />
             </div>
 
             {/* Content — ตาม tab */}
