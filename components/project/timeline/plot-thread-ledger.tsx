@@ -1,7 +1,7 @@
 "use client"
 
 import type { ChapterForBoard } from "./types"
-import { useState, useMemo, useTransition } from "react"
+import { useState, useMemo, useTransition, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { TimelineEvent } from "@/db/schema"
 import Link from "next/link"
@@ -22,11 +22,17 @@ import {
 } from "@/lib/plot-thread-analysis"
 import { toast } from "sonner"
 import {
+    buildCardSequence, threadJourney, unfairPoints, RELATION_LABEL,
+    type CardSequence, type JourneyStop, type RelationTag,
+} from "@/lib/thread-journey"
+import {
     createThread, deleteThread, updateThread, addBeat, deleteBeat, updateBeat,
     addPoint, updatePoint, deletePoint, addLink, deleteLink,
     type ThreadWithBeats,
 } from "@/server/plot-threads"
 import { pushPlotUndo, removePlotUndo } from "@/hooks/use-plot-undo-stack"
+import { getThreadFairness, runThreadFairness, type FairnessResult } from "@/server/thread-fairness"
+import { PAYOFF_LABEL_TH, mixedModels, type PayoffLabel } from "@/lib/thread-fairness-ai"
 import { restorePlotUndoEntry } from "@/lib/plot-undo-restore"
 
 const TYPES: Record<string, string> = {
@@ -142,7 +148,10 @@ function useThreadLedger({ threads, events, chapters }: Omit<Props, "novelId">) 
         return ch ? `${ch} · ${ev.title}` : ev.title
     }
 
-    return { analyses, netWarnings, ordered, warnCount, warnCountOf, sceneLabel, eventChapterOrder }
+    // ลำดับการ์ดทั้งเรื่อง (events จากหน้า plot มี canvasData ครบอยู่แล้ว ไม่ต้องโหลดเพิ่ม)
+    const cardSequence = useMemo(() => buildCardSequence(events, chapters), [events, chapters])
+
+    return { analyses, netWarnings, ordered, warnCount, warnCountOf, sceneLabel, eventChapterOrder, cardSequence }
 }
 
 /** ปุ่มบนกระดาน → แท็บปมเรื่อง */
@@ -251,7 +260,7 @@ export function PlotThreadsView({ novelId, threads, events, chapters }: Props) {
                         analysis={ledger.analyses.get(selected.id)!}
                         netWarnings={ledger.netWarnings.get(selected.id) ?? []}
                         sceneLabel={ledger.sceneLabel}
-                        eventChapterOrder={ledger.eventChapterOrder}
+                        cardSequence={ledger.cardSequence}
                         onBack={() => select(null)}
                         onDeleted={() => select(null)}
                         onSelectThread={select}
@@ -308,7 +317,7 @@ function ThreadListItem({ thread, depth, analysis, warnings, active, onSelect }:
 }
 
 function ThreadDetail({
-    thread, novelId, allThreads, events, chapters, analysis, netWarnings, sceneLabel, eventChapterOrder,
+    thread, novelId, allThreads, events, chapters, analysis, netWarnings, sceneLabel, cardSequence,
     onBack, onDeleted, onSelectThread, onChanged,
 }: {
     thread: ThreadWithBeats
@@ -319,7 +328,7 @@ function ThreadDetail({
     analysis: ThreadAnalysis
     netWarnings: ThreadWarning[]
     sceneLabel: (id: string) => string
-    eventChapterOrder: (eventId: string) => number | null
+    cardSequence: CardSequence
     onBack: () => void
     onDeleted: () => void
     onSelectThread: (id: string) => void
@@ -354,11 +363,10 @@ function ThreadDetail({
     }, [allThreads, thread.id])
     const children = allThreads.filter(t => t.parentThreadId === thread.id)
 
-    // ฉากเรียงตามบท — ฉากที่หาบทไม่เจอไปท้าย
-    const beats = useMemo(() => thread.beats
-        .map((b, i) => ({ b, o: eventChapterOrder(b.eventId), i }))
-        .sort((x, y) => (x.o ?? Infinity) - (y.o ?? Infinity) || x.i - y.i)
-        .map(x => x.b), [thread.beats, eventChapterOrder])
+    // เส้นทางของปม นับเป็นการ์ด (lib/thread-journey.ts — สูตรเดียวกับที่ส่งให้ AI)
+    const journey = useMemo(() => threadJourney(thread, allThreads, cardSequence), [thread, allThreads, cardSequence])
+    const beats = journey.stops.map(s => s.beat as ThreadWithBeats["beats"][number])
+    const unfair = unfairPoints(journey)
 
     const run = (fn: () => Promise<{ success: boolean; error?: string }>, ok?: string) =>
         startTransition(async () => {
@@ -543,44 +551,59 @@ function ThreadDetail({
                 </div>
             </Field>
 
-            {/* ฉากที่ผูก */}
-            <Field label={`ฉากที่ผูก (${thread.beats.length})`}>
+            {/* เส้นทางของปม */}
+            <Field label={`เส้นทางของปม (${thread.beats.length} จุด)`}>
+                {journey.first && (
+                    <p className="mb-2 text-xs text-muted-foreground">
+                        โผล่ครั้งแรก <StopRef stop={journey.first} />
+                        {journey.payoff ? <> · เฉลยที่ <StopRef stop={journey.payoff} /></> : " · ยังไม่เฉลย"}
+                        {journey.span != null && ` · ระยะ ${journey.span} การ์ด`}
+                        {journey.longestSilence != null && journey.longestSilence > 0 && ` · เงียบนานสุด ${journey.longestSilence} การ์ด`}
+                    </p>
+                )}
                 <TensionLine beats={beats} />
-                <div className="space-y-1.5">
-                    {beats.length === 0 && <p className="text-xs italic text-muted-foreground">ยังไม่ได้ผูกกับฉากใด</p>}
-                    {beats.map(b => {
+                <ol className="space-y-0">
+                    {journey.stops.length === 0 && <li className="text-xs italic text-muted-foreground">ยังไม่ได้ผูกกับฉากใด — ปมนี้ยังไม่หว่าน</li>}
+                    {journey.stops.map((stop, i) => {
+                        const b = stop.beat as ThreadWithBeats["beats"][number]
                         const role = ROLES[b.role] ?? ROLES.seed
                         const RoleIcon = role.icon
                         return (
-                            <div key={b.id} className="group flex flex-wrap items-center gap-2 text-sm">
-                                <RoleIcon className={cn("h-4 w-4 shrink-0", role.cls)} />
-                                <span className="w-8 shrink-0 text-[11px] text-muted-foreground">{role.label}</span>
-                                <button className="min-w-0 flex-1 truncate text-left transition-colors hover:text-[var(--forge-gold)] hover:underline"
-                                    title="ไปที่ฉากนี้" onClick={() => router.push(`/dashboard/project/${novelId}/plot/${b.eventId}`)}>
-                                    {sceneLabel(b.eventId)}
-                                </button>
-                                {thread.points.length > 0 && (
-                                    <Select value={b.pointId ?? "none"}
-                                        onValueChange={v => run(() => updateBeat(b.id, novelId, { pointId: v === "none" ? null : v }))}>
-                                        <SelectTrigger className="h-7 w-[140px] px-2 text-[11px]" title="ฉากนี้ขยับประเด็นไหน"><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="none" className="text-xs">— ประเด็น —</SelectItem>
-                                            {thread.points.map(p => (
-                                                <SelectItem key={p.id} value={p.id} className="text-xs">{p.text}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                )}
-                                <TensionDots value={b.tension} disabled={isPending}
-                                    onChange={v => run(() => updateBeat(b.id, novelId, { tension: v }))} />
-                                <button className="text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus:opacity-100 group-hover:opacity-100"
-                                    aria-label="ปลดฉากนี้" onClick={() => handleDeleteBeat(b)}>
-                                    <X className="h-3.5 w-3.5" />
-                                </button>
-                            </div>
+                            <li key={b.id}>
+                                {i > 0 && <GapRow stop={stop} />}
+                                <div className="group flex flex-wrap items-center gap-2 py-1 text-sm">
+                                    <RoleIcon className={cn("h-4 w-4 shrink-0", role.cls)} />
+                                    <span className="w-8 shrink-0 text-[11px] text-muted-foreground">{role.label}</span>
+                                    <button className="min-w-0 flex-1 truncate text-left transition-colors hover:text-[var(--forge-gold)] hover:underline"
+                                        title="ไปที่ฉากนี้" onClick={() => router.push(`/dashboard/project/${novelId}/plot/${b.eventId}`)}>
+                                        <StopRef stop={stop} />
+                                        {stop.cardTitle && !stop.sceneLevel && <span className="text-muted-foreground"> {stop.cardTitle}</span>}
+                                        {stop.sceneLevel && <span className="ml-1 rounded bg-muted px-1 text-[10px] text-muted-foreground">ทั้งฉาก</span>}
+                                        {stop.pos == null && <span className="ml-1 rounded bg-muted px-1 text-[10px] text-muted-foreground">ไม่ระบุบท</span>}
+                                    </button>
+                                    {thread.points.length > 0 && (
+                                        <Select value={b.pointId ?? "none"}
+                                            onValueChange={v => run(() => updateBeat(b.id, novelId, { pointId: v === "none" ? null : v }))}>
+                                            <SelectTrigger className="h-7 w-[140px] px-2 text-[11px]" title="จุดนี้ขยับประเด็นไหน"><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="none" className="text-xs">— ประเด็น —</SelectItem>
+                                                {thread.points.map(p => (
+                                                    <SelectItem key={p.id} value={p.id} className="text-xs">{p.text}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    )}
+                                    <TensionDots value={b.tension} disabled={isPending}
+                                        onChange={v => run(() => updateBeat(b.id, novelId, { tension: v }))} />
+                                    <button className="text-muted-foreground opacity-0 transition-opacity hover:text-destructive focus:opacity-100 group-hover:opacity-100"
+                                        aria-label="ปลดจุดนี้" onClick={() => handleDeleteBeat(b)}>
+                                        <X className="h-3.5 w-3.5" />
+                                    </button>
+                                </div>
+                            </li>
                         )
                     })}
-                </div>
+                </ol>
                 {adding ? (
                     <div className="flex flex-col gap-1.5 pt-2 sm:flex-row">
                         <Select value={beatEvent} onValueChange={setBeatEvent}>
@@ -619,6 +642,33 @@ function ThreadDetail({
                     </Button>
                 )}
             </Field>
+
+            {/* เบาะแสก่อนเฉลย */}
+            {journey.stops.length > 0 && (
+                <Field label="เบาะแสก่อนเฉลย" hint={journey.payoff ? "นับจุดหว่าน/ย้ำที่มาก่อนการ์ดเฉลยแรก" : "ยังไม่มีจุดเฉลย — นับเบาะแสที่วางไว้แล้วทั้งหมด"}>
+                    <ul className="space-y-1 text-sm">
+                        {journey.clues.map(c => (
+                            <li key={c.pointId ?? "all"} className="flex items-center justify-between gap-3">
+                                <span className="min-w-0 truncate">{c.pointId ? c.text : "ทั้งปม (ยังไม่แบ่งประเด็น)"}</span>
+                                <span className={cn("shrink-0 tabular-nums text-xs",
+                                    c.cluesBeforePayoff === 0 ? "text-[var(--forge-amber)]" : "text-muted-foreground")}>
+                                    {c.cluesBeforePayoff} การ์ด
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                    {unfair.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                            {unfair.map(u => <Warn key={u.pointId ?? "all"} icon={AlertTriangle} strong text={`"${u.text}" เฉลยโดยไม่มีเบาะแสมาก่อน`} />)}
+                        </div>
+                    )}
+                </Field>
+            )}
+
+            {/* ตรวจการเฉลยด้วย AI (E2) */}
+            {journey.stops.length > 0 && (
+                <FairnessPanel novelId={novelId} threadId={thread.id} hasPayoff={!!journey.payoff} />
+            )}
 
             {/* โครงสร้าง: ปมแม่ / ปมลูก / ความสัมพันธ์ */}
             <div className="grid gap-6 sm:grid-cols-2">
@@ -757,5 +807,157 @@ function TensionLine({ beats }: { beats: ThreadWithBeats["beats"] }) {
             <polyline points={xy.map(p => p.join(",")).join(" ")} fill="none" stroke="currentColor" strokeWidth={2} strokeLinejoin="round" />
             {xy.map(([x, y], i) => <circle key={i} cx={x} cy={y} r={3} fill="currentColor" />)}
         </svg>
+    )
+}
+
+function StopRef({ stop }: { stop: JourneyStop }) {
+    return <span>[{stop.chapterTitle ? `${stop.chapterTitle} · ` : ""}{stop.sceneTitle}{stop.code && !stop.sceneLevel ? ` · ${stop.code}` : ""}]</span>
+}
+
+const TAG_CLS: Record<RelationTag, string> = {
+    child: "border-sky-500/40 text-sky-600 dark:text-sky-400",
+    parent: "border-sky-500/40 text-sky-600 dark:text-sky-400",
+    before: "border-amber-500/40 text-amber-600 dark:text-amber-400",
+    after: "border-amber-500/40 text-amber-600 dark:text-amber-400",
+    decoy: "border-violet-500/40 text-violet-600 dark:text-violet-400",
+    decoyed: "border-violet-500/40 text-violet-600 dark:text-violet-400",
+    none: "border-border text-muted-foreground",
+}
+
+/** ตัวคั่นระหว่างสองจุดของปม: ห่างกี่การ์ด + ปมอื่นที่เกิดในช่วงนั้น */
+function GapRow({ stop }: { stop: JourneyStop }) {
+    const [all, setAll] = useState(false)
+    if (stop.gapFromPrev == null) return <div className="ml-2 border-l border-dashed border-border py-1 pl-4 text-[11px] text-muted-foreground">ไม่ทราบระยะ</div>
+    const shown = all ? stop.between : stop.between.slice(0, 5)
+    return (
+        <div className="ml-2 space-y-1 border-l border-dashed border-border py-1.5 pl-4">
+            <p className="text-[11px] text-muted-foreground">
+                {stop.gapFromPrev === 0 ? "การ์ดเดียวกัน" : `ห่าง ${stop.gapFromPrev} การ์ด`}
+                {stop.between.length > 0 && ` · ระหว่างนี้มี ${stop.between.length} จุดของปมอื่น`}
+            </p>
+            {shown.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                    {shown.map((b, i) => (
+                        <span key={i} className={cn("inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px]", TAG_CLS[b.tag])}
+                            title={`${b.sceneTitle}${b.code ? ` · ${b.code}` : ""}`}>
+                            {b.title} · {ROLES[b.role]?.label ?? b.role}
+                            {b.tag !== "none" && <span className="opacity-80">({RELATION_LABEL[b.tag]})</span>}
+                        </span>
+                    ))}
+                    {!all && stop.between.length > 5 && (
+                        <button className="text-[10px] text-muted-foreground underline" onClick={() => setAll(true)}>+{stop.between.length - 5}</button>
+                    )}
+                </div>
+            )}
+        </div>
+    )
+}
+
+const LABEL_CLS: Record<PayoffLabel, string> = {
+    obvious: "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+    balanced: "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+    twist: "border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300",
+    unfounded: "border-[var(--forge-amber)]/40 bg-[var(--forge-amber)]/10 text-[var(--forge-amber)]",
+}
+
+/** ผลตรวจการเฉลย — โหลดผลเก่าตอนเปิด (ไม่เรียก AI) · กดปุ่มถึงจะเรียก */
+function FairnessPanel({ novelId, threadId, hasPayoff }: { novelId: string; threadId: string; hasPayoff: boolean }) {
+    const [result, setResult] = useState<FairnessResult | null>(null)
+    const [loading, setLoading] = useState(true)
+    const [running, startRun] = useTransition()
+
+    useEffect(() => {
+        let alive = true
+        getThreadFairness(novelId, threadId).then(r => { if (alive) { setResult(r); setLoading(false) } })
+        return () => { alive = false }
+    }, [novelId, threadId])
+
+    const run = (force: boolean) => startRun(async () => {
+        const r = await runThreadFairness(novelId, threadId, force)
+        if (!r.success) { toast.error(r.error); return }
+        setResult(r)
+    })
+
+    const ev = result?.success ? result.evidence : null
+    const check = ev?.checklist
+    const items: Array<[string, boolean]> = check ? [
+        ["ไม่ขัดกับการ์ดก่อนหน้า", !check.contradicts],
+        ["ไม่พึ่งข้อมูลใหม่ที่ไม่เคยโผล่", !check.newInfo],
+        ["ประเด็นที่คลี่มีการ์ดชี้ทางมาก่อน", check.pointsSignposted],
+    ] : []
+
+    return (
+        <Field label="ตรวจการเฉลย (AI)">
+            {!hasPayoff ? (
+                <p className="text-xs text-muted-foreground">ต้องผูกการ์ดเฉลยก่อนถึงจะตรวจได้</p>
+            ) : loading ? (
+                <p className="text-xs text-muted-foreground">กำลังโหลดผลเดิม…</p>
+            ) : !ev ? (
+                <div className="space-y-1.5">
+                    <p className="text-xs text-muted-foreground">
+                        ให้ AI อ่านเส้นทางของปมถึงก่อนการ์ดเฉลย แล้วทายต่อ 3 ข้อ ดูว่าถึงเฉลยกี่ข้อ พร้อมเช็คว่าเฉลยมีที่มาไหม (เรียก AI 3 ครั้ง)
+                    </p>
+                    <Button size="sm" variant="outline" className="h-8" disabled={running} onClick={() => run(false)}>
+                        {running ? "กำลังตรวจ…" : "ตรวจการเฉลย"}
+                    </Button>
+                </div>
+            ) : (
+                <div className="space-y-3 rounded-md border border-border p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className={cn("rounded border px-2 py-0.5 text-sm font-medium", LABEL_CLS[ev.label])}>
+                            {PAYOFF_LABEL_TH[ev.label].label}
+                        </span>
+                        <Button size="sm" variant="ghost" className="h-7 text-xs" disabled={running} onClick={() => run(true)}>
+                            {running ? "กำลังตรวจ…" : "ตรวจใหม่"}
+                        </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{PAYOFF_LABEL_TH[ev.label].hint}</p>
+
+                    <div className="space-y-1">
+                        <p className="text-sm">ทายต่อ {ev.k} ข้อ ถึงเฉลย <span className="font-semibold tabular-nums">{ev.hits}</span> ข้อ</p>
+                        <ol className="space-y-0.5 text-xs">
+                            {ev.guesses.map((g, i) => {
+                                const hit = ev.matched.find(m => m.index === i)
+                                return (
+                                    <li key={i} className="flex gap-1.5">
+                                        <span className={hit ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}>{hit ? "✓" : "✗"}</span>
+                                        <span className={hit ? "" : "text-muted-foreground"}>{g}{hit?.reason && <span className="text-muted-foreground"> — {hit.reason}</span>}</span>
+                                    </li>
+                                )
+                            })}
+                        </ol>
+                    </div>
+
+                    <ul className="space-y-0.5 text-xs">
+                        {items.map(([text, ok]) => (
+                            <li key={text} className="flex gap-1.5">
+                                <span className={ok ? "text-emerald-600 dark:text-emerald-400" : "text-[var(--forge-amber)]"}>{ok ? "✓" : "✗"}</span>{text}
+                            </li>
+                        ))}
+                    </ul>
+                    {check?.note && <p className="text-xs">{check.note}</p>}
+
+                    {(result?.success && result.stale || !check?.guessesDistinct || mixedModels(ev) || ev.payoffIsThin || ev.noSummary || ev.droppedStops > 0) && (
+                        <div className="flex flex-wrap gap-1.5">
+                            {result?.success && result.stale && <Warn icon={Clock} strong text="ผลเก่า — การ์ดเปลี่ยนแล้ว" />}
+                            {!check?.guessesDistinct && <Warn icon={AlertTriangle} text="คำทายคล้ายกัน ผลเชื่อได้น้อย" />}
+                            {mixedModels(ev) && <Warn icon={AlertTriangle} text="ผลปนโมเดล" />}
+                            {ev.payoffIsThin && <Warn icon={AlertTriangle} text="การ์ดเฉลยสั้น ผลเชื่อได้น้อย" />}
+                            {ev.noSummary && <Warn icon={AlertTriangle} text="ใส่คำอธิบายปมแล้วผลจะแม่นขึ้น" />}
+                            {ev.droppedStops > 0 && <Warn icon={AlertTriangle} text={`ส่งเฉพาะ ${ev.usedStops} จุดใกล้เฉลย (ตัด ${ev.droppedStops})`} />}
+                        </div>
+                    )}
+
+                    <p className="text-[10px] text-muted-foreground">
+                        {ev.models.guess === ev.models.judge && ev.models.judge === ev.models.checklist
+                            ? ev.models.guess
+                            : `ทาย ${ev.models.guess} · ตัดสิน ${ev.models.judge} · เช็คลิสต์ ${ev.models.checklist}`}
+                        {` · K=${ev.k} · prompt v${ev.promptVersion}`}
+                        {result?.success && ` · ${new Date(result.analyzedAt).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })}`}
+                        {" · เป็นสัญญาณให้ดู ไม่ใช่คำตัดสิน"}
+                    </p>
+                </div>
+            )}
+        </Field>
     )
 }

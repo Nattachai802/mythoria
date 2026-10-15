@@ -78,6 +78,9 @@ const GEMINI_MODEL = "gemini-2.5-flash";
 const JEV_MODEL = "jev-latest";
 // ช่องเดียวสำหรับเปลี่ยนโมเดลที่ยิงผ่าน OpenRouter ทั้งแอป — ตอนนี้ใช้เป็นตัวหลักของ echo-score
 export const OPENROUTER_MODEL = "meta-llama/llama-3.3-70b-instruct";
+// qwen ตัวเล็กบน OpenRouter — ตรวจการเฉลยปม (งานสั้น ไม่ต้องใช้ 70b) · รองรับ json_schema
+// ราคา (2026-10) $0.15 / $0.47 ต่อ 1M token เข้า/ออก — ยังไม่ได้เทียบด้วย compare-echo-models.ts
+export const OPENROUTER_QWEN_FLASH = "qwen/qwen3.8-flash";
 
 export const AI_FEATURES: Record<string, AiFeatureDef> = {
     // ---- LLM ฝั่ง Next.js ----
@@ -186,6 +189,19 @@ export const AI_FEATURES: Record<string, AiFeatureDef> = {
         ],
         jevChain: [{ provider: "typesafe", model: JEV_MODEL, temperature: 0 }],
         defaultDailyLimit: 100,
+    },
+    "thread-fairness": {
+        key: "thread-fairness",
+        label: "ตรวจการเฉลยปม",
+        description: "ตัดเส้นทางของปมก่อนการ์ดเฉลย ให้ AI ทายต่อ 3 ข้อแล้วตัดสินว่าถึงเฉลยไหม + เช็คลิสต์ว่าเฉลยมีที่มา",
+        // ไม่มี jevChain — ผู้ใช้เลือกไม่ใช้ Jev กับฟีเจอร์นี้
+        // temperature ที่นี่เป็น default — server/thread-fairness.ts ส่งทับต่อขั้น (ทาย 1.0 / ตัดสิน 0 / เช็คลิสต์ 0.2)
+        chain: [
+            { provider: "openrouter", model: OPENROUTER_QWEN_FLASH, temperature: 0.2, maxTokens: 800 },
+            { provider: "typhoon", model: TYPHOON_MODEL, temperature: 0.2, maxTokens: 800 },
+        ],
+        // นับต่อ call — กดตรวจหนึ่งครั้ง = 3 call → 150 ≈ 50 ครั้งกด/วัน
+        defaultDailyLimit: 150,
     },
     "character-state-extractor": {
         key: "character-state-extractor",

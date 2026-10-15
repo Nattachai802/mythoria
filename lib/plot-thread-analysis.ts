@@ -43,7 +43,7 @@ export type ThreadProgress = "unseeded" | "seeded" | "developing" | "partial" | 
  * ยังไม่หว่าน → หว่านแล้ว → กำลังสาน (มีฉากย้ำ) → เฉลยบางส่วน → เฉลยครบ
  * เฉลยบางส่วน = มีฉากเฉลยแต่ประเด็นยังเปิด หรือยังไม่มีฉากเฉลยแต่คลี่ประเด็นไปบ้างแล้ว
  */
-export function threadProgress(t: ThreadLike): ThreadProgress {
+export function threadProgress(t: Pick<ThreadLike, "beats" | "points">): ThreadProgress {
     const has = (role: string) => t.beats.some((b) => b.role === role);
     const points = t.points ?? [];
     const open = points.filter((p) => p.status !== "resolved").length;

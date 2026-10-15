@@ -13,7 +13,8 @@
 import { normalizeLink, LINK_KINDS, type CanvasLink } from "./link-kinds";
 import { resolveNesting, type NestWorld } from "./participant-nest";
 import { noteToPlain } from "./note-text";
-import { threadNeedsPayoff } from "./plot-thread-analysis";
+import { threadNeedsPayoff, threadIntent, threadProgress } from "./plot-thread-analysis";
+import { threadJourney, journeyLine, type CardSequence } from "./thread-journey";
 
 // ─── Version ───────────────────────────────────────────────────────────
 export const FORMAT_VERSION = "1";
@@ -76,10 +77,20 @@ export interface FormatBeat {
 export interface ThreadSummary {
     id: string;
     title: string;
+    /** ความคืบหน้า (คำนวณจากฉาก) เป็นคำไทย */
     status: string;
+    /** เจตนาของผู้เขียน เป็นคำไทย */
+    intent: string;
     roles: string[];        // บทบาทเฉพาะฉากนี้ ["หว่าน", "ย้ำ"] — ว่าง = ไม่เคยแตะฉากนี้
     dangling: boolean;      // ยังไม่มี payoff
     danglingAtCards: string[];  // รหัส ["C01"]
+    /** ปมนี้คืออะไร — ไม่มีหรือถูกซ่อน = undefined */
+    summary?: string;
+    points: Array<{ text: string; resolved: boolean; movedHere: boolean }>;
+    /** ความตึงสูงสุดในฉากนี้ (1-5) */
+    tensionHere: number | null;
+    /** บรรทัดเส้นทางของปม (lib/thread-journey.ts) — ไม่ส่ง sequence มา = null */
+    journey: string | null;
 }
 
 export interface SceneFormat {
@@ -104,6 +115,12 @@ export interface SceneFormat {
 // ─── Label maps (ย้ายจาก handleExportMarkdown) ─────────────────────────
 
 const ROLE_LABEL: Record<string, string> = { seed: "หว่าน", reinforce: "ย้ำ", payoff: "เฉลย" };
+const PROGRESS_LABEL: Record<string, string> = {
+    unseeded: "ยังไม่หว่าน", seeded: "หว่านแล้ว", developing: "กำลังสาน", partial: "เฉลยบางส่วน", paid: "เฉลยครบ",
+};
+const INTENT_LABEL: Record<string, string> = {
+    active: "ดำเนินอยู่", on_hold: "พักไว้", open_ended: "ตั้งใจค้าง/ปลายเปิด", abandoned: "ทิ้งแล้ว",
+};
 const CAUSE_LABEL: Record<string, string> = { therefore: "ดังนั้น", but_then: "แต่ว่า" };
 // ค่าที่ไม่รู้จักแสดง raw — ไม่เดาเป็น "แต่ว่า" เหมือนเดิม (คนละมาตรฐานกับ clean() ใน server/power-rule.ts)
 const causeLabel = (k?: string | null) => (k ? (CAUSE_LABEL[k] ?? k) : null);
@@ -192,8 +209,14 @@ export interface SceneFormatInput {
         title: string;
         status: string;
         color: string | null;
-        beats: Array<{ id: string; eventId: string; canvasItemId: string | null; role: string }>;
+        beats: Array<{ id: string; eventId: string; canvasItemId: string | null; role: string; pointId?: string | null; tension?: number | null }>;
+        summary?: string | null;
+        parentThreadId?: string | null;
+        points?: Array<{ id: string; text: string; status: string }>;
+        links?: Array<{ toThreadId: string; kind: string }>;
     }>;
+    /** ลำดับการ์ดทั้งเรื่อง สำหรับบรรทัดเส้นทางของปม — ไม่ส่ง = ไม่มีบรรทัดนั้น */
+    cardSequence?: CardSequence;
     eventId: string;
     elementDetails: Map<string, { action?: string | null; goal?: string | null; outcome?: string | null }>;
     ideaNotes: Array<{ canvasItemId?: string | null; notes?: string | null }>;
@@ -204,7 +227,7 @@ export interface SceneFormatInput {
 // ─── buildSceneFormat ──────────────────────────────────────────────────
 
 export function buildSceneFormat(input: SceneFormatInput): SceneFormat {
-    const { event, items, lanes, threads, eventId, elementDetails, ideaNotes, nestWorld } = input;
+    const { event, items, lanes, threads, eventId, elementDetails, ideaNotes, nestWorld, cardSequence } = input;
 
     const laneName = new Map(lanes.map(l => [l.id, l.name]));
     const laneOrder = new Map(lanes.map((l, i) => [l.id, i]));
@@ -366,13 +389,22 @@ export function buildSceneFormat(input: SceneFormatInput): SceneFormat {
                 .filter(b => b.canvasItemId && codeById.has(b.canvasItemId))
                 .map(b => codeById.get(b.canvasItemId!)!)
             : [];
+        const touches = sceneBeats.length > 0;
+        const movedHere = new Set(sceneBeats.map(b => b.pointId).filter(Boolean));
+        const tensions = sceneBeats.map(b => b.tension).filter((x): x is number => x != null);
         return {
             id: t.id,
             title: t.title,
-            status: t.status,
+            status: PROGRESS_LABEL[threadProgress(t)],
+            intent: INTENT_LABEL[threadIntent(t.status)],
             roles,
             dangling,
             danglingAtCards,
+            // รายละเอียดเฉพาะปมที่แตะฉากนี้ — ปมค้างที่อื่นส่งแค่ชื่อ กันเปลือง token
+            summary: touches && t.summary ? t.summary : undefined,
+            points: touches ? (t.points ?? []).map(p => ({ text: p.text, resolved: p.status === "resolved", movedHere: movedHere.has(p.id) })) : [],
+            tensionHere: tensions.length ? Math.max(...tensions) : null,
+            journey: touches && cardSequence ? journeyLine(threadJourney(t, threads, cardSequence), eventId, cardSequence) : null,
         };
     });
 
@@ -510,11 +542,21 @@ export function renderSceneMarkdown(format: SceneFormat): string {
     const sceneThreads = format.threads.filter(t => t.roles.length);
     if (sceneThreads.length) {
         L.push("", "ปมทั้งหมดที่ผ่านฉากนี้:");
-        L.push("| ปม | สถานะ | บทบาทที่ปรากฏ |");
-        L.push("|---|---|---|");
+        L.push("| ปม | ความคืบหน้า | เจตนาผู้เขียน | บทบาทที่ปรากฏ | ความตึงในฉากนี้ |");
+        L.push("|---|---|---|---|---|");
         sceneThreads.forEach(t => {
             const roles = t.roles.join(" → ") || "ยังไม่ผูก";
-            L.push(`| ${esc(sub(t.title))} | ${esc(t.status)} | ${roles} |`);
+            L.push(`| ${esc(sub(t.title))} | ${t.status} | ${t.intent} | ${roles} | ${t.tensionHere != null ? `${t.tensionHere}/5` : "-"} |`);
+        });
+        // รายละเอียดรายปม — ข้ามปมที่ไม่มีอะไรเพิ่มจากตาราง
+        sceneThreads.filter(t => t.summary || t.points.length || t.journey).forEach(t => {
+            L.push("", `ปม "${sub(t.title)}":`);
+            if (t.summary) L.push(`- คืออะไร: ${sub(t.summary).replace(/\s*\n\s*/g, " ")}`);
+            if (t.points.length) {
+                L.push("- ประเด็น:");
+                t.points.forEach(p => L.push(`  - [${p.resolved ? "x" : " "}] ${sub(p.text)}${p.movedHere ? " ← ฉากนี้ขยับประเด็นนี้" : ""}`));
+            }
+            if (t.journey) L.push(`- เส้นทาง: ${t.journey}`);
         });
     }
     // แยกเป็นหัวข้อของตัวเอง — นี่คือคำถามอันดับหนึ่งที่คนเอาไฟล์นี้ไปถาม AI

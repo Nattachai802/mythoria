@@ -360,4 +360,30 @@ const flatFmt = buildSceneFormat(makeInput({
 }));
 assert(flatFmt.beats[0].participants.every(p => p.depth === 0), "no world data = flat list");
 
+// ── F1: รายละเอียดปมที่ส่งให้ AI ─────────────────────────────────────
+{
+    const base = makeInput();
+    const rich = renderSceneMarkdown(buildSceneFormat({
+        ...base,
+        threads: [
+            {
+                ...base.threads[0],
+                summary: "ศัตรูคือพี่ชาย\nที่หายไป",
+                points: [{ id: "p1", text: "ใครส่งจดหมาย", status: "open" }, { id: "p2", text: "ทำไมหายไป", status: "resolved" }],
+                beats: base.threads[0].beats.map((b, i) => ({ ...b, pointId: i === 0 ? "p1" : null, tension: i + 2 })),
+            },
+            { ...base.threads[1], status: "open_ended", summary: "ไม่ควรโผล่ในตาราง" },
+            { id: "th9", title: "ปมไกล", status: "active", color: null, summary: "ห้ามโผล่", beats: [{ id: "z", eventId: "evX", canvasItemId: null, role: "seed" }] },
+        ],
+    }));
+    assert(rich.includes("| ความคืบหน้า | เจตนาผู้เขียน |"), "ตารางปมมีความคืบหน้า+เจตนา");
+    assert(rich.includes("| เฉลยบางส่วน | ดำเนินอยู่ |") && rich.includes("| 3/5 |"), "ค่าเป็นคำไทย (คลี่ประเด็นไปบางข้อ = เฉลยบางส่วน) + ความตึงสูงสุดในฉาก");
+    assert(rich.includes("ตั้งใจค้าง/ปลายเปิด"), "เจตนาปลายเปิดเป็นคำไทย");
+    assert(!/\| (planted|active|open_ended) \|/.test(rich), "ไม่มีค่าสถานะดิบหลุดไป AI");
+    assert(rich.includes("- คืออะไร: ศัตรูคือพี่ชาย ที่หายไป"), "คำอธิบายปมที่แตะฉาก (ยุบบรรทัด)");
+    assert(rich.includes("  - [ ] ใครส่งจดหมาย ← ฉากนี้ขยับประเด็นนี้") && rich.includes("  - [x] ทำไมหายไป"), "ประเด็น + ประเด็นที่ฉากนี้ขยับ");
+    assert(!rich.includes("ห้ามโผล่"), "ปมที่ไม่แตะฉาก ไม่ส่งคำอธิบาย");
+    assert(!rich.includes("- เส้นทาง:"), "ไม่ส่ง cardSequence → ไม่มีบรรทัดเส้นทาง");
+}
+
 console.log("\n✅ All tests passed");

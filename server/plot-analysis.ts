@@ -5,6 +5,9 @@ import {
     timelineEvents,
     plotThreads,
     plotThreadBeats,
+    plotThreadPoints,
+    plotThreadLinks,
+    chapters,
     sceneElementDetails,
     plotFindings,
     plotRecaps,
@@ -14,7 +17,7 @@ import {
     powers,
     items as items2,
 } from "@/db/schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, asc } from "drizzle-orm";
 import { requireNovelAccess } from "@/lib/authz";
 import { buildSceneFormat, type SceneFormat, type SceneFormatInput } from "@/lib/story-format";
 import type { NestWorld } from "@/lib/participant-nest";
@@ -37,24 +40,12 @@ import {
     type EchoFinding,
 } from "@/lib/echo-score";
 import { callAi, assertAiAllowed, AiControlError } from "@/lib/ai-gateway";
+import { parseCanvasItems, buildCardSequence } from "@/lib/thread-journey";
 
 // ─── Shared helpers ─────────────────────────────────────────────────────
 
-/** ดึง canvasData ของ event หนึ่งแล้วแยก items / lanes */
-function parseCanvasData(canvasData: unknown): {
-    items: any[];
-    lanes: Array<{ id: string; name: string }>;
-} {
-    const raw: any[] = Array.isArray(canvasData) ? (canvasData as any[]) : [];
-    const laneItems = raw.filter((it: any) => it.type === "lane");
-    const lanes: Array<{ id: string; name: string }> = laneItems
-        .map((l: any) => ({ id: l.id, name: l.name || "เลน" }))
-        .sort((a: any, b: any) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
-    const items = raw.filter(
-        (it: any) => it.type !== "lane" && it.type !== "group" && it.type !== "chapter" && it.type !== "beatJoin" && it.type !== "joinLegend", // beatJoin/joinLegend = โหนดของฟีเจอร์ที่ถอดไปแล้ว ไม่ใช่การ์ด
-    );
-    return { items, lanes };
-}
+// แยก canvasData → items / lanes อยู่ที่ lib/thread-journey.ts (ใช้ทั้งหน้าสมุดปมและที่นี่)
+const parseCanvasData = parseCanvasItems;
 
 /**
  * ดึง event หนึ่ง + threads/beats + sceneElementDetails ทั้งหมดที่ต้องใช้ → buildSceneFormat
@@ -107,18 +98,41 @@ export async function buildSceneFormatForEvent(novelId: string, sceneId: string)
     const allThreads = await db.query.plotThreads.findMany({
         where: eq(plotThreads.novelId, novelId),
     });
-    const allBeats = allThreads.length > 0
-        ? await db.query.plotThreadBeats.findMany({
-            where: inArray(plotThreadBeats.threadId, allThreads.map(t => t.id)),
-        })
-        : [];
+    const threadIds = allThreads.map(t => t.id);
+    const [allBeats, allPoints, allLinks] = threadIds.length > 0
+        ? await Promise.all([
+            db.query.plotThreadBeats.findMany({ where: inArray(plotThreadBeats.threadId, threadIds) }),
+            db.select().from(plotThreadPoints).where(inArray(plotThreadPoints.threadId, threadIds))
+                .orderBy(asc(plotThreadPoints.orderIndex), asc(plotThreadPoints.createdAt)),
+            db.select().from(plotThreadLinks).where(inArray(plotThreadLinks.fromThreadId, threadIds)),
+        ])
+        : [[], [], []] as const;
 
     const threadsForFormat: SceneFormatInput["threads"] = allThreads.map(t => ({
         id: t.id, title: t.title, status: t.status, color: t.color,
+        summary: t.summary, parentThreadId: t.parentThreadId,
         beats: allBeats.filter(b => b.threadId === t.id).map(b => ({
-            id: b.id, eventId: b.eventId, canvasItemId: b.canvasItemId, role: b.role,
+            id: b.id, eventId: b.eventId, canvasItemId: b.canvasItemId, role: b.role, pointId: b.pointId, tension: b.tension,
         })),
+        points: allPoints.filter(p => p.threadId === t.id).map(p => ({ id: p.id, text: p.text, status: p.status })),
+        links: allLinks.filter(l => l.fromThreadId === t.id).map(l => ({ toThreadId: l.toThreadId, kind: l.kind })),
     }));
+
+    // ลำดับการ์ดทั้งเรื่อง → บรรทัดเส้นทางของปม · โหลด canvas_data ทุกฉาก เฉพาะตอนมีปมแตะฉากนี้
+    // ponytail: โหลดทั้งนิยายทุกครั้ง ถ้านิยายใหญ่จนช้าค่อยแคชตาม updatedAt
+    const touchesScene = allBeats.some(b => b.eventId === sceneId);
+    const cardSequence = touchesScene
+        ? buildCardSequence(
+            await db.query.timelineEvents.findMany({
+                where: eq(timelineEvents.novelId, novelId),
+                columns: { id: true, title: true, orderIndex: true, relatedChapterId: true, canvasData: true },
+            }),
+            await db.query.chapters.findMany({
+                where: eq(chapters.novelId, novelId),
+                columns: { id: true, title: true, orderIndex: true },
+            }),
+        )
+        : undefined;
 
     const details = await db.query.sceneElementDetails.findMany({
         where: eq(sceneElementDetails.sceneId, sceneId),
@@ -138,7 +152,7 @@ export async function buildSceneFormatForEvent(novelId: string, sceneId: string)
             sceneConflict: event.sceneConflict, sceneOutcome: event.sceneOutcome,
             causeKind: event.causeKind, causeNote: event.causeNote, description: event.description,
         },
-        items, lanes, threads: threadsForFormat,
+        items, lanes, threads: threadsForFormat, cardSequence,
         eventId: event.id, elementDetails, ideaNotes: [],
     });
 }
