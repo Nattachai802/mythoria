@@ -6,8 +6,8 @@ import { useCallback, useEffect, useState } from "react"
 // เก็บใน sessionStorage: รอด navigation (ลบฉากแล้วเด้งหน้า) แต่หายเมื่อปิดแท็บ — ตรงกับ "กันมือลั่น" ไม่ใช่ trash bin ถาวร
 export type PlotUndoEntry =
     | { id: string; deletedAt: number; kind: "arc"; label: string; payload: { title: string; color: string | null; startChapterId: string | null; endChapterId: string | null } }
-    | { id: string; deletedAt: number; kind: "thread"; label: string; payload: { title: string; type: string; importance: string; note: string | null; color: string | null; beats: { eventId: string; role: string; note: string | null }[] } }
-    | { id: string; deletedAt: number; kind: "beat"; label: string; payload: { threadId: string; eventId: string; role: string; note: string | null } }
+    | { id: string; deletedAt: number; kind: "thread"; label: string; payload: ThreadUndoPayload }
+    | { id: string; deletedAt: number; kind: "beat"; label: string; payload: { threadId: string; eventId: string; role: string; note: string | null; canvasItemId?: string | null; pointId?: string | null; tension?: number | null } }
     | { id: string; deletedAt: number; kind: "scene"; label: string; payload: { novelId: string; title: string; description: string | null; eventDate: string | null; relatedChapterId: string | null; relatedCharacterIds: unknown; relatedLocationIds: unknown; eventType: string | null; canvasData: unknown } }
 
 const CAP = 3
@@ -59,4 +59,25 @@ export function usePlotUndoStack(novelId: string) {
     const remove = useCallback((id: string) => removePlotUndo(novelId, id), [novelId])
 
     return { stack, remove }
+}
+
+/**
+ * snapshot ของปมที่ลบ — ช่องที่ขึ้นด้วย ? เพิ่มทีหลัง (2026-10) entry เก่าใน localStorage ไม่มี ต้องอ่านแบบไม่บังคับ
+ * ปมลูกโดน set null และลิงก์ทั้งสองทางโดน cascade ตอนลบ จึงต้องเก็บไว้ผูกกลับ
+ */
+export interface ThreadUndoPayload {
+    title: string
+    type: string
+    importance: string
+    note: string | null
+    color: string | null
+    beats: { eventId: string; role: string; note: string | null; canvasItemId?: string | null; pointId?: string | null; tension?: number | null }[]
+    status?: string
+    summary?: string | null
+    parentThreadId?: string | null
+    targetChapterId?: string | null
+    points?: { id: string; text: string; status: string }[]
+    childIds?: string[]
+    linksOut?: { toThreadId: string; kind: string }[]
+    linksIn?: { fromThreadId: string; kind: string }[]
 }

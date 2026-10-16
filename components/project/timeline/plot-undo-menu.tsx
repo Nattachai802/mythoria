@@ -37,6 +37,7 @@ export function PlotUndoMenu({ novelId }: Props) {
             if (res.success) {
                 remove(id)
                 toast.success(`กู้คืน "${entry.label}" แล้ว`)
+                if (res.error) toast.error(res.error) // กู้ได้บางส่วน
                 router.refresh()
                 if (entry.kind === "scene" && res.sceneId) {
                     router.push(`/dashboard/project/${novelId}/plot/${res.sceneId}`)

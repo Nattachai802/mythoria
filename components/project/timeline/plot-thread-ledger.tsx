@@ -361,7 +361,9 @@ function ThreadDetail({
 
     // ลบปม — snapshot (รวม beats ทั้งหมด) เก็บเข้าสแตกกู้คืนกลาง แทนปิด scope ไว้ใน toast เฉยๆ
     const handleDeleteThread = () => {
-        const beatsSnapshot = thread.beats.map(b => ({ eventId: b.eventId, role: b.role, note: b.note }))
+        const beatsSnapshot = thread.beats.map(b => ({
+            eventId: b.eventId, role: b.role, note: b.note, canvasItemId: b.canvasItemId, pointId: b.pointId, tension: b.tension,
+        }))
         startTransition(async () => {
             const res = await deleteThread(thread.id, novelId)
             if (!res.success) { toast.error(res.error || "ผิดพลาด"); return }
@@ -373,6 +375,12 @@ function ThreadDetail({
                 payload: {
                     title: thread.title, type: thread.type, importance: thread.importance,
                     note: thread.note, color: thread.color, beats: beatsSnapshot,
+                    status: thread.status, summary: thread.summary,
+                    parentThreadId: thread.parentThreadId, targetChapterId: thread.targetChapterId,
+                    points: thread.points.map(p => ({ id: p.id, text: p.text, status: p.status })),
+                    childIds: children.map(c => c.id),
+                    linksOut: thread.links.map(l => ({ toThreadId: l.toThreadId, kind: l.kind })),
+                    linksIn: allThreads.flatMap(t => t.links.filter(l => l.toThreadId === thread.id).map(l => ({ fromThreadId: t.id, kind: l.kind }))),
                 },
             })
             toast.success(`ลบปม "${thread.title}" แล้ว`, {
@@ -380,6 +388,7 @@ function ThreadDetail({
                     label: "ย้อนกลับ",
                     onClick: () => restorePlotUndoEntry(novelId, entry).then(r => {
                         if (r.success) { removePlotUndo(novelId, entry.id); onChanged() }
+                        if (r.error) toast.error(r.error)
                     }),
                 },
             })
@@ -395,13 +404,17 @@ function ThreadDetail({
             const entry = pushPlotUndo(novelId, {
                 kind: "beat",
                 label: `${thread.title} · ${sceneLabel(beat.eventId)}`,
-                payload: { threadId: thread.id, eventId: beat.eventId, role: beat.role, note: beat.note },
+                payload: {
+                    threadId: thread.id, eventId: beat.eventId, role: beat.role, note: beat.note,
+                    canvasItemId: beat.canvasItemId, pointId: beat.pointId, tension: beat.tension,
+                },
             })
             toast.success("ปลดจุดผูกปมแล้ว", {
                 action: {
                     label: "ย้อนกลับ",
                     onClick: () => restorePlotUndoEntry(novelId, entry).then(r => {
                         if (r.success) { removePlotUndo(novelId, entry.id); onChanged() }
+                        if (r.error) toast.error(r.error)
                     }),
                 },
             })
