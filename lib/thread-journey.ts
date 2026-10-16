@@ -283,3 +283,57 @@ export function journeyLine(j: ThreadJourney, currentEventId: string, seq: CardS
     if (j.payoff) parts.push(`เฉลยที่ ${at(j.payoff)}`);
     return parts.join(" · ");
 }
+
+// ─── เส้นทางรวมของกลุ่ม (ปมใหญ่ + ปมย่อยทุกชั้น) ─────────────────────────
+
+export interface GroupLane {
+    thread: JourneyThreadInput;
+    /** 0 = ปมที่เปิดดู · 1 = ลูก · 2 = หลาน ... */
+    depth: number;
+    /** จุดที่รู้ตำแหน่ง เรียงแล้ว */
+    stops: Array<{ pos: number; role: string; code: string | null; sceneTitle: string }>;
+    paid: boolean;
+}
+
+export interface GroupJourney {
+    lanes: GroupLane[];
+    /** ช่วงตำแหน่งการ์ดของทั้งกลุ่ม — null = ไม่มีจุดที่รู้ตำแหน่งเลย */
+    range: { min: number; max: number } | null;
+    /** ปมย่อยทุกชั้น (ไม่รวมตัวเอง) */
+    descendants: number;
+    descendantsPaid: number;
+}
+
+/** ปมย่อยทุกชั้นของ root เรียงแบบต้นไม้ (DFS) — กันข้อมูลวนด้วย seen */
+export function groupJourney(rootId: string, allThreads: JourneyThreadInput[], seq: CardSequence): GroupJourney {
+    const kids = new Map<string, JourneyThreadInput[]>();
+    allThreads.forEach(t => {
+        if (t.parentThreadId) kids.set(t.parentThreadId, [...(kids.get(t.parentThreadId) ?? []), t]);
+    });
+    const root = allThreads.find(t => t.id === rootId);
+    const lanes: GroupLane[] = [];
+    if (!root) return { lanes, range: null, descendants: 0, descendantsPaid: 0 };
+
+    const seen = new Set<string>();
+    const walk = (t: JourneyThreadInput, depth: number) => {
+        if (seen.has(t.id)) return;
+        seen.add(t.id);
+        const stops = t.beats
+            .map(b => ({ ...locate(b, seq), role: b.role }))
+            .filter((s): s is typeof s & { pos: number } => s.pos != null)
+            .sort((a, b) => a.pos - b.pos || (ROLE_RANK[a.role] ?? 0) - (ROLE_RANK[b.role] ?? 0))
+            .map(s => ({ pos: s.pos, role: s.role, code: s.code, sceneTitle: s.sceneTitle }));
+        lanes.push({ thread: t, depth, stops, paid: t.beats.some(b => b.role === "payoff") });
+        (kids.get(t.id) ?? []).forEach(c => walk(c, depth + 1));
+    };
+    walk(root, 0);
+
+    const all = lanes.flatMap(l => l.stops.map(s => s.pos));
+    const sub = lanes.slice(1);
+    return {
+        lanes,
+        range: all.length ? { min: Math.min(...all), max: Math.max(...all) } : null,
+        descendants: sub.length,
+        descendantsPaid: sub.filter(l => l.paid).length,
+    };
+}

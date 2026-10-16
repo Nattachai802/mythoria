@@ -69,4 +69,13 @@ assert(!analyzeThread(seeded("active"), order, 5, 5).overdue, "ยังอย�
 assert(!analyzeThread(seeded("on_hold"), order, 6, 5).overdue, "พักไว้ → ไม่เตือนเลยเป้า");
 assert(!analyzeThread(seeded("active"), order, 6, null).overdue, "ไม่ตั้งเป้า → ไม่เตือน");
 
+// ปมใหญ่เฉลยแล้ว แต่ปมย่อยค้าง
+const parent = t("P1", { beats: [{ eventId: "ev5", role: "payoff" }] });
+const kid = (id: string, over: Partial<NetworkThreadLike> = {}) => t(id, { parentThreadId: "P1", ...over });
+const grand = t("G1", { parentThreadId: "K1" });
+const cw = analyzeThreadNetwork([parent, kid("K1", { beats: [{ eventId: "ev4", role: "payoff" }] }), grand], order).find(w => w.kind === "children_open_after_payoff");
+assert(cw?.kind === "children_open_after_payoff" && cw.childIds.join() === "G1", "หลานค้าง → เตือนที่ปมใหญ่ (นับทุกชั้น)");
+assert(!kinds([parent, kid("K2", { status: "abandoned" })]).includes("children_open_after_payoff"), "ปมย่อยที่ทิ้งแล้ว → ไม่เตือน");
+assert(!kinds([t("P1"), kid("K3")]).includes("children_open_after_payoff"), "ปมใหญ่ยังไม่เฉลย → ไม่เตือน");
+
 console.log("plot-thread-analysis: all passed");

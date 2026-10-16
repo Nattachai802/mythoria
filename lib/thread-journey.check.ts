@@ -1,5 +1,5 @@
 // Run: node --experimental-strip-types lib/thread-journey.check.ts
-import { buildCardSequence, threadJourney, unfairPoints, journeyLine, relationTag, type JourneyThreadInput } from "./thread-journey.ts";
+import { buildCardSequence, threadJourney, unfairPoints, journeyLine, relationTag, groupJourney, type JourneyThreadInput } from "./thread-journey.ts";
 
 function assert(cond: boolean, msg: string) {
     if (!cond) throw new Error("FAIL: " + msg);
@@ -54,5 +54,15 @@ assert(threadJourney({ id: "E", title: "E", beats: [] }, all, seq).first === nul
 
 const line = journeyLine(j, "e2", seq)!;
 assert(line.includes("[ฉาก 1 · C01]") && line.includes("ห่างจากจุดล่าสุดของปมนี้ 4 การ์ด") && line.includes("ปม B (ปมย่อย)"), "บรรทัดสำหรับ AI: " + line);
+
+// เส้นทางรวมของกลุ่ม: A ← B (ลูก) ← G (หลาน) · C ไม่ใช่ลูก
+const G: JourneyThreadInput = { id: "G", title: "ปม G", parentThreadId: "B", beats: [beat("g1", "e1", "c2", "seed"), beat("g2", "e2", "c4", "payoff")] };
+const gj = groupJourney("A", [...all, G], seq);
+assert(gj.lanes.map(l => l.thread.id).join() === "A,B,G" && gj.lanes.map(l => l.depth).join() === "0,1,2", "เลนเรียงแบบต้นไม้ ลูก/หลาน ไม่รวมปมอื่น");
+assert(gj.lanes[0].stops.length === 2, "จุดที่ไม่รู้ตำแหน่ง (ฉากไม่ผูกบท) ไม่ลงเลน");
+assert(gj.range!.min === 0 && gj.range!.max === 4, "ช่วงของทั้งกลุ่ม");
+assert(gj.descendants === 2 && gj.descendantsPaid === 1, "ปมย่อยเฉลยแล้ว 1/2 (G เฉลย B ยังไม่)");
+const loop = groupJourney("X", [{ id: "X", title: "X", parentThreadId: "Y", beats: [] }, { id: "Y", title: "Y", parentThreadId: "X", beats: [] }], seq);
+assert(loop.lanes.length === 2, "ข้อมูลวน ไม่ค้าง");
 
 console.log("thread-journey: all passed");

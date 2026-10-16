@@ -143,6 +143,7 @@ export function analyzeThread(
 // ── คำเตือนระดับเครือข่ายปม (ประเด็น / ความสัมพันธ์ / ความตึง) ──
 
 export interface NetworkThreadLike extends ThreadLike {
+    parentThreadId?: string | null;
     links?: Array<{ toThreadId: string; kind: string }>; // ปมนี้เป็น from
 }
 
@@ -154,7 +155,9 @@ export type ThreadWarning =
     /** เฉลยแล้ว แต่ยังมีประเด็นเปิดค้าง */
     | { kind: "open_points_after_payoff"; threadId: string; pointTexts: string[] }
     /** มีคะแนนความตึง ≥2 จุด แต่ไม่มีจุดไหนสูงกว่าจุดแรก */
-    | { kind: "flat_tension"; threadId: string };
+    | { kind: "flat_tension"; threadId: string }
+    /** ปมใหญ่เฉลยแล้ว แต่ปมย่อย (ทุกชั้น) ยังค้าง */
+    | { kind: "children_open_after_payoff"; threadId: string; childIds: string[] };
 
 /** บทแรกที่ปมเฉลย (null = ยังไม่เฉลย หรือ payoff ไม่ผูกบท) */
 function payoffOrder(t: ThreadLike, order: (eventId: string) => number | null): number | null {
@@ -181,6 +184,13 @@ export function analyzeThreadNetwork(
 ): ThreadWarning[] {
     const byId = new Map(threads.map((t) => [t.id, t]));
     const out: ThreadWarning[] = [];
+    const kids = new Map<string, NetworkThreadLike[]>();
+    threads.forEach((t) => {
+        if (t.parentThreadId && byId.has(t.parentThreadId)) kids.set(t.parentThreadId, [...(kids.get(t.parentThreadId) ?? []), t]);
+    });
+    /** ปมย่อยทุกชั้น — seen กันข้อมูลวน */
+    const descendants = (id: string, seen = new Set<string>([id])): NetworkThreadLike[] =>
+        (kids.get(id) ?? []).filter((c) => !seen.has(c.id) && seen.add(c.id)).flatMap((c) => [c, ...descendants(c.id, seen)]);
 
     for (const t of threads) {
         const tPay = payoffOrder(t, eventChapterOrder);
@@ -203,6 +213,11 @@ export function analyzeThreadNetwork(
         if (paid && open.length) out.push({ kind: "open_points_after_payoff", threadId: t.id, pointTexts: open.map((p) => p.text) });
 
         if (isFlat(t, eventChapterOrder)) out.push({ kind: "flat_tension", threadId: t.id });
+
+        if (paid) {
+            const open = descendants(t.id).filter((c) => threadNeedsPayoff(c));
+            if (open.length) out.push({ kind: "children_open_after_payoff", threadId: t.id, childIds: open.map((c) => c.id) });
+        }
     }
     return out;
 }

@@ -21,8 +21,8 @@ import {
 } from "@/lib/plot-thread-analysis"
 import { toast } from "sonner"
 import {
-    buildCardSequence, threadJourney, unfairPoints, RELATION_LABEL,
-    type CardSequence, type JourneyStop, type RelationTag,
+    buildCardSequence, threadJourney, unfairPoints, groupJourney, RELATION_LABEL,
+    type CardSequence, type JourneyStop, type RelationTag, type GroupJourney,
 } from "@/lib/thread-journey"
 import {
     createThread, deleteThread, updateThread, addBeat, deleteBeat, updateBeat,
@@ -349,6 +349,7 @@ function ThreadDetail({
     // เส้นทางของปม นับเป็นการ์ด (lib/thread-journey.ts — สูตรเดียวกับที่ส่งให้ AI)
     const journey = useMemo(() => threadJourney(thread, allThreads, cardSequence), [thread, allThreads, cardSequence])
     const beats = journey.stops.map(s => s.beat as ThreadWithBeats["beats"][number])
+    const group = useMemo(() => groupJourney(thread.id, allThreads, cardSequence), [thread.id, allThreads, cardSequence])
     const unfair = unfairPoints(journey)
 
     const run = (fn: () => Promise<{ success: boolean; error?: string }>, ok?: string) =>
@@ -533,6 +534,14 @@ function ThreadDetail({
                     </form>
                 </div>
             </Field>
+
+            {/* เส้นทางรวมของกลุ่ม (ปมนี้ + ปมย่อยทุกชั้น) */}
+            {group.descendants > 0 && (
+                <Field label={`เส้นทางรวมของกลุ่ม · ปมย่อยเฉลยแล้ว ${group.descendantsPaid}/${group.descendants}`}
+                    hint="เรียงบนแกนการ์ดเดียวกัน · ● หว่าน/ย้ำ · ◆ เฉลย · กดชื่อเพื่อเปิดปมนั้น">
+                    <GroupLanes group={group} onSelect={onSelectThread} />
+                </Field>
+            )}
 
             {/* เส้นทางของปม */}
             <Field label={`เส้นทางของปม (${thread.beats.length} จุด)`}>
@@ -757,6 +766,7 @@ function netWarnText(w: ThreadWarning, titleOf: (id: string) => string): { icon:
         case "decoy_after_truth": return { icon: Shuffle, text: `ปมหลอกยังไม่คลี่ ทั้งที่ "${titleOf(w.otherId)}" เฉลยแล้ว` }
         case "open_points_after_payoff": return { icon: Circle, text: `เฉลยแล้ว แต่ประเด็นค้าง ${w.pointTexts.length} ข้อ` }
         case "flat_tension": return { icon: TrendingDown, text: "ความตึงไม่เพิ่มขึ้น" }
+        case "children_open_after_payoff": return { icon: ListTree, text: `เฉลยแล้ว แต่ปมย่อยยังค้าง ${w.childIds.length} ปม` }
     }
 }
 
@@ -942,5 +952,47 @@ function FairnessPanel({ novelId, threadId, hasPayoff }: { novelId: string; thre
                 </div>
             )}
         </Field>
+    )
+}
+
+const ROLE_FILL: Record<string, string> = { seed: "#f59e0b", reinforce: "#3b82f6", payoff: "#10b981" }
+
+/** เลนละหนึ่งปม บนแกนตำแหน่งการ์ดของทั้งกลุ่ม (ตำแหน่งเป็น % — จุดไม่บิดตามความกว้าง) */
+function GroupLanes({ group, onSelect }: { group: GroupJourney; onSelect: (id: string) => void }) {
+    const span = group.range ? Math.max(1, group.range.max - group.range.min) : 1
+    const pct = (pos: number) => (group.range ? ((pos - group.range.min) / span) * 100 : 0)
+    return (
+        <div className="space-y-1">
+            {group.lanes.map(l => {
+                const first = l.stops[0], last = l.stops[l.stops.length - 1]
+                return (
+                    <div key={l.thread.id} className="grid grid-cols-[minmax(0,10rem)_1fr] items-center gap-2">
+                        <button onClick={() => onSelect(l.thread.id)}
+                            className="truncate text-left text-xs hover:underline"
+                            style={{ paddingLeft: Math.min(l.depth, 3) * 10 }}
+                            title={l.thread.title}>
+                            {l.depth > 0 && <span className="text-muted-foreground">↳ </span>}
+                            <span className={l.depth === 0 ? "font-medium" : ""}>{l.thread.title}</span>
+                        </button>
+                        <div className="relative mx-1.5 h-5" role="img"
+                            aria-label={`${l.thread.title}: ${l.stops.length} จุด${l.paid ? " เฉลยแล้ว" : " ยังไม่เฉลย"}`}>
+                            {first && (
+                                <span className={cn("absolute top-1/2 -translate-y-1/2 border-t-2 border-muted-foreground/40", !l.paid && "border-dashed")}
+                                    style={{ left: `${pct(first.pos)}%`, width: `${pct(last.pos) - pct(first.pos)}%` }} />
+                            )}
+                            {l.stops.map((st, i) => (
+                                <span key={i}
+                                    title={`${st.sceneTitle}${st.code ? ` · ${st.code}` : ""} · ${ROLES[st.role]?.label ?? st.role}`}
+                                    className={cn("absolute top-1/2 -translate-x-1/2 -translate-y-1/2",
+                                        st.role === "payoff" ? "h-2.5 w-2.5 rotate-45" : "h-2 w-2 rounded-full")}
+                                    style={{ left: `${pct(st.pos)}%`, background: ROLE_FILL[st.role] ?? "#888" }} />
+                            ))}
+                            {l.stops.length === 0 && <span className="absolute inset-y-0 left-0 flex items-center text-[10px] text-muted-foreground">ยังไม่มีจุดที่รู้ตำแหน่ง</span>}
+                        </div>
+                    </div>
+                )
+            })}
+            <p className="pt-1 text-[10px] text-muted-foreground">เส้นประ = ยังไม่เฉลย</p>
+        </div>
     )
 }
