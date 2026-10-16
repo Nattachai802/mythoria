@@ -34,6 +34,8 @@ export function PlotPageTabs({ novelId, activeTab, threads, events, chapters }: 
                         role="tab"
                         aria-selected={isActive}
                         onClick={() => router.push(tab.href)}
+                        // หน้าเปลี่ยนแค่ ?tab= component ไม่ถูกสร้างใหม่ ปุ่มที่กดจึงถือ focus ค้าง — โชว์กรอบเฉพาะตอนใช้คีย์บอร์ด
+                        className="outline-none focus-visible:ring-2 focus-visible:ring-[var(--forge-amber)] focus-visible:ring-offset-1 focus-visible:ring-offset-background"
                         style={{
                             padding: "8px 16px",
                             border: "none",
