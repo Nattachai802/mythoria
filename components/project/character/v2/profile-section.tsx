@@ -5,9 +5,10 @@ import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { createCharacterFieldDef, deleteCharacterFieldDef } from "@/server/character-field";
+import { runProfileAutofillNow } from "@/server/character-autofill";
 import { FIELD_TYPES, type FieldType } from "@/lib/character-profile";
 import { aiQuote } from "@/lib/character-autofill";
-import { Plus, X } from "lucide-react";
+import { Plus, Sparkles, X } from "lucide-react";
 import type { Character, CharacterFieldDef } from "@/db/schema";
 import type { CharacterProfile, CharacterCustomValues } from "@/lib/character-profile";
 import { useSection, type SaveState } from "./use-section";
@@ -74,6 +75,28 @@ function HeightChart({ cm }: { cm?: number }) {
                 </div>
             ))}
         </div>
+    );
+}
+
+/** ปลุก AI เอง — ใช้กับตัวละครที่เขียนภาพรวมไว้ก่อนแล้ว (การเติมอัตโนมัติทำงานเฉพาะตอนแก้ภาพรวม) */
+function AiFillButton({ characterId }: { characterId: string }) {
+    const router = useRouter();
+    const [pending, start] = useTransition();
+    const run = () => start(async () => {
+        const res = await runProfileAutofillNow(characterId);
+        if (!res.success) { toast.error("AI เติมไม่สำเร็จ", { description: res.error }); return; }
+        if (res.reason === "no-overview") toast.info("ยังไม่มีข้อความในแท็บภาพรวมให้ AI อ่าน");
+        else if (res.reason === "no-empty") toast.info("ข้อมูลพื้นฐานกรอกครบแล้ว ไม่มีช่องว่างให้เติม");
+        else if (!res.filled) toast.info("ภาพรวมยังไม่มีข้อมูลที่ตรงกับช่องที่ว่างอยู่");
+        else { toast.success(`AI เติมให้ ${res.filled} ช่อง — ดูจุดสีทอง`); router.refresh(); }
+    });
+    return (
+        <button type="button" onClick={run} disabled={pending} aria-busy={pending}
+            title="อ่านแท็บภาพรวมแล้วเติมเฉพาะช่องที่ยังว่าง ไม่ทับที่กรอกเอง"
+            className="flex items-center gap-1.5 chamfered-sm border border-[var(--forge-gold)]/50 px-2.5 py-1 text-xs transition-[background-color,transform] duration-200 hover:bg-[var(--forge-gold)]/10 active:scale-95 motion-reduce:active:scale-100 disabled:opacity-50 disabled:cursor-wait cursor-pointer">
+            <Sparkles className={pending ? "w-3.5 h-3.5 animate-pulse text-[var(--forge-gold)]" : "w-3.5 h-3.5 text-[var(--forge-gold)]"} />
+            {pending ? "AI กำลังอ่าน…" : "ให้ AI เติมจากภาพรวม"}
+        </button>
     );
 }
 
@@ -170,8 +193,9 @@ export function ProfileSection({
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-end -mt-1">
+            <div className="flex items-center justify-end gap-3 -mt-1">
                 <SaveBadge state={state === "idle" ? custom.state : state} />
+                <AiFillButton characterId={character.id} />
             </div>
 
             <div className="grid sm:grid-cols-2 gap-x-8 gap-y-6">

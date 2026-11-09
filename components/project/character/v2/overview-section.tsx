@@ -115,6 +115,14 @@ export function OverviewSection({ character }: { character: Character }) {
             <Section icon={<BookOpen className="w-3 h-3" />} title="ปูมหลัง">
                 <EditableText character={character} field="backstory" label="ปูมหลัง" className={body} placeholder="+ เขียนปูมหลัง" />
             </Section>
+        </div>
+    );
+}
+
+/** มิติตัวละคร + จุดแข็ง/จุดอ่อน — อยู่ในแท็บจิตใจ (คอลัมน์ข้อความเดิมของ characters) */
+export function DimensionsSection({ character }: { character: Character }) {
+    return (
+        <div className="space-y-8">
             <Section icon={<Target className="w-3 h-3" />} title="มิติตัวละคร">
                 <div className="grid sm:grid-cols-3 gap-x-6 gap-y-4">
                     <Sub icon={<Target className="w-3 h-3 text-emerald-500" />} title="เป้าหมาย">

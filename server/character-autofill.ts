@@ -50,16 +50,32 @@ export async function requestProfileAutofill(characterId: string) {
     }
 }
 
-async function runProfileAutofill(characterId: string, novelId: string) {
+/** ปุ่ม "ให้ AI เติมจากภาพรวม" — รอผลจริง คืนจำนวนช่องที่เติม (ใช้กับตัวละครที่ภาพรวมเขียนไว้ก่อนแล้ว) */
+export async function runProfileAutofillNow(characterId: string) {
+    try {
+        const [c] = await db.select({ novelId: characters.novelId }).from(characters).where(eq(characters.id, characterId)).limit(1);
+        if (!c) return { success: false, error: "ไม่พบตัวละคร" };
+        await requireNovelAccess(c.novelId);
+        const r = await runProfileAutofill(characterId, c.novelId, true);
+        return r.error ? { success: false, error: r.error } : { success: true, filled: r.filled, reason: r.reason };
+    } catch (error) {
+        return { success: false, error: authErrorMessage(error, "เติมข้อมูลไม่สำเร็จ") };
+    }
+}
+
+type RunResult = { filled: number; reason?: "no-empty" | "no-overview"; error?: string };
+
+async function runProfileAutofill(characterId: string, novelId: string, surfaceErrors = false): Promise<RunResult> {
     try {
         const [c] = await db.select().from(characters).where(eq(characters.id, characterId)).limit(1);
-        if (!c) return;
+        if (!c) return { filled: 0 };
         const profile = (c.profile ?? {}) as Record<string, unknown>;
         const empty = emptyPaths(profile);
         const sources = OVERVIEW_SOURCES
             .map((k) => [k, (c[k] ?? "").trim()] as const)
             .filter(([, v]) => v.length > 0);
-        if (empty.length === 0 || sources.length === 0) return;
+        if (empty.length === 0) return { filled: 0, reason: "no-empty" };
+        if (sources.length === 0) return { filled: 0, reason: "no-overview" };
 
         const label = { description: "สรุป", appearance: "รูปลักษณ์", personality: "บุคลิกภาพ", backstory: "ปูมหลัง" } as const;
         const resp = await callAi({
@@ -87,19 +103,21 @@ ${sources.map(([k, v]) => `[${label[k]}]\n${v.slice(0, 4000)}`).join("\n\n")}`,
             parsed = JSON.parse(resp.text.replace(/^```(?:json)?\s*|\s*```$/g, ""));
         } catch {
             await logParseFailure(resp.logId, resp.text);
-            return;
+            return { filled: 0, error: surfaceErrors ? "AI ตอบกลับผิดรูปแบบ ลองใหม่อีกครั้ง" : undefined };
         }
 
         // อ่าน profile ล่าสุดอีกรอบ — ผู้ใช้อาจกรอกช่องเองระหว่างรอ AI
         const [fresh] = await db.select({ profile: characters.profile }).from(characters).where(eq(characters.id, characterId)).limit(1);
         const plan = planAutofill((fresh?.profile ?? {}) as Record<string, unknown>, parsed.fields ?? []);
-        if (plan.count === 0) return;
+        if (plan.count === 0) return { filled: 0 };
         await db.update(characters)
             .set({ profile: sql`coalesce(${characters.profile}, '{}'::jsonb) || ${JSON.stringify(plan.patch)}::jsonb` })
             .where(eq(characters.id, characterId));
         revalidatePath(`/dashboard/project/${novelId}/characters/${characterId}`);
+        return { filled: plan.count };
     } catch (error) {
-        // โควตาเต็ม/AI ล่ม = ข้ามเงียบ ๆ ผู้ใช้ยังกรอกเองได้ตามปกติ
+        // เบื้องหลัง: โควตาเต็ม/AI ล่ม = ข้ามเงียบ ๆ · กดปุ่ม: บอกผู้ใช้
         console.error("[Autofill] error:", error);
+        return { filled: 0, error: surfaceErrors ? (error instanceof Error ? error.message : "AI ใช้งานไม่ได้ตอนนี้") : undefined };
     }
 }

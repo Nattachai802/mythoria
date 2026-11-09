@@ -29,7 +29,7 @@ import { CharacterDesignBoard } from "@/components/project/character/character-d
 import { Character, CharacterFieldDef, Idea } from "@/db/schema";
 import { ProfileSection, profileCompleteness } from "@/components/project/character/v2/profile-section";
 import { RolePicker, AliasesField, PortraitUpload } from "@/components/project/character/v2/header-controls";
-import { OverviewSection, EditableText } from "@/components/project/character/v2/overview-section";
+import { OverviewSection, DimensionsSection, EditableText } from "@/components/project/character/v2/overview-section";
 import { PsychSection } from "@/components/project/character/v2/psych-section";
 import { MotiveSection, ArcSection, NarrationSection, type ChapterOption } from "@/components/project/character/v2/story-sections";
 import { cn } from "@/lib/utils";
@@ -53,14 +53,14 @@ interface CharacterDetailContentProps {
 const FILTERS = [
     { key: "story", label: "ภาพรวม" },
     { key: "basic", label: "ข้อมูลพื้นฐาน" },
-    { key: "psych", label: "บุคลิกภาพ" },
-    { key: "motive", label: "แรงจูงใจ" },
-    { key: "arc", label: "พัฒนาการ" },
-    { key: "narration", label: "การเล่าเรื่อง" },
+    { key: "psych", label: "จิตใจ" },
+    { key: "arc", label: "เส้นเรื่อง" },
     { key: "relations", label: "ความสัมพันธ์" },
-    { key: "events", label: "เหตุการณ์" },
-    { key: "tools", label: "เครื่องมือ" },
+    { key: "tools", label: "คลัง" },
 ] as const;
+type _FK = (typeof FILTERS)[number]["key"];
+// แท็บที่ถูกรวมไป — ค่าที่จำไว้ในเครื่องจากรุ่นก่อนพาไปแท็บใหม่ที่ถูกต้อง
+const LEGACY_TAB: Record<string, _FK> = { motive: "psych", narration: "arc", events: "arc" };
 type FilterKey = (typeof FILTERS)[number]["key"];
 const FILTER_STORE = "mythoria.character.tab";
 
@@ -128,8 +128,9 @@ export function CharacterDetailContent({
         try {
             const raw = localStorage.getItem(FILTER_STORE);
             // localStorage อ่านได้เฉพาะฝั่ง client — ตั้งค่าหลัง hydrate กัน SSR ไม่ตรง
+            const k = raw ? (LEGACY_TAB[raw] ?? raw) : null;
             // eslint-disable-next-line react-hooks/set-state-in-effect
-            if (raw && FILTERS.some((f) => f.key === raw)) setTab(raw as FilterKey);
+            if (k && FILTERS.some((f) => f.key === k)) setTab(k as FilterKey);
         } catch { /* storage ปิดอยู่ = แท็บแรก */ }
     }, []);
     const select = (k: FilterKey) => {
@@ -300,76 +301,66 @@ export function CharacterDetailContent({
 
                     {/* Narrative column */}
                     <div key={tab} className="space-y-8 min-w-0 animate-in fade-in slide-in-from-bottom-1 duration-200 motion-reduce:animate-none">
+                        {show("story") && <OverviewSection character={character} />}
+
                         {show("basic") && (
                             <Section icon={<User className="w-3 h-3" />} title="ข้อมูลพื้นฐาน" meta="กดที่ช่องเพื่อเขียน">
-                                <ProfileSection character={character} fieldDefs={fieldDefs} />
+                                {/* key = ร่องรอย AI: AI เติมเสร็จแล้ว refresh → remount ให้ช่องได้ค่าใหม่ (state ในช่องตั้งจาก props ตอน mount เท่านั้น) */}
+                                <ProfileSection key={JSON.stringify((character.profile as { _ai?: unknown } | null)?._ai ?? null)} character={character} fieldDefs={fieldDefs} />
                             </Section>
                         )}
-                        {show("psych") && (
+
+                        {/* จิตใจ = นิสัย + แรงขับ */}
+                        {show("psych") && (<>
                             <Section icon={<Flame className="w-3 h-3" />} title="บุคลิกภาพ" meta="Big Five · MBTI · Enneagram">
                                 <PsychSection character={character} />
                             </Section>
-                        )}
-                        {show("motive") && (
-                            <Section icon={<Target className="w-3 h-3" />} title="แรงจูงใจ">
+                            <DimensionsSection character={character} />
+                            <Section icon={<Target className="w-3 h-3" />} title="แรงจูงใจเชิงลึก">
                                 <MotiveSection character={character} />
                             </Section>
-                        )}
-                        {show("arc") && (
+                        </>)}
+
+                        {/* เส้นเรื่อง = ทุกอย่างที่เดินไปตามบท */}
+                        {show("arc") && (<>
                             <Section icon={<Compass className="w-3 h-3" />} title="พัฒนาการ">
                                 <ArcSection character={character} chapters={chapters} />
                             </Section>
-                        )}
-                        {show("narration") && (
+                            <Section icon={<Calendar className="w-3 h-3" />} title="เหตุการณ์สำคัญ" meta="ไทม์ไลน์ตามบท">
+                                <CharacterLifeEvents characterId={character.id} novelId={novelId} />
+                            </Section>
+                            <Section icon={<Compass className="w-3 h-3" />} title="สถานะและเส้นทางในเรื่อง">
+                                <div className="space-y-6">
+                                    <CharacterTimelineSlider characterId={character.id} novelId={novelId} />
+                                    <CharacterJourney characterId={character.id} novelId={novelId} />
+                                </div>
+                            </Section>
                             <Section icon={<BookOpen className="w-3 h-3" />} title="การเล่าเรื่อง">
                                 <NarrationSection character={character} chapters={chapters} />
                             </Section>
-                        )}
-                        {show("story") && <OverviewSection character={character} />}
+                        </>)}
 
-                        {/* Relationships — core dossier content */}
-                        {show("relations") && (
-                        <Section icon={<Users className="w-3 h-3" />} title="ความสัมพันธ์">
-                            <CharacterRelationships characterId={character.id} novelId={novelId} />
-                        </Section>
-                        )}
+                        {show("relations") && (<>
+                            <Section icon={<Users className="w-3 h-3" />} title="ความสัมพันธ์">
+                                <CharacterRelationships characterId={character.id} novelId={novelId} />
+                            </Section>
+                            <Section icon={<Network className="w-3 h-3" />} title="สังกัดและกลุ่ม">
+                                <FactionTimelineView novelId={novelId} />
+                            </Section>
+                        </>)}
 
-                        {/* Life events — the "experience" timeline */}
-                        {show("tools") && <div className="space-y-12">
-                    <Section icon={<Zap className="w-3 h-3" />} title="จัดการพลัง">
-                        <CharacterPowerManager characterId={character.id} novelId={novelId} />
-                    </Section>
-
-                    <Section icon={<Compass className="w-3 h-3" />} title="เส้นทางในเรื่อง">
-                        <div className="space-y-6">
-                            <CharacterTimelineSlider characterId={character.id} novelId={novelId} />
-                            <CharacterJourney characterId={character.id} novelId={novelId} />
-                        </div>
-                    </Section>
-
-                    <Section icon={<Network className="w-3 h-3" />} title="สังกัดและกลุ่ม">
-                        <FactionTimelineView novelId={novelId} />
-                    </Section>
-
-                    <Section icon={<Palette className="w-3 h-3" />} title="ดีไซน์ตัวละคร">
-                        <CharacterDesignBoard characterId={character.id} novelId={novelId} />
-                    </Section>
-
-                    <Section icon={<Lightbulb className="w-3 h-3" />} title="ไอเดียที่เกี่ยวข้อง">
-                        <CharacterIdeasTab
-                            characterId={character.id}
-                            characterName={character.name}
-                            novelId={novelId}
-                            ideas={ideas}
-                        />
-                    </Section>
-                        </div>}
-
-                        {show("events") && (
-                        <Section icon={<Calendar className="w-3 h-3" />} title="เหตุการณ์สำคัญ" meta="ไทม์ไลน์ตามบท">
-                            <CharacterLifeEvents characterId={character.id} novelId={novelId} />
-                        </Section>
-                        )}
+                        {/* คลัง = ของประกอบ */}
+                        {show("tools") && (<>
+                            <Section icon={<Zap className="w-3 h-3" />} title="พลัง">
+                                <CharacterPowerManager characterId={character.id} novelId={novelId} />
+                            </Section>
+                            <Section icon={<Palette className="w-3 h-3" />} title="ดีไซน์ตัวละคร">
+                                <CharacterDesignBoard characterId={character.id} novelId={novelId} />
+                            </Section>
+                            <Section icon={<Lightbulb className="w-3 h-3" />} title="ไอเดียที่เกี่ยวข้อง">
+                                <CharacterIdeasTab characterId={character.id} characterName={character.name} novelId={novelId} ideas={ideas} />
+                            </Section>
+                        </>)}
                     </div>
                 </div>
 
