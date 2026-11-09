@@ -4,7 +4,7 @@
  * วิธีใช้ (ข้อตกลง 2026-10-14): ระหว่างทำงานสะสมรายการไว้ในรุ่น `version: "next"` บนสุดของ lib/changelog.ts
  * push ได้เรื่อย ๆ โดยยังไม่ออกรุ่น — รันคำสั่งนี้เฉพาะตอนผู้ใช้สั่ง "ออกรุ่น" ไม่ต้องเลือกเลขเอง:
  *   1. คำนวณเลข Major.Minor.Function.Bugfix จากชนิดรายการ (lib/release-version.ts: added = Minor,
- *      changed/removed = Function, มีแต่ fixed = Bugfix สุ่ม · major ต้องเขียน `bump: "major"` ตามที่ผู้ใช้สั่ง)
+ *      changed/removed = Function, มีแต่ fixed = Bugfix +1 (นับเรียง รีเซ็ต 0 เมื่อส่วนหน้าขยับ) · major ต้องเขียน `bump: "major"` ตามที่ผู้ใช้สั่ง)
  *   2. เขียนเลขลง lib/changelog.ts, README.md และ package.json (เฉพาะ Major.Minor.Function — npm รับแค่ 3 ส่วน)
  *   3. generate CHANGELOG.md ใหม่
  * เลขที่ผ่านคำสั่งนี้จะผ่าน `npm run check` (lib/changelog.check.ts) เสมอ

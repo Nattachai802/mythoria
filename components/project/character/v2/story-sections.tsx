@@ -13,7 +13,7 @@ export interface ChapterOption { id: string; title: string; orderIndex: number }
 function GroupTitle({ children, hint }: { children: React.ReactNode; hint?: string }) {
     return (
         <div className="flex items-baseline justify-between mb-1">
-            <span className="font-technical text-[10px] uppercase tracking-[0.2em] text-[var(--forge-amber)]">{children}</span>
+            <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">{children}</span>
             {hint && <span className="text-[10px] text-muted-foreground">{hint}</span>}
         </div>
     );

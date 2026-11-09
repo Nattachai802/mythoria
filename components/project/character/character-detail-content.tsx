@@ -30,7 +30,6 @@ import { FactionTimelineView } from "@/components/project/character/faction-time
 import { ExportCharacterDialog } from "@/components/project/character/export-character-dialog";
 import { CharacterIdeasTab } from "@/components/project/character/character-ideas-tab";
 import { CharacterDesignBoard } from "@/components/project/character/character-design-board";
-import { FormattedTextSection } from "@/components/ui/formatted-text-section";
 import { Character, CharacterFieldDef, Idea } from "@/db/schema";
 import { ProfileSection, profileCompleteness } from "@/components/project/character/v2/profile-section";
 import { PsychSection } from "@/components/project/character/v2/psych-section";
@@ -53,20 +52,20 @@ interface CharacterDetailContentProps {
     chapters?: ChapterOption[];
 }
 
-// filter หัวข้อบนหน้า — จำต่อเครื่องใน localStorage (ค่าเริ่ม = แสดงทั้งหมด)
+// แท็บของหน้า — จำแท็บล่าสุดต่อเครื่องใน localStorage
 const FILTERS = [
+    { key: "story", label: "ภาพรวม" },
     { key: "basic", label: "ข้อมูลพื้นฐาน" },
     { key: "psych", label: "บุคลิกภาพ" },
     { key: "motive", label: "แรงจูงใจ" },
     { key: "arc", label: "พัฒนาการ" },
     { key: "narration", label: "การเล่าเรื่อง" },
-    { key: "story", label: "เรื่องราว" },
     { key: "relations", label: "ความสัมพันธ์" },
     { key: "events", label: "เหตุการณ์" },
     { key: "tools", label: "เครื่องมือ" },
 ] as const;
 type FilterKey = (typeof FILTERS)[number]["key"];
-const FILTER_STORE = "mythoria.character.filters";
+const FILTER_STORE = "mythoria.character.tab";
 
 // Role → restrained, theme-aware badge (no gradient wash). Protagonist earns the brand gold.
 const ROLE_CONFIG: Record<string, { label: string; badge: string }> = {
@@ -129,21 +128,20 @@ export function CharacterDetailContent({
 }: CharacterDetailContentProps) {
     const router = useRouter();
     const [sheetOpen, setSheetOpen] = useState(false);
-    const [hidden, setHidden] = useState<FilterKey[]>([]);
+    const [tab, setTab] = useState<FilterKey>("story");
     useEffect(() => {
         try {
             const raw = localStorage.getItem(FILTER_STORE);
             // localStorage อ่านได้เฉพาะฝั่ง client — ตั้งค่าหลัง hydrate กัน SSR ไม่ตรง
             // eslint-disable-next-line react-hooks/set-state-in-effect
-            if (raw) setHidden(JSON.parse(raw));
-        } catch { /* storage ปิดอยู่ = แสดงทั้งหมด */ }
+            if (raw && FILTERS.some((f) => f.key === raw)) setTab(raw as FilterKey);
+        } catch { /* storage ปิดอยู่ = แท็บแรก */ }
     }, []);
-    const toggle = (k: FilterKey) => {
-        const next = hidden.includes(k) ? hidden.filter((x) => x !== k) : [...hidden, k];
-        setHidden(next);
-        try { localStorage.setItem(FILTER_STORE, JSON.stringify(next)); } catch { /* ignore */ }
+    const select = (k: FilterKey) => {
+        setTab(k);
+        try { localStorage.setItem(FILTER_STORE, k); } catch { /* ignore */ }
     };
-    const show = (k: FilterKey) => !hidden.includes(k);
+    const show = (k: FilterKey) => tab === k;
     const completeness = profileCompleteness(character.profile);
     const roleConfig = ROLE_CONFIG[character.role] || ROLE_CONFIG.minor;
     const aliases = (Array.isArray(character.aliases) ? (character.aliases as string[]) : []).filter(Boolean);
@@ -205,18 +203,19 @@ export function CharacterDetailContent({
             </div>
 
             <div className="max-w-5xl mx-auto">
-                <div className="flex flex-wrap gap-2 mb-6" role="group" aria-label="เลือกหัวข้อที่แสดง">
+                <div className="flex gap-1 mb-6 border-b border-border overflow-x-auto" role="tablist" aria-label="หมวดข้อมูลตัวละคร">
                     {FILTERS.map((f) => (
                         <button
                             key={f.key}
                             type="button"
-                            aria-pressed={show(f.key)}
-                            onClick={() => toggle(f.key)}
+                            role="tab"
+                            aria-selected={show(f.key)}
+                            onClick={() => select(f.key)}
                             className={cn(
-                                "chamfered-sm border px-3 py-1 text-xs transition-colors cursor-pointer",
+                                "-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors cursor-pointer",
                                 show(f.key)
-                                    ? "border-[var(--forge-gold)]/60 bg-[var(--forge-gold)]/15 text-foreground"
-                                    : "border-border text-muted-foreground hover:text-foreground",
+                                    ? "border-[var(--forge-gold)] text-foreground font-medium"
+                                    : "border-transparent text-muted-foreground hover:text-foreground",
                             )}
                         >
                             {f.label}
@@ -337,25 +336,25 @@ export function CharacterDetailContent({
                         {show("story") && (<>
                         {character.description && (
                             <Section icon={<BookOpen className="w-3 h-3" />} title="สรุป">
-                                <FormattedTextSection text={character.description} className="text-[15px] leading-relaxed" />
+                                <p className="text-[17px] leading-relaxed whitespace-pre-wrap">{character.description}</p>
                             </Section>
                         )}
 
                         {character.appearance && (
                             <Section icon={<User className="w-3 h-3" />} title="รูปลักษณ์">
-                                <FormattedTextSection text={character.appearance} className="text-sm leading-relaxed" />
+                                <p className="text-base leading-relaxed whitespace-pre-wrap">{character.appearance}</p>
                             </Section>
                         )}
 
                         {character.personality && (
                             <Section icon={<Flame className="w-3 h-3" />} title="บุคลิกภาพ">
-                                <FormattedTextSection text={character.personality} className="text-sm leading-relaxed" />
+                                <p className="text-base leading-relaxed whitespace-pre-wrap">{character.personality}</p>
                             </Section>
                         )}
 
                         {character.backstory && (
                             <Section icon={<BookOpen className="w-3 h-3" />} title="ปูมหลัง">
-                                <FormattedTextSection text={character.backstory} className="text-sm leading-relaxed" />
+                                <p className="text-base leading-relaxed whitespace-pre-wrap">{character.backstory}</p>
                             </Section>
                         )}
 
@@ -367,7 +366,7 @@ export function CharacterDetailContent({
                                             <span className="flex items-center gap-1.5 font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">
                                                 <Target className="w-3 h-3 text-emerald-500" />เป้าหมาย
                                             </span>
-                                            <p className="text-sm leading-relaxed whitespace-pre-wrap">{character.goals}</p>
+                                            <p className="text-base leading-relaxed whitespace-pre-wrap">{character.goals}</p>
                                         </div>
                                     )}
                                     {character.motivation && (
@@ -375,7 +374,7 @@ export function CharacterDetailContent({
                                             <span className="flex items-center gap-1.5 font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">
                                                 <Flame className="w-3 h-3 text-[var(--forge-amber)]" />แรงจูงใจ
                                             </span>
-                                            <p className="text-sm leading-relaxed whitespace-pre-wrap">{character.motivation}</p>
+                                            <p className="text-base leading-relaxed whitespace-pre-wrap">{character.motivation}</p>
                                         </div>
                                     )}
                                     {character.conflict && (
@@ -383,7 +382,7 @@ export function CharacterDetailContent({
                                             <span className="flex items-center gap-1.5 font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">
                                                 <Swords className="w-3 h-3 text-red-500" />ความขัดแย้ง
                                             </span>
-                                            <p className="text-sm leading-relaxed whitespace-pre-wrap">{character.conflict}</p>
+                                            <p className="text-base leading-relaxed whitespace-pre-wrap">{character.conflict}</p>
                                         </div>
                                     )}
                                 </div>
@@ -394,12 +393,12 @@ export function CharacterDetailContent({
                             <div className="grid sm:grid-cols-2 gap-6">
                                 {character.strengths && (
                                     <Section icon={<Shield className="w-3 h-3 text-emerald-500" />} title="จุดแข็ง">
-                                        <p className="text-sm leading-relaxed whitespace-pre-wrap">{character.strengths}</p>
+                                        <p className="text-base leading-relaxed whitespace-pre-wrap">{character.strengths}</p>
                                     </Section>
                                 )}
                                 {character.weaknesses && (
                                     <Section icon={<AlertTriangle className="w-3 h-3 text-red-500" />} title="จุดอ่อน">
-                                        <p className="text-sm leading-relaxed whitespace-pre-wrap">{character.weaknesses}</p>
+                                        <p className="text-base leading-relaxed whitespace-pre-wrap">{character.weaknesses}</p>
                                     </Section>
                                 )}
                             </div>
@@ -424,7 +423,7 @@ export function CharacterDetailContent({
                 </div>
 
                 {/* ── Full-width workbench band (interactive tools) ── */}
-                {show("tools") && <div className="mt-14 space-y-12">
+                {show("tools") && <div className="-mt-8 space-y-12">
                     <Section icon={<Zap className="w-3 h-3" />} title="จัดการพลัง">
                         <CharacterPowerManager characterId={character.id} novelId={novelId} />
                     </Section>

@@ -96,7 +96,7 @@ export function PsychSection({ character }: { character: Character }) {
             {/* Facets — ลายเซ็นของตัวละคร */}
             <div>
                 <div className="flex items-baseline justify-between mb-1">
-                    <span className="font-technical text-[10px] uppercase tracking-[0.2em] text-[var(--forge-amber)]">ลักษณะเด่น (facet)</span>
+                    <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">ลักษณะเด่น (facet)</span>
                     <span className="text-[10px] text-muted-foreground">3–6 ข้อ แต่ละข้อมีฉากที่เห็นได้</span>
                 </div>
                 {facets.map((f, i) => (
@@ -152,7 +152,7 @@ export function PsychSection({ character }: { character: Character }) {
             <div className="grid sm:grid-cols-2 gap-x-8 gap-y-6">
                 <div>
                     <div className="flex items-baseline justify-between mb-2">
-                        <span className="font-technical text-[10px] uppercase tracking-[0.2em] text-[var(--forge-amber)]">MBTI</span>
+                        <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">MBTI</span>
                         <span className="font-display text-lg tabular-nums">{mbtiCode ?? "—"}</span>
                     </div>
                     {MBTI.map((m) => (
@@ -170,7 +170,7 @@ export function PsychSection({ character }: { character: Character }) {
 
                 <div>
                     <div className="flex items-baseline justify-between mb-2">
-                        <span className="font-technical text-[10px] uppercase tracking-[0.2em] text-[var(--forge-amber)]">Enneagram</span>
+                        <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">Enneagram</span>
                         <span className="text-sm">{enn ? `${enn.type}${enn.wing ? `w${enn.wing}` : ""} · ${ENNEAGRAM[enn.type]}` : "—"}</span>
                     </div>
                     <div className="grid grid-cols-9 gap-1" role="radiogroup" aria-label="Enneagram type">

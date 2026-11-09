@@ -117,7 +117,7 @@ export function TextBlock({
                 value={value ?? ""}
                 onChange={(e) => onChange(e.target.value.trim() === "" ? undefined : e.target.value)}
                 placeholder={placeholder ?? "—"}
-                className="mt-1 w-full resize-none [field-sizing:content] min-h-[2.5rem] bg-transparent text-sm leading-relaxed outline-none placeholder:text-muted-foreground/40 border-b border-transparent hover:border-border focus:border-[var(--forge-gold)] transition-colors"
+                className="mt-1 w-full resize-none [field-sizing:content] min-h-[2.5rem] bg-transparent text-base leading-relaxed outline-none placeholder:text-muted-foreground/40 border-b border-transparent hover:border-border focus:border-[var(--forge-gold)] transition-colors"
             />
         </label>
     );

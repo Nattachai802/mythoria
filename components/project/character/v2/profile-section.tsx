@@ -20,7 +20,10 @@ type FamilyRow = NonNullable<CharacterProfile["family"]>[number];
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
     return (
         <div>
-            <div className="font-technical text-[10px] uppercase tracking-[0.2em] text-[var(--forge-amber)] mb-1">{title}</div>
+            <div className="flex items-center gap-2.5 mb-1">
+                <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground whitespace-nowrap">{title}</span>
+                <span className="flex-1 h-px bg-border/50" />
+            </div>
             <div className="divide-y divide-border/50">{children}</div>
         </div>
     );

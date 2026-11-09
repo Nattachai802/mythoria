@@ -7,7 +7,7 @@
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
 import { CHANGELOG, RELEASED, CHANGE_KINDS, CURRENT_VERSION } from "./changelog.ts";
-import { nextVersion, explainBump, parseVersion, semverOf } from "./release-version.ts";
+import { nextVersion, explainBump, parseVersion, semverOf, isLegacyBugfix } from "./release-version.ts";
 
 const root = new URL("..", import.meta.url);
 const read = (name: string) => readFileSync(new URL(name, root), "utf8");
@@ -38,22 +38,26 @@ for (const r of CHANGELOG) {
 }
 
 // ใหม่สุดต้องอยู่บนสุด — CURRENT_VERSION กับหน้าในแอปยึด RELEASED[0]
-// เทียบแค่ Major.Minor.Function (Bugfix สุ่ม) · เท่ากัน = รุ่นแก้บั๊กต่อกัน ดูวันที่แทน
+// เทียบ Major.Minor.Function · เท่ากัน = รุ่นแก้บั๊กต่อกัน: Bugfix นับเรียงทั้งคู่ต้องมากกว่า ไม่งั้น (มีเลขสุ่มรุ่นเก่า) ดูวันที่
 for (let i = 1; i < RELEASED.length; i++) {
     const a = parseVersion(RELEASED[i - 1].version)!, b = parseVersion(RELEASED[i].version)!;
-    const cmp = a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+    const seq = a[3] !== null && b[3] !== null && !isLegacyBugfix(a[3]) && !isLegacyBugfix(b[3]);
+    const cmp = a[0] - b[0] || a[1] - b[1] || a[2] - b[2] || (seq ? Number(a[3]) - Number(b[3]) : 0);
     assert(cmp > 0 || (cmp === 0 && RELEASED[i - 1].date >= RELEASED[i].date),
         `CHANGELOG ต้องเรียงใหม่→เก่า แต่ ${RELEASED[i - 1].version} ไม่ได้ใหม่กว่า ${RELEASED[i].version}`);
 }
 
 // ── เลขของรุ่นล่าสุดต้องตรงกติกา (กันเลขวิ่งเกินจริงตอนทำแค่แก้บั๊ก) ──
 // ตรวจเฉพาะรุ่นบนสุดเทียบกับรุ่นก่อนหน้า (รุ่นเก่ากว่านั้นออกก่อนมีกติกา) · อยากได้เลขต่างจากกติกาให้ใส่ bump ในรุ่นนั้นชัด ๆ
-// เทียบแค่ Major.Minor.Function — Bugfix สุ่มทุกรุ่น · รุ่นรูป x.y.z ออกก่อนกติกา 4 ส่วน (ก่อน 2026-10-14) ไม่ตรวจ
-if (RELEASED.length >= 2 && parseVersion(RELEASED[0].version)![3] !== null) {
+// รุ่นบนสุดที่ Bugfix นับเรียง = เทียบเต็ม 4 ส่วน · Bugfix สุ่ม (ก่อน 2026-11-10) เทียบแค่ 3 ส่วน · รูป x.y.z (ก่อน 2026-10-14) ไม่ตรวจ
+const topBug = RELEASED.length >= 2 ? parseVersion(RELEASED[0].version)![3] : null;
+if (topBug !== null) {
     const top = RELEASED[0];
-    const expected = semverOf(nextVersion(RELEASED[1].version, top.entries, top.bump));
+    const full = !isLegacyBugfix(topBug);
+    const next = nextVersion(RELEASED[1].version, top.entries, top.bump);
+    const expected = full ? next : semverOf(next);
     assert(
-        semverOf(top.version) === expected,
+        (full ? top.version : semverOf(top.version)) === expected,
         `รุ่น ${top.version} ควรเป็น ${expected} ตามกติกา [${explainBump(top.entries, top.bump)}] เทียบกับ ${CHANGELOG[1].version} — ` +
             `ใช้ \`npm run release\` ให้คำนวณ หรือถ้าผู้ใช้สั่งให้ต่างจากกติกาใส่ bump: "major"|"minor"|"function"|"bugfix" ในรุ่นนั้น`,
     );
