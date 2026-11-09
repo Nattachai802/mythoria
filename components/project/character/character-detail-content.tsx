@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { motion, MotionConfig } from "motion/react";
 import { Button } from "@/components/ui/button";
 import {
-    Pencil,
     User,
     Target,
     Flame,
@@ -18,7 +17,6 @@ import {
     Palette,
     Network,
 } from "lucide-react";
-import { CharacterSheet } from "@/components/project/character/character-sheet";
 import { CharacterRelationships } from "@/components/project/character/character-relationships";
 import { CharacterJourney } from "@/components/project/character/character-journey";
 import { CharacterPowerManager } from "@/components/project/character/character-power-manager";
@@ -30,11 +28,11 @@ import { CharacterIdeasTab } from "@/components/project/character/character-idea
 import { CharacterDesignBoard } from "@/components/project/character/character-design-board";
 import { Character, CharacterFieldDef, Idea } from "@/db/schema";
 import { ProfileSection, profileCompleteness } from "@/components/project/character/v2/profile-section";
+import { RolePicker, AliasesField, PortraitUpload } from "@/components/project/character/v2/header-controls";
 import { OverviewSection, EditableText } from "@/components/project/character/v2/overview-section";
 import { PsychSection } from "@/components/project/character/v2/psych-section";
 import { MotiveSection, ArcSection, NarrationSection, type ChapterOption } from "@/components/project/character/v2/story-sections";
 import { cn } from "@/lib/utils";
-import { useRouter } from "next/navigation";
 
 interface CharacterPowerLite {
     id: string;
@@ -125,8 +123,6 @@ export function CharacterDetailContent({
     fieldDefs = [],
     chapters = [],
 }: CharacterDetailContentProps) {
-    const router = useRouter();
-    const [sheetOpen, setSheetOpen] = useState(false);
     const [tab, setTab] = useState<FilterKey>("story");
     useEffect(() => {
         try {
@@ -143,7 +139,6 @@ export function CharacterDetailContent({
     const show = (k: FilterKey) => tab === k;
     const completeness = profileCompleteness(character.profile);
     const roleConfig = ROLE_CONFIG[character.role] || ROLE_CONFIG.minor;
-    const aliases = (Array.isArray(character.aliases) ? (character.aliases as string[]) : []).filter(Boolean);
 
     return (
         <>
@@ -167,43 +162,19 @@ export function CharacterDetailContent({
                                     placeholder="ชื่อตัวละคร" className="font-display font-bold tracking-tight" />
                             </h1>
                             <div className="flex items-center gap-2 mt-3 flex-wrap">
-                                <span className={cn("inline-flex items-center chamfered-sm border px-2.5 py-0.5 text-xs font-medium", roleConfig.badge)}>
-                                    {roleConfig.label}
-                                </span>
-                                {aliases.length > 0 && (
-                                    <>
-                                        <span className="text-muted-foreground/40">·</span>
-                                        <span className="font-technical text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                                            หรือ {aliases.join(" · ")}
-                                        </span>
-                                    </>
-                                )}
+                                <RolePicker character={character} roles={ROLE_CONFIG} />
+                                <span className="text-muted-foreground/40">·</span>
+                                <AliasesField character={character} />
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-2 shrink-0">
-                            <ExportCharacterDialog
-                                characters={[character]}
-                                novelTitle={novelId}
-                                singleCharacter={character}
-                                trigger={
-                                    <Button variant="outline" className="chamfered-sm">
-                                        <Download className="h-4 w-4 mr-2" />
-                                        ส่งออก
-                                    </Button>
-                                }
-                            />
-                            <Button onClick={() => setSheetOpen(true)} className="chamfered-sm">
-                                <Pencil className="h-4 w-4 mr-2" />
-                                แก้ไข
-                            </Button>
-                        </div>
                     </div>
                 </div>
             </div>
 
             <div className="max-w-5xl mx-auto">
-                <MotionConfig reducedMotion="user"><div className="flex gap-1 mb-6 border-b border-border overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="หมวดข้อมูลตัวละคร">
+                <div className="flex items-end gap-3 mb-6 border-b border-border">
+                <MotionConfig reducedMotion="user"><div className="flex flex-1 min-w-0 gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="หมวดข้อมูลตัวละคร">
                     {FILTERS.map((f) => (
                         <button
                             key={f.key}
@@ -224,12 +195,25 @@ export function CharacterDetailContent({
                         </button>
                     ))}
                 </div></MotionConfig>
+                    <div className="flex items-center gap-3 shrink-0 pb-1.5">
+                        <ExportCharacterDialog
+                            characters={[character]}
+                            novelTitle={novelId}
+                            singleCharacter={character}
+                            trigger={
+                                <Button variant="ghost" size="icon" className="h-8 w-8 chamfered-sm" aria-label="ส่งออกตัวละคร" title="ส่งออกตัวละคร">
+                                    <Download className="h-4 w-4" />
+                                </Button>
+                            }
+                        />
+                    </div>
+                </div>
                 {/* ── Dossier: identity rail + narrative ── */}
                 <div className="grid lg:grid-cols-[280px_minmax(0,1fr)] gap-8 items-start">
                     {/* Identity rail */}
                     <aside className="space-y-6 lg:sticky lg:top-6">
                         {/* Portrait */}
-                        <div className="relative aspect-[3/4] chamfered overflow-hidden border border-border bg-muted/40">
+                        <div className="group relative aspect-[3/4] chamfered overflow-hidden border border-border bg-muted/40">
                             {character.image ? (
                                 <img
                                     src={character.image}
@@ -242,6 +226,7 @@ export function CharacterDetailContent({
                                 </div>
                             )}
                             <div className="absolute bottom-0 left-0 right-0 h-[3px] hazard-stripe-dark opacity-60" />
+                            <PortraitUpload character={character} />
                         </div>
 
                         {/* Vital stats */}
@@ -259,7 +244,9 @@ export function CharacterDetailContent({
                                     } />
                                 ))}
                             </div>
-                            <div className="mt-3 space-y-1.5">
+                            <button type="button" onClick={() => select("basic")} title="ไปที่แท็บข้อมูลพื้นฐาน"
+                                className="mt-3 w-full space-y-1.5 text-left -mx-1 px-1 py-1 rounded-sm hover:bg-muted/40 transition-colors duration-200 cursor-pointer">
+                                <span className="block font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">ข้อมูลพื้นฐานกรอกแล้ว →</span>
                                 {["ตัวตน", "ร่างกาย", "สังคม", "การพูด"].map((label, i) => (
                                     <div key={label} className="flex items-center gap-2">
                                         <span className="w-14 font-technical text-[9px] text-muted-foreground">{label}</span>
@@ -269,7 +256,7 @@ export function CharacterDetailContent({
                                         <span className="w-8 text-right font-technical text-[9px] tabular-nums text-muted-foreground">{completeness[i]}%</span>
                                     </div>
                                 ))}
-                            </div>
+                            </button>
                         </div>
 
                         {/* Powers — skill bars */}
@@ -389,13 +376,6 @@ export function CharacterDetailContent({
                 {/* ── Full-width workbench band (interactive tools) ── */}
             </div>
 
-            <CharacterSheet
-                character={character}
-                novelId={novelId}
-                open={sheetOpen}
-                onOpenChange={setSheetOpen}
-                onSaved={() => router.refresh()}
-            />
         </>
     );
 }

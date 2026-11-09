@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { createCharacterFieldDef, deleteCharacterFieldDef } from "@/server/character-field";
 import { FIELD_TYPES, type FieldType } from "@/lib/character-profile";
+import { aiQuote } from "@/lib/character-autofill";
 import { Plus, X } from "lucide-react";
 import type { Character, CharacterFieldDef } from "@/db/schema";
 import type { CharacterProfile, CharacterCustomValues } from "@/lib/character-profile";
@@ -147,6 +148,7 @@ export function ProfileSection({
     const { value: p, set, state } = useSection<CharacterProfile>(character.id, "profile", character.profile);
     const custom = useSection<CharacterCustomValues>(character.id, "customValues", character.customValues);
 
+    const aiOf = (path: string) => aiQuote(p as Record<string, unknown>, path);
     const id = (p.identity ?? {}) as Identity;
     const body = (p.body ?? {}) as Body;
     const social = (p.social ?? {}) as Social;
@@ -174,13 +176,13 @@ export function ProfileSection({
 
             <div className="grid sm:grid-cols-2 gap-x-8 gap-y-6">
                 <Group title="ตัวตน">
-                    <InlineField label="ชื่อเต็ม" value={id.fullName} onChange={(v) => setId("fullName", text(v))} />
-                    <InlineField label="ชื่อเดิม" value={id.birthName} onChange={(v) => setId("birthName", text(v))} />
-                    <InlineField label="อายุตอนเริ่มเรื่อง" type="number" suffix="ปี" value={id.ageAtStart} onChange={(v) => setId("ageAtStart", numOrUndef(v))} />
-                    <InlineField label="วันเกิด" placeholder="เช่น คืนเดือนดับ ปีมังกร" value={id.birthLabel} onChange={(v) => setId("birthLabel", text(v))} />
-                    <InlineField label="บ้านเกิด" value={id.homeland} onChange={(v) => setId("homeland", text(v))} />
-                    <InlineField label="สัญชาติ" value={id.nationality} onChange={(v) => setId("nationality", text(v))} />
-                    <InlineField label="ศาสนา/ความเชื่อ" value={id.belief} onChange={(v) => setId("belief", text(v))} />
+                    <InlineField label="ชื่อเต็ม" value={id.fullName} ai={aiOf("identity.fullName")} onChange={(v) => setId("fullName", text(v))} />
+                    <InlineField label="ชื่อเดิม" value={id.birthName} ai={aiOf("identity.birthName")} onChange={(v) => setId("birthName", text(v))} />
+                    <InlineField label="อายุตอนเริ่มเรื่อง" type="number" suffix="ปี" value={id.ageAtStart} ai={aiOf("identity.ageAtStart")} onChange={(v) => setId("ageAtStart", numOrUndef(v))} />
+                    <InlineField label="วันเกิด" placeholder="เช่น คืนเดือนดับ ปีมังกร" value={id.birthLabel} ai={aiOf("identity.birthLabel")} onChange={(v) => setId("birthLabel", text(v))} />
+                    <InlineField label="บ้านเกิด" value={id.homeland} ai={aiOf("identity.homeland")} onChange={(v) => setId("homeland", text(v))} />
+                    <InlineField label="สัญชาติ" value={id.nationality} ai={aiOf("identity.nationality")} onChange={(v) => setId("nationality", text(v))} />
+                    <InlineField label="ศาสนา/ความเชื่อ" value={id.belief} ai={aiOf("identity.belief")} onChange={(v) => setId("belief", text(v))} />
                 </Group>
 
                 <Group title="ร่างกาย">
@@ -188,43 +190,43 @@ export function ProfileSection({
                         label="ส่วนสูง"
                         type="number"
                         suffix="ซม."
-                        value={body.heightCm}
+                        value={body.heightCm} ai={aiOf("body.heightCm")}
                         onChange={(v) => {
                             const n = numOrUndef(v);
                             setBody("heightCm", n !== undefined && n >= 10 && n <= 1000 ? n : undefined);
                         }}
                     />
                     <HeightChart cm={body.heightCm} />
-                    <InlineField label="รูปร่าง" value={body.build} onChange={(v) => setBody("build", text(v))} />
-                    <InlineField label="ผม" value={body.hair} onChange={(v) => setBody("hair", text(v))} />
-                    <InlineField label="ตา" value={body.eyes} onChange={(v) => setBody("eyes", text(v))} />
-                    <InlineField label="ผิว" value={body.skin} onChange={(v) => setBody("skin", text(v))} />
-                    <InlineField label="ตำหนิ/แผลเป็น" value={body.marks} onChange={(v) => setBody("marks", text(v))} />
-                    <InlineField label="ถนัดมือ" value={body.handedness} onChange={(v) => setBody("handedness", text(v))} />
-                    <InlineField label="สุขภาพ" value={body.health} onChange={(v) => setBody("health", text(v))} />
+                    <InlineField label="รูปร่าง" value={body.build} ai={aiOf("body.build")} onChange={(v) => setBody("build", text(v))} />
+                    <InlineField label="ผม" value={body.hair} ai={aiOf("body.hair")} onChange={(v) => setBody("hair", text(v))} />
+                    <InlineField label="ตา" value={body.eyes} ai={aiOf("body.eyes")} onChange={(v) => setBody("eyes", text(v))} />
+                    <InlineField label="ผิว" value={body.skin} ai={aiOf("body.skin")} onChange={(v) => setBody("skin", text(v))} />
+                    <InlineField label="ตำหนิ/แผลเป็น" value={body.marks} ai={aiOf("body.marks")} onChange={(v) => setBody("marks", text(v))} />
+                    <InlineField label="ถนัดมือ" value={body.handedness} ai={aiOf("body.handedness")} onChange={(v) => setBody("handedness", text(v))} />
+                    <InlineField label="สุขภาพ" value={body.health} ai={aiOf("body.health")} onChange={(v) => setBody("health", text(v))} />
                 </Group>
 
                 <Group title="สังคม">
-                    <InlineField label="อาชีพ" value={social.occupation} onChange={(v) => setSocial("occupation", text(v))} />
-                    <InlineField label="ตำแหน่งเดิม" value={social.formerTitle} onChange={(v) => setSocial("formerTitle", text(v))} />
-                    <InlineField label="การศึกษา" value={social.education} onChange={(v) => setSocial("education", text(v))} />
-                    <InlineField label="สถานะสมรส" value={social.maritalStatus} onChange={(v) => setSocial("maritalStatus", text(v))} />
-                    <InlineField label="ที่อยู่" value={social.residence} onChange={(v) => setSocial("residence", text(v))} />
+                    <InlineField label="อาชีพ" value={social.occupation} ai={aiOf("social.occupation")} onChange={(v) => setSocial("occupation", text(v))} />
+                    <InlineField label="ตำแหน่งเดิม" value={social.formerTitle} ai={aiOf("social.formerTitle")} onChange={(v) => setSocial("formerTitle", text(v))} />
+                    <InlineField label="การศึกษา" value={social.education} ai={aiOf("social.education")} onChange={(v) => setSocial("education", text(v))} />
+                    <InlineField label="สถานะสมรส" value={social.maritalStatus} ai={aiOf("social.maritalStatus")} onChange={(v) => setSocial("maritalStatus", text(v))} />
+                    <InlineField label="ที่อยู่" value={social.residence} ai={aiOf("social.residence")} onChange={(v) => setSocial("residence", text(v))} />
                     <LevelPicker label="ฐานะ" lowLabel="ยากไร้" highLabel="มั่งคั่ง" value={social.wealth} onChange={(v) => setSocial("wealth", v)} />
                     <LevelPicker label="ชนชั้น" lowLabel="ล่าง" highLabel="สูง" value={social.status} onChange={(v) => setSocial("status", v)} />
                     <LevelPicker label="ชื่อเสียง" lowLabel="ไม่มีใครรู้จัก" highLabel="ทั้งแผ่นดิน" value={social.fame} onChange={(v) => setSocial("fame", v)} />
                 </Group>
 
                 <Group title="การพูดและนิสัย">
-                    <InlineField label="แทนตัวเอง" placeholder="ข้า / ผม / เรา" value={speech.selfPronoun} onChange={(v) => setSpeech("selfPronoun", text(v))} />
-                    <InlineField label="เรียกคนอื่น" value={speech.addressOthers} onChange={(v) => setSpeech("addressOthers", text(v))} />
-                    <InlineField label="น้ำเสียง" value={speech.voice} onChange={(v) => setSpeech("voice", text(v))} />
-                    <InlineField label="คำติดปาก" value={speech.catchphrase} onChange={(v) => setSpeech("catchphrase", text(v))} />
-                    <InlineField label="ภาษา" value={speech.languages} onChange={(v) => setSpeech("languages", text(v))} />
-                    <InlineField label="นิสัยเล็กๆ" value={speech.habits} onChange={(v) => setSpeech("habits", text(v))} />
-                    <InlineField label="ชอบ" value={speech.likes} onChange={(v) => setSpeech("likes", text(v))} />
-                    <InlineField label="ไม่ชอบ" value={speech.dislikes} onChange={(v) => setSpeech("dislikes", text(v))} />
-                    <InlineField label="กลัว" value={speech.fears} onChange={(v) => setSpeech("fears", text(v))} />
+                    <InlineField label="แทนตัวเอง" placeholder="ข้า / ผม / เรา" value={speech.selfPronoun} ai={aiOf("speech.selfPronoun")} onChange={(v) => setSpeech("selfPronoun", text(v))} />
+                    <InlineField label="เรียกคนอื่น" value={speech.addressOthers} ai={aiOf("speech.addressOthers")} onChange={(v) => setSpeech("addressOthers", text(v))} />
+                    <InlineField label="น้ำเสียง" value={speech.voice} ai={aiOf("speech.voice")} onChange={(v) => setSpeech("voice", text(v))} />
+                    <InlineField label="คำติดปาก" value={speech.catchphrase} ai={aiOf("speech.catchphrase")} onChange={(v) => setSpeech("catchphrase", text(v))} />
+                    <InlineField label="ภาษา" value={speech.languages} ai={aiOf("speech.languages")} onChange={(v) => setSpeech("languages", text(v))} />
+                    <InlineField label="นิสัยเล็กๆ" value={speech.habits} ai={aiOf("speech.habits")} onChange={(v) => setSpeech("habits", text(v))} />
+                    <InlineField label="ชอบ" value={speech.likes} ai={aiOf("speech.likes")} onChange={(v) => setSpeech("likes", text(v))} />
+                    <InlineField label="ไม่ชอบ" value={speech.dislikes} ai={aiOf("speech.dislikes")} onChange={(v) => setSpeech("dislikes", text(v))} />
+                    <InlineField label="กลัว" value={speech.fears} ai={aiOf("speech.fears")} onChange={(v) => setSpeech("fears", text(v))} />
                 </Group>
             </div>
 

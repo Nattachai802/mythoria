@@ -1,5 +1,9 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { requestProfileAutofill } from "@/server/character-autofill";
+import { OVERVIEW_SOURCES } from "@/lib/character-autofill";
 import { BookOpen, User, Flame, Target, Swords, Shield, AlertTriangle } from "lucide-react";
 import type { Character } from "@/db/schema";
 import { cn } from "@/lib/utils";
@@ -30,12 +34,24 @@ export function EditableText({
     showBadge?: boolean;
 }) {
     const f = useCharacterText(character.id, field, character[field] as string | null, { required });
+    const router = useRouter();
+    // แก้ช่องภาพรวมเสร็จ (คลิกออก) → ให้ AI แตกออกไปเติมแท็บข้อมูลพื้นฐานเบื้องหลัง
+    const [lastSent, setLastSent] = useState((character[field] as string | null) ?? "");
+    const commit = () => {
+        f.commit();
+        if (!(OVERVIEW_SOURCES as readonly string[]).includes(field) || f.value.trim() === lastSent.trim()) return;
+        setLastSent(f.value);
+        void requestProfileAutofill(character.id).then((r) => {
+            // ponytail: ไม่รู้ว่า AI เสร็จเมื่อไหร่ — รีเฟรชครั้งเดียวหลัง 10 วิ ให้แท็บข้อมูลพื้นฐานได้ค่าใหม่ · ทำ polling ถ้าช้ากว่านี้บ่อย
+            if (r.success) setTimeout(() => router.refresh(), 10_000);
+        });
+    };
     const common = {
         "aria-label": label,
         value: f.value,
         placeholder,
         onChange: (e: React.ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => f.change(e.target.value),
-        onBlur: f.commit,
+        onBlur: commit,
         onKeyDown: (e: React.KeyboardEvent) => {
             if (e.key === "Escape") { f.revert(); (e.target as HTMLElement).blur(); }
             if (!multiline && e.key === "Enter") (e.target as HTMLElement).blur();

@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { AiDot } from "./header-controls";
 
 /** ช่องแบบ "เขียนลงหน้ากระดาษ" — ดูเป็นข้อความ กดแล้วพิมพ์ได้ทันที ไม่มีกรอบฟอร์ม */
 export function InlineField({
@@ -11,7 +12,10 @@ export function InlineField({
     type = "text",
     suffix,
     className,
+    ai,
 }: {
+    /** ประโยคอ้างอิงถ้าช่องนี้ AI เติม — แสดงจุดทอง */
+    ai?: string;
     label: string;
     value: string | number | undefined;
     onChange: (v: string) => void;
@@ -22,8 +26,9 @@ export function InlineField({
 }) {
     return (
         <label className={cn("flex items-baseline justify-between gap-3 py-1.5 group", className)}>
-            <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground shrink-0">
+            <span className="flex items-center gap-1.5 font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground shrink-0">
                 {label}
+                <AiDot quote={ai} />
             </span>
             <span className="flex items-baseline gap-1 min-w-0 flex-1 justify-end">
                 <input

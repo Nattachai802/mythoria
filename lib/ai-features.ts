@@ -213,6 +213,16 @@ export const AI_FEATURES: Record<string, AiFeatureDef> = {
         ],
         defaultDailyLimit: 150,
     },
+    "character-autofill": {
+        key: "character-autofill",
+        label: "เติมข้อมูลพื้นฐานตัวละครจากภาพรวม (Background)",
+        description: "แตกข้อความที่ผู้เขียนเขียนในแท็บภาพรวม (สรุป/รูปลักษณ์/บุคลิกภาพ/ปูมหลัง) ไปเติมช่องว่างในแท็บข้อมูลพื้นฐาน",
+        chain: [
+            { provider: "gemini", model: GEMINI_MODEL, temperature: 0.2, maxTokens: 2048 },
+            { provider: "typhoon", model: TYPHOON_MODEL, temperature: 0.2, maxTokens: 2048 },
+        ],
+        defaultDailyLimit: 150,
+    },
     "lore-extractor": {
         key: "lore-extractor",
         label: "สกัด Entity จาก Lore (Background)",
