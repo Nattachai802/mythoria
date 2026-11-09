@@ -142,7 +142,7 @@ export function FactionTimelineView({ novelId }: FactionTimelineViewProps) {
     }
 
     return (
-        <div className="chamfered border border-border bg-card/50 p-5 space-y-4">
+        <div className="space-y-4">
                 {/* Chapter markers */}
                 {chapters.length > 0 && (
                     <div className="relative h-6 mb-2">
@@ -180,7 +180,7 @@ export function FactionTimelineView({ novelId }: FactionTimelineViewProps) {
                             : {};
 
                         return (
-                            <div key={faction.id} className="border border-border chamfered-sm overflow-hidden">
+                            <div key={faction.id} className="border-b border-border/60 overflow-hidden">
                                 {/* Faction Header */}
                                 <button
                                     className="w-full flex items-center justify-between p-3 bg-muted/50 hover:bg-muted/70 transition-colors text-left"

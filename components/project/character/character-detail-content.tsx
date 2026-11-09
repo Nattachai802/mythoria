@@ -1,19 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { motion, MotionConfig } from "motion/react";
 import { Button } from "@/components/ui/button";
 import {
     Pencil,
     User,
     Target,
     Flame,
-    Swords,
     BookOpen,
     Users,
     Zap,
     Compass,
-    Shield,
-    AlertTriangle,
     Calendar,
     Download,
     Lightbulb,
@@ -32,6 +30,7 @@ import { CharacterIdeasTab } from "@/components/project/character/character-idea
 import { CharacterDesignBoard } from "@/components/project/character/character-design-board";
 import { Character, CharacterFieldDef, Idea } from "@/db/schema";
 import { ProfileSection, profileCompleteness } from "@/components/project/character/v2/profile-section";
+import { OverviewSection, EditableText } from "@/components/project/character/v2/overview-section";
 import { PsychSection } from "@/components/project/character/v2/psych-section";
 import { MotiveSection, ArcSection, NarrationSection, type ChapterOption } from "@/components/project/character/v2/story-sections";
 import { cn } from "@/lib/utils";
@@ -163,8 +162,9 @@ export function CharacterDetailContent({
                                     แฟ้มประวัติตัวละคร
                                 </span>
                             </div>
-                            <h1 className="font-display text-4xl md:text-5xl font-bold tracking-tight text-balance">
-                                {character.name}
+                            <h1 className="font-display text-4xl md:text-5xl font-bold tracking-tight">
+                                <EditableText character={character} field="name" label="ชื่อตัวละคร" required multiline={false}
+                                    placeholder="ชื่อตัวละคร" className="font-display font-bold tracking-tight" />
                             </h1>
                             <div className="flex items-center gap-2 mt-3 flex-wrap">
                                 <span className={cn("inline-flex items-center chamfered-sm border px-2.5 py-0.5 text-xs font-medium", roleConfig.badge)}>
@@ -203,7 +203,7 @@ export function CharacterDetailContent({
             </div>
 
             <div className="max-w-5xl mx-auto">
-                <div className="flex gap-1 mb-6 border-b border-border overflow-x-auto" role="tablist" aria-label="หมวดข้อมูลตัวละคร">
+                <MotionConfig reducedMotion="user"><div className="flex gap-1 mb-6 border-b border-border overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="หมวดข้อมูลตัวละคร">
                     {FILTERS.map((f) => (
                         <button
                             key={f.key}
@@ -212,16 +212,18 @@ export function CharacterDetailContent({
                             aria-selected={show(f.key)}
                             onClick={() => select(f.key)}
                             className={cn(
-                                "-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors cursor-pointer",
-                                show(f.key)
-                                    ? "border-[var(--forge-gold)] text-foreground font-medium"
-                                    : "border-transparent text-muted-foreground hover:text-foreground",
+                                "relative whitespace-nowrap px-3 py-2 text-sm transition-colors duration-200 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[var(--forge-gold)]/60 rounded-sm",
+                                show(f.key) ? "text-foreground font-medium" : "text-muted-foreground hover:text-foreground",
                             )}
                         >
                             {f.label}
+                            {show(f.key) && (
+                                <motion.span layoutId="character-tab-underline" className="absolute inset-x-0 -bottom-px h-0.5 bg-[var(--forge-gold)]"
+                                    transition={{ type: "spring", stiffness: 500, damping: 40 }} />
+                            )}
                         </button>
                     ))}
-                </div>
+                </div></MotionConfig>
                 {/* ── Dossier: identity rail + narrative ── */}
                 <div className="grid lg:grid-cols-[280px_minmax(0,1fr)] gap-8 items-start">
                     {/* Identity rail */}
@@ -250,16 +252,19 @@ export function CharacterDetailContent({
                             </div>
                             <div className="divide-y divide-border/50">
                                 <VitalRow label="บทบาท" value={roleConfig.label} />
-                                {character.age && <VitalRow label="อายุ" value={character.age} />}
-                                {character.gender && <VitalRow label="เพศ" value={character.gender} />}
-                                {character.species && <VitalRow label="เผ่าพันธุ์" value={character.species} />}
+                                {([["age", "อายุ"], ["gender", "เพศ"], ["species", "เผ่าพันธุ์"]] as const).map(([field, label]) => (
+                                    <VitalRow key={field} label={label} value={
+                                        <EditableText character={character} field={field} label={label} multiline={false} showBadge={false}
+                                            placeholder="—" className="text-right text-sm font-medium" />
+                                    } />
+                                ))}
                             </div>
                             <div className="mt-3 space-y-1.5">
                                 {["ตัวตน", "ร่างกาย", "สังคม", "การพูด"].map((label, i) => (
                                     <div key={label} className="flex items-center gap-2">
                                         <span className="w-14 font-technical text-[9px] text-muted-foreground">{label}</span>
                                         <div className="h-1 flex-1 bg-muted overflow-hidden">
-                                            <div className="h-full bg-[var(--forge-gold)]" style={{ width: `${completeness[i]}%` }} />
+                                            <div className="h-full bg-[var(--forge-gold)] transition-[width] duration-500 ease-out" style={{ width: `${completeness[i]}%` }} />
                                         </div>
                                         <span className="w-8 text-right font-technical text-[9px] tabular-nums text-muted-foreground">{completeness[i]}%</span>
                                     </div>
@@ -307,7 +312,7 @@ export function CharacterDetailContent({
                     </aside>
 
                     {/* Narrative column */}
-                    <div className="space-y-8 min-w-0">
+                    <div key={tab} className="space-y-8 min-w-0 animate-in fade-in slide-in-from-bottom-1 duration-200 motion-reduce:animate-none">
                         {show("basic") && (
                             <Section icon={<User className="w-3 h-3" />} title="ข้อมูลพื้นฐาน" meta="กดที่ช่องเพื่อเขียน">
                                 <ProfileSection character={character} fieldDefs={fieldDefs} />
@@ -333,78 +338,7 @@ export function CharacterDetailContent({
                                 <NarrationSection character={character} chapters={chapters} />
                             </Section>
                         )}
-                        {show("story") && (<>
-                        {character.description && (
-                            <Section icon={<BookOpen className="w-3 h-3" />} title="สรุป">
-                                <p className="text-[17px] leading-relaxed whitespace-pre-wrap">{character.description}</p>
-                            </Section>
-                        )}
-
-                        {character.appearance && (
-                            <Section icon={<User className="w-3 h-3" />} title="รูปลักษณ์">
-                                <p className="text-base leading-relaxed whitespace-pre-wrap">{character.appearance}</p>
-                            </Section>
-                        )}
-
-                        {character.personality && (
-                            <Section icon={<Flame className="w-3 h-3" />} title="บุคลิกภาพ">
-                                <p className="text-base leading-relaxed whitespace-pre-wrap">{character.personality}</p>
-                            </Section>
-                        )}
-
-                        {character.backstory && (
-                            <Section icon={<BookOpen className="w-3 h-3" />} title="ปูมหลัง">
-                                <p className="text-base leading-relaxed whitespace-pre-wrap">{character.backstory}</p>
-                            </Section>
-                        )}
-
-                        {(character.goals || character.motivation || character.conflict) && (
-                            <Section icon={<Target className="w-3 h-3" />} title="มิติตัวละคร">
-                                <div className="grid sm:grid-cols-3 gap-x-6 gap-y-4">
-                                    {character.goals && (
-                                        <div className="space-y-1.5">
-                                            <span className="flex items-center gap-1.5 font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">
-                                                <Target className="w-3 h-3 text-emerald-500" />เป้าหมาย
-                                            </span>
-                                            <p className="text-base leading-relaxed whitespace-pre-wrap">{character.goals}</p>
-                                        </div>
-                                    )}
-                                    {character.motivation && (
-                                        <div className="space-y-1.5">
-                                            <span className="flex items-center gap-1.5 font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">
-                                                <Flame className="w-3 h-3 text-[var(--forge-amber)]" />แรงจูงใจ
-                                            </span>
-                                            <p className="text-base leading-relaxed whitespace-pre-wrap">{character.motivation}</p>
-                                        </div>
-                                    )}
-                                    {character.conflict && (
-                                        <div className="space-y-1.5">
-                                            <span className="flex items-center gap-1.5 font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">
-                                                <Swords className="w-3 h-3 text-red-500" />ความขัดแย้ง
-                                            </span>
-                                            <p className="text-base leading-relaxed whitespace-pre-wrap">{character.conflict}</p>
-                                        </div>
-                                    )}
-                                </div>
-                            </Section>
-                        )}
-
-                        {(character.strengths || character.weaknesses) && (
-                            <div className="grid sm:grid-cols-2 gap-6">
-                                {character.strengths && (
-                                    <Section icon={<Shield className="w-3 h-3 text-emerald-500" />} title="จุดแข็ง">
-                                        <p className="text-base leading-relaxed whitespace-pre-wrap">{character.strengths}</p>
-                                    </Section>
-                                )}
-                                {character.weaknesses && (
-                                    <Section icon={<AlertTriangle className="w-3 h-3 text-red-500" />} title="จุดอ่อน">
-                                        <p className="text-base leading-relaxed whitespace-pre-wrap">{character.weaknesses}</p>
-                                    </Section>
-                                )}
-                            </div>
-                        )}
-
-                        </>)}
+                        {show("story") && <OverviewSection character={character} />}
 
                         {/* Relationships — core dossier content */}
                         {show("relations") && (
@@ -414,16 +348,7 @@ export function CharacterDetailContent({
                         )}
 
                         {/* Life events — the "experience" timeline */}
-                        {show("events") && (
-                        <Section icon={<Calendar className="w-3 h-3" />} title="เหตุการณ์สำคัญ" meta="ไทม์ไลน์ตามบท">
-                            <CharacterLifeEvents characterId={character.id} novelId={novelId} />
-                        </Section>
-                        )}
-                    </div>
-                </div>
-
-                {/* ── Full-width workbench band (interactive tools) ── */}
-                {show("tools") && <div className="-mt-8 space-y-12">
+                        {show("tools") && <div className="space-y-12">
                     <Section icon={<Zap className="w-3 h-3" />} title="จัดการพลัง">
                         <CharacterPowerManager characterId={character.id} novelId={novelId} />
                     </Section>
@@ -451,7 +376,17 @@ export function CharacterDetailContent({
                             ideas={ideas}
                         />
                     </Section>
-                </div>}
+                        </div>}
+
+                        {show("events") && (
+                        <Section icon={<Calendar className="w-3 h-3" />} title="เหตุการณ์สำคัญ" meta="ไทม์ไลน์ตามบท">
+                            <CharacterLifeEvents characterId={character.id} novelId={novelId} />
+                        </Section>
+                        )}
+                    </div>
+                </div>
+
+                {/* ── Full-width workbench band (interactive tools) ── */}
             </div>
 
             <CharacterSheet

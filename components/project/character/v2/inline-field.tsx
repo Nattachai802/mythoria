@@ -72,7 +72,7 @@ export function LevelPicker({
                         aria-label={`${label} ${n}`}
                         onClick={() => onChange(value === n ? undefined : n)}
                         className={cn(
-                            "h-6 flex-1 chamfered-sm border text-[10px] tabular-nums transition-colors cursor-pointer",
+                            "h-6 flex-1 chamfered-sm border text-[10px] tabular-nums transition-[color,background-color,border-color,transform] duration-200 active:scale-95 motion-reduce:active:scale-100 cursor-pointer",
                             value !== undefined && n <= value
                                 ? "bg-[var(--forge-gold)]/80 border-[var(--forge-gold)] text-background"
                                 : "border-border text-muted-foreground hover:border-[var(--forge-gold)]/60",
@@ -148,7 +148,7 @@ export function ChipPicker<T extends string>({
                         title={o.hint}
                         onClick={() => onChange(value === o.value ? undefined : o.value)}
                         className={cn(
-                            "chamfered-sm border px-2.5 py-1 text-xs transition-colors cursor-pointer",
+                            "chamfered-sm border px-2.5 py-1 text-xs transition-[color,background-color,border-color,transform] duration-200 active:scale-95 motion-reduce:active:scale-100 cursor-pointer",
                             value === o.value
                                 ? "border-[var(--forge-gold)] bg-[var(--forge-gold)]/15 text-foreground"
                                 : "border-border text-muted-foreground hover:text-foreground",

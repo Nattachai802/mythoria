@@ -9,7 +9,6 @@ import {
 import { getChapters } from "@/server/chapter";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { Badge } from "@/components/ui/badge";
 import {
     Select,
     SelectContent,
@@ -85,17 +84,6 @@ export function CharacterTimelineSlider({
 
     const currentState = timeline[currentIndex];
 
-    const getMoodEmoji = (mood: string | null) => {
-        if (!mood) return "😐";
-        const lowerMood = mood.toLowerCase();
-        if (lowerMood.includes("happy") || lowerMood.includes("สุข")) return "😊";
-        if (lowerMood.includes("sad") || lowerMood.includes("เศร้า")) return "😢";
-        if (lowerMood.includes("angry") || lowerMood.includes("โกรธ")) return "😠";
-        if (lowerMood.includes("fear") || lowerMood.includes("กลัว")) return "😨";
-        if (lowerMood.includes("calm") || lowerMood.includes("สงบ")) return "😌";
-        return "😐";
-    };
-
     const getHealthColor = (health: number | null) => {
         if (health === null) return "bg-gray-400";
         if (health >= 80) return "bg-green-500";
@@ -120,8 +108,8 @@ export function CharacterTimelineSlider({
     }
 
     return (
-        <div className="chamfered border border-border bg-card/50 p-5">
-            <div className="flex justify-end mb-4">
+        <div>
+            <div className="flex justify-end mb-2">
                 <Button
                     variant={compareMode ? "default" : "outline"}
                     size="sm"
@@ -138,7 +126,7 @@ export function CharacterTimelineSlider({
             <div className="space-y-6">
                 {/* Timeline Slider */}
                 <div className="space-y-2">
-                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                    <div className="flex items-center justify-between font-technical text-[10px] uppercase tracking-[0.15em] text-muted-foreground">
                         <span>บทที่ {timeline[0]?.chapterOrderIndex || 1}</span>
                         <span>บทที่ {timeline[timeline.length - 1]?.chapterOrderIndex || 1}</span>
                     </div>
@@ -169,36 +157,36 @@ export function CharacterTimelineSlider({
                         </Button>
                     </div>
                     <div className="text-center">
-                        <Badge variant="outline" className="text-lg px-4 py-1">
+                        <span className="font-display text-lg font-semibold">
                             บทที่ {currentState?.chapterOrderIndex}: {currentState?.chapterTitle}
-                        </Badge>
+                        </span>
                     </div>
                 </div>
 
                 {/* Current State Display */}
                 {currentState && (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="p-3 rounded-lg bg-muted/50 text-center">
-                            <MapPin className="w-5 h-5 mx-auto mb-1 text-blue-500" />
-                            <p className="text-xs text-muted-foreground mb-1">ตำแหน่ง</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 border-y border-border/60 divide-x divide-border/50">
+                        <div className="py-3 px-1 first:pl-0">
+                            
+                            <p className="flex items-center gap-1.5 font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground mb-1"><MapPin className="w-3 h-3" />ตำแหน่ง</p>
                             <p className="font-medium text-sm">{currentState.locationName || "ไม่ระบุ"}</p>
                         </div>
-                        <div className="p-3 rounded-lg bg-muted/50 text-center">
-                            <Activity className="w-5 h-5 mx-auto mb-1 text-purple-500" />
-                            <p className="text-xs text-muted-foreground mb-1">สถานะ</p>
+                        <div className="py-3 px-1 first:pl-0">
+                            
+                            <p className="flex items-center gap-1.5 font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground mb-1"><Activity className="w-3 h-3" />สถานะ</p>
                             <p className="font-medium text-sm">{currentState.status || "ปกติ"}</p>
                         </div>
-                        <div className="p-3 rounded-lg bg-muted/50 text-center">
-                            <Smile className="w-5 h-5 mx-auto mb-1 text-yellow-500" />
-                            <p className="text-xs text-muted-foreground mb-1">อารมณ์</p>
+                        <div className="py-3 px-1 first:pl-0">
+                            
+                            <p className="flex items-center gap-1.5 font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground mb-1"><Smile className="w-3 h-3" />อารมณ์</p>
                             <p className="font-medium text-sm">
-                                {getMoodEmoji(currentState.mood)} {currentState.mood || "ปกติ"}
+                                {currentState.mood || "ปกติ"}
                             </p>
                         </div>
-                        <div className="p-3 rounded-lg bg-muted/50 text-center">
-                            <Heart className="w-5 h-5 mx-auto mb-1 text-red-500" />
-                            <p className="text-xs text-muted-foreground mb-1">สุขภาพ</p>
-                            <div className="flex items-center justify-center gap-2">
+                        <div className="py-3 px-1 first:pl-0">
+                            
+                            <p className="flex items-center gap-1.5 font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground mb-1"><Heart className="w-3 h-3" />สุขภาพ</p>
+                            <div className="flex items-center gap-2">
                                 <div className={`w-3 h-3 rounded-full ${getHealthColor(currentState.health)}`} />
                                 <span className="font-medium text-sm">
                                     {currentState.health !== null ? `${currentState.health}%` : "?"}
@@ -231,7 +219,7 @@ export function CharacterTimelineSlider({
                         </div>
 
                         {comparison && (
-                            <div className="bg-muted/30 rounded-lg p-4">
+                            <div className="border-l-2 border-[var(--forge-gold)]/40 pl-4">
                                 <h4 className="font-medium mb-3">ความแตกต่าง:</h4>
                                 {comparison.differences.length === 0 ? (
                                     <p className="text-muted-foreground">ไม่มีความแตกต่าง</p>

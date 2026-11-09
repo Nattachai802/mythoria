@@ -181,7 +181,7 @@ export function NarrationSection({ character, chapters }: { character: Character
             <div>
                 <GroupTitle hint="ผู้อ่านรู้เมื่อไหร่">ความลับ</GroupTitle>
                 {secrets.map((s, i) => (
-                    <div key={i} className="grid grid-cols-[1fr_auto_auto] gap-2 items-center py-1.5 border-b border-border/50">
+                    <div key={i} className="grid grid-cols-[1fr_auto_auto] gap-2 items-center py-1.5 border-b border-border/50 animate-in fade-in slide-in-from-top-1 duration-200 motion-reduce:animate-none">
                         <input aria-label="ความลับ" value={s.text}
                             onChange={(e) => set("secrets", secrets.map((x, j) => (j === i ? { ...x, text: e.target.value || " " } : x)))}
                             className="bg-transparent text-sm outline-none border-b border-transparent hover:border-border focus:border-[var(--forge-gold)]" />

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { createCharacterFieldDef, deleteCharacterFieldDef } from "@/server/character-field";
@@ -30,9 +31,21 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
 }
 
 export function SaveBadge({ state }: { state: SaveState }) {
+    // "บันทึกแล้ว" หายเองหลัง 2 วินาที · error ค้างไว้จนกว่าจะบันทึกใหม่
+    const [hidden, setHidden] = useState(false);
+    useEffect(() => {
+        setHidden(false); // eslint-disable-line react-hooks/set-state-in-effect
+        if (state !== "saved") return;
+        const t = setTimeout(() => setHidden(true), 2000);
+        return () => clearTimeout(t);
+    }, [state]);
     const text = { idle: "", saving: "กำลังบันทึก…", saved: "บันทึกแล้ว", error: "บันทึกไม่สำเร็จ" }[state];
     return (
-        <span aria-live="polite" className={state === "error" ? "text-[10px] text-red-500" : "text-[10px] text-muted-foreground"}>
+        <span aria-live="polite" className={cn(
+            "text-[10px] transition-opacity duration-300",
+            state === "error" ? "text-red-500" : "text-muted-foreground",
+            hidden || !text ? "opacity-0" : "opacity-100",
+        )}>
             {text}
         </span>
     );
@@ -53,7 +66,7 @@ function HeightChart({ cm }: { cm?: number }) {
             {bars.map((b) => (
                 <div key={b.label} className="flex-1 flex flex-col items-center justify-end h-full">
                     <div
-                        className={b.me ? "w-full bg-[var(--forge-gold)]" : "w-full bg-muted"}
+                        className={b.me ? "w-full bg-[var(--forge-gold)] transition-[height] duration-500 ease-out" : "w-full bg-muted"}
                         style={{ height: `${(b.h / max) * 100}%` }}
                     />
                     <span className="mt-1 text-[9px] tabular-nums text-muted-foreground">{b.me ? `${cm}` : b.label}</span>
@@ -220,7 +233,7 @@ export function ProfileSection({
                 {family.map((r, i) => {
                     const upd = (patch: Partial<FamilyRow>) => saveFamily(family.map((x, j) => (j === i ? { ...x, ...patch } : x)));
                     return (
-                        <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 py-1.5 items-center">
+                        <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 py-1.5 items-center animate-in fade-in slide-in-from-top-1 duration-200 motion-reduce:animate-none">
                             <input aria-label="ชื่อ" placeholder="ชื่อ" value={r.name} onChange={(e) => upd({ name: e.target.value })} className="bg-transparent text-sm outline-none border-b border-transparent hover:border-border focus:border-[var(--forge-gold)]" />
                             <input aria-label="ความเกี่ยวข้อง" placeholder="เป็นอะไรกัน" value={r.relation} onChange={(e) => upd({ relation: e.target.value })} className="bg-transparent text-sm outline-none border-b border-transparent hover:border-border focus:border-[var(--forge-gold)]" />
                             <input aria-label="สถานะ" placeholder="ยังอยู่ / เสียแล้ว" value={r.status ?? ""} onChange={(e) => upd({ status: e.target.value || undefined })} className="bg-transparent text-sm outline-none border-b border-transparent hover:border-border focus:border-[var(--forge-gold)]" />

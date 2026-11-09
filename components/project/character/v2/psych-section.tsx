@@ -1,6 +1,7 @@
 "use client";
 
 import { Plus, X } from "lucide-react";
+import { motion } from "motion/react";
 import type { Character } from "@/db/schema";
 import type { CharacterPsych } from "@/lib/character-profile";
 import { cn } from "@/lib/utils";
@@ -57,7 +58,8 @@ function Radar({ v }: { v: BigFive }) {
                 );
             })}
             {has && (
-                <polygon points={poly((i) => (R * (v[DOMAINS[i].key] ?? 0)) / 5)}
+                <motion.polygon initial={false} animate={{ points: poly((i) => (R * (v[DOMAINS[i].key] ?? 0)) / 5) }}
+                    transition={{ duration: 0.25, ease: "easeOut" }}
                     fill="var(--forge-gold)" fillOpacity={0.25} stroke="var(--forge-gold)" strokeWidth={1.5} />
             )}
         </svg>
@@ -100,7 +102,7 @@ export function PsychSection({ character }: { character: Character }) {
                     <span className="text-[10px] text-muted-foreground">3–6 ข้อ แต่ละข้อมีฉากที่เห็นได้</span>
                 </div>
                 {facets.map((f, i) => (
-                    <div key={i} className="grid sm:grid-cols-[1fr_auto_120px_auto] gap-2 items-center py-1.5 border-b border-border/50">
+                    <div key={i} className="grid sm:grid-cols-[1fr_auto_120px_auto] gap-2 items-center py-1.5 border-b border-border/50 animate-in fade-in slide-in-from-top-1 duration-200 motion-reduce:animate-none">
                         <input aria-label="ชื่อลักษณะ" placeholder="เช่น ไม่ไว้ใจใคร" value={f.name}
                             onChange={(e) => setFacet(i, { name: e.target.value })}
                             className="bg-transparent text-sm font-medium outline-none border-b border-transparent hover:border-border focus:border-[var(--forge-gold)]" />
@@ -177,7 +179,7 @@ export function PsychSection({ character }: { character: Character }) {
                         {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
                             <button key={n} type="button" role="radio" aria-checked={enn?.type === n} title={ENNEAGRAM[n]}
                                 onClick={() => set("enneagram", enn?.type === n ? undefined : { type: n })}
-                                className={cn("aspect-square chamfered-sm border text-xs tabular-nums cursor-pointer",
+                                className={cn("aspect-square chamfered-sm border text-xs tabular-nums cursor-pointer transition-[color,background-color,border-color,transform] duration-200 active:scale-95 motion-reduce:active:scale-100",
                                     enn?.type === n ? "border-[var(--forge-gold)] bg-[var(--forge-gold)] text-background" : "border-border text-muted-foreground hover:border-[var(--forge-gold)]/60")}>
                                 {n}
                             </button>
