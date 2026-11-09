@@ -2,7 +2,8 @@
 
 import { db } from "@/db/drizzle";
 import { characters, characterRelationships, relationshipHistory, chapters } from "@/db/schema";
-import { eq, and, desc, asc } from "drizzle-orm";
+import { eq, and, desc, asc, sql } from "drizzle-orm";
+import { CHARACTER_SECTIONS, type CharacterSection } from "@/lib/character-profile";
 import { revalidatePath } from "next/cache";
 import { v2 as cloudinary } from "cloudinary";
 import { addReference, removeReferenceEdge } from "./references"; // Context Fabric dual-write (P4)
@@ -173,6 +174,60 @@ export async function updateCharacter(
     } catch (error) {
         console.error("Error updating character:", error);
         return { success: false, error: "Failed to update character" };
+    }
+}
+
+
+/**
+ * Character Design v2: แก้ทีละส่วน (profile/psych/motive/arc/narration/customValues)
+ * merge ระดับบนสุดของ jsonb (`col || patch`) — แก้ส่วนหนึ่งไม่ทับ key อื่นในก้อนเดียวกัน
+ * ponytail: merge ตื้นชั้นเดียว — ส่ง sub-object (เช่น profile.identity) ต้องส่งทั้งก้อนของมัน
+ */
+// drizzle ขยาย JS array ใน sql`` เป็นรายการพารามิเตอร์ — ส่งเป็น array literal ตัวเดียวแทน
+const pgTextArray = (keys: string[]) => `{${keys.map((k) => JSON.stringify(k)).join(",")}}`;
+
+export async function updateCharacterSection(
+    characterId: string,
+    section: CharacterSection,
+    patch: unknown
+) {
+    try {
+        const schema = CHARACTER_SECTIONS[section];
+        if (!schema) return { success: false, error: "Unknown section" };
+        // key ที่ส่งมาเป็น null = ล้างค่า (JSON ทิ้ง undefined จึงต้องใช้ null) — ลบออกจาก jsonb หลัง merge
+        const raw = (patch && typeof patch === "object" ? patch : {}) as Record<string, unknown>;
+        const isRecord = !("partial" in schema); // customValues เก็บ null เป็นค่าได้ ไม่ใช่การลบ
+        const clearKeys = isRecord ? [] : Object.keys(raw).filter((k) => raw[k] === null);
+        const kept = isRecord ? raw : Object.fromEntries(Object.entries(raw).filter(([, v]) => v !== null));
+        const parsed = ("partial" in schema ? schema.partial() : schema).safeParse(kept);
+        if (!parsed.success) {
+            return { success: false, error: "Invalid data", issues: parsed.error.issues };
+        }
+
+        const [owner] = await db
+            .select({ novelId: characters.novelId })
+            .from(characters)
+            .where(eq(characters.id, characterId))
+            .limit(1);
+        if (!owner) return { success: false, error: "Character not found" };
+        await requireNovelAccess(owner.novelId);
+
+        const col = characters[section];
+        const [updated] = await db
+            .update(characters)
+            .set({
+                [section]: sql`(coalesce(${col}, '{}'::jsonb) || ${JSON.stringify(parsed.data)}::jsonb) - ${pgTextArray(clearKeys)}::text[]`,
+                updatedAt: new Date(),
+            })
+            .where(eq(characters.id, characterId))
+            .returning();
+
+        revalidatePath(`/dashboard/project/${owner.novelId}/characters`);
+        revalidatePath(`/dashboard/project/${owner.novelId}/characters/${characterId}`);
+        return { success: true, data: updated };
+    } catch (error) {
+        console.error("Error updating character section:", error);
+        return { success: false, error: "Failed to update character section" };
     }
 }
 

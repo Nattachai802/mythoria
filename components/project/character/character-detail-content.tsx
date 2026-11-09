@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
     Pencil,
@@ -31,7 +31,10 @@ import { ExportCharacterDialog } from "@/components/project/character/export-cha
 import { CharacterIdeasTab } from "@/components/project/character/character-ideas-tab";
 import { CharacterDesignBoard } from "@/components/project/character/character-design-board";
 import { FormattedTextSection } from "@/components/ui/formatted-text-section";
-import { Character, Idea } from "@/db/schema";
+import { Character, CharacterFieldDef, Idea } from "@/db/schema";
+import { ProfileSection, profileCompleteness } from "@/components/project/character/v2/profile-section";
+import { PsychSection } from "@/components/project/character/v2/psych-section";
+import { MotiveSection, ArcSection, NarrationSection, type ChapterOption } from "@/components/project/character/v2/story-sections";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 
@@ -46,7 +49,24 @@ interface CharacterDetailContentProps {
     novelId: string;
     ideas?: Idea[];
     powers?: CharacterPowerLite[]; // character powers with joined `power` (name, color, maxLevel) + currentLevel
+    fieldDefs?: CharacterFieldDef[];
+    chapters?: ChapterOption[];
 }
+
+// filter หัวข้อบนหน้า — จำต่อเครื่องใน localStorage (ค่าเริ่ม = แสดงทั้งหมด)
+const FILTERS = [
+    { key: "basic", label: "ข้อมูลพื้นฐาน" },
+    { key: "psych", label: "บุคลิกภาพ" },
+    { key: "motive", label: "แรงจูงใจ" },
+    { key: "arc", label: "พัฒนาการ" },
+    { key: "narration", label: "การเล่าเรื่อง" },
+    { key: "story", label: "เรื่องราว" },
+    { key: "relations", label: "ความสัมพันธ์" },
+    { key: "events", label: "เหตุการณ์" },
+    { key: "tools", label: "เครื่องมือ" },
+] as const;
+type FilterKey = (typeof FILTERS)[number]["key"];
+const FILTER_STORE = "mythoria.character.filters";
 
 // Role → restrained, theme-aware badge (no gradient wash). Protagonist earns the brand gold.
 const ROLE_CONFIG: Record<string, { label: string; badge: string }> = {
@@ -104,9 +124,27 @@ export function CharacterDetailContent({
     novelId,
     ideas = [],
     powers = [],
+    fieldDefs = [],
+    chapters = [],
 }: CharacterDetailContentProps) {
     const router = useRouter();
     const [sheetOpen, setSheetOpen] = useState(false);
+    const [hidden, setHidden] = useState<FilterKey[]>([]);
+    useEffect(() => {
+        try {
+            const raw = localStorage.getItem(FILTER_STORE);
+            // localStorage อ่านได้เฉพาะฝั่ง client — ตั้งค่าหลัง hydrate กัน SSR ไม่ตรง
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            if (raw) setHidden(JSON.parse(raw));
+        } catch { /* storage ปิดอยู่ = แสดงทั้งหมด */ }
+    }, []);
+    const toggle = (k: FilterKey) => {
+        const next = hidden.includes(k) ? hidden.filter((x) => x !== k) : [...hidden, k];
+        setHidden(next);
+        try { localStorage.setItem(FILTER_STORE, JSON.stringify(next)); } catch { /* ignore */ }
+    };
+    const show = (k: FilterKey) => !hidden.includes(k);
+    const completeness = profileCompleteness(character.profile);
     const roleConfig = ROLE_CONFIG[character.role] || ROLE_CONFIG.minor;
     const aliases = (Array.isArray(character.aliases) ? (character.aliases as string[]) : []).filter(Boolean);
 
@@ -167,6 +205,24 @@ export function CharacterDetailContent({
             </div>
 
             <div className="max-w-5xl mx-auto">
+                <div className="flex flex-wrap gap-2 mb-6" role="group" aria-label="เลือกหัวข้อที่แสดง">
+                    {FILTERS.map((f) => (
+                        <button
+                            key={f.key}
+                            type="button"
+                            aria-pressed={show(f.key)}
+                            onClick={() => toggle(f.key)}
+                            className={cn(
+                                "chamfered-sm border px-3 py-1 text-xs transition-colors cursor-pointer",
+                                show(f.key)
+                                    ? "border-[var(--forge-gold)]/60 bg-[var(--forge-gold)]/15 text-foreground"
+                                    : "border-border text-muted-foreground hover:text-foreground",
+                            )}
+                        >
+                            {f.label}
+                        </button>
+                    ))}
+                </div>
                 {/* ── Dossier: identity rail + narrative ── */}
                 <div className="grid lg:grid-cols-[280px_minmax(0,1fr)] gap-8 items-start">
                     {/* Identity rail */}
@@ -198,6 +254,17 @@ export function CharacterDetailContent({
                                 {character.age && <VitalRow label="อายุ" value={character.age} />}
                                 {character.gender && <VitalRow label="เพศ" value={character.gender} />}
                                 {character.species && <VitalRow label="เผ่าพันธุ์" value={character.species} />}
+                            </div>
+                            <div className="mt-3 space-y-1.5">
+                                {["ตัวตน", "ร่างกาย", "สังคม", "การพูด"].map((label, i) => (
+                                    <div key={label} className="flex items-center gap-2">
+                                        <span className="w-14 font-technical text-[9px] text-muted-foreground">{label}</span>
+                                        <div className="h-1 flex-1 bg-muted overflow-hidden">
+                                            <div className="h-full bg-[var(--forge-gold)]" style={{ width: `${completeness[i]}%` }} />
+                                        </div>
+                                        <span className="w-8 text-right font-technical text-[9px] tabular-nums text-muted-foreground">{completeness[i]}%</span>
+                                    </div>
+                                ))}
                             </div>
                         </div>
 
@@ -242,6 +309,32 @@ export function CharacterDetailContent({
 
                     {/* Narrative column */}
                     <div className="space-y-8 min-w-0">
+                        {show("basic") && (
+                            <Section icon={<User className="w-3 h-3" />} title="ข้อมูลพื้นฐาน" meta="กดที่ช่องเพื่อเขียน">
+                                <ProfileSection character={character} fieldDefs={fieldDefs} />
+                            </Section>
+                        )}
+                        {show("psych") && (
+                            <Section icon={<Flame className="w-3 h-3" />} title="บุคลิกภาพ" meta="Big Five · MBTI · Enneagram">
+                                <PsychSection character={character} />
+                            </Section>
+                        )}
+                        {show("motive") && (
+                            <Section icon={<Target className="w-3 h-3" />} title="แรงจูงใจ">
+                                <MotiveSection character={character} />
+                            </Section>
+                        )}
+                        {show("arc") && (
+                            <Section icon={<Compass className="w-3 h-3" />} title="พัฒนาการ">
+                                <ArcSection character={character} chapters={chapters} />
+                            </Section>
+                        )}
+                        {show("narration") && (
+                            <Section icon={<BookOpen className="w-3 h-3" />} title="การเล่าเรื่อง">
+                                <NarrationSection character={character} chapters={chapters} />
+                            </Section>
+                        )}
+                        {show("story") && (<>
                         {character.description && (
                             <Section icon={<BookOpen className="w-3 h-3" />} title="สรุป">
                                 <FormattedTextSection text={character.description} className="text-[15px] leading-relaxed" />
@@ -312,20 +405,26 @@ export function CharacterDetailContent({
                             </div>
                         )}
 
+                        </>)}
+
                         {/* Relationships — core dossier content */}
+                        {show("relations") && (
                         <Section icon={<Users className="w-3 h-3" />} title="ความสัมพันธ์">
                             <CharacterRelationships characterId={character.id} novelId={novelId} />
                         </Section>
+                        )}
 
                         {/* Life events — the "experience" timeline */}
+                        {show("events") && (
                         <Section icon={<Calendar className="w-3 h-3" />} title="เหตุการณ์สำคัญ" meta="ไทม์ไลน์ตามบท">
                             <CharacterLifeEvents characterId={character.id} novelId={novelId} />
                         </Section>
+                        )}
                     </div>
                 </div>
 
                 {/* ── Full-width workbench band (interactive tools) ── */}
-                <div className="mt-14 space-y-12">
+                {show("tools") && <div className="mt-14 space-y-12">
                     <Section icon={<Zap className="w-3 h-3" />} title="จัดการพลัง">
                         <CharacterPowerManager characterId={character.id} novelId={novelId} />
                     </Section>
@@ -353,7 +452,7 @@ export function CharacterDetailContent({
                             ideas={ideas}
                         />
                     </Section>
-                </div>
+                </div>}
             </div>
 
             <CharacterSheet

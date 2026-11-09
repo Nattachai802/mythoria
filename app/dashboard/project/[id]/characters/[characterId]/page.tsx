@@ -2,6 +2,7 @@ import { getCharacterById } from "@/server/character";
 import { getNovelByIdSimple } from "@/server/novel";
 import { getIdeasByNovelId } from "@/server/idea";
 import { getCharacterPowers } from "@/server/character-power";
+import { getCharacterFieldDefs, getChapterOptions } from "@/server/character-field";
 import { notFound } from "next/navigation";
 import { CharacterDetailContent } from "@/components/project/character/character-detail-content";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
@@ -18,11 +19,13 @@ export default async function CharacterDetailPage({
 }: CharacterDetailPageProps) {
     const { id: novelId, characterId } = await params;
 
-    const [result, novelResult, ideasResult, powersResult] = await Promise.all([
+    const [result, novelResult, ideasResult, powersResult, fieldsResult, chaptersResult] = await Promise.all([
         getCharacterById(characterId),
         getNovelByIdSimple(novelId),
         getIdeasByNovelId(novelId),
         getCharacterPowers(characterId),
+        getCharacterFieldDefs(novelId),
+        getChapterOptions(novelId),
     ]);
 
     if (!result.success || !result.data) {
@@ -51,6 +54,8 @@ export default async function CharacterDetailPage({
                 novelId={novelId}
                 ideas={ideas}
                 powers={powers}
+                fieldDefs={fieldsResult.success ? fieldsResult.data ?? [] : []}
+                chapters={chaptersResult.data ?? []}
             />
         </div>
     );

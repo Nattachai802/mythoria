@@ -1,5 +1,6 @@
-import { pgTable, text, timestamp, boolean, integer, jsonb, index, uniqueIndex, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, integer, jsonb, index, uniqueIndex, foreignKey, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
+import type { CharacterProfile, CharacterPsych, CharacterMotive, CharacterArc, CharacterNarration, CharacterCustomValues } from "@/lib/character-profile";
 
 // ============================================
 // AUTHENTICATION TABLES
@@ -156,6 +157,13 @@ export const characters = pgTable("characters", {
   strengths: text("strengths"),
   weaknesses: text("weaknesses"),
   aliases: jsonb("aliases"), // Thai names and nicknames
+  // Character Design v2 — โครงสร้างและ validation อยู่ที่ lib/character-profile.ts (null = ยังไม่มีข้อมูล)
+  profile: jsonb("profile").$type<CharacterProfile>(),
+  psych: jsonb("psych").$type<CharacterPsych>(),
+  motive: jsonb("motive").$type<CharacterMotive>(),
+  arc: jsonb("arc").$type<CharacterArc>(),
+  narration: jsonb("narration").$type<CharacterNarration>(),
+  customValues: jsonb("custom_values").$type<CharacterCustomValues>(), // { [character_field_defs.id]: value }
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()
@@ -163,6 +171,26 @@ export const characters = pgTable("characters", {
     .notNull(),
 }, (table) => ({
   novelIdIdx: index("characters_novel_id_idx").on(table.novelId),
+}));
+
+// นิยาม field ที่ผู้เขียนตั้งเองระดับนิยาย (เช่น "ธาตุประจำตัว") — ค่าของแต่ละตัวละครอยู่ที่ characters.custom_values
+export const characterFieldDefs = pgTable("character_field_defs", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  novelId: text("novel_id")
+    .notNull()
+    .references(() => novels.id, { onDelete: "cascade" }),
+  label: text("label").notNull(),
+  type: text("type").notNull().default("text"), // text | number | select
+  options: jsonb("options").$type<string[]>(), // สำหรับ type=select
+  group: text("group"),
+  position: integer("position").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+}, (table) => ({
+  novelIdIdx: index("character_field_defs_novel_id_idx").on(table.novelId),
 }));
 
 export const characterRelationships = pgTable("character_relationships", {
@@ -195,9 +223,7 @@ export const characterRelationships = pgTable("character_relationships", {
 // Relationship History - ติดตามการเปลี่ยนแปลงความสัมพันธ์ตาม chapter
 export const relationshipHistory = pgTable("relationship_history", {
   id: text("id").primaryKey().default(sql`gen_random_uuid()`),
-  relationshipId: text("relationship_id")
-    .notNull()
-    .references(() => characterRelationships.id, { onDelete: "cascade" }),
+  relationshipId: text("relationship_id").notNull(), // FK ตั้งชื่อเองด้านล่าง
   chapterId: text("chapter_id")
     .references(() => chapters.id, { onDelete: "set null" }),
   novelId: text("novel_id")
@@ -209,6 +235,12 @@ export const relationshipHistory = pgTable("relationship_history", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   novelIdIdx: index("relationship_history_novel_id_idx").on(table.novelId),
+  // ชื่ออัตโนมัติยาว 67 ตัว Postgres ตัดเหลือ 63 ทำให้ db:push สั่ง drop/add ทุกรอบ — ใช้ชื่อเดียวกับที่อยู่ใน DB จริง
+  relationshipFk: foreignKey({
+    name: "relationship_history_relationship_id_character_relationships_id",
+    columns: [table.relationshipId],
+    foreignColumns: [characterRelationships.id],
+  }).onDelete("cascade"),
 }));
 
 // Character Life Events - เหตุการณ์สำคัญในชีวิตตัวละคร
@@ -1655,6 +1687,13 @@ export const characterRelations = relations(characters, ({ one, many }) => ({
   designElements: many(characterDesignElements),
 }));
 
+export const characterFieldDefRelations = relations(characterFieldDefs, ({ one }) => ({
+  novel: one(novels, {
+    fields: [characterFieldDefs.novelId],
+    references: [novels.id],
+  }),
+}));
+
 export const characterDesignElementRelations = relations(characterDesignElements, ({ one }) => ({
   character: one(characters, {
     fields: [characterDesignElements.characterId],
@@ -2289,6 +2328,7 @@ export type Novel = typeof novels.$inferSelect;
 
 export type Chapter = typeof chapters.$inferSelect;
 export type Character = typeof characters.$inferSelect;
+export type CharacterFieldDef = typeof characterFieldDefs.$inferSelect;
 export type Location = typeof locations.$inferSelect;
 export type LocationConnection = typeof locationConnections.$inferSelect;
 export type TimelineEvent = typeof timelineEvents.$inferSelect;
