@@ -223,6 +223,19 @@ export const AI_FEATURES: Record<string, AiFeatureDef> = {
         ],
         defaultDailyLimit: 150,
     },
+    "mbti-suggest": {
+        key: "mbti-suggest",
+        label: "ช่วยหา MBTI ตัวละคร",
+        description: "ตอบคำถามสถานการณ์ 12 ข้อในฐานะตัวละครจากภาพรวม/จิตใจที่ผู้เขียนเขียน พร้อมหลักฐาน — ข้อที่ไม่มีหลักฐานให้ผู้เขียนตอบเอง",
+        // เทียบ 8 โมเดลบน Story2Personality (2026-11): deepseek-v4-flash แม่นสุด/ถูกสุดแต่ช้า, gpt-oss-120b บน groq เร็ว+ฟรีแต่ rate limit ต่ำ
+        chain: [
+            // maxTokens เผื่อโหมดคิดของ deepseek (~3.5k token) — 1500 เคยทำให้คำตอบโดนตัดเหลือว่าง
+            { provider: "openrouter", model: "deepseek/deepseek-v4-flash", temperature: 0.2, maxTokens: 8000 },
+            { provider: "groq", model: "openai/gpt-oss-120b", temperature: 0.2, maxTokens: 8000 },
+            { provider: "gemini", model: GEMINI_MODEL, temperature: 0.2, maxTokens: 8000 },
+        ],
+        defaultDailyLimit: 50,
+    },
     "lore-extractor": {
         key: "lore-extractor",
         label: "สกัด Entity จาก Lore (Background)",
