@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { useSection } from "./use-section";
 import { MbtiSuggestCard, BigFiveSuggestCard, EnneagramSuggestCard, CoherencePanel } from "./mbti-suggest-card";
 import { SaveBadge } from "./profile-section";
+import { ENN_DETAILS } from "@/lib/enneagram-suggest";
 import { ChipPicker, ScaleBar, BipolarBar, ThinBar, TextBlock } from "./inline-field";
 
 type BigFive = NonNullable<CharacterPsych["bigFive"]>;
@@ -109,12 +110,12 @@ export function PsychSection({ character }: { character: Character }) {
                         <input aria-label="ชื่อลักษณะ" placeholder="เช่น ไม่ไว้ใจใคร" value={f.name}
                             onChange={(e) => setFacet(i, { name: e.target.value })}
                             className="bg-transparent text-sm font-medium outline-none border-b border-transparent hover:border-border focus:border-[var(--forge-gold)]" />
-                        <div className="flex rounded-full border border-border p-0.5 text-[10px]" role="radiogroup" aria-label="ทิศทาง">
+                        <div className="flex text-[10px]" role="radiogroup" aria-label="ทิศทาง">
                             {(["low", "high"] as const).map((dir) => (
                                 <button key={dir} type="button" role="radio" aria-checked={f.direction === dir}
                                     onClick={() => setFacet(i, { direction: f.direction === dir ? undefined : dir })}
-                                    className={cn("rounded-full px-2 py-0.5 transition-colors duration-200 cursor-pointer",
-                                        f.direction === dir ? "bg-[var(--forge-gold)]/20 text-foreground" : "text-muted-foreground hover:text-foreground")}>
+                                    className={cn("chamfered-sm border px-2.5 py-0.5 transition-colors duration-200 cursor-pointer",
+                                        f.direction === dir ? "bg-[var(--forge-gold)]/80 border-[var(--forge-gold)] text-background" : "border-border text-muted-foreground hover:border-[var(--forge-gold)]/60")}>
                                     {dir === "low" ? "ต่ำ" : "สูง"}
                                 </button>
                             ))}
@@ -170,12 +171,12 @@ export function PsychSection({ character }: { character: Character }) {
                         <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">Enneagram</span>
                         <span className="text-sm">{enn ? `${enn.type}${enn.wing ? `w${enn.wing}` : ""} · ${ENNEAGRAM[enn.type]}` : "—"}</span>
                     </div>
-                    <div className="flex justify-between gap-1" role="radiogroup" aria-label="Enneagram type">
+                    <div className="flex gap-1" role="radiogroup" aria-label="Enneagram type">
                         {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
                             <button key={n} type="button" role="radio" aria-checked={enn?.type === n} title={ENNEAGRAM[n]} aria-label={`${n} ${ENNEAGRAM[n]}`}
                                 onClick={() => set("enneagram", enn?.type === n ? undefined : { type: n })}
-                                className={cn("w-7 h-7 rounded-full border text-xs tabular-nums cursor-pointer transition-[color,background-color,border-color,transform] duration-200 active:scale-90 motion-reduce:active:scale-100",
-                                    enn?.type === n ? "border-[var(--forge-gold)] bg-[var(--forge-gold)] text-background font-semibold" : "border-border text-muted-foreground hover:border-[var(--forge-gold)]/60 hover:text-foreground")}>
+                                className={cn("h-7 flex-1 chamfered-sm border text-xs tabular-nums cursor-pointer transition-[color,background-color,border-color,transform] duration-200 active:scale-95 motion-reduce:active:scale-100",
+                                    enn?.type === n ? "border-[var(--forge-gold)] bg-[var(--forge-gold)]/80 text-background font-semibold" : "border-border text-muted-foreground hover:border-[var(--forge-gold)]/60 hover:text-foreground")}>
                                 {n}
                             </button>
                         ))}
@@ -186,13 +187,27 @@ export function PsychSection({ character }: { character: Character }) {
                             {[enn.type === 1 ? 9 : enn.type - 1, enn.type === 9 ? 1 : enn.type + 1].map((w) => (
                                 <button key={w} type="button" aria-pressed={enn.wing === w}
                                     onClick={() => set("enneagram", { type: enn.type, wing: enn.wing === w ? undefined : w })}
-                                    className={cn("rounded-full border px-2.5 py-0.5 transition-colors duration-200 cursor-pointer",
-                                        enn.wing === w ? "border-[var(--forge-gold)] bg-[var(--forge-gold)]/15 text-foreground" : "border-border hover:text-foreground")}>
+                                    className={cn("chamfered-sm border px-2.5 py-0.5 transition-colors duration-200 cursor-pointer",
+                                        enn.wing === w ? "border-[var(--forge-gold)] bg-[var(--forge-gold)]/80 text-background" : "border-border hover:border-[var(--forge-gold)]/60 hover:text-foreground")}>
                                     w{w} · {ENNEAGRAM[w]}
                                 </button>
                             ))}
                         </div>
                     )}
+                    {enn && (() => {
+                        const d = ENN_DETAILS[enn.type];
+                        const rows: [string, string][] = [["กลัวลึก ๆ", d.fear], ["ปรารถนาลึก ๆ", d.desire], ["ตอนเครียด", d.stress], ["ตอนมั่นคง", d.secure], ["ใช้ในฉาก", d.scene]];
+                        if (enn.wing) rows.push([`ปีก w${enn.wing}`, ENN_DETAILS[enn.wing].asWing]);
+                        return (
+                            <dl className="mt-3 border-l-2 border-[var(--forge-gold)] pl-3 py-1 space-y-1 text-xs animate-in fade-in duration-200 motion-reduce:animate-none">
+                                {rows.map(([k, v]) => (
+                                    <div key={k} className="grid grid-cols-[88px_1fr] gap-2">
+                                        <dt className="text-muted-foreground">{k}</dt><dd>{v}</dd>
+                                    </div>
+                                ))}
+                            </dl>
+                        );
+                    })()}
                     <EnneagramSuggestCard characterId={character.id} hasValue={!!enn}
                         onApply={(t) => set("enneagram", { type: t, wing: enn?.type === t ? enn.wing : undefined })} />
                     <p className="mt-2 text-[10px] text-muted-foreground">Enneagram เป็นแนวโน้มทางเรื่องเล่า งานวิจัยรองรับน้อยกว่า Big Five มาก</p>

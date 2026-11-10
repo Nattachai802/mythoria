@@ -178,34 +178,20 @@ export function ScaleBar({ label, value, onChange, lowLabel, highLabel }: {
     lowLabel?: string;
     highLabel?: string;
 }) {
-    const set = value !== undefined;
-    const pct = set ? ((value - 1) / 4) * 100 : 0;
     return (
         <div className="py-2">
             <div className="flex items-baseline justify-between gap-3 mb-1.5">
                 <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">{label}</span>
-                <span className="flex items-center gap-1.5">
-                    <span className={cn("font-display text-sm tabular-nums", !set && "text-muted-foreground/50 text-[10px] font-sans")}>{set ? value : "ยังไม่ตั้ง"}</span>
-                    {set && (
-                        <button type="button" aria-label={`ล้างค่า ${label}`} onClick={() => onChange(undefined)}
-                            className="text-muted-foreground/60 hover:text-foreground text-xs leading-none cursor-pointer">×</button>
-                    )}
-                </span>
+                <ClearValue label={label} value={value} onClear={() => onChange(undefined)} />
             </div>
-            <div className="relative h-5 flex items-center">
-                <div className="absolute inset-x-0 h-1 rounded-full bg-muted" />
-                {set && <div className="absolute left-0 h-1 rounded-full bg-[var(--forge-gold)]/40 transition-[width] duration-200 ease-out" style={{ width: `${pct}%` }} />}
-                {[0, 25, 50, 75, 100].map((t) => (
-                    <span key={t} className="absolute w-px h-2 bg-border" style={{ left: `${t}%` }} aria-hidden />
+            <div className="flex gap-1" role="radiogroup" aria-label={label}>
+                {[1, 2, 3, 4, 5].map((n) => (
+                    <button key={n} type="button" role="radio" aria-checked={value === n} aria-label={`${label} ${n}`}
+                        onClick={() => onChange(value === n ? undefined : n)}
+                        className={cn(CELL, "h-6 flex-1 text-[10px] tabular-nums", value !== undefined && n <= value ? CELL_ON : CELL_OFF)}>
+                        {n}
+                    </button>
                 ))}
-                {set && (
-                    <span className="absolute w-3.5 h-3.5 -ml-[7px] rounded-full bg-[var(--forge-gold)] ring-2 ring-background shadow-sm transition-[left] duration-200 ease-out pointer-events-none"
-                        style={{ left: `${pct}%` }} aria-hidden />
-                )}
-                <input type="range" min={1} max={5} step={1} aria-label={label} value={value ?? 3}
-                    onChange={(e) => onChange(Number(e.target.value))}
-                    onClick={(e) => { if (!set) onChange(Number((e.target as HTMLInputElement).value)); }}
-                    className="absolute inset-0 w-full opacity-0 cursor-pointer" />
             </div>
             {(lowLabel || highLabel) && (
                 <div className="flex justify-between mt-0.5 text-[10px] text-muted-foreground/70">
@@ -216,9 +202,27 @@ export function ScaleBar({ label, value, onChange, lowLabel, highLabel }: {
     );
 }
 
+const CELL = "chamfered-sm border transition-[color,background-color,border-color,transform] duration-200 active:scale-95 motion-reduce:active:scale-100 cursor-pointer";
+const CELL_ON = "bg-[var(--forge-gold)]/80 border-[var(--forge-gold)] text-background";
+const CELL_OFF = "border-border text-muted-foreground hover:border-[var(--forge-gold)]/60";
+
+function ClearValue({ label, value, onClear }: { label: string; value: number | undefined; onClear: () => void }) {
+    if (value === undefined) return <span className="text-[10px] text-muted-foreground/50">ยังไม่ตั้ง</span>;
+    return (
+        <span className="flex items-center gap-1.5">
+            <span className="font-display text-sm tabular-nums">{value}</span>
+            <button type="button" aria-label={`ล้างค่า ${label}`} onClick={onClear}
+                className="text-muted-foreground/60 hover:text-foreground text-xs leading-none cursor-pointer">×</button>
+        </span>
+    );
+}
+
+/** ช่องเหลี่ยม 10 ช่อง = 0–100 ทีละ 10 · ค่าเดิมที่ไม่ลงตัวปัดเข้าช่องใกล้สุด */
+const STEPS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+
 /**
- * รางบางสองขั้ว 0–100 (<50 = ฝั่งซ้าย) — ใช้กับแกน MBTI · ขีดกลาง = ก้ำกึ่ง
- * ตัวอักษรฝั่งที่เอียงไปเป็นสีทอง · ยังไม่ตั้ง = รางจาง ไม่มีจุด
+ * แกน MBTI 0–100 (<50 = ฝั่งซ้าย) — ซ้าย 5 ช่อง | เส้นกลาง | ขวา 5 ช่อง ระบายจากกลางออกไปฝั่งที่เอียง
+ * ช่องซ้าย i (0=ริมสุด) = ค่า i*10 · ช่องขวา i = 60+i*10
  */
 export function BipolarBar({ left, right, value, onChange, label }: {
     left: string;
@@ -228,25 +232,22 @@ export function BipolarBar({ left, right, value, onChange, label }: {
     label: string;
 }) {
     const set = value !== undefined;
-    const v = value ?? 50;
-    const lean = !set ? null : v < 50 ? "L" : "R";
+    const v = Math.round((value ?? 50) / 10) * 10;
+    const lean = !set || v === 50 ? null : v < 50 ? "L" : "R";
+    const leftVals = [0, 10, 20, 30, 40];
+    const rightVals = [60, 70, 80, 90, 100];
+    const cell = (cv: number, on: boolean) => (
+        <button key={cv} type="button" aria-label={`${label} ${cv}`} aria-pressed={set && v === cv}
+            onClick={() => onChange(set && v === cv ? undefined : cv)}
+            className={cn(CELL, "h-3.5 flex-1", on ? CELL_ON : CELL_OFF)} />
+    );
     return (
         <div className="flex items-center gap-2.5 py-1.5">
             <span className={cn("w-4 text-center text-xs font-technical transition-colors duration-200", lean === "L" ? "text-[var(--forge-amber)] font-bold" : "text-muted-foreground")}>{left}</span>
-            <div className="relative flex-1 h-5 flex items-center">
-                <div className={cn("absolute inset-x-0 h-1 rounded-full bg-muted", !set && "opacity-60")} />
-                <span className="absolute left-1/2 w-px h-2.5 -ml-px bg-border" aria-hidden />
-                {set && (
-                    <>
-                        <div className="absolute h-1 rounded-full bg-[var(--forge-gold)]/40 transition-all duration-200 ease-out"
-                            style={v < 50 ? { left: `${v}%`, width: `${50 - v}%` } : { left: "50%", width: `${v - 50}%` }} />
-                        <span className="absolute w-3.5 h-3.5 -ml-[7px] rounded-full bg-[var(--forge-gold)] ring-2 ring-background shadow-sm transition-[left] duration-200 ease-out pointer-events-none"
-                            style={{ left: `${v}%` }} aria-hidden />
-                    </>
-                )}
-                <input type="range" min={0} max={100} aria-label={label} value={v}
-                    onChange={(e) => onChange(Number(e.target.value))}
-                    className="absolute inset-0 w-full opacity-0 cursor-pointer" />
+            <div className="flex flex-1 items-center gap-[3px]" role="group" aria-label={label}>
+                {leftVals.map((cv) => cell(cv, set && v < 50 && cv >= v))}
+                <span className="w-px h-4 mx-1 bg-border" aria-hidden />
+                {rightVals.map((cv) => cell(cv, set && v > 50 && cv <= v))}
             </div>
             <span className={cn("w-4 text-center text-xs font-technical transition-colors duration-200", lean === "R" ? "text-[var(--forge-amber)] font-bold" : "text-muted-foreground")}>{right}</span>
             {set
@@ -256,15 +257,15 @@ export function BipolarBar({ left, right, value, onChange, label }: {
     );
 }
 
-/** รางบางทางเดียว 0–100 (ความเข้มของ facet) */
+/** ความเข้มของ facet 0–100 — 10 ช่องเล็ก */
 export function ThinBar({ value, onChange, label }: { value: number; onChange: (v: number) => void; label: string }) {
     return (
-        <div className="relative h-5 flex items-center">
-            <div className="absolute inset-x-0 h-1 rounded-full bg-muted" />
-            <div className="absolute left-0 h-1 rounded-full bg-[var(--forge-gold)]/50 transition-[width] duration-200 ease-out" style={{ width: `${value}%` }} />
-            <span className="absolute w-3 h-3 -ml-1.5 rounded-full bg-[var(--forge-gold)] ring-2 ring-background pointer-events-none transition-[left] duration-200 ease-out" style={{ left: `${value}%` }} aria-hidden />
-            <input type="range" min={0} max={100} aria-label={label} value={value} onChange={(e) => onChange(Number(e.target.value))}
-                className="absolute inset-0 w-full opacity-0 cursor-pointer" />
+        <div className="flex items-center gap-[2px]" role="group" aria-label={label}>
+            {STEPS.map((cv) => (
+                <button key={cv} type="button" aria-label={`${label} ${cv}`} aria-pressed={value >= cv - 5 && value < cv + 5}
+                    onClick={() => onChange(cv)}
+                    className={cn(CELL, "h-2.5 flex-1", value >= cv - 5 ? CELL_ON : CELL_OFF)} />
+            ))}
         </div>
     );
 }
