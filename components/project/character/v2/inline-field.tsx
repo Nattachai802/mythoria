@@ -179,37 +179,42 @@ export function ScaleBar({ label, value, onChange, lowLabel, highLabel }: {
     highLabel?: string;
 }) {
     return (
-        <div className="py-2">
-            <div className="flex items-baseline justify-between gap-3 mb-1.5">
-                <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">{label}</span>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2.5">
+            <div className="flex-1 min-w-[10rem]">
+                <div className="font-technical text-[11px] tracking-[0.08em]">{label}</div>
+                {(lowLabel || highLabel) && <div className="text-[10px] text-muted-foreground/70 mt-0.5">{lowLabel} ↔ {highLabel}</div>}
+            </div>
+            <div className="flex items-center gap-3">
+                <div className="flex w-[200px] gap-[3px]" role="radiogroup" aria-label={label}>
+                    {[1, 2, 3, 4, 5].map((n) => (
+                        <Seg key={n} role="radio" checked={value === n} aria-label={`${label} ${n}`}
+                            tone={value === undefined || n > value ? "off" : n === value ? "on" : "dim"}
+                            onClick={() => onChange(value === n ? undefined : n)} />
+                    ))}
+                </div>
                 <ClearValue label={label} value={value} onClear={() => onChange(undefined)} />
             </div>
-            <div className="flex gap-1" role="radiogroup" aria-label={label}>
-                {[1, 2, 3, 4, 5].map((n) => (
-                    <button key={n} type="button" role="radio" aria-checked={value === n} aria-label={`${label} ${n}`}
-                        onClick={() => onChange(value === n ? undefined : n)}
-                        className={cn(CELL, "h-6 flex-1 text-[10px] tabular-nums", value !== undefined && n <= value ? CELL_ON : CELL_OFF)}>
-                        {n}
-                    </button>
-                ))}
-            </div>
-            {(lowLabel || highLabel) && (
-                <div className="flex justify-between mt-0.5 text-[10px] text-muted-foreground/70">
-                    <span>{lowLabel}</span><span>{highLabel}</span>
-                </div>
-            )}
         </div>
     );
 }
 
-const CELL = "chamfered-sm border transition-[color,background-color,border-color,transform] duration-200 active:scale-95 motion-reduce:active:scale-100 cursor-pointer";
-const CELL_ON = "bg-[var(--forge-gold)]/80 border-[var(--forge-gold)] text-background";
-const CELL_OFF = "border-border text-muted-foreground hover:border-[var(--forge-gold)]/60";
+/** ช่องเส้นบาง — ปุ่มสูง 16px ให้กดง่าย แต่เห็นเป็นเส้น 6px · on = ค่าที่เลือก, dim = ช่องก่อนหน้า */
+function Seg({ tone, checked, onClick, role, ...rest }: {
+    tone: "on" | "dim" | "off"; checked: boolean; onClick: () => void; role?: "radio"; "aria-label": string; className?: string;
+}) {
+    return (
+        <button type="button" role={role} aria-checked={role ? checked : undefined} aria-pressed={role ? undefined : checked}
+            onClick={onClick} aria-label={rest["aria-label"]} className={cn("group h-4 flex-1 flex items-center cursor-pointer", rest.className)}>
+            <span className={cn("block w-full h-1.5 chamfered-sm transition-colors duration-200",
+                tone === "on" ? "bg-[var(--forge-gold)]" : tone === "dim" ? "bg-[var(--forge-gold)]/45" : "bg-border group-hover:bg-[var(--forge-gold)]/30")} />
+        </button>
+    );
+}
 
 function ClearValue({ label, value, onClear }: { label: string; value: number | undefined; onClear: () => void }) {
-    if (value === undefined) return <span className="text-[10px] text-muted-foreground/50">ยังไม่ตั้ง</span>;
+    if (value === undefined) return <span className="w-[42px] text-right text-[10px] text-muted-foreground/50">ยังไม่ตั้ง</span>;
     return (
-        <span className="flex items-center gap-1.5">
+        <span className="w-[42px] flex items-center justify-end gap-1.5">
             <span className="font-display text-sm tabular-nums">{value}</span>
             <button type="button" aria-label={`ล้างค่า ${label}`} onClick={onClear}
                 className="text-muted-foreground/60 hover:text-foreground text-xs leading-none cursor-pointer">×</button>
@@ -237,9 +242,8 @@ export function BipolarBar({ left, right, value, onChange, label }: {
     const leftVals = [0, 10, 20, 30, 40];
     const rightVals = [60, 70, 80, 90, 100];
     const cell = (cv: number, on: boolean) => (
-        <button key={cv} type="button" aria-label={`${label} ${cv}`} aria-pressed={set && v === cv}
-            onClick={() => onChange(set && v === cv ? undefined : cv)}
-            className={cn(CELL, "h-3.5 flex-1", on ? CELL_ON : CELL_OFF)} />
+        <Seg key={cv} aria-label={`${label} ${cv}`} checked={set && v === cv} tone={!on ? "off" : cv === v ? "on" : "dim"}
+            onClick={() => onChange(set && v === cv ? undefined : cv)} />
     );
     return (
         <div className="flex items-center gap-2.5 py-1.5">
@@ -262,9 +266,8 @@ export function ThinBar({ value, onChange, label }: { value: number; onChange: (
     return (
         <div className="flex items-center gap-[2px]" role="group" aria-label={label}>
             {STEPS.map((cv) => (
-                <button key={cv} type="button" aria-label={`${label} ${cv}`} aria-pressed={value >= cv - 5 && value < cv + 5}
-                    onClick={() => onChange(cv)}
-                    className={cn(CELL, "h-2.5 flex-1", value >= cv - 5 ? CELL_ON : CELL_OFF)} />
+                <Seg key={cv} aria-label={`${label} ${cv}`} checked={value >= cv - 5 && value < cv + 5}
+                    tone={value < cv - 5 ? "off" : value < cv + 5 ? "on" : "dim"} onClick={() => onChange(cv)} />
             ))}
         </div>
     );
