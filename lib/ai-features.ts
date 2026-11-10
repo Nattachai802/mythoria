@@ -236,6 +236,18 @@ export const AI_FEATURES: Record<string, AiFeatureDef> = {
         ],
         defaultDailyLimit: 50,
     },
+    "bigfive-suggest": {
+        key: "bigfive-suggest",
+        label: "ช่วยหา Big Five ตัวละคร",
+        description: "ตอบคำถามสถานการณ์ 15 ข้อ (ด้านละ 3) ในฐานะตัวละครจากภาพรวม/จิตใจ — แยกจาก MBTI เพื่อตรวจความสอดประสานได้",
+        // ใช้ chain เดียวกับ mbti-suggest (ยังไม่ได้เทียบโมเดลแยกสำหรับ Big Five)
+        chain: [
+            { provider: "openrouter", model: "deepseek/deepseek-v4-flash", temperature: 0.2, maxTokens: 8000 },
+            { provider: "groq", model: "openai/gpt-oss-120b", temperature: 0.2, maxTokens: 8000 },
+            { provider: "gemini", model: GEMINI_MODEL, temperature: 0.2, maxTokens: 8000 },
+        ],
+        defaultDailyLimit: 50,
+    },
     "lore-extractor": {
         key: "lore-extractor",
         label: "สกัด Entity จาก Lore (Background)",

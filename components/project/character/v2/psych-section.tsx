@@ -6,7 +6,7 @@ import type { Character } from "@/db/schema";
 import type { CharacterPsych } from "@/lib/character-profile";
 import { cn } from "@/lib/utils";
 import { useSection } from "./use-section";
-import { MbtiSuggestCard } from "./mbti-suggest-card";
+import { MbtiSuggestCard, BigFiveSuggestCard, CoherencePanel } from "./mbti-suggest-card";
 import { SaveBadge } from "./profile-section";
 import { ChipPicker, LevelPicker, TextBlock } from "./inline-field";
 
@@ -95,6 +95,8 @@ export function PsychSection({ character }: { character: Character }) {
                     ))}
                 </div>
             </div>
+            <BigFiveSuggestCard characterId={character.id} hasValue={DOMAINS.some((d) => b5[d.key] !== undefined)}
+                onApply={(v) => set("bigFive", { ...b5, ...v })} />
 
             {/* Facets — ลายเซ็นของตัวละคร */}
             <div>
@@ -203,6 +205,7 @@ export function PsychSection({ character }: { character: Character }) {
             </div>
             <MbtiSuggestCard characterId={character.id} hasValue={!!mbtiCode}
                 onApply={(v) => set("mbti", { ...mbti, ...v })} />
+            <CoherencePanel mbti={mbti} bigFive={b5} />
         </div>
     );
 }

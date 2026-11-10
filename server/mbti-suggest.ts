@@ -1,6 +1,7 @@
 'use server';
 
-// ช่วยหา MBTI — อ่านภาพรวม + จิตใจ (มิติตัวละคร/แรงจูงใจเชิงลึก) ที่ผู้เขียนเขียน ให้ AI ตอบคำถามสถานการณ์พร้อมหลักฐาน
+// ช่วยหา MBTI / Big Five — อ่านภาพรวม + จิตใจ (มิติตัวละคร/แรงจูงใจเชิงลึก) ที่ผู้เขียนเขียน ให้ AI ตอบคำถามสถานการณ์พร้อมหลักฐาน
+// สองระบบเรียก AI แยกกัน (เอกเทศ) — ผลไปเทียบกันทีหลังด้วย checkCoherence ในโค้ด
 // ไม่เขียน DB — ผลอยู่ใน state ของหน้าจอ ผู้เขียนกด "ใช้" แล้วค่อยบันทึกผ่าน updateCharacterSection
 
 import { db } from "@/db/drizzle";
@@ -8,17 +9,32 @@ import { characters } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { callAi, logParseFailure, AiControlError } from "@/lib/ai-gateway";
 import { requireNovelAccess, authErrorMessage } from "@/lib/authz";
-import { MBTI_AI_SCHEMA, buildMbtiPrompt, verifyAnswers, type AiAnswer } from "@/lib/mbti-suggest";
+import { MBTI_AI_SCHEMA, MBTI_QUESTIONS, buildMbtiPrompt, verifyAnswers, type AiAnswer } from "@/lib/mbti-suggest";
+import { B5_AI_SCHEMA, B5_QUESTIONS, buildBigFivePrompt } from "@/lib/bigfive-suggest";
 import type { CharacterMotive } from "@/lib/character-profile";
 
 const MIN_TEXT = 80;      // สั้นกว่านี้ไม่มีอะไรให้ AI อ่าน → ให้ผู้เขียนตอบเองทั้งหมด (ไม่เสีย token)
 const MAX_FIELD = 3000;
 
-export type MbtiSuggestResult =
+export type SuggestResult =
     | { success: true; answers: Record<string, AiAnswer>; usedAi: boolean; notice?: string }
     | { success: false; error: string };
+/** @deprecated ชื่อเดิม */
+export type MbtiSuggestResult = SuggestResult;
 
-export async function suggestMbti(characterId: string): Promise<MbtiSuggestResult> {
+type Kind = {
+    feature: "mbti-suggest" | "bigfive-suggest";
+    questions: { id: string }[];
+    schema: object;
+    prompt: (name: string, source: string) => { system: string; prompt: string };
+    label: string;
+};
+const KINDS = {
+    mbti: { feature: "mbti-suggest", questions: MBTI_QUESTIONS, schema: MBTI_AI_SCHEMA, prompt: buildMbtiPrompt, label: "MBTI" },
+    bigfive: { feature: "bigfive-suggest", questions: B5_QUESTIONS, schema: B5_AI_SCHEMA, prompt: buildBigFivePrompt, label: "Big Five" },
+} satisfies Record<string, Kind>;
+
+async function suggest(characterId: string, kind: Kind): Promise<SuggestResult> {
     try {
         const [c] = await db.select().from(characters).where(eq(characters.id, characterId)).limit(1);
         if (!c) return { success: false, error: "ไม่พบตัวละคร" };
@@ -37,14 +53,14 @@ export async function suggestMbti(characterId: string): Promise<MbtiSuggestResul
             .map(([k, v]) => `[${k}]\n${v!.trim().slice(0, MAX_FIELD)}`)
             .join("\n\n");
 
-        const empty = verifyAnswers(null, "");
+        const empty = verifyAnswers(null, "", kind.questions);
         if (source.replace(/\[[^\]]+\]/g, "").trim().length < MIN_TEXT) {
             return { success: true, answers: empty, usedAi: false, notice: "ยังมีข้อมูลตัวละครน้อย — ตอบคำถามเองได้เลย" };
         }
 
         try {
-            const p = buildMbtiPrompt(c.name, source);
-            const resp = await callAi({ feature: "mbti-suggest", novelId: c.novelId, system: p.system, prompt: p.prompt, responseSchema: MBTI_AI_SCHEMA });
+            const p = kind.prompt(c.name, source);
+            const resp = await callAi({ feature: kind.feature, novelId: c.novelId, system: p.system, prompt: p.prompt, responseSchema: kind.schema });
             let raw: unknown;
             try {
                 const t = resp.text.trim();
@@ -53,14 +69,17 @@ export async function suggestMbti(characterId: string): Promise<MbtiSuggestResul
                 await logParseFailure(resp.logId, resp.text);
                 return { success: true, answers: empty, usedAi: false, notice: "AI ตอบกลับผิดรูปแบบ — ตอบคำถามเองได้เลย" };
             }
-            return { success: true, answers: verifyAnswers(raw, source), usedAi: true };
+            return { success: true, answers: verifyAnswers(raw, source, kind.questions), usedAi: true };
         } catch (error) {
             // AI ล่ม/โควตาเต็ม — ฟีเจอร์ยังใช้ได้ในโหมดตอบเอง
             const msg = error instanceof AiControlError ? error.message : "AI ใช้งานไม่ได้ตอนนี้";
-            console.error("[MbtiSuggest] AI error:", error);
+            console.error(`[${kind.label}Suggest] AI error:`, error);
             return { success: true, answers: empty, usedAi: false, notice: `${msg} — ตอบคำถามเองได้เลย` };
         }
     } catch (error) {
-        return { success: false, error: authErrorMessage(error, "ช่วยหา MBTI ไม่สำเร็จ") };
+        return { success: false, error: authErrorMessage(error, `ช่วยหา ${kind.label} ไม่สำเร็จ`) };
     }
 }
+
+export async function suggestMbti(characterId: string) { return suggest(characterId, KINDS.mbti); }
+export async function suggestBigFive(characterId: string) { return suggest(characterId, KINDS.bigfive); }

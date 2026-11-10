@@ -69,20 +69,20 @@ const norm = (s: string) => s.replace(/[\s"'“”‘’.,!?…\-—]/g, "").toL
  * ตรวจคำตอบ AI: เก็บตัวเลือกไว้เสมอ (ผู้ใช้อยากให้ AI ตอบให้ครบ) แต่ประโยคหลักฐานต้องอยู่ในข้อความจริง
  * (เทียบแบบตัดช่องว่าง/เครื่องหมาย) — ไม่เจอ = ล้าง quote → หน้าจอแสดงเป็น "AI อนุมาน" ไม่มีจุดทอง
  */
-export function verifyAnswers(raw: unknown, sourceText: string): Record<string, AiAnswer> {
+export function verifyAnswers(raw: unknown, sourceText: string, questions: { id: string }[] = MBTI_QUESTIONS): Record<string, AiAnswer> {
     const out: Record<string, AiAnswer> = {};
     const src = norm(sourceText);
     const list = Array.isArray((raw as { answers?: unknown })?.answers) ? (raw as { answers: unknown[] }).answers : [];
     for (const item of list) {
         const it = item as Partial<AiAnswer>;
-        const q = MBTI_QUESTIONS.find((x) => x.id === it.id);
+        const q = questions.find((x) => x.id === it.id);
         if (!q || out[q.id]) continue;
         const quote = typeof it.quote === "string" ? it.quote.trim() : "";
         if (it.choice !== "a" && it.choice !== "b") { out[q.id] = { id: q.id, choice: null, quote: "" }; continue; }
         const real = norm(quote).length >= 6 && src.includes(norm(quote));
         out[q.id] = { id: q.id, choice: it.choice, quote: real ? quote : "" };
     }
-    for (const q of MBTI_QUESTIONS) out[q.id] ??= { id: q.id, choice: null, quote: "" };
+    for (const q of questions) out[q.id] ??= { id: q.id, choice: null, quote: "" };
     return out;
 }
 
@@ -113,8 +113,8 @@ export function toSliders(axes: ReturnType<typeof scoreAxes>): Partial<Record<Mb
     return out;
 }
 
-/** schema ให้ AI ตอบ — 12 ข้อ เลือก a/b หรือ null พร้อมประโยคหลักฐาน */
-export const MBTI_AI_SCHEMA = {
+/** schema ให้ AI ตอบชุดคำถาม a/b (ใช้ร่วม MBTI/Big Five) */
+export const answerSchema = (ids: string[]) => ({
     type: "object",
     properties: {
         answers: {
@@ -122,7 +122,7 @@ export const MBTI_AI_SCHEMA = {
             items: {
                 type: "object",
                 properties: {
-                    id: { type: "string", enum: MBTI_QUESTIONS.map((q) => q.id) },
+                    id: { type: "string", enum: ids },
                     choice: { type: "string", enum: ["a", "b"] }, // บังคับเลือก — ผู้ใช้ไม่อยากให้เว้นว่าง
                     quote: { type: "string" },
                 },
@@ -133,7 +133,8 @@ export const MBTI_AI_SCHEMA = {
     },
     required: ["answers"],
     additionalProperties: false,
-};
+});
+export const MBTI_AI_SCHEMA = answerSchema(MBTI_QUESTIONS.map((q) => q.id));
 
 export function buildMbtiPrompt(name: string, sourceText: string) {
     const qs = MBTI_QUESTIONS.map((q) => `${q.id}: ${q.prompt}\n  a) ${q.a.text}\n  b) ${q.b.text}`).join("\n");
