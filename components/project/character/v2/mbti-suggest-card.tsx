@@ -2,24 +2,32 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Sparkles, X, Check, AlertTriangle } from "lucide-react";
-import { suggestMbti, suggestBigFive, type SuggestResult } from "@/server/mbti-suggest";
-import { MBTI_QUESTIONS, scoreAxes, toSliders, type Choice, type MbtiAxis } from "@/lib/mbti-suggest";
+import { Sparkles, X, Check, AlertTriangle, ChevronDown } from "lucide-react";
+import { suggestMbti, suggestBigFive, suggestEnneagram, type SuggestResult } from "@/server/mbti-suggest";
+import { MBTI_QUESTIONS, AXES, scoreAxes, toSliders, type Choice, type MbtiAxis } from "@/lib/mbti-suggest";
 import { B5_QUESTIONS, TRAITS, scoreBigFive, checkCoherence, type Trait } from "@/lib/bigfive-suggest";
+import { ENN_QUESTIONS, ENN_NAMES, scoreEnneagram, type EnnType } from "@/lib/enneagram-suggest";
 import { cn } from "@/lib/utils";
 
-type Q = { id: string; prompt: string; a: { text: string }; b: { text: string } };
-type Choices = Record<string, Choice | null>;
+type Opt = { key: string; text: string };
+type Q = { id: string; prompt: string; options: Opt[] };
+type Choices = Record<string, string | null>;
+type Group = { key: string; label: string; ids: string[] };
+type GroupSummary = { result: string; split: boolean };
 
 /**
- * การ์ดคำถามสถานการณ์ (ใช้ร่วม MBTI / Big Five): AI ตอบให้ทุกข้อ — มีประโยคยืนยัน = จุดทอง, ไม่มี = "AI อนุมาน"
- * ผู้เขียนแก้ได้ทุกข้อ · state อยู่ในหน้าจอเท่านั้น จนกด "ใช้" · หน้าจอไม่โชว์ขั้ว/ตัวอักษรของตัวเลือก
+ * การ์ดคำถามสถานการณ์ (ใช้ร่วม MBTI / Big Five / Enneagram)
+ * แสดงผลสรุปเป็นแถวต่อแกน/ด้านก่อน — คำถามซ่อนไว้ กดแถวเพื่อกางดู/แก้ (เดิมกางทุกข้อพร้อมกัน รก)
+ * แถวที่ "ควรตรวจ" = ผลไม่ขาด หรือมีข้อที่ AI อนุมานโดยไม่มีประโยคยืนยัน
+ * state อยู่ในหน้าจอเท่านั้นจนกด "ใช้ค่านี้" · หน้าจอไม่โชว์ขั้ว/ตัวอักษร/เลข type ของตัวเลือก
  */
-function SuggestCard({ label, hasValue, questions, run, summary, onApply }: {
+function SuggestCard({ label, hasValue, questions, groups, run, groupSummary, summary, onApply }: {
     label: string;
     hasValue: boolean;
     questions: Q[];
+    groups: Group[];
     run: () => Promise<SuggestResult>;
+    groupSummary: (c: Choices, g: Group) => GroupSummary;
     summary: (c: Choices) => { code: string; ready: number; total: number; hint: string };
     onApply: (c: Choices) => void;
 }) {
@@ -27,8 +35,9 @@ function SuggestCard({ label, hasValue, questions, run, summary, onApply }: {
     const [pending, start] = useTransition();
     const [choices, setChoices] = useState<Choices>({});
     const [quotes, setQuotes] = useState<Record<string, string>>({});
+    const [aiPicked, setAiPicked] = useState<Set<string>>(new Set());
+    const [expanded, setExpanded] = useState<string | null>(null);
     const [notice, setNotice] = useState<string>();
-    const [aiPicked, setAiPicked] = useState<Set<string>>(new Set()); // ข้อที่ AI เลือกให้ (ผู้ใช้กดเปลี่ยน = หลุดออก)
 
     const go = () => start(async () => {
         const res = await run();
@@ -39,9 +48,16 @@ function SuggestCard({ label, hasValue, questions, run, summary, onApply }: {
         setAiPicked(new Set(list.filter((a) => a.choice).map((a) => a.id)));
         const n = list.filter((a) => a.choice).length;
         const withQuote = list.filter((a) => a.choice && a.quote).length;
-        setNotice(res.notice ?? (n ? `AI ตอบให้ ${n} ข้อ (${withQuote} ข้อมีประโยคยืนยัน ที่เหลืออนุมานจากภาพรวม) — กดเปลี่ยนข้อไหนก็ได้ถ้าไม่ตรง` : "AI ตอบไม่ได้ตอนนี้ — ตอบคำถามเองได้เลย"));
+        setNotice(res.notice ?? (n ? `AI ตอบให้ ${n} ข้อ · ${withQuote} ข้อมีประโยคยืนยัน` : "AI ตอบไม่ได้ตอนนี้ — กดแต่ละแถวเพื่อตอบเอง"));
+        setExpanded(null);
         setOpen(true);
     });
+
+    const pick = (id: string, key: string) => {
+        setChoices((p) => ({ ...p, [id]: p[id] === key ? null : key }));
+        setQuotes((p) => ({ ...p, [id]: "" }));
+        setAiPicked((p) => { const n = new Set(p); n.delete(id); return n; });
+    };
 
     const sum = summary(choices);
 
@@ -54,57 +70,84 @@ function SuggestCard({ label, hasValue, questions, run, summary, onApply }: {
     );
 
     return (
-        <div className="mt-4 border-t border-border/60 pt-3 space-y-3 animate-in fade-in duration-200 motion-reduce:animate-none">
-            <div className="flex items-start justify-between gap-3">
-                <p className="text-xs text-muted-foreground" aria-live="polite">{notice}</p>
-                <button type="button" aria-label="ปิด" onClick={() => setOpen(false)} className="p-1 text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-3.5 h-3.5" /></button>
+        <div className="mt-3 chamfered-sm border border-border/70 animate-in fade-in slide-in-from-top-1 duration-200 motion-reduce:animate-none">
+            {/* หัวการ์ด: ผลรวม + ใช้ค่านี้ */}
+            <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-border/60">
+                <div className="min-w-0">
+                    <div className="flex items-baseline gap-2">
+                        <span className="font-display text-lg tabular-nums tracking-wider">{sum.code}</span>
+                        <span className="text-[11px] text-muted-foreground">{sum.ready === sum.total ? "ครบแล้ว" : sum.hint}</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground truncate" aria-live="polite">{notice}</p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                    <button type="button" disabled={sum.ready === 0}
+                        onClick={() => { onApply(choices); toast.success(sum.ready === sum.total ? `ใช้ ${label} นี้แล้ว` : `ใช้ ${sum.ready} ส่วนที่ได้แล้ว`); setOpen(false); }}
+                        className="chamfered-sm border border-[var(--forge-gold)] bg-[var(--forge-gold)]/15 px-3 py-1 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+                        ใช้ค่านี้
+                    </button>
+                    <button type="button" aria-label="ปิด" onClick={() => setOpen(false)} className="p-1.5 text-muted-foreground hover:text-foreground cursor-pointer"><X className="w-3.5 h-3.5" /></button>
+                </div>
             </div>
 
-            <ol className="space-y-3">
-                {questions.map((q, i) => (
-                    <li key={q.id} className="space-y-1.5">
-                        <div className="flex items-center gap-1.5 text-sm">
-                            <span className="font-technical text-[10px] tabular-nums text-muted-foreground">{i + 1}.</span>
-                            {q.prompt}
-                            {aiPicked.has(q.id) && choices[q.id] && !quotes[q.id] && (
-                                <span className="text-[10px] text-muted-foreground/70">· AI อนุมาน</span>
-                            )}
-                            {quotes[q.id] && choices[q.id] && (
-                                <span title={`AI เลือกจาก: “${quotes[q.id]}”`} aria-label={`AI เลือกจากข้อความ: ${quotes[q.id]}`}
-                                    className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--forge-gold)] cursor-help" tabIndex={0} />
+            {/* แถวสรุปต่อแกน/ด้าน — กดเพื่อกางคำถาม */}
+            <div className="divide-y divide-border/50">
+                {groups.map((g) => {
+                    const gs = groupSummary(choices, g);
+                    const inferred = g.ids.filter((id) => aiPicked.has(id) && choices[id] && !quotes[id]).length;
+                    const evidenced = g.ids.filter((id) => choices[id] && quotes[id]).length;
+                    const review = gs.split || inferred > 0;
+                    const isOpen = expanded === g.key;
+                    return (
+                        <div key={g.key}>
+                            <button type="button" aria-expanded={isOpen} onClick={() => setExpanded(isOpen ? null : g.key)}
+                                className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-muted/40 transition-colors duration-200 cursor-pointer">
+                                <span className="w-24 shrink-0 font-technical text-[9px] uppercase tracking-[0.12em] text-muted-foreground">{g.label}</span>
+                                <span className="font-display text-sm tabular-nums min-w-[2.5rem]">{gs.result}</span>
+                                <span className="flex-1 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                                    {evidenced > 0 && <span className="inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[var(--forge-gold)]" />{evidenced} มีหลักฐาน</span>}
+                                    {review && <span className="text-[var(--forge-amber)]">· ควรตรวจ</span>}
+                                </span>
+                                <ChevronDown className={cn("w-3.5 h-3.5 text-muted-foreground transition-transform duration-200", isOpen && "rotate-180")} />
+                            </button>
+                            {isOpen && (
+                                <ol className="px-3 pb-3 space-y-3 animate-in fade-in duration-150 motion-reduce:animate-none">
+                                    {g.ids.map((id) => {
+                                        const q = questions.find((x) => x.id === id)!;
+                                        return (
+                                            <li key={id} className="space-y-1.5">
+                                                <div className="flex items-center gap-1.5 text-xs">
+                                                    {q.prompt}
+                                                    {aiPicked.has(id) && choices[id] && !quotes[id] && <span className="text-[10px] text-muted-foreground/70">· AI อนุมาน</span>}
+                                                </div>
+                                                <div className={cn("grid gap-1.5", q.options.length === 2 ? "sm:grid-cols-2" : "sm:grid-cols-3")} role="radiogroup" aria-label={q.prompt}>
+                                                    {q.options.map((o) => (
+                                                        <button key={o.key} type="button" role="radio" aria-checked={choices[id] === o.key} onClick={() => pick(id, o.key)}
+                                                            className={cn("text-left chamfered-sm border px-2.5 py-1.5 text-[11px] leading-relaxed transition-[color,background-color,border-color,transform] duration-200 active:scale-[0.98] motion-reduce:active:scale-100 cursor-pointer",
+                                                                choices[id] === o.key ? "border-[var(--forge-gold)] bg-[var(--forge-gold)]/10 text-foreground" : "border-border text-muted-foreground hover:text-foreground")}>
+                                                            {o.text}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                {quotes[id] && choices[id] && (
+                                                    <p className="text-[11px] text-muted-foreground border-l-2 border-[var(--forge-gold)]/40 pl-2">“{quotes[id]}”</p>
+                                                )}
+                                            </li>
+                                        );
+                                    })}
+                                </ol>
                             )}
                         </div>
-                        <div className="grid sm:grid-cols-2 gap-1.5" role="radiogroup" aria-label={q.prompt}>
-                            {(["a", "b"] as const).map((c) => (
-                                <button key={c} type="button" role="radio" aria-checked={choices[q.id] === c}
-                                    onClick={() => { setChoices((p) => ({ ...p, [q.id]: p[q.id] === c ? null : c })); setQuotes((p) => ({ ...p, [q.id]: "" })); setAiPicked((p) => { const n = new Set(p); n.delete(q.id); return n; }); }}
-                                    className={cn("text-left chamfered-sm border px-2.5 py-1.5 text-xs leading-relaxed transition-[color,background-color,border-color,transform] duration-200 active:scale-[0.98] motion-reduce:active:scale-100 cursor-pointer",
-                                        choices[q.id] === c ? "border-[var(--forge-gold)] bg-[var(--forge-gold)]/10 text-foreground" : "border-border text-muted-foreground hover:text-foreground")}>
-                                    {q[c].text}
-                                </button>
-                            ))}
-                        </div>
-                        {quotes[q.id] && choices[q.id] && (
-                            <p className="text-[11px] text-muted-foreground border-l-2 border-[var(--forge-gold)]/40 pl-2">“{quotes[q.id]}”</p>
-                        )}
-                    </li>
-                ))}
-            </ol>
-
-            <div className="flex items-center justify-between gap-3 border-t border-border/60 pt-3">
-                <div>
-                    <span className="font-display text-xl tabular-nums tracking-wider">{sum.code}</span>
-                    <span className="ml-2 text-[11px] text-muted-foreground">{sum.ready === sum.total ? "ครบแล้ว" : sum.hint}</span>
-                </div>
-                <button type="button" disabled={sum.ready === 0}
-                    onClick={() => { onApply(choices); toast.success(sum.ready === sum.total ? `ใช้ ${label} นี้แล้ว` : `ใช้ ${sum.ready} ส่วนที่ได้แล้ว`); setOpen(false); }}
-                    className="chamfered-sm border border-[var(--forge-gold)] bg-[var(--forge-gold)]/15 px-3 py-1 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
-                    ใช้ค่านี้
-                </button>
+                    );
+                })}
             </div>
         </div>
     );
 }
+
+const abQs = (qs: { id: string; prompt: string; a: { text: string }; b: { text: string } }[]): Q[] =>
+    qs.map((q) => ({ id: q.id, prompt: q.prompt, options: [{ key: "a", text: q.a.text }, { key: "b", text: q.b.text }] }));
+const asAB = (c: Choices) => c as Record<string, Choice | null>;
 
 /** MBTI 12 ข้อ — แต่ละแกนได้ตัวอักษรเมื่อตอบไปทางเดียวกัน 2 ใน 3 */
 export function MbtiSuggestCard({ characterId, hasValue, onApply }: {
@@ -112,14 +155,19 @@ export function MbtiSuggestCard({ characterId, hasValue, onApply }: {
     hasValue: boolean;
     onApply: (values: Partial<Record<MbtiAxis, number>>) => void;
 }) {
+    const groups = AXES.map((a) => ({ key: a.axis, label: `${a.left} / ${a.right}`, ids: MBTI_QUESTIONS.filter((q) => q.axis === a.axis).map((q) => q.id) }));
     return (
-        <SuggestCard label="MBTI" hasValue={hasValue} questions={MBTI_QUESTIONS} run={() => suggestMbti(characterId)}
+        <SuggestCard label="MBTI" hasValue={hasValue} questions={abQs(MBTI_QUESTIONS)} groups={groups} run={() => suggestMbti(characterId)}
+            groupSummary={(c, g) => {
+                const a = scoreAxes(asAB(c)).find((x) => x.axis === g.key)!;
+                return { result: a.letter ?? "?", split: !a.letter || Math.max(a.left, a.right) < 3 };
+            }}
             summary={(c) => {
-                const axes = scoreAxes(c);
+                const axes = scoreAxes(asAB(c));
                 return { code: axes.map((a) => a.letter ?? "?").join(""), ready: axes.filter((a) => a.letter).length, total: 4,
                     hint: "แต่ละแกนต้องตอบไปทางเดียวกัน 2 ใน 3 ข้อ" };
             }}
-            onApply={(c) => onApply(toSliders(scoreAxes(c)))} />
+            onApply={(c) => onApply(toSliders(scoreAxes(asAB(c))))} />
     );
 }
 
@@ -129,14 +177,50 @@ export function BigFiveSuggestCard({ characterId, hasValue, onApply }: {
     hasValue: boolean;
     onApply: (values: Partial<Record<Trait, number>>) => void;
 }) {
+    const groups = TRAITS.map((t) => ({ key: t.key, label: `${t.key} · ${t.label}`, ids: B5_QUESTIONS.filter((q) => q.trait === t.key).map((q) => q.id) }));
     return (
-        <SuggestCard label="Big Five" hasValue={hasValue} questions={B5_QUESTIONS} run={() => suggestBigFive(characterId)}
+        <SuggestCard label="Big Five" hasValue={hasValue} questions={abQs(B5_QUESTIONS)} groups={groups} run={() => suggestBigFive(characterId)}
+            groupSummary={(c, g) => {
+                const s = scoreBigFive(asAB(c)).find((x) => x.trait === g.key)!;
+                return { result: s.level ? String(s.level) : "?", split: !s.level || s.high === 1 || s.high === 2 };
+            }}
             summary={(c) => {
-                const s = scoreBigFive(c);
+                const s = scoreBigFive(asAB(c));
                 return { code: s.map((x) => `${x.trait}${x.level ?? "?"}`).join(" "), ready: s.filter((x) => x.level).length, total: 5,
                     hint: "แต่ละด้านต้องตอบครบ 3 ข้อ" };
             }}
-            onApply={(c) => onApply(Object.fromEntries(scoreBigFive(c).filter((x) => x.level).map((x) => [x.trait, x.level!])))} />
+            onApply={(c) => onApply(Object.fromEntries(scoreBigFive(asAB(c)).filter((x) => x.level).map((x) => [x.trait, x.level!])))} />
+    );
+}
+
+/** Enneagram 6 ข้อ × 9 ตัวเลือก — แนวโน้ม (≥3 เสียงและนำชัด) · ไม่คำนวณปีก */
+export function EnneagramSuggestCard({ characterId, hasValue, onApply }: {
+    characterId: string;
+    hasValue: boolean;
+    onApply: (type: EnnType) => void;
+}) {
+    const questions: Q[] = ENN_QUESTIONS.map((q) => ({ id: q.id, prompt: q.prompt, options: q.options.map((o) => ({ key: String(o.type), text: o.text })) }));
+    const groups = [
+        { key: "fear", label: "แรงขับลึก", ids: ["EN-1", "EN-2", "EN-4"] },
+        { key: "act", label: "ปฏิกิริยา", ids: ["EN-3", "EN-5", "EN-6"] },
+    ];
+    const label = (c: Choices) => {
+        const s = scoreEnneagram(c);
+        return s.type ? `${s.type} · ${ENN_NAMES[s.type]}` : s.top.length ? `ใกล้ ${s.top.join("/")}` : "?";
+    };
+    return (
+        <SuggestCard label="Enneagram" hasValue={hasValue} questions={questions} groups={groups} run={() => suggestEnneagram(characterId)}
+            groupSummary={(c, g) => {
+                const sub = Object.fromEntries(g.ids.map((id) => [id, c[id]]));
+                const s = scoreEnneagram(sub);
+                const best = s.top[0];
+                return { result: best ? String(best) : "?", split: !best || (s.votes[best] ?? 0) < 2 };
+            }}
+            summary={(c) => {
+                const s = scoreEnneagram(c);
+                return { code: label(c), ready: s.type ? 1 : 0, total: 1, hint: s.answered < 6 ? "ตอบให้ครบ 6 ข้อ" : "ยังไม่ชัด — ต้องได้ 3 เสียงขึ้นไปและนำชัด" };
+            }}
+            onApply={(c) => { const t = scoreEnneagram(c).type; if (t) onApply(t); }} />
     );
 }
 

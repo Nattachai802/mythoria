@@ -9,22 +9,26 @@ import { characters } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { callAi, logParseFailure, AiControlError } from "@/lib/ai-gateway";
 import { requireNovelAccess, authErrorMessage } from "@/lib/authz";
-import { MBTI_AI_SCHEMA, MBTI_QUESTIONS, buildMbtiPrompt, verifyAnswers, type AiAnswer } from "@/lib/mbti-suggest";
+import { MBTI_AI_SCHEMA, MBTI_QUESTIONS, buildMbtiPrompt, verifyAnswers } from "@/lib/mbti-suggest";
 import { B5_AI_SCHEMA, B5_QUESTIONS, buildBigFivePrompt } from "@/lib/bigfive-suggest";
+import { ENN_AI_SCHEMA, ENN_QUESTIONS, buildEnneagramPrompt, verifyEnnAnswers } from "@/lib/enneagram-suggest";
 import type { CharacterMotive } from "@/lib/character-profile";
 
 const MIN_TEXT = 80;      // สั้นกว่านี้ไม่มีอะไรให้ AI อ่าน → ให้ผู้เขียนตอบเองทั้งหมด (ไม่เสีย token)
 const MAX_FIELD = 3000;
 
+/** choice: "a"/"b" (MBTI/Big Five) หรือเลข type "1"–"9" (Enneagram) */
+export type SuggestAnswer = { id: string; choice: string | null; quote: string };
 export type SuggestResult =
-    | { success: true; answers: Record<string, AiAnswer>; usedAi: boolean; notice?: string }
+    | { success: true; answers: Record<string, SuggestAnswer>; usedAi: boolean; notice?: string }
     | { success: false; error: string };
 /** @deprecated ชื่อเดิม */
 export type MbtiSuggestResult = SuggestResult;
 
 type Kind = {
-    feature: "mbti-suggest" | "bigfive-suggest";
+    feature: "mbti-suggest" | "bigfive-suggest" | "enneagram-suggest";
     questions: { id: string }[];
+    verify?: (raw: unknown, source: string) => Record<string, SuggestAnswer>;
     schema: object;
     prompt: (name: string, source: string) => { system: string; prompt: string };
     label: string;
@@ -32,6 +36,7 @@ type Kind = {
 const KINDS = {
     mbti: { feature: "mbti-suggest", questions: MBTI_QUESTIONS, schema: MBTI_AI_SCHEMA, prompt: buildMbtiPrompt, label: "MBTI" },
     bigfive: { feature: "bigfive-suggest", questions: B5_QUESTIONS, schema: B5_AI_SCHEMA, prompt: buildBigFivePrompt, label: "Big Five" },
+    enneagram: { feature: "enneagram-suggest", questions: ENN_QUESTIONS, schema: ENN_AI_SCHEMA, prompt: buildEnneagramPrompt, label: "Enneagram", verify: verifyEnnAnswers },
 } satisfies Record<string, Kind>;
 
 async function suggest(characterId: string, kind: Kind): Promise<SuggestResult> {
@@ -69,7 +74,7 @@ async function suggest(characterId: string, kind: Kind): Promise<SuggestResult> 
                 await logParseFailure(resp.logId, resp.text);
                 return { success: true, answers: empty, usedAi: false, notice: "AI ตอบกลับผิดรูปแบบ — ตอบคำถามเองได้เลย" };
             }
-            return { success: true, answers: verifyAnswers(raw, source, kind.questions), usedAi: true };
+            return { success: true, answers: kind.verify ? kind.verify(raw, source) : verifyAnswers(raw, source, kind.questions), usedAi: true };
         } catch (error) {
             // AI ล่ม/โควตาเต็ม — ฟีเจอร์ยังใช้ได้ในโหมดตอบเอง
             const msg = error instanceof AiControlError ? error.message : "AI ใช้งานไม่ได้ตอนนี้";
@@ -83,3 +88,4 @@ async function suggest(characterId: string, kind: Kind): Promise<SuggestResult> 
 
 export async function suggestMbti(characterId: string) { return suggest(characterId, KINDS.mbti); }
 export async function suggestBigFive(characterId: string) { return suggest(characterId, KINDS.bigfive); }
+export async function suggestEnneagram(characterId: string) { return suggest(characterId, KINDS.enneagram); }

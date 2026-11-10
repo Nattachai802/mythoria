@@ -166,3 +166,105 @@ export function ChipPicker<T extends string>({
         </div>
     );
 }
+
+/**
+ * สเกล 1–5 แบบรางบาง (แทนปุ่มเต็มแถวที่หนักตา) — native range ข้างใต้ = คลิก/ลาก/คีย์บอร์ดได้
+ * ยังไม่ตั้งค่า: รางจาง + "ยังไม่ตั้ง" · ปุ่ม × ล้างค่า
+ */
+export function ScaleBar({ label, value, onChange, lowLabel, highLabel }: {
+    label: string;
+    value: number | undefined;
+    onChange: (v: number | undefined) => void;
+    lowLabel?: string;
+    highLabel?: string;
+}) {
+    const set = value !== undefined;
+    const pct = set ? ((value - 1) / 4) * 100 : 0;
+    return (
+        <div className="py-2">
+            <div className="flex items-baseline justify-between gap-3 mb-1.5">
+                <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">{label}</span>
+                <span className="flex items-center gap-1.5">
+                    <span className={cn("font-display text-sm tabular-nums", !set && "text-muted-foreground/50 text-[10px] font-sans")}>{set ? value : "ยังไม่ตั้ง"}</span>
+                    {set && (
+                        <button type="button" aria-label={`ล้างค่า ${label}`} onClick={() => onChange(undefined)}
+                            className="text-muted-foreground/60 hover:text-foreground text-xs leading-none cursor-pointer">×</button>
+                    )}
+                </span>
+            </div>
+            <div className="relative h-5 flex items-center">
+                <div className="absolute inset-x-0 h-1 rounded-full bg-muted" />
+                {set && <div className="absolute left-0 h-1 rounded-full bg-[var(--forge-gold)]/40 transition-[width] duration-200 ease-out" style={{ width: `${pct}%` }} />}
+                {[0, 25, 50, 75, 100].map((t) => (
+                    <span key={t} className="absolute w-px h-2 bg-border" style={{ left: `${t}%` }} aria-hidden />
+                ))}
+                {set && (
+                    <span className="absolute w-3.5 h-3.5 -ml-[7px] rounded-full bg-[var(--forge-gold)] ring-2 ring-background shadow-sm transition-[left] duration-200 ease-out pointer-events-none"
+                        style={{ left: `${pct}%` }} aria-hidden />
+                )}
+                <input type="range" min={1} max={5} step={1} aria-label={label} value={value ?? 3}
+                    onChange={(e) => onChange(Number(e.target.value))}
+                    onClick={(e) => { if (!set) onChange(Number((e.target as HTMLInputElement).value)); }}
+                    className="absolute inset-0 w-full opacity-0 cursor-pointer" />
+            </div>
+            {(lowLabel || highLabel) && (
+                <div className="flex justify-between mt-0.5 text-[10px] text-muted-foreground/70">
+                    <span>{lowLabel}</span><span>{highLabel}</span>
+                </div>
+            )}
+        </div>
+    );
+}
+
+/**
+ * รางบางสองขั้ว 0–100 (<50 = ฝั่งซ้าย) — ใช้กับแกน MBTI · ขีดกลาง = ก้ำกึ่ง
+ * ตัวอักษรฝั่งที่เอียงไปเป็นสีทอง · ยังไม่ตั้ง = รางจาง ไม่มีจุด
+ */
+export function BipolarBar({ left, right, value, onChange, label }: {
+    left: string;
+    right: string;
+    value: number | undefined;
+    onChange: (v: number | undefined) => void;
+    label: string;
+}) {
+    const set = value !== undefined;
+    const v = value ?? 50;
+    const lean = !set ? null : v < 50 ? "L" : "R";
+    return (
+        <div className="flex items-center gap-2.5 py-1.5">
+            <span className={cn("w-4 text-center text-xs font-technical transition-colors duration-200", lean === "L" ? "text-[var(--forge-amber)] font-bold" : "text-muted-foreground")}>{left}</span>
+            <div className="relative flex-1 h-5 flex items-center">
+                <div className={cn("absolute inset-x-0 h-1 rounded-full bg-muted", !set && "opacity-60")} />
+                <span className="absolute left-1/2 w-px h-2.5 -ml-px bg-border" aria-hidden />
+                {set && (
+                    <>
+                        <div className="absolute h-1 rounded-full bg-[var(--forge-gold)]/40 transition-all duration-200 ease-out"
+                            style={v < 50 ? { left: `${v}%`, width: `${50 - v}%` } : { left: "50%", width: `${v - 50}%` }} />
+                        <span className="absolute w-3.5 h-3.5 -ml-[7px] rounded-full bg-[var(--forge-gold)] ring-2 ring-background shadow-sm transition-[left] duration-200 ease-out pointer-events-none"
+                            style={{ left: `${v}%` }} aria-hidden />
+                    </>
+                )}
+                <input type="range" min={0} max={100} aria-label={label} value={v}
+                    onChange={(e) => onChange(Number(e.target.value))}
+                    className="absolute inset-0 w-full opacity-0 cursor-pointer" />
+            </div>
+            <span className={cn("w-4 text-center text-xs font-technical transition-colors duration-200", lean === "R" ? "text-[var(--forge-amber)] font-bold" : "text-muted-foreground")}>{right}</span>
+            {set
+                ? <button type="button" aria-label={`ล้างค่า ${label}`} onClick={() => onChange(undefined)} className="w-3 text-muted-foreground/60 hover:text-foreground text-xs leading-none cursor-pointer">×</button>
+                : <span className="w-3" aria-hidden />}
+        </div>
+    );
+}
+
+/** รางบางทางเดียว 0–100 (ความเข้มของ facet) */
+export function ThinBar({ value, onChange, label }: { value: number; onChange: (v: number) => void; label: string }) {
+    return (
+        <div className="relative h-5 flex items-center">
+            <div className="absolute inset-x-0 h-1 rounded-full bg-muted" />
+            <div className="absolute left-0 h-1 rounded-full bg-[var(--forge-gold)]/50 transition-[width] duration-200 ease-out" style={{ width: `${value}%` }} />
+            <span className="absolute w-3 h-3 -ml-1.5 rounded-full bg-[var(--forge-gold)] ring-2 ring-background pointer-events-none transition-[left] duration-200 ease-out" style={{ left: `${value}%` }} aria-hidden />
+            <input type="range" min={0} max={100} aria-label={label} value={value} onChange={(e) => onChange(Number(e.target.value))}
+                className="absolute inset-0 w-full opacity-0 cursor-pointer" />
+        </div>
+    );
+}

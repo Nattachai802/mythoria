@@ -6,9 +6,9 @@ import type { Character } from "@/db/schema";
 import type { CharacterPsych } from "@/lib/character-profile";
 import { cn } from "@/lib/utils";
 import { useSection } from "./use-section";
-import { MbtiSuggestCard, BigFiveSuggestCard, CoherencePanel } from "./mbti-suggest-card";
+import { MbtiSuggestCard, BigFiveSuggestCard, EnneagramSuggestCard, CoherencePanel } from "./mbti-suggest-card";
 import { SaveBadge } from "./profile-section";
-import { ChipPicker, LevelPicker, TextBlock } from "./inline-field";
+import { ChipPicker, ScaleBar, BipolarBar, ThinBar, TextBlock } from "./inline-field";
 
 type BigFive = NonNullable<CharacterPsych["bigFive"]>;
 type Mbti = NonNullable<CharacterPsych["mbti"]>;
@@ -90,7 +90,7 @@ export function PsychSection({ character }: { character: Character }) {
                 <Radar v={b5} />
                 <div className="divide-y divide-border/50">
                     {DOMAINS.map((d) => (
-                        <LevelPicker key={d.key} label={`${d.key} · ${d.label}`} lowLabel={d.low} highLabel={d.high}
+                        <ScaleBar key={d.key} label={`${d.key} · ${d.label}`} lowLabel={d.low} highLabel={d.high}
                             value={b5[d.key]} onChange={(v) => set("bigFive", { ...b5, [d.key]: v })} />
                     ))}
                 </div>
@@ -105,23 +105,21 @@ export function PsychSection({ character }: { character: Character }) {
                     <span className="text-[10px] text-muted-foreground">3–6 ข้อ แต่ละข้อมีฉากที่เห็นได้</span>
                 </div>
                 {facets.map((f, i) => (
-                    <div key={i} className="grid sm:grid-cols-[1fr_auto_120px_auto] gap-2 items-center py-1.5 border-b border-border/50 animate-in fade-in slide-in-from-top-1 duration-200 motion-reduce:animate-none">
+                    <div key={i} className="grid sm:grid-cols-[1fr_auto_140px_auto] gap-x-3 gap-y-1 items-center py-2 border-b border-border/50 animate-in fade-in slide-in-from-top-1 duration-200 motion-reduce:animate-none">
                         <input aria-label="ชื่อลักษณะ" placeholder="เช่น ไม่ไว้ใจใคร" value={f.name}
                             onChange={(e) => setFacet(i, { name: e.target.value })}
                             className="bg-transparent text-sm font-medium outline-none border-b border-transparent hover:border-border focus:border-[var(--forge-gold)]" />
-                        <div className="flex gap-1">
+                        <div className="flex rounded-full border border-border p-0.5 text-[10px]" role="radiogroup" aria-label="ทิศทาง">
                             {(["low", "high"] as const).map((dir) => (
-                                <button key={dir} type="button" aria-pressed={f.direction === dir}
+                                <button key={dir} type="button" role="radio" aria-checked={f.direction === dir}
                                     onClick={() => setFacet(i, { direction: f.direction === dir ? undefined : dir })}
-                                    className={cn("chamfered-sm border px-2 py-0.5 text-[10px] cursor-pointer",
-                                        f.direction === dir ? "border-[var(--forge-gold)] bg-[var(--forge-gold)]/15" : "border-border text-muted-foreground")}>
+                                    className={cn("rounded-full px-2 py-0.5 transition-colors duration-200 cursor-pointer",
+                                        f.direction === dir ? "bg-[var(--forge-gold)]/20 text-foreground" : "text-muted-foreground hover:text-foreground")}>
                                     {dir === "low" ? "ต่ำ" : "สูง"}
                                 </button>
                             ))}
                         </div>
-                        <input type="range" min={0} max={100} aria-label="ความเข้ม" value={f.strength ?? 50}
-                            onChange={(e) => setFacet(i, { strength: Number(e.target.value) })}
-                            className="accent-[var(--forge-gold)] cursor-pointer" />
+                        <ThinBar label="ความเข้ม" value={f.strength ?? 50} onChange={(v) => setFacet(i, { strength: v })} />
                         <button type="button" aria-label={`ลบ ${f.name || "ลักษณะนี้"}`} onClick={() => set("facets", facets.filter((_, j) => j !== i))}
                             className="p-1 text-muted-foreground hover:text-red-500 cursor-pointer"><X className="w-3.5 h-3.5" /></button>
                         <input aria-label="ฉากที่เห็นลักษณะนี้" placeholder="ฉากที่เห็น: เช่น นับเงินทอนต่อหน้าคนขายทุกครั้ง" value={f.scene ?? ""}
@@ -161,14 +159,8 @@ export function PsychSection({ character }: { character: Character }) {
                         <span className="font-display text-lg tabular-nums">{mbtiCode ?? "—"}</span>
                     </div>
                     {MBTI.map((m) => (
-                        <div key={m.key} className="flex items-center gap-2 py-1">
-                            <span className={cn("w-4 text-xs font-technical", (mbti[m.key] ?? 50) < 50 && "text-[var(--forge-amber)] font-bold")}>{m.left}</span>
-                            <input type="range" min={0} max={100} aria-label={`${m.left} หรือ ${m.right}`}
-                                value={mbti[m.key] ?? 50}
-                                onChange={(e) => set("mbti", { ...mbti, [m.key]: Number(e.target.value) })}
-                                className={cn("flex-1 accent-[var(--forge-gold)] cursor-pointer", mbti[m.key] === undefined && "opacity-40")} />
-                            <span className={cn("w-4 text-xs font-technical text-right", (mbti[m.key] ?? 50) >= 50 && mbti[m.key] !== undefined && "text-[var(--forge-amber)] font-bold")}>{m.right}</span>
-                        </div>
+                        <BipolarBar key={m.key} left={m.left} right={m.right} label={`${m.left} หรือ ${m.right}`}
+                            value={mbti[m.key]} onChange={(v) => set("mbti", { ...mbti, [m.key]: v })} />
                     ))}
                     <p className="mt-1 text-[10px] text-muted-foreground">MBTI ไม่บอกเรื่องความหวั่นไหวทางอารมณ์ — ดูแกน N ด้านบน</p>
                 </div>
@@ -178,12 +170,12 @@ export function PsychSection({ character }: { character: Character }) {
                         <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">Enneagram</span>
                         <span className="text-sm">{enn ? `${enn.type}${enn.wing ? `w${enn.wing}` : ""} · ${ENNEAGRAM[enn.type]}` : "—"}</span>
                     </div>
-                    <div className="grid grid-cols-9 gap-1" role="radiogroup" aria-label="Enneagram type">
+                    <div className="flex justify-between gap-1" role="radiogroup" aria-label="Enneagram type">
                         {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
-                            <button key={n} type="button" role="radio" aria-checked={enn?.type === n} title={ENNEAGRAM[n]}
+                            <button key={n} type="button" role="radio" aria-checked={enn?.type === n} title={ENNEAGRAM[n]} aria-label={`${n} ${ENNEAGRAM[n]}`}
                                 onClick={() => set("enneagram", enn?.type === n ? undefined : { type: n })}
-                                className={cn("aspect-square chamfered-sm border text-xs tabular-nums cursor-pointer transition-[color,background-color,border-color,transform] duration-200 active:scale-95 motion-reduce:active:scale-100",
-                                    enn?.type === n ? "border-[var(--forge-gold)] bg-[var(--forge-gold)] text-background" : "border-border text-muted-foreground hover:border-[var(--forge-gold)]/60")}>
+                                className={cn("w-7 h-7 rounded-full border text-xs tabular-nums cursor-pointer transition-[color,background-color,border-color,transform] duration-200 active:scale-90 motion-reduce:active:scale-100",
+                                    enn?.type === n ? "border-[var(--forge-gold)] bg-[var(--forge-gold)] text-background font-semibold" : "border-border text-muted-foreground hover:border-[var(--forge-gold)]/60 hover:text-foreground")}>
                                 {n}
                             </button>
                         ))}
@@ -194,13 +186,16 @@ export function PsychSection({ character }: { character: Character }) {
                             {[enn.type === 1 ? 9 : enn.type - 1, enn.type === 9 ? 1 : enn.type + 1].map((w) => (
                                 <button key={w} type="button" aria-pressed={enn.wing === w}
                                     onClick={() => set("enneagram", { type: enn.type, wing: enn.wing === w ? undefined : w })}
-                                    className={cn("chamfered-sm border px-2 py-0.5 cursor-pointer",
-                                        enn.wing === w ? "border-[var(--forge-gold)] bg-[var(--forge-gold)]/15 text-foreground" : "border-border")}>
+                                    className={cn("rounded-full border px-2.5 py-0.5 transition-colors duration-200 cursor-pointer",
+                                        enn.wing === w ? "border-[var(--forge-gold)] bg-[var(--forge-gold)]/15 text-foreground" : "border-border hover:text-foreground")}>
                                     w{w} · {ENNEAGRAM[w]}
                                 </button>
                             ))}
                         </div>
                     )}
+                    <EnneagramSuggestCard characterId={character.id} hasValue={!!enn}
+                        onApply={(t) => set("enneagram", { type: t, wing: enn?.type === t ? enn.wing : undefined })} />
+                    <p className="mt-2 text-[10px] text-muted-foreground">Enneagram เป็นแนวโน้มทางเรื่องเล่า งานวิจัยรองรับน้อยกว่า Big Five มาก</p>
                 </div>
             </div>
             <MbtiSuggestCard characterId={character.id} hasValue={!!mbtiCode}

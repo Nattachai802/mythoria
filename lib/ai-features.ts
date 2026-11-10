@@ -248,6 +248,17 @@ export const AI_FEATURES: Record<string, AiFeatureDef> = {
         ],
         defaultDailyLimit: 50,
     },
+    "enneagram-suggest": {
+        key: "enneagram-suggest",
+        label: "ช่วยหา Enneagram ตัวละคร",
+        description: "ตอบ 6 คำถาม × 9 ตัวเลือก (ความกลัว/ความปรารถนา/ปฏิกิริยา) จากภาพรวม/แรงจูงใจเชิงลึก — แสดงเป็นแนวโน้ม ไม่คำนวณปีก",
+        chain: [
+            { provider: "openrouter", model: "deepseek/deepseek-v4-flash", temperature: 0.2, maxTokens: 8000 },
+            { provider: "groq", model: "openai/gpt-oss-120b", temperature: 0.2, maxTokens: 8000 },
+            { provider: "gemini", model: GEMINI_MODEL, temperature: 0.2, maxTokens: 8000 },
+        ],
+        defaultDailyLimit: 50,
+    },
     "lore-extractor": {
         key: "lore-extractor",
         label: "สกัด Entity จาก Lore (Background)",
