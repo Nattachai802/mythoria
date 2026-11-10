@@ -4,7 +4,7 @@
 
 **Mythoria** คือแพลตฟอร์มเขียนนิยายยุคใหม่ที่รวมพลัง Project Management + AI อัจฉริยะ + World Building เข้าไว้ในที่เดียว ออกแบบมาสำหรับนักเขียนที่ต้องการเครื่องมือจริงจัง ไม่ใช่แค่ Text Editor ทั่วไป
 
-> **Current Version: `v2.19.0.0`** — หน้าออกแบบตัวละครแบบใหม่
+> **Current Version: `v2.20.0.0`** — แก้ตัวละครได้ทันทีบนหน้าเดียว
 >
 > ประวัติเวอร์ชันทั้งหมดดูที่ [CHANGELOG.md](CHANGELOG.md) — แก้ที่ `lib/changelog.ts` แล้วรัน `npm run changelog`
 >
