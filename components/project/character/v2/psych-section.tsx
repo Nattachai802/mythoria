@@ -1,6 +1,7 @@
 "use client";
 
-import { Plus, X } from "lucide-react";
+import { Plus, X, Sparkles } from "lucide-react";
+import { useState } from "react";
 import { motion } from "motion/react";
 import type { Character } from "@/db/schema";
 import type { CharacterPsych } from "@/lib/character-profile";
@@ -69,8 +70,8 @@ function Radar({ v }: { v: BigFive }) {
     );
 }
 
-/** กลุ่ม ② นิสัย + ③ ป้ายเสริม — hook psych ตัวเดียว (แผงเทียบต้องเห็นค่า Big Five ล่าสุด) · traitsExtra = จุดแข็ง/จุดอ่อน แทรกท้ายกลุ่ม ② */
-export function PsychSection({ character, traitsExtra }: { character: Character; traitsExtra?: React.ReactNode }) {
+/** กลุ่ม ① นิสัย + ② ป้ายเสริม — hook psych ตัวเดียว (แผงเทียบต้องเห็นค่า Big Five ล่าสุด) · after = กลุ่มถัดไป (แรงขับ) */
+export function PsychSection({ character, after }: { character: Character; after?: React.ReactNode }) {
     const { value: p, set, state } = useSection<CharacterPsych>(character.id, "psych", character.psych);
     const b5 = (p.bigFive ?? {}) as BigFive;
     const mbti = (p.mbti ?? {}) as Mbti;
@@ -81,6 +82,7 @@ export function PsychSection({ character, traitsExtra }: { character: Character;
         ? MBTI.map((m) => ((mbti[m.key] ?? 50) < 50 ? m.left : m.right)).join("")
         : null;
 
+    const [runAll, setRunAll] = useState(0);
     const setFacet = (i: number, patch: Partial<Facet>) =>
         set("facets", facets.map((f, j) => (j === i ? { ...f, ...patch } : f)));
 
@@ -88,8 +90,13 @@ export function PsychSection({ character, traitsExtra }: { character: Character;
         <div className="space-y-12">
             <section className="space-y-6">
             <div className="flex items-start gap-3">
-                <div className="flex-1"><GroupHead n="②" title="นิสัย" sub="ผู้อ่านจะเห็นตัวละครเป็นคนแบบไหนในฉาก" /></div>
+                <div className="flex-1"><GroupHead n="①" title="นิสัย" sub="ผู้อ่านจะเห็นตัวละครเป็นคนแบบไหนในฉาก" /></div>
                 <SaveBadge state={state} />
+                <button type="button" onClick={() => setRunAll((n) => n + 1)}
+                    title="ให้ AI อ่านภาพรวมแล้ววิเคราะห์ Big Five, นิสัยเด่น, MBTI และ Enneagram พร้อมกัน (เรียก AI 4 ครั้ง) — ผลขึ้นในการ์ดของแต่ละส่วน กดใช้ทีละส่วน"
+                    className="shrink-0 flex items-center gap-1.5 chamfered-sm border border-[var(--forge-gold)] bg-[var(--forge-gold)]/10 px-3 py-1.5 text-xs transition-[background-color,transform] duration-200 hover:bg-[var(--forge-gold)]/20 active:scale-95 motion-reduce:active:scale-100 cursor-pointer">
+                    <Sparkles className="w-3.5 h-3.5 text-[var(--forge-gold)]" /> วิเคราะห์ทั้งหมด
+                </button>
             </div>
 
             {/* Big Five: กราฟ + ปุ่มข้างกัน */}
@@ -109,7 +116,7 @@ export function PsychSection({ character, traitsExtra }: { character: Character;
                     ))}
                 </div>
             </div>
-            <BigFiveSuggestCard characterId={character.id} hasValue={DOMAINS.some((d) => b5[d.key] !== undefined)}
+            <BigFiveSuggestCard characterId={character.id} trigger={runAll} hasValue={DOMAINS.some((d) => b5[d.key] !== undefined)}
                 onApply={(v) => set("bigFive", { ...b5, ...v })} />
             </div>
 
@@ -150,9 +157,9 @@ export function PsychSection({ character, traitsExtra }: { character: Character;
                         <Plus className="w-3.5 h-3.5" /> เพิ่มลักษณะ
                     </button>
                 )}
-                <FacetExtractCard characterId={character.id} room={12 - facets.length}
+                <FacetExtractCard characterId={character.id} trigger={runAll} room={12 - facets.length}
                     onAdd={({ facets: nf, contradictions: nc }) => {
-                        if (nf.length) set("facets", [...facets, ...nf.map((f) => ({ name: f.name, direction: f.direction, strength: f.strength, scene: f.scene || undefined }))]);
+                        if (nf.length) set("facets", [...facets, ...nf.map((f) => ({ key: f.key, name: f.name, direction: f.direction, strength: f.strength, scene: f.scene || undefined }))]);
                         if (nc.length) set("contradiction", [p.contradiction, ...nc.map((c) => c.text)].filter(Boolean).join("\n"));
                     }} />
             </div>
@@ -164,11 +171,10 @@ export function PsychSection({ character, traitsExtra }: { character: Character;
                 </>}
                 onChange={(v) => set("contradiction", v)} placeholder="เช่น ใจดีกับคนแปลกหน้า แต่ใจร้ายกับคนในบ้าน" />
 
-            {traitsExtra}
             </section>
 
             <section className="space-y-6">
-            <GroupHead n="③" title="ป้ายเสริม" sub="ไม่จำเป็นต้องกรอก — ใช้เป็นทางลัด หรือกับตัวร้าย / แอนตี้ฮีโร่" />
+            <GroupHead n="②" title="ป้ายเสริม" sub="ส่วนเสริมของนิสัย ไม่จำเป็นต้องกรอก — ใช้เป็นทางลัด หรือกับตัวร้าย / แอนตี้ฮีโร่" />
             <div className="grid sm:grid-cols-2 gap-x-8">
                 <ChipPicker label="ความซื่อสัตย์เมื่อไม่มีใครเห็น" sub="จะโกงหรือเอาเปรียบไหมถ้าทำได้" value={p.honestyHumility} onChange={(v) => set("honestyHumility", v)}
                     info={<>
@@ -205,7 +211,7 @@ export function PsychSection({ character, traitsExtra }: { character: Character;
                         <BipolarBar key={m.key} left={m.left} right={m.right} label={`${m.left} หรือ ${m.right}`}
                             value={mbti[m.key]} onChange={(v) => set("mbti", { ...mbti, [m.key]: v })} />
                     ))}
-                    <MbtiSuggestCard characterId={character.id} hasValue={!!mbtiCode}
+                    <MbtiSuggestCard characterId={character.id} trigger={runAll} hasValue={!!mbtiCode}
                         onApply={(v) => set("mbti", { ...mbti, ...v })} />
                 </div>
 
@@ -253,12 +259,13 @@ export function PsychSection({ character, traitsExtra }: { character: Character;
                             </dl>
                         );
                     })()}
-                    <EnneagramSuggestCard characterId={character.id} hasValue={!!enn}
+                    <EnneagramSuggestCard characterId={character.id} trigger={runAll} hasValue={!!enn}
                         onApply={(t) => set("enneagram", { type: t, wing: enn?.type === t ? enn.wing : undefined })} />
                 </div>
             </div>
             <CoherencePanel mbti={mbti} bigFive={b5} />
             </section>
+            {after}
         </div>
     );
 }

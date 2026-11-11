@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Sparkles, X, Check, AlertTriangle, ChevronDown } from "lucide-react";
 import { suggestMbti, suggestBigFive, suggestEnneagram, type SuggestResult } from "@/server/mbti-suggest";
@@ -8,6 +8,17 @@ import { MBTI_QUESTIONS, AXES, scoreAxes, toSliders, type Choice, type MbtiAxis 
 import { B5_QUESTIONS, TRAITS, scoreBigFive, checkCoherence, type Trait } from "@/lib/bigfive-suggest";
 import { ENN_QUESTIONS, ENN_NAMES, scoreEnneagram, type EnnType } from "@/lib/enneagram-suggest";
 import { cn } from "@/lib/utils";
+
+/** เรียก fn ทุกครั้งที่ trigger เปลี่ยน (ข้ามค่าแรก) — ใช้กับปุ่ม "วิเคราะห์ทั้งหมด" */
+export function useRunOnTrigger(trigger: number | undefined, fn: () => void) {
+    const first = useRef(trigger);
+    const f = useRef(fn);
+    useEffect(() => { f.current = fn; });
+    useEffect(() => {
+        if (trigger === undefined || trigger === first.current) return;
+        f.current();
+    }, [trigger]);
+}
 
 type Opt = { key: string; text: string };
 type Q = { id: string; prompt: string; options: Opt[] };
@@ -21,7 +32,7 @@ type GroupSummary = { result: string; split: boolean };
  * แถวที่ "ควรตรวจ" = ผลไม่ขาด หรือมีข้อที่ AI อนุมานโดยไม่มีประโยคยืนยัน
  * state อยู่ในหน้าจอเท่านั้นจนกด "ใช้ค่านี้" · หน้าจอไม่โชว์ขั้ว/ตัวอักษร/เลข type ของตัวเลือก
  */
-function SuggestCard({ label, hasValue, questions, groups, run, groupSummary, summary, onApply }: {
+function SuggestCard({ label, hasValue, questions, groups, run, groupSummary, summary, onApply, trigger }: {
     label: string;
     hasValue: boolean;
     questions: Q[];
@@ -30,6 +41,7 @@ function SuggestCard({ label, hasValue, questions, groups, run, groupSummary, su
     groupSummary: (c: Choices, g: Group) => GroupSummary;
     summary: (c: Choices) => { code: string; ready: number; total: number; hint: string };
     onApply: (c: Choices) => void;
+    trigger?: number; // เพิ่มค่า = สั่งวิเคราะห์จากปุ่ม "วิเคราะห์ทั้งหมด"
 }) {
     const [open, setOpen] = useState(false);
     const [pending, start] = useTransition();
@@ -52,6 +64,8 @@ function SuggestCard({ label, hasValue, questions, groups, run, groupSummary, su
         setExpanded(null);
         setOpen(true);
     });
+
+    useRunOnTrigger(trigger, go);
 
     const pick = (id: string, key: string) => {
         setChoices((p) => ({ ...p, [id]: p[id] === key ? null : key }));
@@ -150,14 +164,15 @@ const abQs = (qs: { id: string; prompt: string; a: { text: string }; b: { text: 
 const asAB = (c: Choices) => c as Record<string, Choice | null>;
 
 /** MBTI 12 ข้อ — แต่ละแกนได้ตัวอักษรเมื่อตอบไปทางเดียวกัน 2 ใน 3 */
-export function MbtiSuggestCard({ characterId, hasValue, onApply }: {
+export function MbtiSuggestCard({ characterId, hasValue, onApply, trigger }: {
     characterId: string;
     hasValue: boolean;
+    trigger?: number;
     onApply: (values: Partial<Record<MbtiAxis, number>>) => void;
 }) {
     const groups = AXES.map((a) => ({ key: a.axis, label: `${a.left} / ${a.right}`, ids: MBTI_QUESTIONS.filter((q) => q.axis === a.axis).map((q) => q.id) }));
     return (
-        <SuggestCard label="MBTI" hasValue={hasValue} questions={abQs(MBTI_QUESTIONS)} groups={groups} run={() => suggestMbti(characterId)}
+        <SuggestCard label="MBTI" trigger={trigger} hasValue={hasValue} questions={abQs(MBTI_QUESTIONS)} groups={groups} run={() => suggestMbti(characterId)}
             groupSummary={(c, g) => {
                 const a = scoreAxes(asAB(c)).find((x) => x.axis === g.key)!;
                 return { result: a.letter ?? "?", split: !a.letter || Math.max(a.left, a.right) < 3 };
@@ -172,14 +187,15 @@ export function MbtiSuggestCard({ characterId, hasValue, onApply }: {
 }
 
 /** Big Five 15 ข้อ — แต่ละด้านต้องตอบครบ 3 ข้อ ได้คะแนน 1/2/4/5 */
-export function BigFiveSuggestCard({ characterId, hasValue, onApply }: {
+export function BigFiveSuggestCard({ characterId, hasValue, onApply, trigger }: {
     characterId: string;
     hasValue: boolean;
+    trigger?: number;
     onApply: (values: Partial<Record<Trait, number>>) => void;
 }) {
     const groups = TRAITS.map((t) => ({ key: t.key, label: `${t.key} · ${t.label}`, ids: B5_QUESTIONS.filter((q) => q.trait === t.key).map((q) => q.id) }));
     return (
-        <SuggestCard label="Big Five" hasValue={hasValue} questions={abQs(B5_QUESTIONS)} groups={groups} run={() => suggestBigFive(characterId)}
+        <SuggestCard label="Big Five" trigger={trigger} hasValue={hasValue} questions={abQs(B5_QUESTIONS)} groups={groups} run={() => suggestBigFive(characterId)}
             groupSummary={(c, g) => {
                 const s = scoreBigFive(asAB(c)).find((x) => x.trait === g.key)!;
                 return { result: s.level ? String(s.level) : "?", split: !s.level || s.high === 1 || s.high === 2 };
@@ -194,9 +210,10 @@ export function BigFiveSuggestCard({ characterId, hasValue, onApply }: {
 }
 
 /** Enneagram 6 ข้อ × 9 ตัวเลือก — แนวโน้ม (≥3 เสียงและนำชัด) · ไม่คำนวณปีก */
-export function EnneagramSuggestCard({ characterId, hasValue, onApply }: {
+export function EnneagramSuggestCard({ characterId, hasValue, onApply, trigger }: {
     characterId: string;
     hasValue: boolean;
+    trigger?: number;
     onApply: (type: EnnType) => void;
 }) {
     const questions: Q[] = ENN_QUESTIONS.map((q) => ({ id: q.id, prompt: q.prompt, options: q.options.map((o) => ({ key: String(o.type), text: o.text })) }));
@@ -209,7 +226,7 @@ export function EnneagramSuggestCard({ characterId, hasValue, onApply }: {
         return s.type ? `${s.type} · ${ENN_NAMES[s.type]}` : s.top.length ? `ใกล้ ${s.top.join("/")}` : "?";
     };
     return (
-        <SuggestCard label="Enneagram" hasValue={hasValue} questions={questions} groups={groups} run={() => suggestEnneagram(characterId)}
+        <SuggestCard label="Enneagram" trigger={trigger} hasValue={hasValue} questions={questions} groups={groups} run={() => suggestEnneagram(characterId)}
             groupSummary={(c, g) => {
                 const sub = Object.fromEntries(g.ids.map((id) => [id, c[id]]));
                 const s = scoreEnneagram(sub);

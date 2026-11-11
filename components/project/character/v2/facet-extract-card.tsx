@@ -6,15 +6,17 @@ import { Sparkles, X, Check } from "lucide-react";
 import { extractFacets } from "@/server/mbti-suggest";
 import type { FacetExtract } from "@/lib/facet-extract";
 import { cn } from "@/lib/utils";
+import { useRunOnTrigger } from "./mbti-suggest-card";
 
 /**
  * ปุ่ม "ให้ AI สกัดจากภาพรวม" → การ์ดให้ติ๊กเลือกนิสัยเด่น / นิสัยที่ขัดกันเอง
  * ผลอยู่ใน state หน้าจอจนกด "เพิ่มที่เลือก" · นิสัยเด่นต่อท้ายของเดิม · นิสัยที่ขัดกันเองต่อท้ายข้อความเดิม (ไม่เขียนทับ)
  */
-export function FacetExtractCard({ characterId, room, onAdd }: {
+export function FacetExtractCard({ characterId, room, onAdd, trigger }: {
     characterId: string;
     room: number; // ช่องนิสัยเด่นที่เหลือ (สูงสุด 12)
     onAdd: (picked: FacetExtract) => void;
+    trigger?: number;
 }) {
     const [pending, start] = useTransition();
     const [draft, setDraft] = useState<FacetExtract | null>(null);
@@ -34,6 +36,8 @@ export function FacetExtractCard({ characterId, room, onAdd }: {
             ...d.contradictions.map((c, i) => (c.quoteA && c.quoteB ? `c${i}` : "")).filter(Boolean),
         ]));
     });
+
+    useRunOnTrigger(trigger, () => { if (room > 0) go(); });
 
     if (!draft) return (
         <button type="button" onClick={go} disabled={pending || room === 0} aria-busy={pending}

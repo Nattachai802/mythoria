@@ -311,13 +311,15 @@ export function CharacterDetailContent({
 
                         {/* จิตใจ = นิสัย + แรงขับ */}
                         {show("psych") && (<>
-                            {/* ① แรงขับ → ② นิสัย → ③ ป้ายเสริม: เริ่มจากสิ่งที่ผู้เขียนรู้ก่อน จบที่ของไม่บังคับ */}
-                            <section className="space-y-6">
-                                <GroupHead n="①" title="แรงขับ" sub="ตัวละครอยากได้อะไร และอะไรจะทำให้เขาเปลี่ยน" />
-                                <DimensionsSection character={character} />
-                                <MotiveSection character={character} />
-                            </section>
-                            <PsychSection character={character} traitsExtra={<StrengthsSection character={character} />} />
+                            {/* ① นิสัย → ② ป้ายเสริม (ส่วนเสริมของนิสัย) → ③ แรงขับ → จุดแข็ง/จุดอ่อน */}
+                            <PsychSection character={character} after={
+                                <section className="space-y-6">
+                                    <GroupHead n="③" title="แรงขับ" sub="ตัวละครอยากได้อะไร และอะไรจะทำให้เขาเปลี่ยน" />
+                                    <DimensionsSection character={character} />
+                                    <MotiveSection character={character} />
+                                    <StrengthsSection character={character} />
+                                </section>
+                            } />
                         </>)}
 
                         {/* เส้นเรื่อง = ทุกอย่างที่เดินไปตามบท */}

@@ -114,7 +114,7 @@ export async function extractFacets(characterId: string): Promise<FacetExtractRe
         if (!c) return { success: false, error: "ไม่พบตัวละคร" };
         const { source, enough } = characterSource(c);
         if (!enough) return { success: true, draft: none, usedAi: false, notice: "ยังมีข้อมูลตัวละครน้อย — เขียนภาพรวมหรือแรงจูงใจเพิ่มก่อน" };
-        const existing = ((c.psych ?? {}) as CharacterPsych).facets?.map((f) => f.name) ?? [];
+        const existing = ((c.psych ?? {}) as CharacterPsych).facets?.flatMap((f) => (f.key ? [f.name, f.key] : [f.name])) ?? [];
         try {
             const p = buildFacetPrompt(c.name, source, existing);
             const resp = await callAi({ feature: "facet-extract", novelId: c.novelId, system: p.system, prompt: p.prompt, responseSchema: FACET_AI_SCHEMA });

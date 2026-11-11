@@ -262,11 +262,11 @@ export const AI_FEATURES: Record<string, AiFeatureDef> = {
     "facet-extract": {
         key: "facet-extract",
         label: "สกัดนิสัยเด่นและนิสัยที่ขัดกันเองของตัวละคร",
-        description: "อ่านภาพรวม/แรงจูงใจเชิงลึก แล้วเสนอนิสัยเด่น 3–5 ข้อ (พร้อมฉาก) และนิสัยที่ขัดกันเอง 0–2 คู่ พร้อมหลักฐานที่ตรวจในโค้ด",
+        description: "อ่านภาพรวม/แรงจูงใจเชิงลึก แล้วเลือกนิสัยเด่น 6 ข้อจากรายการ 30 facet ของ Big Five (พร้อมฉาก) และนิสัยที่ขัดกันเอง 0–2 คู่ พร้อมหลักฐานที่ตรวจในโค้ด",
         chain: [
-            { provider: "openrouter", model: "deepseek/deepseek-v4-flash", temperature: 0.3, maxTokens: 8000 },
-            { provider: "groq", model: "openai/gpt-oss-120b", temperature: 0.3, maxTokens: 8000 },
-            { provider: "gemini", model: GEMINI_MODEL, temperature: 0.3, maxTokens: 8000 },
+            { provider: "openrouter", model: "deepseek/deepseek-v4-flash", temperature: 0, maxTokens: 8000 },
+            { provider: "groq", model: "openai/gpt-oss-120b", temperature: 0, maxTokens: 8000 },
+            { provider: "gemini", model: GEMINI_MODEL, temperature: 0, maxTokens: 8000 },
         ],
         defaultDailyLimit: 50,
     },
