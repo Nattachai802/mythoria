@@ -155,22 +155,25 @@ export function PsychSection({ character }: { character: Character }) {
             {/* ป้ายแบบทดสอบยอดนิยม — เป็นทางลัด ไม่ใช่ตัวทำนาย */}
             <div className="grid sm:grid-cols-2 gap-x-8 gap-y-6">
                 <div>
-                    <div className="flex items-baseline justify-between mb-2">
+                    <div className="flex items-baseline justify-between">
                         <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">MBTI</span>
                         <span className="font-display text-lg tabular-nums">{mbtiCode ?? "—"}</span>
                     </div>
+                    <p className="mb-2 text-[10px] text-muted-foreground/70">ไม่บอกเรื่องความหวั่นไหวทางอารมณ์ — ดูแกน N ด้านบน</p>
                     {MBTI.map((m) => (
                         <BipolarBar key={m.key} left={m.left} right={m.right} label={`${m.left} หรือ ${m.right}`}
                             value={mbti[m.key]} onChange={(v) => set("mbti", { ...mbti, [m.key]: v })} />
                     ))}
-                    <p className="mt-1 text-[10px] text-muted-foreground">MBTI ไม่บอกเรื่องความหวั่นไหวทางอารมณ์ — ดูแกน N ด้านบน</p>
+                    <MbtiSuggestCard characterId={character.id} hasValue={!!mbtiCode}
+                        onApply={(v) => set("mbti", { ...mbti, ...v })} />
                 </div>
 
                 <div>
-                    <div className="flex items-baseline justify-between mb-2">
+                    <div className="flex items-baseline justify-between">
                         <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">Enneagram</span>
-                        <span className="text-sm">{enn ? `${enn.type}${enn.wing ? `w${enn.wing}` : ""} · ${ENNEAGRAM[enn.type]}` : "—"}</span>
+                        <span className="font-display text-lg">{enn ? `${enn.type}${enn.wing ? `w${enn.wing}` : ""} · ${ENNEAGRAM[enn.type]}` : "—"}</span>
                     </div>
+                    <p className="mb-2 text-[10px] text-muted-foreground/70">แนวโน้มทางเรื่องเล่า งานวิจัยรองรับน้อยกว่า Big Five มาก</p>
                     <div className="flex gap-1" role="radiogroup" aria-label="Enneagram type">
                         {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
                             <button key={n} type="button" role="radio" aria-checked={enn?.type === n} title={ENNEAGRAM[n]} aria-label={`${n} ${ENNEAGRAM[n]}`}
@@ -210,11 +213,8 @@ export function PsychSection({ character }: { character: Character }) {
                     })()}
                     <EnneagramSuggestCard characterId={character.id} hasValue={!!enn}
                         onApply={(t) => set("enneagram", { type: t, wing: enn?.type === t ? enn.wing : undefined })} />
-                    <p className="mt-2 text-[10px] text-muted-foreground">Enneagram เป็นแนวโน้มทางเรื่องเล่า งานวิจัยรองรับน้อยกว่า Big Five มาก</p>
                 </div>
             </div>
-            <MbtiSuggestCard characterId={character.id} hasValue={!!mbtiCode}
-                onApply={(v) => set("mbti", { ...mbti, ...v })} />
             <CoherencePanel mbti={mbti} bigFive={b5} />
         </div>
     );

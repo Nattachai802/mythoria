@@ -53,6 +53,17 @@ export interface ChangelogRelease {
 /** ใหม่สุดอยู่บนสุดเสมอ — โค้ดที่อ่าน CHANGELOG[0] ยึดกติกานี้ */
 export const CHANGELOG: ChangelogRelease[] = [
     {
+        version: "next",
+        date: "today",
+        title: "จัดแท็บจิตใจให้เป็นระเบียบ",
+        entries: [
+            {
+                kind: "changed",
+                text: "แท็บจิตใจ: หมายเหตุของ MBTI และ Enneagram ย้ายขึ้นไปอยู่ใต้หัวข้อ และปุ่มช่วยหา MBTI อยู่ในคอลัมน์ MBTI แล้ว สองคอลัมน์เรียงเหมือนกัน",
+            },
+        ],
+    },
+    {
         version: "2.20.0.0",
         date: "2026-11-10",
         title: "แก้ตัวละครได้ทันทีบนหน้าเดียว",
