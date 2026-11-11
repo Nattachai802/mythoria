@@ -5,8 +5,6 @@ import { motion, MotionConfig } from "motion/react";
 import { Button } from "@/components/ui/button";
 import {
     User,
-    Target,
-    Flame,
     BookOpen,
     Users,
     Zap,
@@ -29,8 +27,9 @@ import { CharacterDesignBoard } from "@/components/project/character/character-d
 import { Character, CharacterFieldDef, Idea } from "@/db/schema";
 import { ProfileSection, profileCompleteness } from "@/components/project/character/v2/profile-section";
 import { RolePicker, AliasesField, PortraitUpload } from "@/components/project/character/v2/header-controls";
-import { OverviewSection, DimensionsSection, EditableText } from "@/components/project/character/v2/overview-section";
+import { OverviewSection, DimensionsSection, StrengthsSection, EditableText } from "@/components/project/character/v2/overview-section";
 import { PsychSection } from "@/components/project/character/v2/psych-section";
+import { GroupHead } from "@/components/project/character/v2/inline-field";
 import { MotiveSection, ArcSection, NarrationSection, type ChapterOption } from "@/components/project/character/v2/story-sections";
 import { cn } from "@/lib/utils";
 
@@ -312,13 +311,13 @@ export function CharacterDetailContent({
 
                         {/* จิตใจ = นิสัย + แรงขับ */}
                         {show("psych") && (<>
-                            <Section icon={<Flame className="w-3 h-3" />} title="บุคลิกภาพ" meta="Big Five · MBTI · Enneagram">
-                                <PsychSection character={character} />
-                            </Section>
-                            <DimensionsSection character={character} />
-                            <Section icon={<Target className="w-3 h-3" />} title="แรงจูงใจเชิงลึก">
+                            {/* ① แรงขับ → ② นิสัย → ③ ป้ายเสริม: เริ่มจากสิ่งที่ผู้เขียนรู้ก่อน จบที่ของไม่บังคับ */}
+                            <section className="space-y-6">
+                                <GroupHead n="①" title="แรงขับ" sub="ตัวละครอยากได้อะไร และอะไรจะทำให้เขาเปลี่ยน" />
+                                <DimensionsSection character={character} />
                                 <MotiveSection character={character} />
-                            </Section>
+                            </section>
+                            <PsychSection character={character} traitsExtra={<StrengthsSection character={character} />} />
                         </>)}
 
                         {/* เส้นเรื่อง = ทุกอย่างที่เดินไปตามบท */}

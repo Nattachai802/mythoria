@@ -9,7 +9,7 @@ import { useSection } from "./use-section";
 import { MbtiSuggestCard, BigFiveSuggestCard, EnneagramSuggestCard, CoherencePanel } from "./mbti-suggest-card";
 import { SaveBadge } from "./profile-section";
 import { ENN_DETAILS } from "@/lib/enneagram-suggest";
-import { InfoHead, ChipPicker, ScaleBar, BipolarBar, ThinBar, TextBlock } from "./inline-field";
+import { InfoHead, GroupHead, ChipPicker, ScaleBar, BipolarBar, ThinBar, TextBlock } from "./inline-field";
 
 type BigFive = NonNullable<CharacterPsych["bigFive"]>;
 type Mbti = NonNullable<CharacterPsych["mbti"]>;
@@ -68,7 +68,8 @@ function Radar({ v }: { v: BigFive }) {
     );
 }
 
-export function PsychSection({ character }: { character: Character }) {
+/** กลุ่ม ② นิสัย + ③ ป้ายเสริม — hook psych ตัวเดียว (แผงเทียบต้องเห็นค่า Big Five ล่าสุด) · traitsExtra = จุดแข็ง/จุดอ่อน แทรกท้ายกลุ่ม ② */
+export function PsychSection({ character, traitsExtra }: { character: Character; traitsExtra?: React.ReactNode }) {
     const { value: p, set, state } = useSection<CharacterPsych>(character.id, "psych", character.psych);
     const b5 = (p.bigFive ?? {}) as BigFive;
     const mbti = (p.mbti ?? {}) as Mbti;
@@ -83,8 +84,12 @@ export function PsychSection({ character }: { character: Character }) {
         set("facets", facets.map((f, j) => (j === i ? { ...f, ...patch } : f)));
 
     return (
-        <div className="space-y-8">
-            <div className="flex justify-end -mt-1"><SaveBadge state={state} /></div>
+        <div className="space-y-12">
+            <section className="space-y-6">
+            <div className="flex items-start gap-3">
+                <div className="flex-1"><GroupHead n="②" title="นิสัย" sub="ผู้อ่านจะเห็นตัวละครเป็นคนแบบไหนในฉาก" /></div>
+                <SaveBadge state={state} />
+            </div>
 
             {/* Big Five: กราฟ + ปุ่มข้างกัน */}
             <div>
@@ -153,6 +158,11 @@ export function PsychSection({ character }: { character: Character }) {
                 </>}
                 onChange={(v) => set("contradiction", v)} placeholder="เช่น ใจดีกับคนแปลกหน้า แต่ใจร้ายกับคนในบ้าน" />
 
+            {traitsExtra}
+            </section>
+
+            <section className="space-y-6">
+            <GroupHead n="③" title="ป้ายเสริม" sub="ไม่จำเป็นต้องกรอก — ใช้เป็นทางลัด หรือกับตัวร้าย / แอนตี้ฮีโร่" />
             <div className="grid sm:grid-cols-2 gap-x-8">
                 <ChipPicker label="ความซื่อสัตย์เมื่อไม่มีใครเห็น" sub="จะโกงหรือเอาเปรียบไหมถ้าทำได้" value={p.honestyHumility} onChange={(v) => set("honestyHumility", v)}
                     info={<>
@@ -242,6 +252,7 @@ export function PsychSection({ character }: { character: Character }) {
                 </div>
             </div>
             <CoherencePanel mbti={mbti} bigFive={b5} />
+            </section>
         </div>
     );
 }

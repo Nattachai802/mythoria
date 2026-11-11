@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AiDot } from "./header-controls";
@@ -101,7 +101,7 @@ export const numOrUndef = (s: string) => {
 
 /** ย่อหน้าเขียนอิสระ — field-sizing ให้สูงตามเนื้อหา (เบราว์เซอร์ที่ไม่รองรับ = 3 บรรทัด) */
 /**
- * หัวข้อ + คำอธิบาย 2 ชั้น: sub = บรรทัดรองแสดงตลอด · info = กด ⓘ แล้วกางคำอธิบายเต็ม
+ * หัวข้อ + คำอธิบาย 2 ชั้น: sub = บรรทัดรองแสดงตลอด · info = กล่องลอย (ชี้เมาส์ = เปิด, กด = ค้าง — จอสัมผัสใช้กด)
  * กติกา: ⓘ ติดที่ระดับหัวข้อเท่านั้น ไม่ติดรายช่องย่อย
  */
 export function InfoHead({ label, sub, info, right, className }: {
@@ -111,27 +111,55 @@ export function InfoHead({ label, sub, info, right, className }: {
     right?: React.ReactNode;
     className?: string;
 }) {
-    const [open, setOpen] = useState(false);
+    const [pinned, setPinned] = useState(false);
+    const ref = useRef<HTMLSpanElement>(null);
+    useEffect(() => {
+        if (!pinned) return;
+        const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setPinned(false); };
+        const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setPinned(false); };
+        document.addEventListener("mousedown", close);
+        document.addEventListener("keydown", esc);
+        return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", esc); };
+    }, [pinned]);
     return (
         <div className={cn("mb-2", className)}>
             <div className="flex items-center justify-between gap-3">
-                <span className="flex items-center gap-1.5">
-                    <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">{label}</span>
+                <span ref={ref} className="group/info relative flex items-center">
+                    <span className="font-technical text-[10px] uppercase tracking-[0.15em] text-muted-foreground">{label}</span>
                     {info && (
-                        <button type="button" aria-label={`อธิบาย ${label}`} aria-expanded={open} onClick={() => setOpen((o) => !o)}
-                            className={cn("p-0.5 -m-0.5 cursor-pointer transition-colors duration-200", open ? "text-[var(--forge-gold)]" : "text-muted-foreground/60 hover:text-foreground")}>
-                            <Info className="w-3 h-3" />
-                        </button>
+                        <>
+                            <button type="button" aria-label={`อธิบาย ${label}`} aria-expanded={pinned} onClick={() => setPinned((o) => !o)}
+                                className={cn("w-7 h-7 -my-2 inline-flex items-center justify-center cursor-pointer transition-colors duration-200",
+                                    pinned ? "text-[var(--forge-gold)]" : "text-muted-foreground/60 hover:text-foreground")}>
+                                <Info className="w-3 h-3" />
+                            </button>
+                            <div role="tooltip" className={cn(
+                                "absolute left-0 top-full z-30 w-72 max-w-[80vw] pt-1",
+                                pinned ? "block" : "hidden group-hover/info:block",
+                            )}>
+                                <div className="chamfered-sm border border-border bg-popover text-popover-foreground shadow-md px-3 py-2 text-xs leading-relaxed space-y-1 animate-in fade-in zoom-in-95 duration-150 motion-reduce:animate-none">
+                                    {info}
+                                </div>
+                            </div>
+                        </>
                     )}
                 </span>
                 {right}
             </div>
-            {sub && <p className="text-[10px] text-muted-foreground/70 mt-0.5">{sub}</p>}
-            {info && open && (
-                <div className="mt-1.5 border-l-2 border-[var(--forge-gold)] pl-3 py-1 text-xs leading-relaxed text-foreground/90 space-y-1 animate-in fade-in duration-200 motion-reduce:animate-none">
-                    {info}
-                </div>
-            )}
+            {sub && <p className="text-[11px] text-muted-foreground/80 mt-0.5">{sub}</p>}
+        </div>
+    );
+}
+
+/** หัวกลุ่มใหญ่ในแท็บ (① ② ③) — ชั้นบนสุด เหนือ InfoHead */
+export function GroupHead({ n, title, sub }: { n: string; title: string; sub: string }) {
+    return (
+        <div className="mb-5">
+            <div className="flex items-center gap-3">
+                <span className="font-technical text-xs tracking-[0.15em] text-[var(--forge-gold)] whitespace-nowrap">{n} {title}</span>
+                <span className="flex-1 h-px bg-border" />
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">{sub}</p>
         </div>
     );
 }

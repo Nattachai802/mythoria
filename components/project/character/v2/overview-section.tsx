@@ -4,11 +4,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { requestProfileAutofill } from "@/server/character-autofill";
 import { OVERVIEW_SOURCES } from "@/lib/character-autofill";
-import { BookOpen, User, Flame, Target, Swords, Shield, AlertTriangle, Info } from "lucide-react";
+import { BookOpen, User, Flame, Target, Swords } from "lucide-react";
 import type { Character } from "@/db/schema";
 import { cn } from "@/lib/utils";
 import { useCharacterText, type CharacterTextField } from "./use-section";
 import { SaveBadge } from "./profile-section";
+import { InfoHead } from "./inline-field";
 
 /**
  * ข้อความที่อ่านและแก้ได้ในที่เดียว — textarea หน้าตาเหมือนย่อหน้า (ไม่มีกรอบ ไม่สลับโหมด)
@@ -74,26 +75,15 @@ export function EditableText({
     );
 }
 
-function Section({ icon, title, children, sub, info }: { icon: React.ReactNode; title: string; children: React.ReactNode; sub?: string; info?: React.ReactNode }) {
-    const [open, setOpen] = useState(false);
+function Section({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
     return (
         <section className="space-y-2">
             <div className="flex items-center gap-3">
                 <span className="flex items-center gap-2 font-technical text-[10px] uppercase tracking-[0.2em] text-muted-foreground whitespace-nowrap">
                     {icon}{title}
-                    {info && (
-                        <button type="button" aria-label={`อธิบาย ${title}`} aria-expanded={open} onClick={() => setOpen((o) => !o)}
-                            className={cn("p-0.5 -m-0.5 cursor-pointer transition-colors duration-200", open ? "text-[var(--forge-gold)]" : "text-muted-foreground/60 hover:text-foreground")}>
-                            <Info className="w-3 h-3" />
-                        </button>
-                    )}
                 </span>
                 <span className="flex-1 h-px bg-border/70" />
             </div>
-            {sub && <p className="-mt-1 text-[10px] text-muted-foreground/70">{sub}</p>}
-            {info && open && (
-                <div className="border-l-2 border-[var(--forge-gold)] pl-3 py-1 text-xs leading-relaxed text-foreground/90 space-y-1 animate-in fade-in duration-200 motion-reduce:animate-none">{info}</div>
-            )}
             {children}
         </section>
     );
@@ -130,37 +120,44 @@ export function OverviewSection({ character }: { character: Character }) {
     );
 }
 
-/** มิติตัวละคร + จุดแข็ง/จุดอ่อน — อยู่ในแท็บจิตใจ (คอลัมน์ข้อความเดิมของ characters) */
+/** มิติตัวละคร (กลุ่ม ① แรงขับ) — คอลัมน์ข้อความเดิมของ characters */
 export function DimensionsSection({ character }: { character: Character }) {
     return (
-        <div className="space-y-8">
-            <Section icon={<Target className="w-3 h-3" />} title="มิติตัวละคร" sub="ต้องการอะไร · ทำไม · อะไรขวาง"
+        <div>
+            <InfoHead label="มิติตัวละคร" sub="ต้องการอะไร · ทำไม · อะไรขวาง"
                 info={<>
                     <p><b>เป้าหมาย</b> — สิ่งที่ตัวละครอยากได้ในเรื่องนี้ ยิ่งจับต้องได้ยิ่งดี</p>
                     <p><b>แรงจูงใจ</b> — ทำไมถึงอยากได้ (ความรู้สึกหรืออดีตที่ผลักดัน)</p>
                     <p><b>ความขัดแย้ง</b> — ปัญหาหรือคนที่ขวางทาง เป็นเรื่องของพล็อต ไม่ใช่นิสัย</p>
-                </>}>
-                <div className="grid sm:grid-cols-3 gap-x-6 gap-y-4">
-                    <Sub icon={<Target className="w-3 h-3 text-emerald-500" />} title="เป้าหมาย">
-                        <EditableText character={character} field="goals" label="เป้าหมาย" className={body} placeholder="+ ต้องการอะไร" />
-                    </Sub>
-                    <Sub icon={<Flame className="w-3 h-3 text-[var(--forge-amber)]" />} title="แรงจูงใจ">
-                        <EditableText character={character} field="motivation" label="แรงจูงใจ" className={body} placeholder="+ ทำไมถึงต้องการ" />
-                    </Sub>
-                    <Sub icon={<Swords className="w-3 h-3 text-red-500" />} title="ความขัดแย้ง">
-                        <EditableText character={character} field="conflict" label="ความขัดแย้ง" className={body} placeholder="+ อะไรขวางอยู่" />
-                    </Sub>
-                </div>
-            </Section>
-            <div className="grid sm:grid-cols-2 gap-6">
-                <Section icon={<Shield className="w-3 h-3 text-emerald-500" />} title="จุดแข็ง" sub="ความสามารถหรือคุณสมบัติที่พึ่งได้"
-                    info={<p>สิ่งที่ช่วยให้ตัวละครรอดหรือชนะ — ผู้อ่านควรได้เห็นมันใช้งานจริงในฉาก ไม่ใช่แค่ถูกบอก</p>}>
-                    <EditableText character={character} field="strengths" label="จุดแข็ง" className={body} placeholder="+ เก่งอะไร" />
-                </Section>
-                <Section icon={<AlertTriangle className="w-3 h-3 text-red-500" />} title="จุดอ่อน" sub="จุดที่พลาดหรือถูกโจมตีได้"
-                    info={<p>จุดอ่อนที่ดีสร้างปัญหาในพล็อตได้จริง และมักเป็นด้านกลับของจุดแข็ง เช่น ภักดี → ถูกหลอกใช้ง่าย</p>}>
-                    <EditableText character={character} field="weaknesses" label="จุดอ่อน" className={body} placeholder="+ พลาดตรงไหน" />
-                </Section>
+                </>} />
+            <div className="grid sm:grid-cols-3 gap-x-6 gap-y-4">
+                <Sub icon={<Target className="w-3 h-3 text-emerald-500" />} title="เป้าหมาย">
+                    <EditableText character={character} field="goals" label="เป้าหมาย" className={body} placeholder="+ ต้องการอะไร" />
+                </Sub>
+                <Sub icon={<Flame className="w-3 h-3 text-[var(--forge-amber)]" />} title="แรงจูงใจ">
+                    <EditableText character={character} field="motivation" label="แรงจูงใจ" className={body} placeholder="+ ทำไมถึงต้องการ" />
+                </Sub>
+                <Sub icon={<Swords className="w-3 h-3 text-red-500" />} title="ความขัดแย้ง">
+                    <EditableText character={character} field="conflict" label="ความขัดแย้ง" className={body} placeholder="+ อะไรขวางอยู่" />
+                </Sub>
+            </div>
+        </div>
+    );
+}
+
+/** จุดแข็ง/จุดอ่อน (กลุ่ม ② นิสัย) */
+export function StrengthsSection({ character }: { character: Character }) {
+    return (
+        <div className="grid sm:grid-cols-2 gap-6">
+            <div>
+                <InfoHead label="จุดแข็ง" sub="ความสามารถหรือคุณสมบัติที่พึ่งได้"
+                    info={<p>สิ่งที่ช่วยให้ตัวละครรอดหรือชนะ — ผู้อ่านควรได้เห็นมันใช้งานจริงในฉาก ไม่ใช่แค่ถูกบอก</p>} />
+                <EditableText character={character} field="strengths" label="จุดแข็ง" className={body} placeholder="+ เก่งอะไร" />
+            </div>
+            <div>
+                <InfoHead label="จุดอ่อน" sub="จุดที่พลาดหรือถูกโจมตีได้"
+                    info={<p>จุดอ่อนที่ดีสร้างปัญหาในพล็อตได้จริง และมักเป็นด้านกลับของจุดแข็ง เช่น ภักดี → ถูกหลอกใช้ง่าย</p>} />
+                <EditableText character={character} field="weaknesses" label="จุดอ่อน" className={body} placeholder="+ พลาดตรงไหน" />
             </div>
         </div>
     );

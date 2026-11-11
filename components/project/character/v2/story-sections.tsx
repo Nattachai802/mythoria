@@ -47,12 +47,6 @@ export function MotiveSection({ character }: { character: Character }) {
                     <p><b>บาดแผลในอดีต</b> — เหตุการณ์ที่ทำให้เชื่อผิดแบบนั้น</p>
                     <p>นิสัย (Big Five) มักคงเดิม สิ่งที่เปลี่ยนตาม arc คือกลยุทธ์และความเชื่อ</p>
                 </>} />
-            {character.goals && (
-                <div className="py-1.5">
-                    <div className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">ต้องการ (จากเป้าหมายในมิติตัวละคร)</div>
-                    <p className="mt-1 text-sm whitespace-pre-line">{String(character.goals)}</p>
-                </div>
-            )}
             <div className="grid sm:grid-cols-2 gap-x-8">
                 <TextBlock label="วิธีที่ใช้ไปให้ถึง" hint="กลยุทธ์ที่ใช้" value={m.strategy} onChange={(v) => set("strategy", v)} placeholder="ทำอะไรเพื่อได้สิ่งที่ต้องการ" />
                 <TextBlock label="ความเชื่อผิด ๆ" hint="เรื่องจะพิสูจน์ว่าผิด" value={m.lie} onChange={(v) => set("lie", v)} placeholder="เช่น ถ้าไม่เข้มแข็ง จะไม่มีใครรัก" />
