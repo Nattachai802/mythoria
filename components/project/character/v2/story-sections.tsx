@@ -6,7 +6,7 @@ import type { Character } from "@/db/schema";
 import { ARC_TYPES, type CharacterArc, type CharacterMotive, type CharacterNarration } from "@/lib/character-profile";
 import { useSection } from "./use-section";
 import { SaveBadge } from "./profile-section";
-import { ChipPicker, TextBlock } from "./inline-field";
+import { ChipPicker, InfoHead, TextBlock } from "./inline-field";
 
 export interface ChapterOption { id: string; title: string; orderIndex: number }
 
@@ -37,18 +37,27 @@ export function MotiveSection({ character }: { character: Character }) {
     const { value: m, set, state } = useSection<CharacterMotive>(character.id, "motive", character.motive);
     return (
         <div className="space-y-2">
-            <div className="flex justify-end -mt-1"><SaveBadge state={state} /></div>
+            <InfoHead label="กลไกการเปลี่ยนแปลง" sub="สิ่งที่ทำให้ตัวละครเปลี่ยน (หรือไม่เปลี่ยน) ตลอดเรื่อง"
+                right={<SaveBadge state={state} />}
+                info={<>
+                    <p><b>วิธีที่ใช้ไปให้ถึง</b> — กลยุทธ์ที่ใช้ไล่ตามเป้าหมาย มักเป็นสิ่งที่ต้องเลิกใช้ตอนท้าย</p>
+                    <p><b>ความเชื่อผิด ๆ</b> — สิ่งที่ตัวละครเชื่อแต่ไม่จริง และเรื่องจะพิสูจน์ว่าผิด</p>
+                    <p><b>คุณค่าที่ยึดถือ</b> — สิ่งที่ยอมเสียทุกอย่างเพื่อรักษา</p>
+                    <p><b>จุดกดดัน</b> — สถานการณ์ที่บีบแล้วตัวละครต้องเลือก จุดนี้คือที่ที่การเปลี่ยนแปลงเกิด</p>
+                    <p><b>บาดแผลในอดีต</b> — เหตุการณ์ที่ทำให้เชื่อผิดแบบนั้น</p>
+                    <p>นิสัย (Big Five) มักคงเดิม สิ่งที่เปลี่ยนตาม arc คือกลยุทธ์และความเชื่อ</p>
+                </>} />
             {character.goals && (
                 <div className="py-1.5">
-                    <div className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">ต้องการ (จากเป้าหมายเดิม — แก้ที่ปุ่ม “แก้ไข”)</div>
+                    <div className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">ต้องการ (จากเป้าหมายในมิติตัวละคร)</div>
                     <p className="mt-1 text-sm whitespace-pre-line">{String(character.goals)}</p>
                 </div>
             )}
             <div className="grid sm:grid-cols-2 gap-x-8">
-                <TextBlock label="วิธีที่ใช้ไปให้ถึง" hint="กลยุทธ์" value={m.strategy} onChange={(v) => set("strategy", v)} placeholder="ทำอะไรเพื่อได้สิ่งที่ต้องการ" />
-                <TextBlock label="ความเชื่อผิดๆ" hint="สิ่งที่ arc จะทำลาย" value={m.lie} onChange={(v) => set("lie", v)} placeholder="เช่น ถ้าไม่เข้มแข็ง จะไม่มีใครรัก" />
+                <TextBlock label="วิธีที่ใช้ไปให้ถึง" hint="กลยุทธ์ที่ใช้" value={m.strategy} onChange={(v) => set("strategy", v)} placeholder="ทำอะไรเพื่อได้สิ่งที่ต้องการ" />
+                <TextBlock label="ความเชื่อผิด ๆ" hint="เรื่องจะพิสูจน์ว่าผิด" value={m.lie} onChange={(v) => set("lie", v)} placeholder="เช่น ถ้าไม่เข้มแข็ง จะไม่มีใครรัก" />
                 <TextBlock label="คุณค่าที่ยึดถือ" value={m.value} onChange={(v) => set("value", v)} placeholder="สิ่งที่ยอมเสียทุกอย่างเพื่อรักษา" />
-                <TextBlock label="จุดกดดัน" hint="บีบตรงนี้แล้วจะเปลี่ยน" value={m.pressurePoint} onChange={(v) => set("pressurePoint", v)} />
+                <TextBlock label="จุดกดดัน" hint="บีบตรงนี้แล้วต้องเลือก" value={m.pressurePoint} onChange={(v) => set("pressurePoint", v)} />
                 <TextBlock label="บาดแผลในอดีต" value={m.wound} onChange={(v) => set("wound", v)} placeholder="เหตุการณ์ที่ทำให้เชื่อแบบนั้น" />
             </div>
         </div>

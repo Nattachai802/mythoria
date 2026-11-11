@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AiDot } from "./header-controls";
 
@@ -98,19 +100,68 @@ export const numOrUndef = (s: string) => {
 };
 
 /** ย่อหน้าเขียนอิสระ — field-sizing ให้สูงตามเนื้อหา (เบราว์เซอร์ที่ไม่รองรับ = 3 บรรทัด) */
+/**
+ * หัวข้อ + คำอธิบาย 2 ชั้น: sub = บรรทัดรองแสดงตลอด · info = กด ⓘ แล้วกางคำอธิบายเต็ม
+ * กติกา: ⓘ ติดที่ระดับหัวข้อเท่านั้น ไม่ติดรายช่องย่อย
+ */
+export function InfoHead({ label, sub, info, right, className }: {
+    label: string;
+    sub?: string;
+    info?: React.ReactNode;
+    right?: React.ReactNode;
+    className?: string;
+}) {
+    const [open, setOpen] = useState(false);
+    return (
+        <div className={cn("mb-2", className)}>
+            <div className="flex items-center justify-between gap-3">
+                <span className="flex items-center gap-1.5">
+                    <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">{label}</span>
+                    {info && (
+                        <button type="button" aria-label={`อธิบาย ${label}`} aria-expanded={open} onClick={() => setOpen((o) => !o)}
+                            className={cn("p-0.5 -m-0.5 cursor-pointer transition-colors duration-200", open ? "text-[var(--forge-gold)]" : "text-muted-foreground/60 hover:text-foreground")}>
+                            <Info className="w-3 h-3" />
+                        </button>
+                    )}
+                </span>
+                {right}
+            </div>
+            {sub && <p className="text-[10px] text-muted-foreground/70 mt-0.5">{sub}</p>}
+            {info && open && (
+                <div className="mt-1.5 border-l-2 border-[var(--forge-gold)] pl-3 py-1 text-xs leading-relaxed text-foreground/90 space-y-1 animate-in fade-in duration-200 motion-reduce:animate-none">
+                    {info}
+                </div>
+            )}
+        </div>
+    );
+}
+
 export function TextBlock({
     label,
     hint,
     value,
     onChange,
     placeholder,
+    sub,
+    info,
 }: {
     label: string;
     hint?: string;
     value: string | undefined;
     onChange: (v: string | undefined) => void;
     placeholder?: string;
+    sub?: string;
+    info?: React.ReactNode;
 }) {
+    if (info || sub) return (
+        <div className="py-1.5">
+            <InfoHead label={label} sub={sub} info={info} className="mb-0" />
+            <textarea rows={2} aria-label={label} value={value ?? ""}
+                onChange={(e) => onChange(e.target.value.trim() === "" ? undefined : e.target.value)}
+                placeholder={placeholder ?? "—"}
+                className="mt-1 w-full resize-none [field-sizing:content] min-h-[2.5rem] bg-transparent text-base leading-relaxed outline-none placeholder:text-muted-foreground/40 border-b border-transparent hover:border-border focus:border-[var(--forge-gold)] transition-colors" />
+        </div>
+    );
     return (
         <label className="block py-1.5">
             <span className="flex items-baseline justify-between gap-3">
@@ -134,15 +185,21 @@ export function ChipPicker<T extends string>({
     options,
     value,
     onChange,
+    sub,
+    info,
 }: {
     label: string;
     options: readonly { value: T; label: string; hint?: string }[];
     value: T | undefined;
     onChange: (v: T | undefined) => void;
+    sub?: string;
+    info?: React.ReactNode;
 }) {
     return (
         <div className="py-1.5">
-            <div className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground mb-1.5">{label}</div>
+            {info || sub
+                ? <InfoHead label={label} sub={sub} info={info} className="mb-1.5" />
+                : <div className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground mb-1.5">{label}</div>}
             <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={label}>
                 {options.map((o) => (
                     <button

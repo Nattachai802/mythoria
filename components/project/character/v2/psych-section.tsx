@@ -9,7 +9,7 @@ import { useSection } from "./use-section";
 import { MbtiSuggestCard, BigFiveSuggestCard, EnneagramSuggestCard, CoherencePanel } from "./mbti-suggest-card";
 import { SaveBadge } from "./profile-section";
 import { ENN_DETAILS } from "@/lib/enneagram-suggest";
-import { ChipPicker, ScaleBar, BipolarBar, ThinBar, TextBlock } from "./inline-field";
+import { InfoHead, ChipPicker, ScaleBar, BipolarBar, ThinBar, TextBlock } from "./inline-field";
 
 type BigFive = NonNullable<CharacterPsych["bigFive"]>;
 type Mbti = NonNullable<CharacterPsych["mbti"]>;
@@ -87,6 +87,13 @@ export function PsychSection({ character }: { character: Character }) {
             <div className="flex justify-end -mt-1"><SaveBadge state={state} /></div>
 
             {/* Big Five: กราฟ + ปุ่มข้างกัน */}
+            <div>
+            <InfoHead label="บุคลิกภาพ 5 ด้าน (Big Five)" sub="ภาพรวมนิสัย 5 แกน — ระบบที่งานวิจัยรองรับมากที่สุด"
+                info={<>
+                    <p>ให้คะแนนแต่ละแกน 1–5 (3 = กลาง ๆ) ไม่มีค่าไหนดีหรือแย่ ตัวละครที่น่าสนใจมักมี 1–2 แกนที่สุดทาง</p>
+                    <p>O เปิดรับประสบการณ์ · C มีระเบียบวินัย · E เข้าสังคม · A ประนีประนอม · N อารมณ์อ่อนไหว</p>
+                    <p>ไม่รู้จะให้เท่าไหร่ กด “ช่วยหา Big Five” ให้ AI อ่านภาพรวมแล้วเสนอ</p>
+                </>} />
             <div className="grid sm:grid-cols-[220px_1fr] gap-6 items-center">
                 <Radar v={b5} />
                 <div className="divide-y divide-border/50">
@@ -98,13 +105,15 @@ export function PsychSection({ character }: { character: Character }) {
             </div>
             <BigFiveSuggestCard characterId={character.id} hasValue={DOMAINS.some((d) => b5[d.key] !== undefined)}
                 onApply={(v) => set("bigFive", { ...b5, ...v })} />
+            </div>
 
             {/* Facets — ลายเซ็นของตัวละคร */}
             <div>
-                <div className="flex items-baseline justify-between mb-1">
-                    <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">ลักษณะเด่น (facet)</span>
-                    <span className="text-[10px] text-muted-foreground">3–6 ข้อ แต่ละข้อมีฉากที่เห็นได้</span>
-                </div>
+                <InfoHead label="นิสัยเด่นเฉพาะตัว" sub="สิ่งที่ทำให้ต่างจากคนนิสัยคล้ายกัน · 3–6 ข้อ"
+                    info={<>
+                        <p>Big Five บอกภาพกว้าง เช่น “ขี้กังวล” แต่คนขี้กังวลมีหลายแบบ — บางคนกลัวถูกทิ้ง บางคนกลัวพลาด</p>
+                        <p>ใส่เฉพาะข้อที่เด่นจริง: ตั้งชื่อ เลือกว่ามีมาก (สูง) หรือแทบไม่มี (ต่ำ) ความเข้ม และฉากที่ผู้อ่านจะเห็นนิสัยนี้</p>
+                    </>} />
                 {facets.map((f, i) => (
                     <div key={i} className="grid sm:grid-cols-[1fr_auto_140px_auto] gap-x-3 gap-y-1 items-center py-2 border-b border-border/50 animate-in fade-in slide-in-from-top-1 duration-200 motion-reduce:animate-none">
                         <input aria-label="ชื่อลักษณะ" placeholder="เช่น ไม่ไว้ใจใคร" value={f.name}
@@ -137,13 +146,28 @@ export function PsychSection({ character }: { character: Character }) {
                 )}
             </div>
 
-            <TextBlock label="ความขัดแย้งในตัว" hint="ด้านที่ดูไม่เข้ากับภาพรวม" value={p.contradiction}
+            <TextBlock label="นิสัยที่ขัดกันเอง" sub="ด้านที่ดูไม่เข้ากันในคนเดียว (ไม่ใช่ปัญหาในพล็อต)" value={p.contradiction}
+                info={<>
+                    <p>ตัวละครที่มีสองด้านดูเป็นคนจริงกว่าตัวละครที่นิสัยไปทางเดียวหมด</p>
+                    <p>ปัญหาที่ขวางเป้าหมายของตัวละคร ให้เขียนที่ “ความขัดแย้ง” ในมิติตัวละครด้านล่าง</p>
+                </>}
                 onChange={(v) => set("contradiction", v)} placeholder="เช่น ใจดีกับคนแปลกหน้า แต่ใจร้ายกับคนในบ้าน" />
 
             <div className="grid sm:grid-cols-2 gap-x-8">
-                <ChipPicker label="ความซื่อตรง-ถ่อมตน (H)" value={p.honestyHumility} onChange={(v) => set("honestyHumility", v)}
-                    options={[{ value: "low", label: "ต่ำ" }, { value: "mid", label: "กลาง" }, { value: "high", label: "สูง" }]} />
-                <ChipPicker label="ด้านมืด" value={p.darkPattern} onChange={(v) => set("darkPattern", v)}
+                <ChipPicker label="ความซื่อสัตย์เมื่อไม่มีใครเห็น" sub="จะโกงหรือเอาเปรียบไหมถ้าทำได้" value={p.honestyHumility} onChange={(v) => set("honestyHumility", v)}
+                    info={<>
+                        <p><b>เอาเปรียบได้</b> — ประจบเพื่อได้ประโยชน์ โกงถ้าคุ้มและไม่โดนจับ อยากรวยอยากมีหน้ามีตา คิดว่าตัวเองสมควรได้มากกว่าคนอื่น</p>
+                        <p><b>ซื่อแม้เสียประโยชน์</b> — ไม่โกงแม้ไม่มีใครรู้ ไม่อวด ไม่สนสถานะ</p>
+                        <p>ต่างจาก “ประนีประนอม”: คนพูดเพราะอาจโกงได้ คนปากร้ายอาจซื่อมาก (มิติ H จากโมเดล HEXACO)</p>
+                    </>}
+                    options={[{ value: "low", label: "เอาเปรียบได้" }, { value: "mid", label: "แล้วแต่สถานการณ์" }, { value: "high", label: "ซื่อแม้เสียประโยชน์" }]} />
+                <ChipPicker label="ด้านมืด" sub="สำหรับตัวร้าย / แอนตี้ฮีโร่ · ตัวละครทั่วไปเลือก &quot;ไม่มี&quot;" value={p.darkPattern} onChange={(v) => set("darkPattern", v)}
+                    info={<>
+                        <p><b>นักวางแผน</b> — เย็นชา คำนวณ หลอกใช้คนเป็นเกมยาว</p>
+                        <p><b>หลงตัวเอง</b> — ต้องการคำชม โอ้อวด พังเมื่อถูกดูถูก (จุดอ่อนที่ฝ่ายตรงข้ามใช้ได้)</p>
+                        <p><b>ไร้ความรู้สึก</b> — หุนหัน ไม่กลัว ไม่สำนึกผิด</p>
+                        <p>ทั้งสามแบบมักประนีประนอมต่ำและซื่อสัตย์ต่ำ ที่เหลือต่างกัน</p>
+                    </>}
                     options={[
                         { value: "none", label: "ไม่มี" },
                         { value: "machiavellian", label: "นักวางแผน", hint: "Machiavellian: เย็นชา คำนวณ เล่นเกมยาว" },
@@ -155,11 +179,12 @@ export function PsychSection({ character }: { character: Character }) {
             {/* ป้ายแบบทดสอบยอดนิยม — เป็นทางลัด ไม่ใช่ตัวทำนาย */}
             <div className="grid sm:grid-cols-2 gap-x-8 gap-y-6">
                 <div>
-                    <div className="flex items-baseline justify-between">
-                        <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">MBTI</span>
-                        <span className="font-display text-lg tabular-nums">{mbtiCode ?? "—"}</span>
-                    </div>
-                    <p className="mb-2 text-[10px] text-muted-foreground/70">ไม่บอกเรื่องความหวั่นไหวทางอารมณ์ — ดูแกน N ด้านบน</p>
+                    <InfoHead label="MBTI" sub="ทางลัดยอดนิยม · ไม่บอกความหวั่นไหวทางอารมณ์ (ดูแกน N)"
+                        right={<span className="font-display text-lg tabular-nums">{mbtiCode ?? "—"}</span>}
+                        info={<>
+                            <p>4 แกน: E/I พลังจากคนหรือจากตัวเอง · S/N เชื่อสิ่งที่เห็นหรือมองภาพรวม · T/F ตัดสินด้วยเหตุผลหรือคุณค่า · J/P ชอบวางแผนหรือยืดหยุ่น</p>
+                            <p>ยิ่งดึงไปสุดทาง ยิ่งชัด กลาง ๆ = ก้ำกึ่ง · MBTI เป็นป้ายเรียกง่าย ใช้คู่กับ Big Five ดีกว่าใช้แทน</p>
+                        </>} />
                     {MBTI.map((m) => (
                         <BipolarBar key={m.key} left={m.left} right={m.right} label={`${m.left} หรือ ${m.right}`}
                             value={mbti[m.key]} onChange={(v) => set("mbti", { ...mbti, [m.key]: v })} />
@@ -169,11 +194,12 @@ export function PsychSection({ character }: { character: Character }) {
                 </div>
 
                 <div>
-                    <div className="flex items-baseline justify-between">
-                        <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">Enneagram</span>
-                        <span className="font-display text-lg">{enn ? `${enn.type}${enn.wing ? `w${enn.wing}` : ""} · ${ENNEAGRAM[enn.type]}` : "—"}</span>
-                    </div>
-                    <p className="mb-2 text-[10px] text-muted-foreground/70">แนวโน้มทางเรื่องเล่า งานวิจัยรองรับน้อยกว่า Big Five มาก</p>
+                    <InfoHead label="Enneagram" sub="ความกลัวและความปรารถนาลึก ๆ · งานวิจัยรองรับน้อย"
+                        right={<span className="font-display text-lg">{enn ? `${enn.type}${enn.wing ? `w${enn.wing}` : ""} · ${ENNEAGRAM[enn.type]}` : "—"}</span>}
+                        info={<>
+                            <p>9 แบบ แต่ละแบบมีความกลัวลึก ๆ ที่ขับพฤติกรรม เลือกแล้วจะมีคำอธิบายขึ้นด้านล่าง</p>
+                            <p>ปีก = แบบข้างเคียงที่เติมสีให้ (เลือกหรือไม่ก็ได้) · ใช้เป็นแรงบันดาลใจเรื่องแรงขับ ไม่ใช่ตัวทำนายนิสัย</p>
+                        </>} />
                     <div className="flex gap-1" role="radiogroup" aria-label="Enneagram type">
                         {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
                             <button key={n} type="button" role="radio" aria-checked={enn?.type === n} title={ENNEAGRAM[n]} aria-label={`${n} ${ENNEAGRAM[n]}`}
