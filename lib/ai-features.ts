@@ -259,6 +259,17 @@ export const AI_FEATURES: Record<string, AiFeatureDef> = {
         ],
         defaultDailyLimit: 50,
     },
+    "facet-extract": {
+        key: "facet-extract",
+        label: "สกัดนิสัยเด่นและนิสัยที่ขัดกันเองของตัวละคร",
+        description: "อ่านภาพรวม/แรงจูงใจเชิงลึก แล้วเสนอนิสัยเด่น 3–5 ข้อ (พร้อมฉาก) และนิสัยที่ขัดกันเอง 0–2 คู่ พร้อมหลักฐานที่ตรวจในโค้ด",
+        chain: [
+            { provider: "openrouter", model: "deepseek/deepseek-v4-flash", temperature: 0.3, maxTokens: 8000 },
+            { provider: "groq", model: "openai/gpt-oss-120b", temperature: 0.3, maxTokens: 8000 },
+            { provider: "gemini", model: GEMINI_MODEL, temperature: 0.3, maxTokens: 8000 },
+        ],
+        defaultDailyLimit: 50,
+    },
     "lore-extractor": {
         key: "lore-extractor",
         label: "สกัด Entity จาก Lore (Background)",

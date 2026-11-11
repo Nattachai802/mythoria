@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { useSection } from "./use-section";
 import { MbtiSuggestCard, BigFiveSuggestCard, EnneagramSuggestCard, CoherencePanel } from "./mbti-suggest-card";
 import { SaveBadge } from "./profile-section";
+import { FacetExtractCard } from "./facet-extract-card";
 import { ENN_DETAILS } from "@/lib/enneagram-suggest";
 import { InfoHead, GroupHead, ChipPicker, ScaleBar, BipolarBar, ThinBar, TextBlock } from "./inline-field";
 
@@ -149,6 +150,11 @@ export function PsychSection({ character, traitsExtra }: { character: Character;
                         <Plus className="w-3.5 h-3.5" /> เพิ่มลักษณะ
                     </button>
                 )}
+                <FacetExtractCard characterId={character.id} room={12 - facets.length}
+                    onAdd={({ facets: nf, contradictions: nc }) => {
+                        if (nf.length) set("facets", [...facets, ...nf.map((f) => ({ name: f.name, direction: f.direction, strength: f.strength, scene: f.scene || undefined }))]);
+                        if (nc.length) set("contradiction", [p.contradiction, ...nc.map((c) => c.text)].filter(Boolean).join("\n"));
+                    }} />
             </div>
 
             <TextBlock label="นิสัยที่ขัดกันเอง" sub="ด้านที่ดูไม่เข้ากันในคนเดียว (ไม่ใช่ปัญหาในพล็อต)" value={p.contradiction}
