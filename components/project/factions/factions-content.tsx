@@ -19,6 +19,7 @@ import {
 import { Plus, Shield, X, Trash2, Users, Crown, Link2, LayoutGrid, ListTree, ChevronRight, Settings2, Pencil, Lightbulb, Layers, Share2 } from "lucide-react";
 import { activeIn, relActiveIn, statusAt, findDefections, findFactionIssues, type MembershipLike, type StatusPoint } from "@/lib/faction-checks";
 import { FactionMap } from "./faction-map";
+import { FactionTimelineStrip } from "./faction-timeline-strip";
 import { FactionChecksPanel } from "./faction-checks-panel";
 import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -472,17 +473,6 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                                 <ViewBtn active={view === "tree"} onClick={() => setView("tree")} icon={<ListTree className="h-3 w-3" />} label="ลำดับชั้น" />
                                 <ViewBtn active={view === "map"} onClick={() => setView("map")} icon={<Share2 className="h-3 w-3" />} label="แผนที่" />
                             </div>
-                            {chapters.length > 0 && (
-                                <label className="inline-flex items-center gap-1.5 font-technical text-[10px] uppercase tracking-wide text-muted-foreground">
-                                    ณ บท
-                                    <select value={chapterId} onChange={(e) => setChapterId(e.target.value)} aria-label="ดูฝ่าย ณ บท"
-                                        className={cn("chamfered-sm border border-steel-800 bg-transparent px-2 py-1 normal-case tracking-normal text-xs max-w-[12rem] cursor-pointer",
-                                            chapterId !== "all" && "border-[var(--forge-amber)] text-foreground")}>
-                                        <option value="all">ทุกบท</option>
-                                        {chapters.map((c) => <option key={c.id} value={c.id}>{c.orderIndex}. {c.title}</option>)}
-                                    </select>
-                                </label>
-                            )}
                             {/* Preset manager toggle */}
                             {view === "status" && (
                                 <button
@@ -501,6 +491,21 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                         </Button>
                     </div>
 
+                    {sortedChapters.length > 0 && (
+                        <div className="flex items-center gap-3 px-6 py-2.5 border-b border-steel-800/60">
+                            <span className="font-technical text-[10px] uppercase tracking-[0.14em] text-muted-foreground shrink-0">ฝ่าย ณ บท</span>
+                            <input type="range" min={0} max={sortedChapters.length} step={1} aria-label="ดูฝ่าย ณ บท"
+                                value={chapterId === "all" ? 0 : sortedChapters.findIndex((c) => c.id === chapterId) + 1}
+                                onChange={(e) => { const i = Number(e.target.value); setChapterId(i === 0 ? "all" : sortedChapters[i - 1].id); }}
+                                className="flex-1 accent-[var(--forge-amber)] cursor-pointer" />
+                            <span className={cn("text-sm tabular-nums shrink-0 min-w-[9rem] text-right truncate", chapterId !== "all" && "text-[var(--forge-amber)]")}>
+                                {chapterId === "all" ? "ทุกบท" : (() => { const c = sortedChapters.find((x) => x.id === chapterId); return c ? `บท ${c.orderIndex} · ${c.title}` : "—"; })()}
+                            </span>
+                            {chapterId !== "all" && (
+                                <button type="button" onClick={() => setChapterId("all")} aria-label="ดูทุกบท" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-3.5 w-3.5" /></button>
+                            )}
+                        </div>
+                    )}
                     <FactionChecksPanel issues={issues} novelId={novelId} onSelect={openById}
                         factionName={(id) => nameById(id) ?? "—"} characterName={(id) => charName(id) ?? "—"} />
 
@@ -601,7 +606,13 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                             )}
                         </div>
                     ) : view === "map" ? (
-                        <FactionMap factions={visible} rels={visibleRels} defections={defections} charName={(id: string) => charName(id) ?? "—"} selectedId={selectedId} onSelect={openById} />
+                        <div className="flex-1 overflow-y-auto">
+                            <FactionMap factions={visible} rels={visibleRels} defections={defections} charName={(id: string) => charName(id) ?? "—"}
+                                statusOf={(f) => { const k = statusAt(f, chapterOrder, selOrder); const p = statusPresets.find((x) => x.key === k); return p ? { label: p.label, color: p.color } : null; }}
+                                selectedId={selectedId} onSelect={openById} />
+                            <FactionTimelineStrip factions={factions} chapters={sortedChapters} presets={statusPresets}
+                                selectedChapterId={chapterId} onPickChapter={setChapterId} onSelect={openById} />
+                        </div>
                     ) : (
                         <TreeView roots={roots} childrenOf={childrenOf} collapsed={collapsed} onToggle={toggleCollapse}
                             selectedId={selectedId} onSelect={openInspector} nameById={nameById} charName={charName} />
