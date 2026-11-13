@@ -456,11 +456,11 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                 <div className="flex-1 overflow-x-auto overflow-y-hidden flex flex-col">
                     <div className="flex items-center justify-between gap-3 px-6 py-3 border-b border-steel-800/60">
                         <div className="flex items-center gap-3">
-                            <span className="font-technical text-[10px] uppercase tracking-[0.14em] text-muted-foreground tabular-nums">
+                            <span className="text-sm text-muted-foreground tabular-nums">
                                 <span className="text-base font-bold text-[var(--forge-amber)] mr-1 align-middle">{String(factions.length).padStart(2, "0")}</span>ฝ่าย
                             </span>
                             {/* View toggle */}
-                            <div className="inline-flex chamfered-sm border border-steel-800 p-0.5">
+                            <div className="inline-flex rounded-md border border-border p-0.5">
                                 <ViewBtn active={view === "status"} onClick={() => setView("status")} icon={<LayoutGrid className="h-3 w-3" />} label="สถานะ" />
                                 <ViewBtn active={view === "map"} onClick={() => setView("map")} icon={<Share2 className="h-3 w-3" />} label="แผนที่" />
                             </div>
@@ -469,8 +469,8 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                                 <button
                                     onClick={() => setShowPresetManager(v => !v)}
                                     className={cn(
-                                        "inline-flex items-center gap-1 px-2 py-1 chamfered-sm font-technical text-[10px] uppercase tracking-wide transition-colors border border-steel-800",
-                                        showPresetManager ? "bg-[var(--forge-amber)] text-black border-[var(--forge-amber)]" : "text-muted-foreground hover:text-foreground",
+                                        "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm transition-colors cursor-pointer",
+                                        showPresetManager ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
                                     )}
                                 >
                                     <Settings2 className="h-3 w-3" /> จัดการสถานะ
@@ -484,12 +484,12 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
 
                     {sortedChapters.length > 0 && (
                         <div className="flex items-center gap-3 px-6 py-2.5 border-b border-steel-800/60">
-                            <span className="font-technical text-[10px] uppercase tracking-[0.14em] text-muted-foreground shrink-0">ฝ่าย ณ บท</span>
+                            <span className="text-sm text-muted-foreground shrink-0">ดู ณ บท</span>
                             <input type="range" min={0} max={sortedChapters.length} step={1} aria-label="ดูฝ่าย ณ บท"
                                 value={chapterId === "all" ? 0 : sortedChapters.findIndex((c) => c.id === chapterId) + 1}
                                 onChange={(e) => { const i = Number(e.target.value); setChapterId(i === 0 ? "all" : sortedChapters[i - 1].id); }}
-                                className="flex-1 accent-[var(--forge-amber)] cursor-pointer" />
-                            <span className={cn("text-sm tabular-nums shrink-0 min-w-[9rem] text-right truncate", chapterId !== "all" && "text-[var(--forge-amber)]")}>
+                                className="flex-1 h-1 accent-[var(--forge-amber)] cursor-pointer" />
+                            <span className={cn("text-sm tabular-nums shrink-0 min-w-[9rem] text-right truncate", chapterId === "all" ? "text-muted-foreground" : "text-foreground font-medium")}>
                                 {chapterId === "all" ? "ทุกบท" : (() => { const c = sortedChapters.find((x) => x.id === chapterId); return c ? `บท ${c.orderIndex} · ${c.title}` : "—"; })()}
                             </span>
                             {chapterId !== "all" && (
@@ -965,9 +965,9 @@ function ViewBtn({ active, onClick, icon, label }: { active: boolean; onClick: (
     return (
         <button onClick={onClick}
             className={cn(
-                "inline-flex items-center gap-1 px-2 py-1 chamfered-sm font-technical text-[10px] uppercase tracking-wide transition-all duration-150",
+                "inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors duration-150 cursor-pointer",
                 "active:scale-95 motion-reduce:transform-none",
-                active ? "bg-[var(--forge-amber)] text-black" : "text-muted-foreground hover:text-foreground",
+                active ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground",
             )}>
             {icon}{label}
         </button>
@@ -999,38 +999,48 @@ function StatusColumn({
     const { setNodeRef, isOver } = useDroppable({ id: statusKey ? `status:${statusKey}` : "status:none", disabled: !statusKey });
     return (
         <section ref={setNodeRef}
-            className={cn("grid grid-cols-[9rem_minmax(0,1fr)] gap-4 py-3 border-t border-steel-800/60 transition-colors", isOver && "bg-[var(--forge-amber)]/10")}>
+            className={cn("grid grid-cols-[9rem_minmax(0,1fr)] gap-4 py-4 border-b border-border/60 last:border-b-0 transition-colors", isOver && "bg-[var(--forge-amber)]/10")}>
             <div className="flex items-center gap-2 text-sm pt-1.5">
                 <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: meta.color }} />
-                <span className="truncate">{meta.label}</span>
-                <span className="text-muted-foreground tabular-nums">{factions.length}</span>
+                <span className="truncate font-medium">{meta.label}</span>
+                <span className="text-xs text-muted-foreground tabular-nums">{factions.length}</span>
             </div>
-            <div className="flex flex-wrap gap-2 min-h-9">
-                {factions.length ? factions.map((f) => (
-                    <StatusChip key={f.id} f={f} active={f.id === selectedId} onClick={() => onSelect(f)}
-                        parentName={nameById(f.parentFactionId)} leaderName={charName(f.leaderId)}
-                        subCount={factions.filter((x) => x.parentFactionId === f.id).length} />
-                )) : <span className="text-xs text-muted-foreground/60 self-center">{statusKey ? "ลากฝ่ายมาวางที่นี่" : "ว่าง"}</span>}
+            <div className="flex flex-wrap items-start gap-2 min-h-9">
+                {factions.length ? (() => {
+                    // กลุ่มย่อยที่อยู่แถวเดียวกับแม่ = ซ้อนอยู่ในการ์ดแม่ · แม่อยู่แถวอื่น = การ์ดเดี่ยวพร้อม ↳ ชื่อแม่
+                    const here = new Set(factions.map((f) => f.id));
+                    const kidsOf = (id: string) => factions.filter((x) => x.parentFactionId === id);
+                    return factions.filter((f) => !f.parentFactionId || !here.has(f.parentFactionId)).map((f) => (
+                        <div key={f.id} className={cn("rounded-md border bg-card transition-colors", f.id === selectedId ? "border-[var(--forge-amber)]" : "border-border hover:border-foreground/30")}>
+                            <StatusChip f={f} onClick={() => onSelect(f)} leaderName={charName(f.leaderId)}
+                                parentName={f.parentFactionId ? nameById(f.parentFactionId) : null} />
+                            {kidsOf(f.id).length > 0 && (
+                                <div className="flex flex-wrap gap-1 px-2 pb-2 -mt-0.5">
+                                    {kidsOf(f.id).map((k) => <StatusChip key={k.id} f={k} sub active={k.id === selectedId} onClick={() => onSelect(k)} />)}
+                                </div>
+                            )}
+                        </div>
+                    ));
+                })() : <span className="text-xs text-muted-foreground/60 self-center">{statusKey ? "ลากฝ่ายมาวางที่นี่" : "ว่าง"}</span>}
             </div>
         </section>
     );
 }
 
-function StatusChip({ f, active, onClick, parentName, leaderName, subCount }: {
-    f: Faction; active: boolean; onClick: () => void; parentName: string | null; leaderName: string | null; subCount: number;
+function StatusChip({ f, onClick, parentName, leaderName, sub, active }: {
+    f: Faction; onClick: () => void; parentName?: string | null; leaderName?: string | null; sub?: boolean; active?: boolean;
 }) {
     const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: f.id });
     const n = f.members?.length ?? 0;
+    const meta = [parentName && `ใต้ ${parentName}`, n > 0 && `${n} คน`, leaderName].filter(Boolean).join(" · ");
     return (
         <button ref={setNodeRef} {...listeners} {...attributes} type="button" onClick={onClick}
-            className={cn("inline-flex items-center gap-2 chamfered-sm border bg-card px-2.5 py-1.5 text-sm cursor-pointer transition-colors",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--forge-amber)]/50",
-                active ? "border-[var(--forge-amber)]" : "border-steel-800 hover:border-steel-600", isDragging && "opacity-40")}>
-            <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: f.color ?? "#c2703d" }} />
-            <span className="font-medium">{f.name}</span>
-            <span className="text-[11px] text-muted-foreground">
-                {parentName ? `↳ ${parentName} · ` : ""}{n} คน{subCount ? ` · ${subCount} กลุ่มย่อย` : ""}{leaderName ? ` · ${leaderName}` : ""}
-            </span>
+            className={cn("inline-flex items-center gap-2 text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--forge-amber)]/50 rounded",
+                sub ? cn("px-2 py-0.5 text-xs bg-muted/60 hover:bg-muted", active && "ring-1 ring-[var(--forge-amber)]") : "px-3 py-2 text-sm",
+                isDragging && "opacity-40")}>
+            {f.color && <span className={cn("rounded-full shrink-0", sub ? "h-1.5 w-1.5" : "h-2.5 w-2.5")} style={{ background: f.color }} />}
+            <span className={sub ? "" : "font-medium"}>{f.name}</span>
+            {!sub && meta && <span className="text-xs text-muted-foreground">{meta}</span>}
         </button>
     );
 }
