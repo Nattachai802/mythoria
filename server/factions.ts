@@ -9,6 +9,13 @@ import { headers } from "next/headers";
 import { requireNovelAccess, requireUser, authErrorMessage } from "@/lib/authz";
 import { addReference, removeReferenceEdge } from "./references"; // Context Fabric dual-write (P4)
 
+/** หน้าที่แสดงสังกัด — ฝั่งตัวละครและฝั่งฝ่ายอ่านตาราง character_factions เดียวกัน ต้อง revalidate ทั้งคู่ */
+function revalidateMembership(novelId: string, characterId?: string) {
+    revalidatePath(`/dashboard/project/${novelId}/relationships`);
+    revalidatePath(`/dashboard/project/${novelId}/characters`);
+    if (characterId) revalidatePath(`/dashboard/project/${novelId}/characters/${characterId}`);
+}
+
 // --- Factions CRUD ---
 
 export async function createFaction(data: {
@@ -140,7 +147,7 @@ export async function addCharacterToFaction(data: {
             meta: { role: data.role, startChapterId: data.startChapterId, endChapterId: data.endChapterId },
         });
 
-        revalidatePath(`/dashboard/project/${data.novelId}/relationships`);
+        revalidateMembership(data.novelId, data.characterId);
         return { success: true, data: membership };
     } catch (error) {
         console.error("Error adding character to faction:", error);
@@ -208,13 +215,68 @@ export async function removeCharacterFromFaction(membershipId: string, novelId: 
                 to: { type: "faction", id: deleted.factionId },
                 relation: "member_of",
             });
-            revalidatePath(`/dashboard/project/${novelId}/relationships`);
+            revalidateMembership(novelId, deleted.characterId);
         }
 
         return { success: true, data: deleted };
     } catch (error) {
         console.error("Error removing character from faction:", error);
         return { success: false, error: "Failed to remove character from faction" };
+    }
+}
+
+/** แก้บทบาท / ช่วงบทของสังกัด (เดิมต้องลบแล้วเพิ่มใหม่) — null = ล้างค่า · sync meta ของ reference member_of ด้วย */
+export async function updateCharacterFaction(membershipId: string, novelId: string, data: {
+    role?: string | null;
+    startChapterId?: string | null;
+    endChapterId?: string | null;
+}) {
+    try {
+        await requireNovelAccess(novelId);
+        const [owned] = await db.select({ id: characterFactions.id })
+            .from(characterFactions)
+            .innerJoin(factions, eq(factions.id, characterFactions.factionId))
+            .where(and(eq(characterFactions.id, membershipId), eq(factions.novelId, novelId))).limit(1);
+        if (!owned) return { success: false, error: "Membership not found in this novel" };
+
+        const patch: Partial<typeof characterFactions.$inferInsert> = {};
+        if (data.role !== undefined) patch.role = data.role?.trim() || null;
+        if (data.startChapterId !== undefined) patch.startChapterId = data.startChapterId || null;
+        if (data.endChapterId !== undefined) patch.endChapterId = data.endChapterId || null;
+
+        const [row] = await db.update(characterFactions).set(patch).where(eq(characterFactions.id, membershipId)).returning();
+        await addReference({
+            novelId,
+            from: { type: "character", id: row.characterId },
+            to: { type: "faction", id: row.factionId },
+            relation: "member_of",
+            meta: { role: row.role, startChapterId: row.startChapterId, endChapterId: row.endChapterId },
+        });
+        revalidateMembership(novelId, row.characterId);
+        return { success: true, data: row };
+    } catch (error) {
+        return { success: false, error: authErrorMessage(error, "แก้สังกัดไม่สำเร็จ") };
+    }
+}
+
+/** สังกัดทั้งนิยายแบบเบา (ไม่ดึงข้อมูลตัวละครเต็ม) — ใช้กรองหน้ารายชื่อตัวละคร */
+export async function getMembershipsByNovel(novelId: string) {
+    try {
+        await requireNovelAccess(novelId);
+        const rows = await db.select({
+            id: characterFactions.id,
+            characterId: characterFactions.characterId,
+            factionId: characterFactions.factionId,
+            role: characterFactions.role,
+            startChapterId: characterFactions.startChapterId,
+            endChapterId: characterFactions.endChapterId,
+        }).from(characterFactions)
+            .innerJoin(factions, eq(factions.id, characterFactions.factionId))
+            .where(eq(factions.novelId, novelId));
+        return { success: true, data: rows };
+    } catch (error) {
+        console.error("Error fetching memberships:", error);
+        return { success: false, error: "Failed to fetch memberships", data: [] };
     }
 }
 

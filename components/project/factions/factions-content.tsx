@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useState, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -775,14 +777,16 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                                         {selected.members?.length ? (
                                             <div className="space-y-1">
                                                 {selected.members.map((m: any) => (
-                                                    <div key={m.id} className="flex items-center justify-between text-xs px-2.5 py-1.5 chamfered-sm bg-steel-800/40">
-                                                        <span>{m.character?.name ?? "—"}</span>
+                                                    <Link key={m.id} href={`/dashboard/project/${novelId}/characters/${m.characterId}`}
+                                                        className={cn("flex items-center justify-between text-xs px-2.5 py-1.5 chamfered-sm bg-steel-800/40 hover:bg-steel-800/70 transition-colors duration-200",
+                                                            selected.leaderId === m.characterId && "ring-1 ring-[var(--forge-gold)]")}>
+                                                        <span>{m.character?.name ?? "—"}{selected.leaderId === m.characterId && <span className="ml-1.5 text-[var(--forge-gold)]">ผู้นำ</span>}</span>
                                                         {m.role && <span className="text-muted-foreground">{m.role}</span>}
-                                                    </div>
+                                                    </Link>
                                                 ))}
                                             </div>
                                         ) : (
-                                            <p className="text-[11px] text-muted-foreground">เพิ่มสมาชิกได้ที่หน้า Characters / Relationships</p>
+                                            <p className="text-[11px] text-muted-foreground">เพิ่มสมาชิกได้ที่หน้าตัวละคร ส่วน "สังกัด" ในแท็บความสัมพันธ์</p>
                                         )}
                                     </div>
 

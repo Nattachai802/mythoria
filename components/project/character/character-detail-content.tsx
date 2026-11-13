@@ -20,7 +20,7 @@ import { CharacterJourney } from "@/components/project/character/character-journ
 import { CharacterPowerManager } from "@/components/project/character/character-power-manager";
 import { CharacterLifeEvents } from "@/components/project/character/character-life-events";
 import { CharacterTimelineSlider } from "@/components/project/character/character-timeline-slider";
-import { FactionTimelineView } from "@/components/project/character/faction-timeline-view";
+import { CharacterAffiliations } from "@/components/project/character/character-affiliations";
 import { ExportCharacterDialog } from "@/components/project/character/export-character-dialog";
 import { CharacterIdeasTab } from "@/components/project/character/character-ideas-tab";
 import { CharacterDesignBoard } from "@/components/project/character/character-design-board";
@@ -345,8 +345,8 @@ export function CharacterDetailContent({
                             <Section icon={<Users className="w-3 h-3" />} title="ความสัมพันธ์">
                                 <CharacterRelationships characterId={character.id} novelId={novelId} />
                             </Section>
-                            <Section icon={<Network className="w-3 h-3" />} title="สังกัดและกลุ่ม">
-                                <FactionTimelineView novelId={novelId} />
+                            <Section icon={<Network className="w-3 h-3" />} title="สังกัด" meta="ฝ่าย บทบาท และช่วงบท">
+                                <CharacterAffiliations characterId={character.id} novelId={novelId} />
                             </Section>
                         </>)}
 
