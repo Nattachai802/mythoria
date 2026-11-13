@@ -19,7 +19,6 @@ import {
 import { Plus, Shield, X, Trash2, Users, Crown, Link2, LayoutGrid, ListTree, ChevronRight, Settings2, Pencil, Lightbulb, Layers, Share2 } from "lucide-react";
 import { activeIn, relActiveIn, statusAt, findDefections, findFactionIssues, type MembershipLike, type StatusPoint } from "@/lib/faction-checks";
 import { FactionMap } from "./faction-map";
-import { FactionTimelineStrip } from "./faction-timeline-strip";
 import { FactionChecksPanel } from "./faction-checks-panel";
 import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -113,14 +112,14 @@ const EMPTY_FORM = {
 export function FactionsContent({ novelId, initialFactions, initialRelationships, characters, initialStatusPresets, ideas, systems, chapters = [] }: Props) {
     const [factions, setFactions] = useState<Faction[]>(initialFactions);
     const [rels, setRels] = useState<FactionRel[]>(initialRelationships);
-    const [view, setView] = useState<"status" | "tree" | "map">("status");
+    const [view, setView] = useState<"status" | "map">("status");
     const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [mapSel, setMapSel] = useState<string | null>(null);
     const [isCreating, setIsCreating] = useState(false);
     const [form, setForm] = useState({ ...EMPTY_FORM });
     const [saving, setSaving] = useState(false);
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const [dragId, setDragId] = useState<string | null>(null);
-    const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
     // Status presets
     const [statusPresets, setStatusPresets] = useState<FactionStatusPreset[]>(
@@ -187,10 +186,6 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
 
     const childrenOf = (pid: string | null) =>
         visible.filter((f) => (f.parentFactionId ?? null) === pid);
-    const roots = useMemo(
-        () => visible.filter((f) => !f.parentFactionId || !visible.some((x) => x.id === f.parentFactionId)),
-        [visible],
-    );
 
     const nameById = (id: string | null) =>
         id ? (factions.find((f) => f.id === id)?.name ?? "—") : null;
@@ -403,9 +398,6 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
         if (!res.success) toast.error(res.error || "บันทึกไทม์ไลน์ไม่สำเร็จ");
     };
 
-    const toggleCollapse = (id: string) =>
-        setCollapsed((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
-
     const panelOpen = isCreating || !!selected;
     const dragFaction = dragId ? factions.find((f) => f.id === dragId) : null;
 
@@ -470,7 +462,6 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                             {/* View toggle */}
                             <div className="inline-flex chamfered-sm border border-steel-800 p-0.5">
                                 <ViewBtn active={view === "status"} onClick={() => setView("status")} icon={<LayoutGrid className="h-3 w-3" />} label="สถานะ" />
-                                <ViewBtn active={view === "tree"} onClick={() => setView("tree")} icon={<ListTree className="h-3 w-3" />} label="ลำดับชั้น" />
                                 <ViewBtn active={view === "map"} onClick={() => setView("map")} icon={<Share2 className="h-3 w-3" />} label="แผนที่" />
                             </div>
                             {/* Preset manager toggle */}
@@ -589,7 +580,7 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                             <p className="text-sm">ยังไม่มีฝ่าย — กด <span className="text-[var(--forge-amber)] font-medium">เพิ่มฝ่าย</span> เพื่อเริ่มวางองค์กรในโลกของคุณ</p>
                         </div>
                     ) : view === "status" ? (
-                        <div className="flex-1 overflow-y-auto p-6 space-y-8 grid-pattern-subtle">
+                        <div className="flex-1 overflow-y-auto px-6 py-2">
                             {statusPresets.map((preset) => (
                                 <StatusColumn
                                     key={preset.key}
@@ -605,17 +596,12 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                                     selectedId={selectedId} onSelect={openInspector} nameById={nameById} charName={charName} />
                             )}
                         </div>
-                    ) : view === "map" ? (
+                    ) : (
                         <div className="flex-1 overflow-y-auto">
                             <FactionMap factions={visible} rels={visibleRels} defections={defections} charName={(id: string) => charName(id) ?? "—"}
-                                statusOf={(f) => { const k = statusAt(f, chapterOrder, selOrder); const p = statusPresets.find((x) => x.key === k); return p ? { label: p.label, color: p.color } : null; }}
-                                selectedId={selectedId} onSelect={openById} />
-                            <FactionTimelineStrip factions={factions} chapters={sortedChapters} presets={statusPresets}
-                                selectedChapterId={chapterId} onPickChapter={setChapterId} onSelect={openById} />
+                                statusOf={(f) => { const k = statusAt(f, chapterOrder, selOrder); const p = statusPresets.find((x) => x.key === k); return p ? { key: p.key, label: p.label, color: p.color } : null; }}
+                                selectedId={mapSel} onSelect={setMapSel} onOpen={openById} />
                         </div>
-                    ) : (
-                        <TreeView roots={roots} childrenOf={childrenOf} collapsed={collapsed} onToggle={toggleCollapse}
-                            selectedId={selectedId} onSelect={openInspector} nameById={nameById} charName={charName} />
                     )}
                 </div>
 
@@ -941,7 +927,7 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
             <DragOverlay>
                 {dragFaction ? (
                     <div className="opacity-90 rotate-1">
-                        <FactionCard f={dragFaction} active onClick={() => {}} parentName={null} leaderName={charName(dragFaction.leaderId)} />
+                        <FactionCard f={dragFaction} active compact onClick={() => {}} parentName={null} leaderName={charName(dragFaction.leaderId)} />
                     </div>
                 ) : null}
             </DragOverlay>
@@ -998,6 +984,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 // ── Status board column (droppable) ──
+/** แถวสถานะ: ป้ายซ้าย + ชิปฝ่ายไหลขวา · ลากชิปข้ามแถว = เปลี่ยนสถานะ */
 function StatusColumn({
     statusKey, meta, factions, selectedId, onSelect, nameById, charName,
 }: {
@@ -1009,127 +996,42 @@ function StatusColumn({
     nameById: (id: string | null) => string | null;
     charName: (id: string | null) => string | null;
 }) {
-    // เฉพาะคอลัมน์ที่มี status จริงเท่านั้นที่รับ drop (คอลัมน์ "ไม่ระบุ" ไม่รับ)
     const { setNodeRef, isOver } = useDroppable({ id: statusKey ? `status:${statusKey}` : "status:none", disabled: !statusKey });
     return (
         <section ref={setNodeRef}
-            className={cn("chamfered-sm transition-colors -m-2 p-2", isOver && "bg-[var(--forge-amber)]/10 ring-1 ring-[var(--forge-amber)]/40")}
-        >
-            <div className="flex items-center gap-3 mb-3">
-                <div className="inline-flex items-center gap-2.5 px-3 py-1.5 chamfered-sm shrink-0"
-                    style={{ background: meta.color, color: inkFor(meta.color) }}>
-                    <span className="font-technical text-[10px] font-semibold uppercase tracking-[0.16em]">{meta.label}</span>
-                    <span className="font-technical text-[11px] font-bold tabular-nums opacity-80">{String(factions.length).padStart(2, "0")}</span>
-                </div>
-                <div className="h-px flex-1" style={{ background: `color-mix(in oklab, ${meta.color} 35%, transparent)` }} />
+            className={cn("grid grid-cols-[9rem_minmax(0,1fr)] gap-4 py-3 border-t border-steel-800/60 transition-colors", isOver && "bg-[var(--forge-amber)]/10")}>
+            <div className="flex items-center gap-2 text-sm pt-1.5">
+                <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: meta.color }} />
+                <span className="truncate">{meta.label}</span>
+                <span className="text-muted-foreground tabular-nums">{factions.length}</span>
             </div>
-            {factions.length > 0 ? (() => {
-                // จัด cluster: ลูกที่อยู่สถานะเดียวกันซ้อนใต้แม่ พร้อมเส้นเชื่อม (แม่อยู่สถานะอื่น → โชว์เป็น badge เหมือนเดิม)
-                const inSection = new Set(factions.map((f) => f.id));
-                const kidsOf = (pid: string) => factions.filter((f) => f.parentFactionId === pid);
-                const rootsHere = factions.filter((f) => !f.parentFactionId || !inSection.has(f.parentFactionId));
-                const renderNode = (f: Faction): React.ReactNode => (
-                    <li key={f.id}>
-                        <div className="w-56">
-                            <DraggableCard f={f} compact active={f.id === selectedId} onClick={() => onSelect(f)}
-                                parentName={null} leaderName={charName(f.leaderId)} statusColor={meta.color} />
-                        </div>
-                        {kidsOf(f.id).length > 0 && <ul>{kidsOf(f.id).map(renderNode)}</ul>}
-                    </li>
-                );
-                return (
-                    <div className="genealogy overflow-x-auto pb-2">
-                        <ul>
-                            {rootsHere.map((root) => (
-                                <li key={root.id}>
-                                    <div className="w-56">
-                                        <DraggableCard f={root} active={root.id === selectedId} onClick={() => onSelect(root)}
-                                            parentName={root.parentFactionId && !inSection.has(root.parentFactionId) ? nameById(root.parentFactionId) : null}
-                                            leaderName={charName(root.leaderId)} statusColor={meta.color} />
-                                    </div>
-                                    {kidsOf(root.id).length > 0 && <ul>{kidsOf(root.id).map(renderNode)}</ul>}
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                );
-            })() : (
-                <div className="h-16 grid place-items-center chamfered-sm border border-dashed border-steel-800/60">
-                    <span className="text-[11px] text-muted-foreground/60">{statusKey ? "ลากฝ่ายมาวางที่นี่" : "ว่าง"}</span>
-                </div>
-            )}
+            <div className="flex flex-wrap gap-2 min-h-9">
+                {factions.length ? factions.map((f) => (
+                    <StatusChip key={f.id} f={f} active={f.id === selectedId} onClick={() => onSelect(f)}
+                        parentName={nameById(f.parentFactionId)} leaderName={charName(f.leaderId)}
+                        subCount={factions.filter((x) => x.parentFactionId === f.id).length} />
+                )) : <span className="text-xs text-muted-foreground/60 self-center">{statusKey ? "ลากฝ่ายมาวางที่นี่" : "ว่าง"}</span>}
+            </div>
         </section>
     );
 }
 
-// ── Tree view (each node is a re-parent drop target) ──
-function TreeView({
-    roots, childrenOf, collapsed, onToggle, selectedId, onSelect, nameById, charName,
-}: {
-    roots: Faction[];
-    childrenOf: (pid: string | null) => Faction[];
-    collapsed: Set<string>;
-    onToggle: (id: string) => void;
-    selectedId: string | null;
-    onSelect: (f: Faction) => void;
-    nameById: (id: string | null) => string | null;
-    charName: (id: string | null) => string | null;
+function StatusChip({ f, active, onClick, parentName, leaderName, subCount }: {
+    f: Faction; active: boolean; onClick: () => void; parentName: string | null; leaderName: string | null; subCount: number;
 }) {
-    const rootDrop = useDroppable({ id: "parent:root" });
-    const renderLi = (f: Faction): React.ReactNode => {
-        const kids = childrenOf(f.id);
-        const isCollapsed = collapsed.has(f.id);
-        return (
-            <li key={f.id}>
-                <TreeNode f={f} hasKids={kids.length > 0} isCollapsed={isCollapsed}
-                    onToggle={() => onToggle(f.id)} active={f.id === selectedId} onSelect={() => onSelect(f)}
-                    leaderName={charName(f.leaderId)} />
-                {!isCollapsed && kids.length > 0 && <ul>{kids.map(renderLi)}</ul>}
-            </li>
-        );
-    };
+    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: f.id });
+    const n = f.members?.length ?? 0;
     return (
-        <div className="flex-1 overflow-auto p-6 grid-pattern-subtle">
-            <p className="font-technical text-[10px] uppercase tracking-[0.12em] text-muted-foreground mb-4">
-                ลากการ์ดวางบนอีกฝ่ายเพื่อจัดลำดับชั้น · วางบนพื้นที่ว่างเพื่อย้ายขึ้นบนสุด
-            </p>
-            <div ref={rootDrop.setNodeRef}
-                className={cn("genealogy w-max min-w-full transition-colors", rootDrop.isOver && "bg-[var(--forge-amber)]/5")}>
-                <ul>{roots.map(renderLi)}</ul>
-            </div>
-        </div>
-    );
-}
-
-function TreeNode({
-    f, hasKids, isCollapsed, onToggle, active, onSelect, leaderName,
-}: {
-    f: Faction; hasKids: boolean; isCollapsed: boolean; onToggle: () => void;
-    active: boolean; onSelect: () => void; leaderName: string | null;
-}) {
-    const { setNodeRef, isOver } = useDroppable({ id: `parent:${f.id}` });
-    return (
-        <div ref={setNodeRef}
-            className={cn("relative w-56 chamfered-sm transition-colors", isOver && "ring-1 ring-[var(--forge-amber)] bg-[var(--forge-amber)]/10")}>
-            <DraggableCard f={f} active={active} onClick={onSelect} parentName={null} leaderName={leaderName} compact />
-            {hasKids && (
-                <button onClick={onToggle} aria-label={isCollapsed ? "ขยาย" : "ยุบ"}
-                    className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 z-10 h-5 w-5 grid place-items-center chamfered-sm border border-steel-700 bg-card text-muted-foreground hover:text-[var(--forge-amber)] hover:border-[var(--forge-amber)]/50 transition-colors">
-                    <ChevronRight className={cn("h-3 w-3 transition-transform", !isCollapsed && "rotate-90")} />
-                </button>
-            )}
-        </div>
-    );
-}
-
-// ── Draggable wrapper around a card ──
-function DraggableCard(props: { f: Faction; active: boolean; onClick: () => void; parentName: string | null; leaderName: string | null; compact?: boolean; statusColor?: string }) {
-    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: props.f.id });
-    return (
-        <div ref={setNodeRef} {...listeners} {...attributes}
-            className={cn("h-full animate-in fade-in zoom-in-95 duration-200 motion-reduce:animate-none", isDragging && "opacity-40")}>
-            <FactionCard {...props} />
-        </div>
+        <button ref={setNodeRef} {...listeners} {...attributes} type="button" onClick={onClick}
+            className={cn("inline-flex items-center gap-2 chamfered-sm border bg-card px-2.5 py-1.5 text-sm cursor-pointer transition-colors",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--forge-amber)]/50",
+                active ? "border-[var(--forge-amber)]" : "border-steel-800 hover:border-steel-600", isDragging && "opacity-40")}>
+            <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: f.color ?? "#c2703d" }} />
+            <span className="font-medium">{f.name}</span>
+            <span className="text-[11px] text-muted-foreground">
+                {parentName ? `↳ ${parentName} · ` : ""}{n} คน{subCount ? ` · ${subCount} กลุ่มย่อย` : ""}{leaderName ? ` · ${leaderName}` : ""}
+            </span>
+        </button>
     );
 }
 
