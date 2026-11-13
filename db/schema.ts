@@ -472,6 +472,8 @@ export const factions = pgTable("factions", {
   icon: text("icon"),
   linkedIdeaIds: jsonb("linked_idea_ids"), // การ์ดไอเดียที่แปะไว้กับฝ่ายนี้ — ["ideaId1", ...]
   linkedSystemIds: jsonb("linked_system_ids"), // ระบบโลก (world systems) ที่ผูกกับฝ่ายนี้ — ["systemId1", ...]
+  // สถานะที่เปลี่ยนตามบท — [{ chapterId, status }] · null/ว่าง = ใช้ status ทุกบท (status = สถานะตั้งต้น)
+  statusTimeline: jsonb("status_timeline"),
   importance: integer("importance").default(5), // 1-10
   orderIndex: integer("order_index").default(0),
 
@@ -501,6 +503,9 @@ export const factionRelationships = pgTable("faction_relationships", {
     .references(() => factions.id, { onDelete: "cascade" }),
   type: text("type").notNull(), // "ally" | "enemy" | "subsidiary" | "splinter" | "rival" | "neutral"
   description: text("description"),
+  // ช่วงบทที่ความสัมพันธ์มีผล — null = เปิดปลาย · ความสัมพันธ์ที่เปลี่ยนชนิด = หลายแถวต่อช่วง
+  startChapterId: text("start_chapter_id").references(() => chapters.id, { onDelete: "set null" }),
+  endChapterId: text("end_chapter_id").references(() => chapters.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()

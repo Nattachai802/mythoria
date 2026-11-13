@@ -16,7 +16,10 @@ import { Textarea } from "@/components/ui/textarea";
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Shield, X, Trash2, Users, Crown, Link2, LayoutGrid, ListTree, ChevronRight, Settings2, Pencil, Lightbulb, Layers } from "lucide-react";
+import { Plus, Shield, X, Trash2, Users, Crown, Link2, LayoutGrid, ListTree, ChevronRight, Settings2, Pencil, Lightbulb, Layers, Share2 } from "lucide-react";
+import { activeIn, relActiveIn, statusAt, findDefections, findFactionIssues, type MembershipLike, type StatusPoint } from "@/lib/faction-checks";
+import { FactionMap } from "./faction-map";
+import { FactionChecksPanel } from "./faction-checks-panel";
 import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
     AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -27,6 +30,7 @@ import {
 import {
     createFaction, updateFaction, deleteFaction,
     createFactionRelationship, deleteFactionRelationship,
+    splitFactionRelationship, updateFactionRelationshipRange, updateFactionStatusTimeline,
     createFactionStatusPreset, updateFactionStatusPreset, deleteFactionStatusPreset,
 } from "@/server/factions";
 import { CreateIdeaDialog } from "@/components/project/idea/create-idea-dialog";
@@ -96,6 +100,7 @@ interface Props {
     initialStatusPresets: FactionStatusPreset[];
     ideas: Idea[];
     systems: WorldSystem[];
+    chapters?: { id: string; title: string; orderIndex: number }[];
 }
 
 const EMPTY_FORM = {
@@ -104,10 +109,10 @@ const EMPTY_FORM = {
     leaderId: "", parentFactionId: "", linkedIdeaIds: [] as string[], linkedSystemIds: [] as string[],
 };
 
-export function FactionsContent({ novelId, initialFactions, initialRelationships, characters, initialStatusPresets, ideas, systems }: Props) {
+export function FactionsContent({ novelId, initialFactions, initialRelationships, characters, initialStatusPresets, ideas, systems, chapters = [] }: Props) {
     const [factions, setFactions] = useState<Faction[]>(initialFactions);
     const [rels, setRels] = useState<FactionRel[]>(initialRelationships);
-    const [view, setView] = useState<"status" | "tree">("status");
+    const [view, setView] = useState<"status" | "tree" | "map">("status");
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [isCreating, setIsCreating] = useState(false);
     const [form, setForm] = useState({ ...EMPTY_FORM });
@@ -134,27 +139,56 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
         useSensor(KeyboardSensor),
     );
 
+    // ฝ่าย ณ บท: แสดงเฉพาะสมาชิกที่ยังอยู่ในบทที่เลือก — state factions เดิมไม่ถูกแตะ (แก้/ลากทำบน factions)
+    const [chapterId, setChapterId] = useState("all");
+    const chapterOrder = useMemo(() => new Map(chapters.map((c) => [c.id, c.orderIndex])), [chapters]);
+    const selOrder = chapterId === "all" ? null : chapterOrder.get(chapterId) ?? null;
+    const visible = useMemo<Faction[]>(
+        () => selOrder === null ? factions
+            : factions.map((f) => ({ ...f, members: (f.members ?? []).filter((m: MembershipLike) => activeIn(m, chapterOrder, selOrder)) })),
+        [factions, chapterOrder, selOrder],
+    );
+    const visibleRels = useMemo(() => rels.filter((r) => relActiveIn(r, chapterOrder, selOrder)), [rels, chapterOrder, selOrder]);
+    const allMemberships = useMemo<MembershipLike[]>(
+        () => factions.flatMap((f) => (f.members ?? []).map((m: MembershipLike) => ({ ...m, factionId: f.id }))),
+        [factions],
+    );
+    // คนย้ายฝ่าย: ทุกบท = ทั้งหมด · เลือกบท = ที่เกิดภายใน ±2 บท
+    const defections = useMemo(
+        () => findDefections(allMemberships, chapterOrder).filter((d) => selOrder === null || Math.abs(d.atOrder - selOrder) <= 2),
+        [allMemberships, chapterOrder, selOrder],
+    );
+    const sortedChapters = useMemo(() => [...chapters].sort((a, b) => a.orderIndex - b.orderIndex), [chapters]);
+
+    const issues = useMemo(() => findFactionIssues({
+        factions,
+        memberships: allMemberships,
+        rels,
+        chapterOrder,
+    }), [factions, allMemberships, rels, chapterOrder]);
+
     const selected = useMemo(
-        () => factions.find((f) => f.id === selectedId) ?? null,
-        [factions, selectedId],
+        () => visible.find((f) => f.id === selectedId) ?? null,
+        [visible, selectedId],
     );
 
     const byStatus = useMemo(() => {
         const m: Record<string, Faction[]> = {};
         for (const s of statusPresets) m[s.key] = [];
         const other: Faction[] = [];
-        for (const f of factions) {
-            const preset = statusPresets.find(p => p.key === f.status);
+        for (const f of visible) {
+            const st = statusAt(f, chapterOrder, selOrder);
+            const preset = statusPresets.find(p => p.key === st);
             (preset ? m[preset.key] : other).push(f);
         }
         return { m, other };
-    }, [factions, statusPresets]);
+    }, [visible, statusPresets, chapterOrder, selOrder]);
 
     const childrenOf = (pid: string | null) =>
-        factions.filter((f) => (f.parentFactionId ?? null) === pid);
+        visible.filter((f) => (f.parentFactionId ?? null) === pid);
     const roots = useMemo(
-        () => factions.filter((f) => !f.parentFactionId || !factions.some((x) => x.id === f.parentFactionId)),
-        [factions],
+        () => visible.filter((f) => !f.parentFactionId || !visible.some((x) => x.id === f.parentFactionId)),
+        [visible],
     );
 
     const nameById = (id: string | null) =>
@@ -175,6 +209,7 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
 
     // ── open forms (flush edit ที่ค้างก่อนสลับ) ──
     const openCreate = () => { flushEdit(); setForm({ ...EMPTY_FORM }); pristine.current = ""; setIsCreating(true); setSelectedId(null); };
+    const openById = (id: string) => { const f = factions.find((x) => x.id === id); if (f) openInspector(f); };
     const openInspector = (f: Faction) => {
         if (f.id !== selectedId) flushEdit();
         setIsCreating(false);
@@ -331,6 +366,7 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
         if (relTarget === selectedId) { toast.error("เลือกฝ่ายอื่นที่ไม่ใช่ตัวเอง"); return; }
         const res = await createFactionRelationship({
             novelId, sourceFactionId: selectedId, targetFactionId: relTarget, type: relType,
+            startChapterId: chapterId === "all" ? null : chapterId, // เลือกบทอยู่ = เริ่มมีผลตั้งแต่บทนั้น
         });
         if (res.success && res.data) {
             const src = factions.find((f) => f.id === selectedId);
@@ -344,6 +380,26 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
         const res = await deleteFactionRelationship(relId, novelId);
         if (res.success) { setRels((p) => p.filter((r) => r.id !== relId)); toast.success("ลบความสัมพันธ์แล้ว"); }
         else toast.error("ลบไม่สำเร็จ");
+    };
+
+    const handleRelRange = async (relId: string, data: { startChapterId?: string | null; endChapterId?: string | null }) => {
+        setRels((p) => p.map((r) => (r.id === relId ? { ...r, ...data } : r)));
+        const res = await updateFactionRelationshipRange(relId, novelId, data);
+        if (!res.success) toast.error(res.error || "แก้ช่วงบทไม่สำเร็จ");
+    };
+    const handleSplitRel = async (relId: string, fromChapterId: string, newType: string) => {
+        const i = sortedChapters.findIndex((c) => c.id === fromChapterId);
+        const prev = i > 0 ? sortedChapters[i - 1].id : null;
+        const res = await splitFactionRelationship(relId, novelId, fromChapterId, prev, newType);
+        if (!res.success || !res.data) { toast.error(res.error || "เปลี่ยนไม่สำเร็จ"); return; }
+        const { created, updated, removedId } = res.data;
+        setRels((p) => [...p.filter((r) => r.id !== removedId).map((r) => (updated && r.id === updated.id ? { ...r, ...updated } : r)), created]);
+        toast.success(`เปลี่ยนเป็น ${REL_TYPES[newType] ?? newType} ตั้งแต่บทนี้แล้ว`);
+    };
+    const handleStatusTimeline = async (factionId: string, timeline: StatusPoint[]) => {
+        setFactions((p) => p.map((f) => (f.id === factionId ? { ...f, statusTimeline: timeline } : f)));
+        const res = await updateFactionStatusTimeline(factionId, timeline);
+        if (!res.success) toast.error(res.error || "บันทึกไทม์ไลน์ไม่สำเร็จ");
     };
 
     const toggleCollapse = (id: string) =>
@@ -414,7 +470,19 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                             <div className="inline-flex chamfered-sm border border-steel-800 p-0.5">
                                 <ViewBtn active={view === "status"} onClick={() => setView("status")} icon={<LayoutGrid className="h-3 w-3" />} label="สถานะ" />
                                 <ViewBtn active={view === "tree"} onClick={() => setView("tree")} icon={<ListTree className="h-3 w-3" />} label="ลำดับชั้น" />
+                                <ViewBtn active={view === "map"} onClick={() => setView("map")} icon={<Share2 className="h-3 w-3" />} label="แผนที่" />
                             </div>
+                            {chapters.length > 0 && (
+                                <label className="inline-flex items-center gap-1.5 font-technical text-[10px] uppercase tracking-wide text-muted-foreground">
+                                    ณ บท
+                                    <select value={chapterId} onChange={(e) => setChapterId(e.target.value)} aria-label="ดูฝ่าย ณ บท"
+                                        className={cn("chamfered-sm border border-steel-800 bg-transparent px-2 py-1 normal-case tracking-normal text-xs max-w-[12rem] cursor-pointer",
+                                            chapterId !== "all" && "border-[var(--forge-amber)] text-foreground")}>
+                                        <option value="all">ทุกบท</option>
+                                        {chapters.map((c) => <option key={c.id} value={c.id}>{c.orderIndex}. {c.title}</option>)}
+                                    </select>
+                                </label>
+                            )}
                             {/* Preset manager toggle */}
                             {view === "status" && (
                                 <button
@@ -432,6 +500,9 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                             <Plus className="h-3.5 w-3.5" /> เพิ่มฝ่าย
                         </Button>
                     </div>
+
+                    <FactionChecksPanel issues={issues} novelId={novelId} onSelect={openById}
+                        factionName={(id) => nameById(id) ?? "—"} characterName={(id) => charName(id) ?? "—"} />
 
                     {/* Preset Manager Panel */}
                     {showPresetManager && (
@@ -529,6 +600,8 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                                     selectedId={selectedId} onSelect={openInspector} nameById={nameById} charName={charName} />
                             )}
                         </div>
+                    ) : view === "map" ? (
+                        <FactionMap factions={visible} rels={visibleRels} defections={defections} charName={(id: string) => charName(id) ?? "—"} selectedId={selectedId} onSelect={openById} />
                     ) : (
                         <TreeView roots={roots} childrenOf={childrenOf} collapsed={collapsed} onToggle={toggleCollapse}
                             selectedId={selectedId} onSelect={openInspector} nameById={nameById} charName={charName} />
@@ -770,6 +843,12 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
 
                             {!isCreating && selected && (
                                 <div className="pt-3 mt-2 border-t border-steel-800/60 space-y-4">
+                                    {sortedChapters.length > 0 && (
+                                        <StatusTimelineEditor
+                                            base={selected.status} timeline={Array.isArray(selected.statusTimeline) ? selected.statusTimeline : []}
+                                            chapters={sortedChapters} presets={statusPresets}
+                                            onChange={(t) => handleStatusTimeline(selected.id, t)} />
+                                    )}
                                     <div>
                                         <div className="flex items-center gap-1.5 font-technical text-[10px] uppercase tracking-[0.12em] text-muted-foreground mb-2">
                                             <Users className="h-3 w-3" /> สมาชิก ({selected.members?.length ?? 0})
@@ -786,7 +865,7 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                                                 ))}
                                             </div>
                                         ) : (
-                                            <p className="text-[11px] text-muted-foreground">เพิ่มสมาชิกได้ที่หน้าตัวละคร ส่วน "สังกัด" ในแท็บความสัมพันธ์</p>
+                                            <p className="text-[11px] text-muted-foreground">เพิ่มสมาชิกได้ที่หน้าตัวละคร ส่วน “สังกัด” ในแท็บความสัมพันธ์</p>
                                         )}
                                     </div>
 
@@ -799,17 +878,11 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                                                 const outgoing = r.sourceFactionId === selectedId;
                                                 const otherName = outgoing ? nameById(r.targetFactionId) : nameById(r.sourceFactionId);
                                                 return (
-                                                    <div key={r.id} className="flex items-center justify-between text-xs px-2.5 py-1.5 chamfered-sm bg-steel-800/40">
-                                                        <span>
-                                                            <span className="text-[var(--forge-amber)]">{outgoing ? "" : "← "}{REL_TYPES[r.type] ?? r.type}{outgoing ? " →" : ""}</span>{" "}
-                                                            {otherName}
-                                                        </span>
-                                                        <button onClick={() => handleDeleteRel(r.id)}
-                                                            aria-label={`ลบความสัมพันธ์ ${REL_TYPES[r.type] ?? r.type} กับ ${otherName}`}
-                                                            className="h-6 w-6 -mr-1 inline-flex items-center justify-center shrink-0 text-muted-foreground hover:text-red-500 transition-colors">
-                                                            <X className="h-3.5 w-3.5" />
-                                                        </button>
-                                                    </div>
+                                                    <RelRow key={r.id} rel={r} outgoing={outgoing} otherName={otherName ?? "—"} chapters={sortedChapters}
+                                                        dim={!relActiveIn(r, chapterOrder, selOrder)}
+                                                        onDelete={() => handleDeleteRel(r.id)}
+                                                        onRange={(d) => handleRelRange(r.id, d)}
+                                                        onSplit={(from, t) => handleSplitRel(r.id, from, t)} />
                                                 );
                                             })}
                                         </div>
@@ -1114,5 +1187,110 @@ function FactionCard({
                 </div>
             </div>
         </button>
+    );
+}
+
+const ChapterPick = ({ value, chapters, empty, label, onChange }: {
+    value: string | null | undefined; chapters: { id: string; title: string; orderIndex: number }[]; empty: string; label: string; onChange: (v: string | null) => void;
+}) => (
+    <select aria-label={label} value={value ?? ""} onChange={(e) => onChange(e.target.value || null)}
+        className={cn("bg-transparent border-b border-transparent hover:border-steel-700 focus:border-[var(--forge-amber)] outline-none max-w-[6.5rem] cursor-pointer", !value && "text-muted-foreground")}>
+        <option value="">{empty}</option>
+        {chapters.map((c) => <option key={c.id} value={c.id}>{c.orderIndex}. {c.title}</option>)}
+    </select>
+);
+
+/** แถวความสัมพันธ์ฝ่าย: ช่วงบท + "เปลี่ยนตั้งแต่บท…" (ปิดแถวเดิม สร้างแถวใหม่) */
+function RelRow({ rel, outgoing, otherName, chapters, dim, onDelete, onRange, onSplit }: {
+    rel: FactionRel; outgoing: boolean; otherName: string; chapters: { id: string; title: string; orderIndex: number }[]; dim: boolean;
+    onDelete: () => void; onRange: (d: { startChapterId?: string | null; endChapterId?: string | null }) => void; onSplit: (fromChapterId: string, type: string) => void;
+}) {
+    const [splitting, setSplitting] = useState(false);
+    const [from, setFrom] = useState("");
+    const [type, setType] = useState(rel.type === "enemy" ? "ally" : "enemy");
+    const label = REL_TYPES[rel.type] ?? rel.type;
+    return (
+        <div className={cn("text-xs px-2.5 py-1.5 chamfered-sm bg-steel-800/40 transition-opacity", dim && "opacity-45")}>
+            <div className="flex items-center justify-between gap-2">
+                <span className="min-w-0">
+                    <span className="text-[var(--forge-amber)]">{outgoing ? "" : "← "}{label}{outgoing ? " →" : ""}</span>{" "}{otherName}
+                    {dim && <span className="ml-1.5 text-muted-foreground">(ไม่มีผลในบทนี้)</span>}
+                </span>
+                <span className="flex items-center shrink-0">
+                    {chapters.length > 0 && (
+                        <button type="button" onClick={() => setSplitting((v) => !v)} className="px-1.5 text-[10px] text-muted-foreground hover:text-foreground cursor-pointer">เปลี่ยนตั้งแต่บท…</button>
+                    )}
+                    <button onClick={onDelete} aria-label={`ลบความสัมพันธ์ ${label} กับ ${otherName}`}
+                        className="h-6 w-6 -mr-1 inline-flex items-center justify-center text-muted-foreground hover:text-red-500 transition-colors cursor-pointer">
+                        <X className="h-3.5 w-3.5" />
+                    </button>
+                </span>
+            </div>
+            {chapters.length > 0 && (
+                <div className="flex items-center gap-1 mt-1 text-[11px] text-muted-foreground">
+                    บท
+                    <ChapterPick label="บทเริ่ม" value={rel.startChapterId} chapters={chapters} empty="แรก" onChange={(v) => onRange({ startChapterId: v })} />
+                    –
+                    <ChapterPick label="บทจบ" value={rel.endChapterId} chapters={chapters} empty="ปัจจุบัน" onChange={(v) => onRange({ endChapterId: v })} />
+                </div>
+            )}
+            {splitting && (
+                <div className="flex items-center gap-1.5 mt-1.5 pt-1.5 border-t border-steel-800/60 text-[11px] animate-in fade-in duration-150 motion-reduce:animate-none">
+                    ตั้งแต่บท
+                    <ChapterPick label="เปลี่ยนตั้งแต่บท" value={from} chapters={chapters} empty="เลือก" onChange={(v) => setFrom(v ?? "")} />
+                    เป็น
+                    <select aria-label="ชนิดใหม่" value={type} onChange={(e) => setType(e.target.value)} className="bg-transparent border-b border-steel-700 outline-none cursor-pointer">
+                        {Object.entries(REL_TYPES).filter(([k]) => k !== rel.type).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                    <button type="button" disabled={!from} onClick={() => { onSplit(from, type); setSplitting(false); }}
+                        className="ml-auto chamfered-sm bg-[var(--forge-amber)] text-black px-2 py-0.5 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed">ตกลง</button>
+                </div>
+            )}
+        </div>
+    );
+}
+
+/** ไทม์ไลน์สถานะ: สถานะตั้งต้น + จุดเปลี่ยนตามบท */
+function StatusTimelineEditor({ base, timeline, chapters, presets, onChange }: {
+    base: string | null; timeline: StatusPoint[]; chapters: { id: string; title: string; orderIndex: number }[];
+    presets: FactionStatusPreset[]; onChange: (t: StatusPoint[]) => void;
+}) {
+    const order = new Map(chapters.map((c) => [c.id, c.orderIndex]));
+    const sorted = [...timeline].sort((a, b) => (order.get(a.chapterId) ?? 0) - (order.get(b.chapterId) ?? 0));
+    const labelOf = (k: string | null) => presets.find((p) => p.key === k)?.label ?? k ?? "—";
+    const colorOf = (k: string | null) => presets.find((p) => p.key === k)?.color ?? "#475569";
+    const used = new Set(timeline.map((t) => t.chapterId));
+    const nextFree = chapters.find((c) => !used.has(c.id));
+    return (
+        <div>
+            <div className="flex items-center justify-between font-technical text-[10px] uppercase tracking-[0.12em] text-muted-foreground mb-2">
+                <span>ไทม์ไลน์สถานะ</span>
+                {nextFree && (
+                    <button type="button" onClick={() => onChange([...timeline, { chapterId: nextFree.id, status: presets[0]?.key ?? "active" }])}
+                        className="normal-case tracking-normal text-[11px] hover:text-foreground cursor-pointer">+ เปลี่ยนสถานะที่บท…</button>
+                )}
+            </div>
+            <div className="space-y-1 text-xs">
+                <div className="flex items-center gap-2 px-2.5 py-1 chamfered-sm bg-steel-800/40">
+                    <span className="w-2 h-2" style={{ background: colorOf(base) }} aria-hidden />
+                    <span className="text-muted-foreground w-20">ตั้งต้น</span>{labelOf(base)}
+                </div>
+                {sorted.map((t) => (
+                    <div key={t.chapterId} className="flex items-center gap-2 px-2.5 py-1 chamfered-sm bg-steel-800/40">
+                        <span className="w-2 h-2" style={{ background: colorOf(t.status) }} aria-hidden />
+                        <span className="w-20">
+                            <ChapterPick label="บทที่เปลี่ยน" value={t.chapterId} chapters={chapters.filter((c) => c.id === t.chapterId || !used.has(c.id))} empty="—"
+                                onChange={(v) => v && onChange(timeline.map((x) => (x.chapterId === t.chapterId ? { ...x, chapterId: v } : x)))} />
+                        </span>
+                        <select aria-label="สถานะ" value={t.status} onChange={(e) => onChange(timeline.map((x) => (x.chapterId === t.chapterId ? { ...x, status: e.target.value } : x)))}
+                            className="flex-1 bg-transparent outline-none cursor-pointer">
+                            {presets.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+                        </select>
+                        <button type="button" aria-label="ลบจุดนี้" onClick={() => onChange(timeline.filter((x) => x.chapterId !== t.chapterId))}
+                            className="text-muted-foreground hover:text-red-500 cursor-pointer"><X className="h-3 w-3" /></button>
+                    </div>
+                ))}
+            </div>
+        </div>
     );
 }

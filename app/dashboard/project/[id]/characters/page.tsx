@@ -1,6 +1,7 @@
 import { getCharactersByNovelId } from "@/server/character";
 import { getAllFactionsWithMembers, getFactionRelationships, getFactionStatusPresets, getMembershipsByNovel } from "@/server/factions";
 import { getIdeasByNovelId } from "@/server/idea";
+import { getChapters } from "@/server/chapter";
 import { getWorldSystemsByNovelId } from "@/server/world-systems";
 import { FactionsContent } from "@/components/project/factions/factions-content";
 import { cn } from "@/lib/utils";
@@ -113,11 +114,12 @@ async function FactionsTab({ novelId, characters, factions }: {
   characters: Awaited<ReturnType<typeof getCharactersByNovelId>>["data"];
   factions: NonNullable<Awaited<ReturnType<typeof getAllFactionsWithMembers>>["data"]>;
 }) {
-  const [relsResult, presetsResult, ideasResult, systemsResult] = await Promise.all([
+  const [relsResult, presetsResult, ideasResult, systemsResult, chaptersResult] = await Promise.all([
     getFactionRelationships(novelId),
     getFactionStatusPresets(novelId),
     getIdeasByNovelId(novelId),
     getWorldSystemsByNovelId(novelId),
+    getChapters(novelId),
   ]);
   return (
     // ponytail: FactionsContent ออกแบบให้เต็มจอ — ให้กรอบสูงคงที่แทนการรื้อ layout ข้างใน
@@ -130,6 +132,7 @@ async function FactionsTab({ novelId, characters, factions }: {
         initialStatusPresets={presetsResult.data || []}
         ideas={ideasResult.data || []}
         systems={systemsResult.data || []}
+        chapters={(chaptersResult.chapters || []).map((c) => ({ id: c.id, title: c.title, orderIndex: c.orderIndex }))}
       />
     </div>
   );
