@@ -1,5 +1,6 @@
 import { pgTable, text, timestamp, boolean, integer, jsonb, index, uniqueIndex, foreignKey, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
+import type { WorldCalendar } from "@/lib/world-calendar";
 import type { CharacterProfile, CharacterPsych, CharacterMotive, CharacterArc, CharacterNarration, CharacterCustomValues } from "@/lib/character-profile";
 
 // ============================================
@@ -101,6 +102,7 @@ export const novels = pgTable("novels", {
   // Writing Goal & Deadline Tracker
   targetDeadline: timestamp("target_deadline"),            // วันสิ้นสุดเป้าหมาย
   timelineEpoch: timestamp("timeline_epoch"),               // วันที่จริงของ "Day 1" บนเส้นเวลาในเรื่อง (P3 Phase A) — null = ยังไม่ตั้ง แสดงเป็น Day N แทน
+  worldCalendar: jsonb("world_calendar").$type<WorldCalendar>(), // ปฏิทินของโลก (เส้นเวลาเฟส 2, lib/world-calendar.ts) — null = ใช้ 12 เดือน × 30 วัน
   dailyTargetMode: text("daily_target_mode").default("dynamic"), // dynamic | static
   dailyTargetWordCount: integer("daily_target_word_count").default(1000), // เป้าหมายคำ/วัน (โหมด static)
   lastSyncedAt: timestamp("last_synced_at"),                // ซิงค์ฐานข้อมูล AI ล่าสุด (cross-device)
@@ -1072,6 +1074,7 @@ export const eras = pgTable("eras", {
     .notNull()
     .references(() => novels.id, { onDelete: "cascade" }),
   orderIndex: integer("order_index").default(0), // ลำดับของยุค (0 = oldest)
+  startYear: integer("start_year"), // ปีที่ 1 ของยุคนี้ = ปีสัมบูรณ์ไหนในปฏิทินโลก (เส้นเวลาเฟส 2) — null = ยังไม่ตั้ง ใช้แค่ลำดับ
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()
@@ -1091,6 +1094,10 @@ export const loreEntries = pgTable("lore_entries", {
   // Era-based Timeline
   eraId: text("era_id").references(() => eras.id, { onDelete: "set null" }), // ยุคที่ lore นี้เกิดขึ้น
   orderInEra: integer("order_in_era").default(0), // ลำดับใน era (0 = earliest in era)
+  // เวลาในโลก (เส้นเวลาเฟส 2) — เลขวันสัมบูรณ์ตาม lib/world-calendar.ts · null = ยังไม่ระบุ ใช้ eraId/orderInEra ต่อ
+  worldTime: integer("world_time"),
+  worldTimeEnd: integer("world_time_end"), // มีค่า = เหตุการณ์เป็นช่วง (เช่น สงคราม 100 ปี)
+  worldTimePrecision: text("world_time_precision"), // "year" | "month" | "day"
   era: text("era"), // DEPRECATED: เก็บไว้สำหรับ migration เท่านั้น
 
   novelId: text("novel_id")

@@ -1,11 +1,14 @@
 "use client"
 
-import { Fragment, useEffect, useMemo, useState } from "react"
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react"
 import Link from "next/link"
 import { ChevronDown, ChevronRight, Inbox, Undo2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { dayLabel } from "@/lib/story-date"
 import type { LaneKind, TlItem, TlLane, WorldTimeline } from "@/lib/world-timeline"
+import { formatWorldTime, gapLabel, type EraYear, type WorldCalendar } from "@/lib/world-calendar"
+import { CalendarDialog } from "./calendar-dialog"
+import { LoreTimePopover } from "./lore-time-popover"
 
 const COL_W = 128
 const LABEL_W = 176
@@ -19,9 +22,11 @@ interface Props {
     novelId: string
     timeline: WorldTimeline
     timelineEpoch: Date | null
+    calendar: WorldCalendar
+    eraYears: EraYear[]
 }
 
-export function WorldTimelineBoard({ novelId, timeline, timelineEpoch }: Props) {
+export function WorldTimelineBoard({ novelId, timeline, timelineEpoch, calendar, eraYears }: Props) {
     const storageKey = `world-timeline:open:${novelId}`
     const [open, setOpen] = useState<Set<LaneKind>>(() => new Set(DEFAULT_OPEN))
 
@@ -47,6 +52,38 @@ export function WorldTimelineBoard({ novelId, timeline, timelineEpoch }: Props) 
     const { columns, segments, lanes, unplaced } = timeline
     const gridCols = `${LABEL_W}px repeat(${Math.max(columns.length, 1)}, ${COL_W}px)`
 
+    // lore ทุกชิ้น (บนแกนและในถาด) กดแล้วตั้งเวลาได้ — เวลาเดิมอ่านจากช่องที่มันอยู่
+    const wrapLore = (sourceId: string, title: string, col: number | null, node: ReactNode) => {
+        const c = col == null ? null : columns[col]
+        return (
+            <LoreTimePopover
+                novelId={novelId} loreId={sourceId} title={title} calendar={calendar} eras={eraYears}
+                current={c?.day != null && c.precision ? { day: c.day, precision: c.precision } : null}
+            >
+                <button type="button" className="block w-full min-w-0 text-left hover:opacity-80">{node}</button>
+            </LoreTimePopover>
+        )
+    }
+
+    const colLabel = (i: number) => {
+        const c = columns[i]
+        if (c.day != null && c.precision) return formatWorldTime(calendar, eraYears, c.day, c.precision)
+        return dayLabel(c.storyDate, epoch) ?? `#${i + 1}`
+    }
+    // ช่วงว่างยาวระหว่างช่องที่มีเวลาจริงสองช่องติดกัน → ป้าย "≈ 300 ปี"
+    const gapBefore = (i: number) => {
+        const prev = columns[i - 1], cur = columns[i]
+        return prev?.day != null && cur.day != null ? gapLabel(calendar, prev.day, cur.day) : null
+    }
+
+    const toolbar = (
+        <div className="flex items-center gap-2 border-b px-4 py-2">
+            <span className="text-xs text-muted-foreground">กด lore เพื่อตั้งเวลา</span>
+            <span className="flex-1" />
+            <CalendarDialog novelId={novelId} calendar={calendar} eras={eraYears} />
+        </div>
+    )
+
     const hrefOf = (item: TlItem) =>
         item.kind === "scene" || item.kind === "appear" ? `/dashboard/project/${novelId}/plot`
             : item.kind === "lore" ? `/dashboard/project/${novelId}/worldbuilding`
@@ -54,18 +91,22 @@ export function WorldTimelineBoard({ novelId, timeline, timelineEpoch }: Props) 
 
     if (columns.length === 0) {
         return (
+            <div className="flex min-h-0 flex-1 flex-col">
+            {toolbar}
             <div className="flex flex-1 flex-col items-center justify-center gap-2 p-10 text-center">
                 <p className="font-medium">ยังไม่มีอะไรบนเส้นเวลา</p>
                 <p className="max-w-md text-sm text-muted-foreground">
                     สร้างยุคแล้วผูก lore เข้ากับยุคในหน้าสร้างโลก หรือจัดลำดับเวลาของฉากจากปุ่มเส้นเวลาบนกระดานพล็อต ของเหล่านั้นจะมาโผล่ที่นี่
                 </p>
-                <UnplacedTray items={unplaced} />
+                <UnplacedTray items={unplaced} wrapLore={wrapLore} />
+            </div>
             </div>
         )
     }
 
     return (
         <div className="flex min-h-0 flex-1 flex-col">
+            {toolbar}
             <div className="min-h-0 flex-1 overflow-auto">
                 <div className="grid w-max text-xs" style={{ gridTemplateColumns: gridCols }}>
                     {/* แถบยุค */}
@@ -86,11 +127,19 @@ export function WorldTimelineBoard({ novelId, timeline, timelineEpoch }: Props) 
 
                     {/* ป้ายช่อง (วันที่ของฉาก ถ้ามี) */}
                     <div className="sticky left-0 top-[33px] z-30 border-b border-r bg-background px-3 py-1 text-muted-foreground">ลำดับเวลา</div>
-                    {columns.map((c, i) => (
-                        <div key={i} className="sticky top-[33px] z-10 border-b border-r bg-background px-2 py-1 text-[11px] text-muted-foreground">
-                            {dayLabel(c.storyDate, epoch) ?? `#${i + 1}`}
-                        </div>
-                    ))}
+                    {columns.map((_, i) => {
+                        const gap = gapBefore(i)
+                        return (
+                            <div
+                                key={i}
+                                className={cn("sticky top-[33px] z-10 truncate border-b border-r bg-background px-2 py-1 text-[11px] text-muted-foreground")}
+                                title={colLabel(i)}
+                            >
+                                {gap && <span className="mr-1 font-medium text-foreground/70">{gap} ·</span>}
+                                {colLabel(i)}
+                            </div>
+                        )
+                    })}
 
                     {lanes.map(lane => (
                         <LaneRows
@@ -100,21 +149,25 @@ export function WorldTimelineBoard({ novelId, timeline, timelineEpoch }: Props) 
                             isOpen={open.has(lane.kind)}
                             onToggle={() => toggle(lane.kind)}
                             hrefOf={hrefOf}
+                            wrapLore={wrapLore}
                         />
                     ))}
                 </div>
             </div>
-            <UnplacedTray items={unplaced} />
+            <UnplacedTray items={unplaced} wrapLore={wrapLore} />
         </div>
     )
 }
 
-function LaneRows({ lane, colCount, isOpen, onToggle, hrefOf }: {
+type WrapLore = (sourceId: string, title: string, col: number | null, node: ReactNode) => ReactNode
+
+function LaneRows({ lane, colCount, isOpen, onToggle, hrefOf, wrapLore }: {
     lane: TlLane
     colCount: number
     isOpen: boolean
     onToggle: () => void
     hrefOf: (item: TlItem) => string | null
+    wrapLore: WrapLore
 }) {
     const allItems = lane.subLanes.flatMap(s => s.items)
     const busyCols = new Set(allItems.map(i => i.col))
@@ -155,7 +208,9 @@ function LaneRows({ lane, colCount, isOpen, onToggle, hrefOf }: {
                         <div className="grid border-b" style={{ gridColumn: `2 / ${colCount + 2}`, gridTemplateColumns: `repeat(${colCount}, ${COL_W}px)` }}>
                             {[...byCol.entries()].map(([col, items]) => (
                                 <div key={col} className="flex flex-col gap-1 border-r border-border/40 p-1" style={{ gridColumn: col + 1 }}>
-                                    {items.map(it => <ItemChip key={it.id} item={it} href={hrefOf(it)} />)}
+                                    {items.map(it => it.kind === "lore"
+                                        ? <Fragment key={it.id}>{wrapLore(it.sourceId, it.title, it.col, <ItemChip item={it} href={null} />)}</Fragment>
+                                        : <ItemChip key={it.id} item={it} href={hrefOf(it)} />)}
                                 </div>
                             ))}
                         </div>
@@ -188,18 +243,21 @@ function ItemChip({ item, href }: { item: TlItem; href: string | null }) {
     return href ? <Link href={href} className="block min-w-0 hover:opacity-80">{body}</Link> : body
 }
 
-function UnplacedTray({ items }: { items: WorldTimeline["unplaced"] }) {
+function UnplacedTray({ items, wrapLore }: { items: WorldTimeline["unplaced"]; wrapLore: WrapLore }) {
     if (items.length === 0) return null
     return (
         <div className="flex flex-wrap items-center gap-1.5 border-t bg-muted/40 px-4 py-2 text-xs">
             <span className="mr-1 flex items-center gap-1 text-muted-foreground">
                 <Inbox className="size-3.5" /> ยังไม่ระบุเวลา ({items.length})
             </span>
-            {items.slice(0, 40).map(u => (
-                <span key={`${u.kind}:${u.id}`} className="rounded-sm border border-dashed px-1.5 py-0.5" title={`${KIND_LABEL[u.kind]} · ${u.reason}`}>
-                    {u.title}
-                </span>
-            ))}
+            {items.slice(0, 40).map(u => {
+                const chip = (
+                    <span className="block rounded-sm border border-dashed px-1.5 py-0.5" title={`${KIND_LABEL[u.kind]} · ${u.reason}`}>
+                        {u.title}
+                    </span>
+                )
+                return <Fragment key={`${u.kind}:${u.id}`}>{u.kind === "lore" ? <span className="inline-block">{wrapLore(u.id, u.title, null, chip)}</span> : chip}</Fragment>
+            })}
             {items.length > 40 && <span className="text-muted-foreground">+{items.length - 40}</span>}
         </div>
     )

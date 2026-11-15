@@ -2,12 +2,23 @@
 
 import { db } from "@/db/drizzle"
 import {
-    chapters, eras, timelineEvents, loreEntries, loreGroups, characters, locations,
+    novels, chapters, eras, timelineEvents, loreEntries, loreGroups, characters, locations,
     factions, powers, characterLifeEvents, characterFactions, characterPowers,
 } from "@/db/schema"
 import { and, asc, eq, isNull } from "drizzle-orm"
+import { revalidatePath } from "next/cache"
 import { requireNovelAccess } from "@/lib/authz"
-import type { WorldTimelineInput, TlAnchored } from "@/lib/world-timeline"
+import type { WorldTimelineInput, TlAnchored, TlPrecision } from "@/lib/world-timeline"
+import {
+    normalizeCalendar, dayOf, fromDay, eraForYear, sceneDay, TIME_PRECISIONS,
+    type WorldCalendar, type EraYear, type TimePrecision,
+} from "@/lib/world-calendar"
+
+export interface WorldTimelineData {
+    input: WorldTimelineInput
+    calendar: WorldCalendar
+    eraYears: EraYear[]
+}
 
 const ids = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [])
 
@@ -15,16 +26,18 @@ const ids = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is str
  * ข้อมูลดิบของหน้าเส้นเวลา (เฟส 1 อ่านอย่างเดียว) — แปลงเป็นแกนด้วย buildWorldTimeline() ใน lib/world-timeline.ts
  * ทุก query scope ด้วย novelId · ตารางที่ไม่มี novelId (character_factions/powers) scope ผ่าน characters
  */
-export async function getWorldTimelineInput(novelId: string): Promise<WorldTimelineInput> {
+export async function getWorldTimelineData(novelId: string): Promise<WorldTimelineData> {
     await requireNovelAccess(novelId)
 
     const [
+        [novelRow],
         chapterRows, eraRows, sceneRows, loreRows, groupRows, characterRows, locationRows,
         factionRows, powerRows, lifeRows, factionLinkRows, powerLinkRows,
     ] = await Promise.all([
+        db.select({ worldCalendar: novels.worldCalendar }).from(novels).where(eq(novels.id, novelId)),
         db.select({ id: chapters.id, title: chapters.title, orderIndex: chapters.orderIndex })
             .from(chapters).where(and(eq(chapters.novelId, novelId), isNull(chapters.deletedAt))).orderBy(asc(chapters.orderIndex)),
-        db.select({ id: eras.id, name: eras.name, color: eras.color, orderIndex: eras.orderIndex })
+        db.select({ id: eras.id, name: eras.name, color: eras.color, orderIndex: eras.orderIndex, startYear: eras.startYear })
             .from(eras).where(eq(eras.novelId, novelId)),
         db.select({
             id: timelineEvents.id, title: timelineEvents.title, chapterId: timelineEvents.relatedChapterId,
@@ -35,6 +48,7 @@ export async function getWorldTimelineInput(novelId: string): Promise<WorldTimel
         }).from(timelineEvents).where(eq(timelineEvents.novelId, novelId)),
         db.select({
             id: loreEntries.id, title: loreEntries.title, eraId: loreEntries.eraId, orderInEra: loreEntries.orderInEra,
+            worldTime: loreEntries.worldTime, worldTimePrecision: loreEntries.worldTimePrecision,
             groupId: loreEntries.groupId, locationId: loreEntries.locationId,
         }).from(loreEntries).where(eq(loreEntries.novelId, novelId)),
         db.select({ id: loreGroups.id, name: loreGroups.name }).from(loreGroups).where(eq(loreGroups.novelId, novelId)),
@@ -73,16 +87,100 @@ export async function getWorldTimelineInput(novelId: string): Promise<WorldTimel
         })),
     ]
 
-    return {
+    const calendar = normalizeCalendar(novelRow?.worldCalendar)
+    const eraYears: EraYear[] = eraRows.map((e) => ({ id: e.id, name: e.name, startYear: e.startYear }))
+    // ไม่ได้ผูกยุคไว้แต่มีเวลา → อนุมานยุคจากปี (ยุคที่ startYear ครอบปีนั้น)
+    const eraFromDay = (day: number | null) => (day == null ? null : eraForYear(eraYears, fromDay(calendar, day).year)?.id ?? null)
+    const precisionOf = (p: string | null): TlPrecision => ((TIME_PRECISIONS as readonly string[]).includes(p ?? "") ? (p as TlPrecision) : "year")
+
+    const input: WorldTimelineInput = {
         chapters: chapterRows,
         eras: eraRows,
-        scenes: sceneRows.map((s) => ({ ...s, characterIds: ids(s.characterIds), locationIds: ids(s.locationIds) })),
-        lore: loreRows,
+        scenes: sceneRows.map((s) => {
+            const day = sceneDay(calendar, s.storyDate)
+            return { ...s, day, eraId: s.eraId ?? eraFromDay(day), characterIds: ids(s.characterIds), locationIds: ids(s.locationIds) }
+        }),
+        lore: loreRows.map((l) => ({
+            id: l.id, title: l.title, orderInEra: l.orderInEra, groupId: l.groupId, locationId: l.locationId,
+            day: l.worldTime, precision: l.worldTime != null ? precisionOf(l.worldTimePrecision) : null,
+            eraId: l.eraId ?? eraFromDay(l.worldTime),
+        })),
         anchored,
         characters: characterRows,
         locations: locationRows,
         factions: factionRows,
         powers: powerRows,
         loreGroups: groupRows,
+    }
+    return { input, calendar, eraYears }
+}
+
+const revalidateTimeline = (novelId: string) => revalidatePath(`/dashboard/project/${novelId}/timeline`)
+
+/** บันทึกปฏิทิน + ปีเริ่มของแต่ละยุค ในคราวเดียว (หน้าตั้งค่าปฏิทินแก้ทั้งสองอย่างพร้อมกัน) */
+export async function saveWorldCalendar(
+    novelId: string,
+    calendar: WorldCalendar,
+    eraStartYears: Record<string, number | null>,
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        await requireNovelAccess(novelId)
+        const clean = normalizeCalendar(calendar)
+        const owned = new Set(
+            (await db.select({ id: eras.id }).from(eras).where(eq(eras.novelId, novelId))).map((e) => e.id),
+        )
+        await db.update(novels).set({ worldCalendar: clean }).where(eq(novels.id, novelId))
+        for (const [eraId, year] of Object.entries(eraStartYears)) {
+            if (!owned.has(eraId)) continue // id ยุคของนิยายอื่น — ข้าม ห้ามเขียนข้ามนิยาย
+            const startYear = year == null || !Number.isFinite(year) ? null : Math.trunc(year)
+            await db.update(eras).set({ startYear }).where(eq(eras.id, eraId))
+        }
+        revalidateTimeline(novelId)
+        return { success: true }
+    } catch (e) {
+        console.error("[world-timeline] saveWorldCalendar:", e)
+        return { success: false, error: "บันทึกปฏิทินไม่สำเร็จ" }
+    }
+}
+
+export interface LoreTimeInput {
+    /** ปีสัมบูรณ์ */
+    year: number
+    month?: number
+    day?: number
+    precision: TimePrecision
+    /** ปีสิ้นสุด (เหตุการณ์เป็นช่วง) */
+    endYear?: number | null
+}
+
+/** ตั้ง/ล้างเวลาในโลกของ lore · null = ล้าง (กลับไปใช้ยุค + ลำดับในยุคเหมือนเดิม) */
+export async function setLoreWorldTime(loreId: string, time: LoreTimeInput | null): Promise<{ success: boolean; error?: string }> {
+    try {
+        const [row] = await db.select({ novelId: loreEntries.novelId }).from(loreEntries).where(eq(loreEntries.id, loreId))
+        if (!row) return { success: false, error: "ไม่พบ lore นี้" }
+        await requireNovelAccess(row.novelId)
+
+        if (!time) {
+            await db.update(loreEntries)
+                .set({ worldTime: null, worldTimeEnd: null, worldTimePrecision: null })
+                .where(eq(loreEntries.id, loreId))
+        } else {
+            if (!Number.isFinite(time.year)) return { success: false, error: "ปีไม่ถูกต้อง" }
+            const precision: TimePrecision = (TIME_PRECISIONS as readonly string[]).includes(time.precision) ? time.precision : "year"
+            const [novelRow] = await db.select({ worldCalendar: novels.worldCalendar }).from(novels).where(eq(novels.id, row.novelId))
+            const cal = normalizeCalendar(novelRow?.worldCalendar)
+            const start = dayOf(cal, time.year, precision === "year" ? 1 : time.month ?? 1, precision === "day" ? time.day ?? 1 : 1)
+            const end = time.endYear != null && Number.isFinite(time.endYear) && time.endYear >= time.year
+                ? dayOf(cal, time.endYear, 1, 1)
+                : null
+            await db.update(loreEntries)
+                .set({ worldTime: start, worldTimeEnd: end, worldTimePrecision: precision })
+                .where(eq(loreEntries.id, loreId))
+        }
+        revalidateTimeline(row.novelId)
+        return { success: true }
+    } catch (e) {
+        console.error("[world-timeline] setLoreWorldTime:", e)
+        return { success: false, error: "บันทึกเวลาไม่สำเร็จ" }
     }
 }

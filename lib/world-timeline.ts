@@ -1,12 +1,17 @@
 /**
- * เส้นเวลาโลก เฟส 1 — จัดของจากทุกหมวดลงแกนเดียว (pure ไม่แตะ DB ไม่แตะ React)
+ * เส้นเวลาโลก — จัดของจากทุกหมวดลงแกนเดียว (pure ไม่แตะ DB ไม่แตะ React)
  * ------------------------------------------------------------------------
  * แผนเต็มอยู่ที่ docs/treatment-timeline-plan.md
  *
- * เฟสนี้ยังไม่มีปฏิทิน แกนจึงเป็น "ช่องตามลำดับ" ไม่ใช่เวลาจริงเป็นตัวเลข:
- *   ยุค (ตาม eras.orderIndex) → ในยุค: lore ก่อน (ตาม orderInEra) แล้วฉาก → ท้ายสุดฉากที่ไม่ระบุยุค
- * ponytail: ภายในยุคเดียวกันไม่รู้ว่า lore กับฉากอะไรเกิดก่อน เลยวาง lore ก่อนเสมอ
- * (ประวัติศาสตร์มักมาก่อนเรื่องหลัก) — เฟส 2 มีเวลาจริงของ lore แล้วค่อยเรียงปนกัน
+ * แกนเป็น "ช่องตามลำดับ" (ไม่ใช่สเกลเวลา) แต่ละช่องพกเวลาจริงติดไปด้วยถ้ามี:
+ *   ยุค (ตาม eras.orderIndex) → ในยุค:
+ *     1. lore ที่ยังไม่มีเวลา (ตาม orderInEra)
+ *     2. ของที่มีเวลาจริง (lore + ฉาก) เรียงตามเลขวัน
+ *     3. ฉากที่ยังไม่มีเวลาจริง (ตาม storyTimeIndex → storyDate → ลำดับเล่า)
+ *   → ท้ายสุดของที่ไม่ระบุยุค
+ * ponytail: ของที่ไม่มีเวลาไม่รู้ว่าเกิดก่อนหรือหลังของที่มีเวลา เลยวาง lore ไว้หัวยุค ฉากไว้ท้ายยุค
+ * เลขวัน/ยุคที่อนุมานจากเวลา คำนวณมาจากฝั่ง server (lib/world-calendar.ts) ไฟล์นี้ไม่ import อะไรเลย
+ * (ตัวรัน check resolve relative import แบบไม่ใส่นามสกุลไม่ได้ ดู task.md 9e)
  *
  * ของที่ผูกกับ "บท" (life event, เข้ากลุ่ม, ได้พลัง) ไม่มีเวลาในโลก
  * วางที่ช่องของฉากแรกในบทนั้นแล้วติด approx — บทที่ยังไม่มีฉากบนแกน = ไปถาดยังไม่ระบุเวลา
@@ -17,6 +22,7 @@ export type ItemKind = "scene" | "lore" | "appear" | "life" | "faction" | "power
 
 export interface TlChapter { id: string; title: string; orderIndex: number }
 export interface TlEra { id: string; name: string; color: string | null; orderIndex: number | null }
+export type TlPrecision = "year" | "month" | "day";
 export interface TlNamed { id: string; name: string }
 
 export interface TlScene {
@@ -27,6 +33,8 @@ export interface TlScene {
     storyTimeIndex: number | null;
     storyDate: number | null;
     eraId: string | null;
+    /** เลขวันในโลก (มีเมื่อผูก anchor ของปฏิทินและตั้ง storyDate) */
+    day: number | null;
     eventType: string | null;
     characterIds: string[];
     locationIds: string[];
@@ -38,6 +46,8 @@ export interface TlLore {
     title: string;
     eraId: string | null;
     orderInEra: number | null;
+    day: number | null;
+    precision: TlPrecision | null;
     groupId: string | null;
     locationId: string | null;
 }
@@ -67,7 +77,10 @@ export interface WorldTimelineInput {
 
 export interface TlColumn {
     eraId: string | null;
-    /** มีเฉพาะช่องของฉากที่ตั้งวันที่ไว้ — UI แปลงเป็นป้ายด้วย dayLabel() */
+    /** เลขวันในโลก — มีเมื่อของในช่องมีเวลาจริง · UI แปลงเป็นป้ายด้วยปฏิทิน */
+    day: number | null;
+    precision: TlPrecision | null;
+    /** ช่องฉากที่มีแค่ storyDate (ยังไม่ผูก anchor) — UI แสดงเป็น Day N */
     storyDate: number | null;
 }
 
@@ -149,7 +162,7 @@ export function buildWorldTimeline(input: WorldTimelineInput): WorldTimeline {
     const knownEra = new Set(input.eras.map((e) => e.id));
     const eraOf = (id: string | null) => (id && knownEra.has(id) ? id : null);
 
-    const isPlaced = (s: TlScene) => s.storyTimeIndex != null || s.storyDate != null || eraOf(s.eraId) != null;
+    const isPlaced = (s: TlScene) => s.storyTimeIndex != null || s.storyDate != null || s.day != null || eraOf(s.eraId) != null;
     const sceneKey = (s: TlScene): [number, number, number] =>
         [s.storyTimeIndex ?? INF, s.storyDate ?? INF, narr.get(s.id) ?? INF];
     const byKey = (a: TlScene, b: TlScene) => {
@@ -157,28 +170,47 @@ export function buildWorldTimeline(input: WorldTimelineInput): WorldTimeline {
         return ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2];
     };
 
+    type Slot = { lore: TlLore } | { scene: TlScene };
     const pushSegment = (eraId: string | null, name: string, color: string | null, lore: TlLore[], scenes: TlScene[]) => {
         if (lore.length === 0 && scenes.length === 0) return;
+        const timed: Slot[] = [
+            ...lore.filter((l) => l.day != null).map((l) => ({ lore: l })),
+            ...scenes.filter((s) => s.day != null).map((s) => ({ scene: s })),
+        ].sort((a, b) => {
+            const da = "lore" in a ? a.lore.day! : a.scene.day!;
+            const db = "lore" in b ? b.lore.day! : b.scene.day!;
+            if (da !== db) return da - db;
+            if ("lore" in a !== "lore" in b) return "lore" in a ? -1 : 1; // วันเดียวกัน: lore ก่อน
+            return "scene" in a && "scene" in b ? byKey(a.scene, b.scene) : 0;
+        });
+        const slots: Slot[] = [
+            ...lore.filter((l) => l.day == null).sort((a, b) => (a.orderInEra ?? 0) - (b.orderInEra ?? 0)).map((l) => ({ lore: l })),
+            ...timed,
+            ...scenes.filter((s) => s.day == null).sort(byKey).map((s) => ({ scene: s })),
+        ];
         const start = columns.length;
-        for (const l of lore) {
-            loreCol.set(l.id, columns.length);
-            columns.push({ eraId, storyDate: null });
-        }
-        for (const s of scenes) {
-            sceneCol.set(s.id, columns.length);
-            columns.push({ eraId, storyDate: s.storyDate });
+        for (const slot of slots) {
+            if ("lore" in slot) {
+                loreCol.set(slot.lore.id, columns.length);
+                columns.push({ eraId, day: slot.lore.day, precision: slot.lore.day != null ? slot.lore.precision ?? "year" : null, storyDate: null });
+            } else {
+                sceneCol.set(slot.scene.id, columns.length);
+                columns.push({ eraId, day: slot.scene.day, precision: slot.scene.day != null ? "day" : null, storyDate: slot.scene.storyDate });
+            }
         }
         segments.push({ eraId, name, color, start, end: columns.length - 1 });
     };
 
     for (const era of [...input.eras].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))) {
-        const lore = input.lore
-            .filter((l) => l.eraId === era.id)
-            .sort((a, b) => (a.orderInEra ?? 0) - (b.orderInEra ?? 0));
-        const scenes = input.scenes.filter((s) => isPlaced(s) && eraOf(s.eraId) === era.id).sort(byKey);
+        const lore = input.lore.filter((l) => l.eraId === era.id);
+        const scenes = input.scenes.filter((s) => isPlaced(s) && eraOf(s.eraId) === era.id);
         pushSegment(era.id, era.name, era.color, lore, scenes);
     }
-    pushSegment(null, NO_ERA_LABEL, null, [], input.scenes.filter((s) => isPlaced(s) && eraOf(s.eraId) == null).sort(byKey));
+    pushSegment(
+        null, NO_ERA_LABEL, null,
+        input.lore.filter((l) => eraOf(l.eraId) == null && l.day != null),
+        input.scenes.filter((s) => isPlaced(s) && eraOf(s.eraId) == null),
+    );
 
     // flashback: มีฉากที่อยู่หลังบนแกนแต่ถูกเล่าก่อน → ฉากนี้คือการเล่าย้อน
     const flashback = new Set<string>();
@@ -195,7 +227,7 @@ export function buildWorldTimeline(input: WorldTimelineInput): WorldTimeline {
         if (!sceneCol.has(s.id)) unplaced.push({ id: s.id, kind: "scene", title: s.title, reason: "ยังไม่ระบุเวลาหรือยุค" });
     }
     for (const l of input.lore) {
-        if (!loreCol.has(l.id)) unplaced.push({ id: l.id, kind: "lore", title: l.title, reason: "ยังไม่ผูกกับยุค" });
+        if (!loreCol.has(l.id)) unplaced.push({ id: l.id, kind: "lore", title: l.title, reason: "ยังไม่ระบุเวลาหรือยุค" });
     }
 
     // ช่องแรกของแต่ละบท — ใช้วางของที่ผูกกับบท

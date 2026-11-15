@@ -8,7 +8,7 @@ function assert(cond: boolean, msg: string) {
 
 const scene = (id: string, p: Partial<TlScene>): TlScene => ({
     id, title: id, chapterId: null, orderIndex: 0, storyTimeIndex: null, storyDate: null,
-    eraId: null, eventType: null, characterIds: [], locationIds: [], povCharacterId: null, ...p,
+    eraId: null, day: null, eventType: null, characterIds: [], locationIds: [], povCharacterId: null, ...p,
 });
 
 const input: WorldTimelineInput = {
@@ -22,9 +22,9 @@ const input: WorldTimelineInput = {
         scene("s4", { chapterId: "ch3", orderIndex: 1 }),         // ไม่มีเวลาเลย → ถาด
     ],
     lore: [
-        { id: "war", title: "สงคราม", eraId: "fire", orderInEra: 0, groupId: "g1", locationId: "castle" },
-        { id: "birth", title: "กำเนิดเวทย์", eraId: "old", orderInEra: 0, groupId: null, locationId: null },
-        { id: "myth", title: "ตำนานลอย", eraId: null, orderInEra: 0, groupId: null, locationId: null },
+        { id: "war", title: "สงคราม", eraId: "fire", orderInEra: 0, day: null, precision: null, groupId: "g1", locationId: "castle" },
+        { id: "birth", title: "กำเนิดเวทย์", eraId: "old", orderInEra: 0, day: null, precision: null, groupId: null, locationId: null },
+        { id: "myth", title: "ตำนานลอย", eraId: null, orderInEra: 0, day: null, precision: null, groupId: null, locationId: null },
     ],
     anchored: [
         { id: "le1", kind: "life", title: "ตาบอด", chapterId: "ch2", subLaneId: "alin" },
@@ -66,3 +66,32 @@ assert(lane("items").subLanes.length === 0 && lane("items").emptyText.length > 0
 
 const empty = buildWorldTimeline({ ...input, eras: [], scenes: [], lore: [], anchored: [] });
 assert(empty.columns.length === 0 && empty.lanes.length === 7, "นิยายว่าง: ไม่มีช่อง แต่ยังมีครบ 7 หมวด");
+
+// ── เฟส 2: เวลาจริง ──
+const timed = buildWorldTimeline({
+    ...input,
+    scenes: [
+        scene("a", { chapterId: "ch1", eraId: "fire", day: 500 }),
+        scene("b", { chapterId: "ch2", eraId: "fire", day: 100 }),
+        scene("c", { chapterId: "ch3", eraId: "fire", storyTimeIndex: 1 }),   // ไม่มีเวลาจริง → ท้ายยุค
+    ],
+    lore: [
+        { id: "mid", title: "กลางเรื่อง", eraId: "fire", orderInEra: 0, day: 300, precision: "year", groupId: null, locationId: null },
+        { id: "head", title: "ไม่มีเวลา", eraId: "fire", orderInEra: 0, day: null, precision: null, groupId: null, locationId: null },
+        { id: "same", title: "วันเดียวกับ b", eraId: "fire", orderInEra: 0, day: 100, precision: "day", groupId: null, locationId: null },
+    ],
+    anchored: [],
+});
+const order = timed.lanes.flatMap((l) => l.kind === "plot" || l.kind === "lore" ? l.subLanes.flatMap((s) => s.items) : [])
+    .sort((x, y) => x.col - y.col).map((i) => i.sourceId).join(",");
+assert(order === "head,same,b,mid,a,c", "ในยุค: lore ไม่มีเวลา → ของมีเวลาเรียงตามวัน (วันเดียวกัน lore ก่อน) → ฉากไม่มีเวลา");
+const tb = timed.lanes[0].subLanes.flatMap((s) => s.items).find((i) => i.sourceId === "b")!;
+assert(timed.columns[tb.col].day === 100 && timed.columns[tb.col].precision === "day", "ช่องพกเลขวัน + ความละเอียด");
+const tm = timed.lanes[1].subLanes.flatMap((s) => s.items).find((i) => i.sourceId === "mid")!;
+assert(timed.columns[tm.col].precision === "year", "ช่อง lore ใช้ความละเอียดของ lore");
+const flash = timed.lanes[0].subLanes.flatMap((s) => s.items).find((i) => i.sourceId === "b")!;
+assert(flash.flashback === true, "บท 2 เกิดวัน 100 ก่อนบท 1 (วัน 500) = เล่าย้อน");
+
+const loose = buildWorldTimeline({ ...input, scenes: [], anchored: [],
+    lore: [{ id: "free", title: "มีเวลาแต่ไม่มียุค", eraId: null, orderInEra: 0, day: 5, precision: "year", groupId: null, locationId: null }] });
+assert(loose.segments.length === 1 && loose.segments[0].name === "ไม่ระบุยุค" && loose.unplaced.length === 0, "lore มีเวลาแต่ไม่มียุค ขึ้นแกนในช่วงไม่ระบุยุค");
