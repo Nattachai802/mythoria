@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { Pick } from "./pick"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -77,15 +78,12 @@ export function CreateEventDialog({ novelId, open, onOpenChange, target, targetL
                         {error && <p className="text-xs text-destructive">{error}</p>}
                     </div>
                     {!target && (
-                        <select
-                            className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                        <Pick
+                            ariaLabel="ยุค" className="w-full"
                             value={eraId}
-                            onChange={e => setEraId(e.target.value)}
-                            aria-label="ยุค"
-                        >
-                            {eras.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                            <option value={NO_ERA}>ยังไม่ระบุยุค (ไปอยู่ในถาด)</option>
-                        </select>
+                            onChange={setEraId}
+                            options={[...eras.map(e => ({ value: e.id, label: e.name })), { value: NO_ERA, label: "ยังไม่ระบุยุค (ไปอยู่ในถาด)" }]}
+                        />
                     )}
                 </div>
                 <DialogFooter>

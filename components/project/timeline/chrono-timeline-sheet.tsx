@@ -1,6 +1,7 @@
 "use client"
 
 import type { ChapterForBoard } from "./types"
+import Link from "next/link"
 import { Fragment, useMemo, useState, useTransition } from "react"
 import { Chapter, TimelineEvent, Era, LoreEntry } from "@/db/schema"
 import { updateTimelineEvent } from "@/server/timeline"
@@ -184,6 +185,9 @@ export function ChronoTimelineSheet({ novelId, events, chapters, onEventPatched,
                         ลากเรียงตามเวลาที่เหตุการณ์ <em>เกิดจริง</em> — เลขในวงเล็บคือลำดับเล่า
                         แถวสีอำพัน = เล่าสลับเวลา (flashback)
                     </SheetDescription>
+                    <Link href={`/dashboard/project/${novelId}/timeline`} className="text-xs font-medium text-[var(--forge-gold)] underline-offset-2 hover:underline">
+                        เปิดหน้าเส้นเวลาเต็ม (รวม lore และตัวละคร) →
+                    </Link>
                 </SheetHeader>
 
                 <div className="flex items-center gap-2 px-4 py-2 border-b bg-muted/20 text-[10px] text-muted-foreground">

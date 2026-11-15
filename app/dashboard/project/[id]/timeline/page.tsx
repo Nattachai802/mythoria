@@ -5,11 +5,12 @@ import { buildWorldTimeline } from "@/lib/world-timeline"
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb"
 import { WorldTimelineBoard } from "@/components/project/world-timeline/world-timeline-board"
 
-type Props = { params: Promise<{ id: string }> }
+type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ focus?: string }> }
 
 // เส้นเวลาโลก (เฟส 2A: ปฏิทิน + เวลาของ lore) · แผนเต็ม docs/treatment-timeline-plan.md
-export default async function WorldTimelinePage({ params }: Props) {
+export default async function WorldTimelinePage({ params, searchParams }: Props) {
     const { id } = await params
+    const { focus } = await searchParams
     const [novelResult, data] = await Promise.all([getNovelForPlot(id), getWorldTimelineData(id)])
     if (!novelResult.success || !novelResult.novel) notFound()
 
@@ -40,6 +41,7 @@ export default async function WorldTimelinePage({ params }: Props) {
                 eraYears={data.eraYears}
                 loreLinks={loreLinks}
                 options={options}
+                focus={focus ?? null}
             />
         </div>
     )

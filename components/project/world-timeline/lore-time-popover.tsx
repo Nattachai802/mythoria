@@ -4,6 +4,7 @@ import { useState, useTransition, type ReactNode } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { Pick } from "./pick"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -149,10 +150,11 @@ export function LoreTimePopover({ novelId, loreId, title, calendar, eras, curren
                     <p className="text-xs text-muted-foreground">เกิดขึ้นเมื่อไหร่ในโลก</p>
                 </div>
 
-                <div className="flex gap-1">
+                <div className="flex gap-1" role="group" aria-label="ความละเอียดของเวลา">
                     {(Object.keys(PRECISION_LABEL) as TimePrecision[]).map(p => (
                         <Button
                             key={p} size="sm" variant={form.precision === p ? "secondary" : "ghost"}
+                            aria-pressed={form.precision === p}
                             onClick={() => setForm(f => ({ ...f, precision: p }))}
                         >
                             {PRECISION_LABEL[p]}
@@ -161,33 +163,28 @@ export function LoreTimePopover({ novelId, loreId, title, calendar, eras, curren
                 </div>
 
                 <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">ปี</span>
+                    <label htmlFor={`lore-year-${loreId}`} className="text-xs text-muted-foreground">ปี</label>
                     <Input
-                        type="number" className="w-24" value={form.year}
+                        id={`lore-year-${loreId}`} type="number" className="w-24" value={form.year}
                         onChange={e => setForm(f => ({ ...f, year: e.target.value }))}
                         onKeyDown={e => { if (e.key === "Enter") save() }}
                     />
-                    <select
-                        className="h-9 min-w-0 flex-1 rounded-md border bg-background px-2 text-sm"
+                    <Pick
+                        ariaLabel="นับปีตามยุค" className="flex-1"
                         value={form.eraId}
-                        onChange={e => setForm(f => ({ ...f, eraId: e.target.value }))}
-                        aria-label="นับปีตามยุค"
-                    >
-                        {datedEras.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                        <option value={ABSOLUTE}>ปีต่อเนื่องของโลก</option>
-                    </select>
+                        onChange={v => setForm(f => ({ ...f, eraId: v }))}
+                        options={[...datedEras.map(e => ({ value: e.id, label: e.name })), { value: ABSOLUTE, label: "ปีต่อเนื่องของโลก" }]}
+                    />
                 </div>
 
                 {form.precision !== "year" && (
                     <div className="flex items-center gap-2">
-                        <select
-                            className="h-9 min-w-0 flex-1 rounded-md border bg-background px-2 text-sm"
-                            value={form.month}
-                            onChange={e => setForm(f => ({ ...f, month: Number(e.target.value) }))}
-                            aria-label="เดือน"
-                        >
-                            {calendar.months.map((m, i) => <option key={i} value={i + 1}>{m.name}</option>)}
-                        </select>
+                        <Pick
+                            ariaLabel="เดือน" className="flex-1"
+                            value={String(form.month)}
+                            onChange={v => setForm(f => ({ ...f, month: Number(v) }))}
+                            options={calendar.months.map((m, i) => ({ value: String(i + 1), label: m.name }))}
+                        />
                         {form.precision === "day" && (
                             <>
                                 <span className="text-xs text-muted-foreground">วันที่</span>

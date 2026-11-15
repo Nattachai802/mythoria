@@ -4,6 +4,7 @@ import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { CalendarDays, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { Pick } from "./pick"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
@@ -140,14 +141,12 @@ export function CalendarDialog({ novelId, calendar, eras }: Props) {
                             <span className="text-xs text-muted-foreground">ปี</span>
                             <Input type="number" className="w-24" value={anchor.year}
                                 onChange={e => setAnchor({ ...anchor, year: Number(e.target.value) || 0 })} />
-                            <select
-                                className="h-9 rounded-md border bg-background px-2 text-sm"
-                                value={anchor.month}
-                                onChange={e => setAnchor({ ...anchor, month: Number(e.target.value) })}
-                                aria-label="เดือนของ Day 1"
-                            >
-                                {months.map((m, i) => <option key={i} value={i + 1}>{m.name}</option>)}
-                            </select>
+                            <Pick
+                                ariaLabel="เดือนของ Day 1" className="w-36"
+                                value={String(anchor.month)}
+                                onChange={v => setAnchor({ ...anchor, month: Number(v) })}
+                                options={months.map((m, i) => ({ value: String(i + 1), label: m.name }))}
+                            />
                             <span className="text-xs text-muted-foreground">วันที่</span>
                             <Input type="number" min={1} className="w-20" value={anchor.day}
                                 onChange={e => setAnchor({ ...anchor, day: Number(e.target.value) || 1 })} />

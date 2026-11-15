@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useState, useRef, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1042,6 +1044,9 @@ export function LoreTimeline({
             {/* Header */}
             <div className="flex items-center gap-2">
                 <h3 className="text-lg font-semibold">ประวัติศาสตร์และตำนาน</h3>
+                <Link href={`/dashboard/project/${novelId}/timeline`} className="text-xs font-medium text-[var(--forge-gold)] underline-offset-2 hover:underline">
+                    ดูบนเส้นเวลา →
+                </Link>
                 <div className="flex border rounded-lg overflow-hidden">
                     <Button variant={viewMode === "timeline" ? "secondary" : "ghost"} size="sm" onClick={() => setViewMode("timeline")}>Timeline</Button>
                     <Button variant={viewMode === "hierarchy" ? "secondary" : "ghost"} size="sm" onClick={() => setViewMode("hierarchy")}>Hierarchy</Button>
