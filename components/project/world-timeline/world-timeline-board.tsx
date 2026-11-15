@@ -3,7 +3,8 @@
 import { Fragment, useEffect, useMemo, useState, useTransition, type DragEvent, type ReactNode } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ChevronDown, ChevronRight, GripVertical, Inbox, Loader2, Plus, Undo2, ZoomIn } from "lucide-react"
+import { BookOpen, ChevronDown, ChevronRight, GripVertical, Inbox, Loader2, MapPin, Package, Plus, ScrollText, Shield, Undo2, Users, Zap, ZoomIn, type LucideIcon } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { dayLabel } from "@/lib/story-date"
@@ -15,7 +16,7 @@ import { LoreTimePopover, type Links, type StorylineOptions } from "./lore-time-
 import { CreateEventDialog } from "./create-event-dialog"
 import { TreatmentSheet } from "./treatment-sheet"
 
-const LABEL_W = 176
+const LABEL_W = 184
 const ZOOM_MIN = 72
 const ZOOM_MAX = 240
 const DEFAULT_OPEN: LaneKind[] = ["plot", "lore"]
@@ -92,7 +93,8 @@ export function WorldTimelineBoard({ novelId, timeline, timelineEpoch, calendar,
 
     const epoch = useMemo(() => (timelineEpoch ? new Date(timelineEpoch) : null), [timelineEpoch])
     const { columns, segments, lanes, unplaced } = timeline
-    const gridCols = `${LABEL_W}px repeat(${Math.max(columns.length, 1)}, ${colW}px)`
+    // ช่องขยายเต็มความกว้างเมื่อมีน้อย (1fr) แต่ไม่แคบกว่าค่าซูม · แถวย่อยใช้ subgrid ให้เส้นช่องตรงกันทุกแถว
+    const gridCols = `${LABEL_W}px repeat(${Math.max(columns.length, 1)}, minmax(${colW}px, 1fr))`
 
     const colLabel = (i: number) => {
         const c = columns[i]
@@ -168,34 +170,30 @@ export function WorldTimelineBoard({ novelId, timeline, timelineEpoch, calendar,
         item.kind === "scene" || item.kind === "appear" ? `/dashboard/project/${novelId}/plot` : null
 
     const toolbar = (
-        <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
-            <Legend />
+        <div className="flex flex-wrap items-center gap-2 border-b bg-[var(--sidebar)] px-4 py-2">
+            <span className="text-technical text-muted-foreground">ลากไปวางที่ช่อง · ดับเบิลคลิกหัวช่องเพื่อสร้าง</span>
             {isPending && (
-                <span className="flex items-center gap-1 text-xs text-muted-foreground" role="status" aria-live="polite">
-                    <Loader2 className="size-3.5 animate-spin" aria-hidden /> กำลังบันทึก…
+                <span className="text-technical flex items-center gap-1 text-[var(--forge-amber)]" role="status" aria-live="polite">
+                    <Loader2 className="size-3.5 animate-spin" aria-hidden /> กำลังบันทึก
                 </span>
             )}
             <span className="flex-1" />
             {columns.length > 0 && (
-                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <ZoomIn className="size-3.5" aria-hidden />
+                <label className="flex items-center gap-1.5 text-muted-foreground">
+                    <ZoomIn className="size-4" aria-hidden />
                     <input
                         type="range" min={ZOOM_MIN} max={ZOOM_MAX} step={8} value={colW}
                         onChange={e => zoom(Number(e.target.value))}
                         aria-label="ความกว้างของช่องเวลา"
-                        className="w-24"
+                        className="w-24 cursor-pointer accent-[var(--forge-gold)]"
                     />
                 </label>
             )}
-            <button
-                type="button"
-                onClick={() => setCreateAt({ target: null, label: null })}
-                className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-md border px-2.5 text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--forge-gold)]"
-            >
-                <Plus className="size-4" /> เหตุการณ์
-            </button>
             <CalendarDialog novelId={novelId} calendar={calendar} eras={eraYears} />
             <TreatmentSheet novelId={novelId} />
+            <Button size="sm" variant="forge" className="gap-1" onClick={() => setCreateAt({ target: null, label: null })}>
+                <Plus className="size-4" /> เหตุการณ์
+            </Button>
         </div>
     )
 
@@ -214,8 +212,11 @@ export function WorldTimelineBoard({ novelId, timeline, timelineEpoch, calendar,
         return (
             <div className="flex min-h-0 flex-1 flex-col">
                 {toolbar}
-                <div className="flex flex-1 flex-col items-center justify-center gap-2 p-10 text-center">
-                    <p className="font-medium">ยังไม่มีอะไรบนเส้นเวลา</p>
+                <div className="grid-pattern-subtle relative flex flex-1 flex-col items-center justify-center gap-3 p-10 text-center">
+                    <div className="chamfered flex size-12 items-center justify-center bg-[var(--steel-800)] text-[var(--forge-gold)]">
+                        <ScrollText className="size-6" aria-hidden />
+                    </div>
+                    <p className="font-display text-lg font-semibold">ยังไม่มีอะไรบนเส้นเวลา</p>
                     <p className="max-w-md text-sm text-muted-foreground">
                         กด "+ เหตุการณ์" เพื่อเริ่ม หรือกด lore ในถาดด้านล่างเพื่อใส่ปี · ฉากจะขึ้นแกนเมื่อจัดลำดับเวลาจากกระดานพล็อต หรือผูกยุคไว้
                     </p>
@@ -230,37 +231,47 @@ export function WorldTimelineBoard({ novelId, timeline, timelineEpoch, calendar,
         <div className={cn("flex min-h-0 flex-1 flex-col", isPending && "cursor-progress")}>
             {toolbar}
             <div className="min-h-0 flex-1 overflow-auto">
-                <div className="relative w-max">
-                    <div className="grid text-xs" style={{ gridTemplateColumns: gridCols }}>
-                        {/* แถบยุค */}
-                        <div className="sticky left-0 top-0 z-30 border-b border-r bg-background px-3 py-2 text-muted-foreground">ยุค</div>
+                <div className="relative w-full min-w-max">
+                    <div className="grid-pattern-subtle grid text-xs" style={{ gridTemplateColumns: gridCols }}>
+                        {/* ── ไม้บรรทัด: แถวยุค ── */}
+                        <div className="text-technical sticky left-0 top-0 z-30 flex items-center border-b border-r border-[var(--steel-600)] bg-[var(--steel-800)] px-3 py-2 text-[var(--steel-400)]">
+                            ยุค
+                        </div>
                         {segments.map(seg => (
                             <div
                                 key={seg.eraId ?? "_none"}
-                                className="sticky top-0 z-20 truncate border-b border-r px-2 py-2 font-medium"
+                                className="sticky top-0 z-20 flex items-center gap-2 truncate border-b border-r border-[var(--steel-600)] bg-[var(--steel-800)] px-3 py-2 font-display text-sm font-semibold text-[var(--steel-100)]"
                                 style={{
                                     gridColumn: `${seg.start + 2} / ${seg.end + 3}`,
-                                    background: seg.color ? `color-mix(in oklch, ${seg.color} 18%, var(--background))` : "var(--background)",
+                                    boxShadow: `inset 0 -3px 0 ${seg.color ?? "var(--steel-600)"}`,
                                 }}
                                 title={seg.name}
                             >
-                                {seg.name}
+                                <span className="chamfered-sm size-2.5 shrink-0" style={{ background: seg.color ?? "var(--steel-400)" }} aria-hidden />
+                                <span className="truncate">{seg.name}</span>
                             </div>
                         ))}
 
-                        {/* ป้ายช่อง — ดับเบิลคลิกเพื่อสร้างเหตุการณ์ ณ เวลานั้น */}
-                        <div className="sticky left-0 top-[33px] z-30 border-b border-r bg-background px-3 py-1 text-muted-foreground">เวลา</div>
+                        {/* ── ไม้บรรทัด: แถวเวลา (ดับเบิลคลิกเพื่อสร้างเหตุการณ์ ณ เวลานั้น) ── */}
+                        <div className="text-technical sticky left-0 top-[37px] z-30 flex items-center border-b border-r border-[var(--steel-600)] bg-[var(--steel-800)] px-3 py-1.5 text-[var(--steel-400)]">
+                            เวลา
+                        </div>
                         {columns.map((_, i) => {
                             const gap = gapBefore(i)
                             return (
                                 <div
                                     key={i}
-                                    className="sticky top-[33px] z-10 cursor-cell select-none truncate border-b border-r bg-background px-2 py-1 text-xs tabular-nums text-muted-foreground transition-colors hover:bg-muted"
+                                    className="group/col sticky top-[37px] z-10 flex cursor-cell select-none items-center gap-1.5 truncate border-b border-r border-[var(--steel-600)] bg-[var(--steel-800)] px-2 py-1.5 font-mono text-xs tabular-nums text-[var(--forge-yellow)] transition-colors hover:bg-[var(--steel-600)]"
                                     title={`${colLabel(i)} · ดับเบิลคลิกเพื่อสร้างเหตุการณ์ที่นี่`}
                                     onDoubleClick={() => setCreateAt({ target: targetOf(i), label: colLabel(i) })}
                                 >
-                                    {gap && <span className="mr-1 font-medium text-foreground/70">{gap} ·</span>}
-                                    {colLabel(i)}
+                                    <span className="h-2.5 w-px shrink-0 bg-[var(--steel-400)]" aria-hidden />
+                                    {gap && (
+                                        <span className="hazard-stripe-dark shrink-0 px-1 font-sans text-[11px] font-semibold text-black">
+                                            <span className="bg-[var(--forge-gold)] px-0.5">{gap}</span>
+                                        </span>
+                                    )}
+                                    <span className="truncate">{colLabel(i)}</span>
                                 </div>
                             )
                         })}
@@ -270,7 +281,6 @@ export function WorldTimelineBoard({ novelId, timeline, timelineEpoch, calendar,
                                 key={lane.kind}
                                 lane={lane}
                                 colCount={columns.length}
-                                colW={colW}
                                 isOpen={open.has(lane.kind)}
                                 onToggle={() => toggle(lane.kind)}
                                 hrefOf={hrefOf}
@@ -281,17 +291,17 @@ export function WorldTimelineBoard({ novelId, timeline, timelineEpoch, calendar,
                         ))}
                     </div>
 
-                    {/* ช่องรับของที่ลากมา — โผล่เฉพาะตอนลาก ครอบทั้งความสูงของกระดาน */}
+                    {/* ช่องรับของที่ลากมา — template เดียวกับตาราง เส้นช่องจึงตรงกัน */}
                     {dragging && (
-                        <div className="absolute inset-y-0 z-40 flex" style={{ left: LABEL_W }}>
+                        <div className="absolute inset-0 z-40 grid" style={{ gridTemplateColumns: gridCols }}>
+                            <div aria-hidden />
                             {columns.map((_, i) => (
                                 <div
                                     key={i}
                                     className={cn(
-                                        "relative h-full border-r border-dashed border-[var(--forge-gold)]/40 transition-colors",
+                                        "relative border-r border-dashed border-[var(--forge-gold)]/50 transition-colors",
                                         hover?.col === i && hover.mode === "on" && "bg-[var(--forge-gold)]/15",
                                     )}
-                                    style={{ width: colW }}
                                     onDragOver={e => {
                                         e.preventDefault()
                                         e.dataTransfer.dropEffect = "move"
@@ -303,7 +313,7 @@ export function WorldTimelineBoard({ novelId, timeline, timelineEpoch, calendar,
                                     title={colLabel(i)}
                                 >
                                     {hover?.col === i && (
-                                        <span className="pointer-events-none absolute left-1/2 top-16 -translate-x-1/2 whitespace-nowrap rounded bg-[var(--forge-gold)] px-1.5 py-0.5 text-xs font-medium text-black">
+                                        <span className="chamfered-sm pointer-events-none absolute left-1/2 top-20 -translate-x-1/2 whitespace-nowrap bg-[var(--forge-gold)] px-2 py-0.5 text-xs font-semibold text-black">
                                             {hover.mode === "before" ? "แทรกก่อนช่องนี้" : `วางที่ ${colLabel(i)}`}
                                         </span>
                                     )}
@@ -325,10 +335,13 @@ export function WorldTimelineBoard({ novelId, timeline, timelineEpoch, calendar,
 type WrapLore = (sourceId: string, title: string, col: number | null, node: ReactNode) => ReactNode
 type StartDrag = (e: DragEvent, payload: DragPayload) => void
 
-function LaneRows({ lane, colCount, colW, isOpen, onToggle, hrefOf, wrapLore, onDragStart, onDragEnd }: {
+const LANE_ICON: Record<LaneKind, LucideIcon> = {
+    plot: ScrollText, lore: BookOpen, characters: Users, factions: Shield, powers: Zap, locations: MapPin, items: Package,
+}
+
+function LaneRows({ lane, colCount, isOpen, onToggle, hrefOf, wrapLore, onDragStart, onDragEnd }: {
     lane: TlLane
     colCount: number
-    colW: number
     isOpen: boolean
     onToggle: () => void
     hrefOf: (item: TlItem) => string | null
@@ -339,28 +352,41 @@ function LaneRows({ lane, colCount, colW, isOpen, onToggle, hrefOf, wrapLore, on
     const allItems = lane.subLanes.flatMap(s => s.items)
     const busyCols = new Set(allItems.map(i => i.col))
     const Chevron = isOpen ? ChevronDown : ChevronRight
+    const Icon = LANE_ICON[lane.kind]
+    const empty = lane.subLanes.length === 0
+    const span = { gridColumn: `2 / ${colCount + 2}` }
 
     return (
         <>
             <button
                 type="button"
                 onClick={onToggle}
-                className="sticky left-0 z-10 flex cursor-pointer items-center gap-1.5 border-b border-r bg-muted px-3 py-2 text-left font-medium transition-colors hover:bg-muted/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--forge-gold)]"
+                className={cn(
+                    "sticky left-0 z-10 flex cursor-pointer items-center gap-2 border-b border-r bg-[var(--sidebar)] px-3 py-2 text-left transition-colors",
+                    "hover:bg-[var(--sidebar-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--forge-gold)]",
+                )}
                 aria-expanded={isOpen}
             >
-                <Chevron className="size-3.5 shrink-0" />
-                <span className="truncate">{lane.label}</span>
-                <span className="ml-auto text-xs font-normal tabular-nums text-muted-foreground">{lane.subLanes.length || ""}</span>
+                <Chevron className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                <span className={cn(
+                    "chamfered-sm flex size-6 shrink-0 items-center justify-center",
+                    empty ? "bg-muted text-muted-foreground" : "bg-[var(--steel-800)] text-[var(--forge-gold)]",
+                )}>
+                    <Icon className="size-3.5" aria-hidden />
+                </span>
+                <span className={cn("truncate font-display text-sm font-semibold", empty && "text-muted-foreground")}>{lane.label}</span>
+                {!empty && <span className="ml-auto font-mono text-xs tabular-nums text-muted-foreground">{lane.subLanes.length}</span>}
             </button>
-            <div className="relative border-b bg-muted/40" style={{ gridColumn: `2 / ${colCount + 2}` }}>
-                {lane.subLanes.length === 0 ? (
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">{lane.emptyText}</span>
+            <div
+                className="grid border-b bg-[var(--sidebar)]/70"
+                style={{ ...span, gridTemplateColumns: "subgrid" }}
+            >
+                {empty ? (
+                    <span className="col-span-full flex items-center px-3 text-xs italic text-muted-foreground">{lane.emptyText}</span>
                 ) : !isOpen && [...busyCols].map(col => (
-                    <span
-                        key={col}
-                        className="absolute top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--forge-gold)]"
-                        style={{ left: col * colW + colW / 2 }}
-                    />
+                    <span key={col} className="flex items-center justify-center" style={{ gridColumn: col + 1 }} aria-hidden>
+                        <span className="size-2 rotate-45 bg-[var(--forge-gold)]" />
+                    </span>
                 ))}
             </div>
 
@@ -369,10 +395,14 @@ function LaneRows({ lane, colCount, colW, isOpen, onToggle, hrefOf, wrapLore, on
                 for (const it of sub.items) byCol.set(it.col, [...(byCol.get(it.col) ?? []), it])
                 return (
                     <Fragment key={sub.id}>
-                        <div className="sticky left-0 z-10 truncate border-b border-r bg-background py-2 pl-8 pr-3 text-muted-foreground" title={sub.label}>
-                            {sub.label}
+                        <div
+                            className="sticky left-0 z-10 flex items-center border-b border-r bg-background py-2 pl-5 pr-3 text-sm text-muted-foreground"
+                            title={sub.label}
+                        >
+                            <span className="mr-2 h-full w-px self-stretch border-l border-dashed border-[var(--steel-400)]" aria-hidden />
+                            <span className="truncate">{sub.label}</span>
                         </div>
-                        <div className="grid border-b" style={{ gridColumn: `2 / ${colCount + 2}`, gridTemplateColumns: `repeat(${colCount}, ${colW}px)` }}>
+                        <div className="grid border-b" style={{ ...span, gridTemplateColumns: "subgrid" }}>
                             {[...byCol.entries()].map(([col, items]) => (
                                 <div key={col} className="flex min-w-0 flex-col gap-1 border-r border-border/40 p-1" style={{ gridColumn: col + 1 }}>
                                     {items.map(it => {
@@ -386,7 +416,7 @@ function LaneRows({ lane, colCount, colW, isOpen, onToggle, hrefOf, wrapLore, on
                                                 key={it.id}
                                                 data-focus-id={canDrag ? `${it.kind}:${it.sourceId}` : undefined}
                                                 className={cn(
-                                                    "group flex min-w-0 items-center rounded-sm transition-shadow",
+                                                    "group flex min-w-0 items-center gap-0.5 transition-shadow",
                                                     "data-[focused=true]:ring-2 data-[focused=true]:ring-[var(--forge-gold)] data-[focused=true]:ring-offset-1",
                                                     canDrag && "cursor-grab active:cursor-grabbing",
                                                 )}
@@ -394,7 +424,7 @@ function LaneRows({ lane, colCount, colW, isOpen, onToggle, hrefOf, wrapLore, on
                                                 onDragStart={canDrag ? e => onDragStart(e, { kind: it.kind as "lore" | "scene", id: it.sourceId, title: it.title }) : undefined}
                                                 onDragEnd={canDrag ? onDragEnd : undefined}
                                             >
-                                                {canDrag && <GripVertical className="size-3 shrink-0 text-muted-foreground/50 group-hover:text-muted-foreground" aria-hidden />}
+                                                {canDrag && <GripVertical className="size-3 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-[var(--forge-gold)]" aria-hidden />}
                                                 <div className="min-w-0 flex-1">{body}</div>
                                             </div>
                                         )
@@ -411,16 +441,18 @@ function LaneRows({ lane, colCount, colW, isOpen, onToggle, hrefOf, wrapLore, on
 
 function ItemChip({ item, href }: { item: TlItem; href: string | null }) {
     const title = `${KIND_LABEL[item.kind]}: ${item.title}${item.approx ? " (ตำแหน่งประมาณจากบท)" : ""}${item.flashback ? " · เล่าย้อน" : ""}${item.offscreen ? " · เกิดนอกจอ" : ""}`
+    const violet = "bg-violet-500/15 text-violet-900 dark:text-violet-100"
     const body = (
         <span
             className={cn(
-                "flex min-h-6 items-center gap-1 truncate rounded-sm border px-1.5 py-0.5",
-                item.kind === "scene" && "bg-background",
-                item.kind === "lore" && "border-transparent bg-violet-500/12 text-violet-800 dark:text-violet-200",
-                item.kind === "appear" && "border-transparent bg-emerald-500/12 text-emerald-800 dark:text-emerald-200",
-                item.kind === "event" && "border-transparent bg-violet-500/12 text-violet-800 dark:text-violet-200",
-                item.offscreen && "border-dashed border-violet-500/50 bg-transparent",
-                item.approx && "border-dashed bg-transparent italic text-muted-foreground",
+                "chamfered-sm flex min-h-7 items-center gap-1.5 truncate px-2 py-1 text-xs",
+                item.kind === "scene" && "bg-card font-medium shadow-[inset_3px_0_0_var(--forge-gold)]",
+                item.kind === "scene" && item.flashback && "shadow-[inset_3px_0_0_var(--forge-amber)]",
+                item.kind === "lore" && cn(violet, "font-medium"),
+                item.kind === "event" && violet,
+                item.offscreen && "bg-transparent outline outline-1 -outline-offset-1 outline-dashed outline-violet-500/60",
+                item.kind === "appear" && "bg-emerald-500/15 text-emerald-900 dark:text-emerald-100",
+                item.approx && "bg-transparent italic text-muted-foreground outline outline-1 -outline-offset-1 outline-dashed outline-[var(--steel-400)]",
             )}
             title={title}
         >
@@ -428,11 +460,11 @@ function ItemChip({ item, href }: { item: TlItem; href: string | null }) {
             {item.kind === "event" && <span aria-hidden>{item.offscreen ? "○" : "●"}</span>}
             {item.approx && <span aria-hidden>≈</span>}
             <span className="truncate">{item.title}</span>
-            {item.flashback && <Undo2 className="size-3 shrink-0" aria-label="เล่าย้อน" />}
+            {item.flashback && <Undo2 className="size-3 shrink-0 text-[var(--forge-amber)]" aria-label="เล่าย้อน" />}
         </span>
     )
     return href
-        ? <Link href={href} className="block min-w-0 rounded-sm transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--forge-gold)]" draggable={false}>{body}</Link>
+        ? <Link href={href} className="block min-w-0 transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--forge-gold)]" draggable={false}>{body}</Link>
         : body
 }
 
@@ -442,36 +474,45 @@ function UnplacedTray({ items, wrapLore, onDragStart, onDragEnd }: {
     onDragStart: StartDrag
     onDragEnd: () => void
 }) {
-    if (items.length === 0) return null
     return (
-        <div className="flex flex-wrap items-center gap-1.5 border-t bg-muted/40 px-4 py-2 text-xs">
-            <span className="mr-1 flex items-center gap-1 text-muted-foreground">
-                <Inbox className="size-3.5" /> ยังไม่ระบุเวลา ({items.length})
-            </span>
-            {items.slice(0, 40).map(u => {
-                const chip = (
-                    <span className="block rounded-sm border border-dashed px-1.5 py-0.5" title={`${KIND_LABEL[u.kind]} · ${u.reason}`}>
-                        {u.title}
-                    </span>
-                )
-                const canDrag = u.kind === "lore" || u.kind === "scene"
-                return (
-                    <span
-                        key={`${u.kind}:${u.id}`}
-                        data-focus-id={canDrag ? `${u.kind}:${u.id}` : undefined}
-                        className={cn(
-                            "inline-block rounded-sm data-[focused=true]:ring-2 data-[focused=true]:ring-[var(--forge-gold)]",
-                            canDrag && "cursor-grab active:cursor-grabbing",
-                        )}
-                        draggable={canDrag}
-                        onDragStart={canDrag ? e => onDragStart(e, { kind: u.kind as "lore" | "scene", id: u.id, title: u.title }) : undefined}
-                        onDragEnd={canDrag ? onDragEnd : undefined}
-                    >
-                        {u.kind === "lore" ? wrapLore(u.id, u.title, null, chip) : chip}
-                    </span>
-                )
-            })}
-            {items.length > 40 && <span className="text-muted-foreground">+{items.length - 40}</span>}
+        <div className="shrink-0">
+            <div className="hazard-stripe-subtle h-1" aria-hidden />
+            <div className="flex flex-wrap items-center gap-1.5 bg-[var(--steel-800)] py-2.5 pl-4 pr-20 text-xs text-[var(--steel-200)]">
+                <span className="text-technical mr-1 flex items-center gap-1.5 text-[var(--forge-gold)]">
+                    <Inbox className="size-3.5" aria-hidden /> ยังไม่ระบุเวลา · {items.length}
+                </span>
+                {items.length === 0 && <span className="text-[var(--steel-400)]">ทุกอย่างอยู่บนแกนแล้ว</span>}
+                {items.slice(0, 40).map(u => {
+                    const chip = (
+                        <span
+                            className="chamfered-sm block bg-white/8 px-2 py-1 outline outline-1 -outline-offset-1 outline-dashed outline-[var(--steel-400)]/60 transition-colors hover:bg-white/15"
+                            title={`${KIND_LABEL[u.kind]} · ${u.reason}`}
+                        >
+                            {u.kind === "lore" && <span className="mr-1 text-violet-300" aria-hidden>◆</span>}
+                            {u.title}
+                        </span>
+                    )
+                    const canDrag = u.kind === "lore" || u.kind === "scene"
+                    return (
+                        <span
+                            key={`${u.kind}:${u.id}`}
+                            data-focus-id={canDrag ? `${u.kind}:${u.id}` : undefined}
+                            className={cn(
+                                "inline-block data-[focused=true]:ring-2 data-[focused=true]:ring-[var(--forge-gold)]",
+                                canDrag && "cursor-grab active:cursor-grabbing",
+                            )}
+                            draggable={canDrag}
+                            onDragStart={canDrag ? e => onDragStart(e, { kind: u.kind as "lore" | "scene", id: u.id, title: u.title }) : undefined}
+                            onDragEnd={canDrag ? onDragEnd : undefined}
+                        >
+                            {u.kind === "lore" ? wrapLore(u.id, u.title, null, chip) : chip}
+                        </span>
+                    )
+                })}
+                {items.length > 40 && <span className="text-[var(--steel-400)]">+{items.length - 40}</span>}
+                <span className="flex-1" />
+                <Legend />
+            </div>
         </div>
     )
 }
@@ -479,18 +520,18 @@ function UnplacedTray({ items, wrapLore, onDragStart, onDragEnd }: {
 /** คำอธิบายสัญลักษณ์ — ความหมายไม่ได้พึ่งสีอย่างเดียว ทุกชนิดมีรูปทรงของตัวเอง */
 function Legend() {
     const items: [ReactNode, string][] = [
-        [<span key="l" className="text-violet-700 dark:text-violet-300">◆</span>, "lore"],
-        [<span key="on" className="text-violet-700 dark:text-violet-300">●</span>, "มีฉากเล่า"],
-        [<span key="off" className="text-violet-700 dark:text-violet-300">○</span>, "เกิดนอกจอ"],
-        [<span key="a">≈</span>, "ตำแหน่งประมาณจากบท"],
-        [<Undo2 key="f" className="inline size-3" aria-hidden />, "เล่าย้อน"],
+        [<span key="s" className="inline-block h-3 w-4 border-l-[3px] border-[var(--forge-gold)] bg-[var(--steel-200)]" />, "ฉาก"],
+        [<span key="l" className="text-violet-300">◆</span>, "lore"],
+        [<span key="on" className="text-violet-300">●</span>, "มีฉากเล่า"],
+        [<span key="off" className="text-violet-300">○</span>, "นอกจอ"],
+        [<span key="a">≈</span>, "ประมาณจากบท"],
+        [<Undo2 key="f" className="inline size-3 text-[var(--forge-amber)]" aria-hidden />, "เล่าย้อน"],
     ]
     return (
-        <ul className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground" aria-label="คำอธิบายสัญลักษณ์">
+        <ul className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--steel-400)]" aria-label="คำอธิบายสัญลักษณ์">
             {items.map(([icon, label]) => (
                 <li key={label} className="flex items-center gap-1">{icon}<span>{label}</span></li>
             ))}
-            <li className="hidden xl:block">· ลากไปวางที่ช่อง (ซ้ายของช่อง = แทรกก่อน) · ดับเบิลคลิกหัวช่องเพื่อสร้างเหตุการณ์</li>
         </ul>
     )
 }
