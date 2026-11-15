@@ -7,7 +7,9 @@ import {
 } from "@/db/schema"
 import { and, asc, eq, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+import { STORY_DATE_MIN, STORY_DATE_MAX } from "@/lib/story-date"
 import { requireNovelAccess } from "@/lib/authz"
+import { createLoreEntry } from "@/server/lore"
 import type { WorldTimelineInput, TlAnchored, TlPrecision } from "@/lib/world-timeline"
 import {
     normalizeCalendar, dayOf, fromDay, eraForYear, sceneDay, TIME_PRECISIONS,
@@ -183,4 +185,83 @@ export async function setLoreWorldTime(loreId: string, time: LoreTimeInput | nul
         console.error("[world-timeline] setLoreWorldTime:", e)
         return { success: false, error: "บันทึกเวลาไม่สำเร็จ" }
     }
+}
+
+/** ช่องปลายทางของการลาก: ยุค + เลขวัน (null = ช่องที่ไม่มีเวลาจริง ย้ายได้แค่ยุค) */
+export interface DropTarget { eraId: string | null; day: number | null }
+
+/** ลาก lore ลงช่อง: ได้ยุคของช่อง · ช่องมีเวลา = รับเวลานั้น ช่องไม่มีเวลา = ล้างเวลา (ไปเรียงตามลำดับในยุค) */
+export async function moveLoreOnTimeline(loreId: string, target: DropTarget): Promise<{ success: boolean; error?: string }> {
+    try {
+        const [row] = await db.select({ novelId: loreEntries.novelId, precision: loreEntries.worldTimePrecision })
+            .from(loreEntries).where(eq(loreEntries.id, loreId))
+        if (!row) return { success: false, error: "ไม่พบ lore นี้" }
+        await requireNovelAccess(row.novelId)
+        if (target.eraId) {
+            const [era] = await db.select({ id: eras.id }).from(eras).where(and(eq(eras.id, target.eraId), eq(eras.novelId, row.novelId)))
+            if (!era) return { success: false, error: "ไม่พบยุคนี้" }
+        }
+        await db.update(loreEntries).set(
+            target.day == null
+                ? { eraId: target.eraId, worldTime: null, worldTimeEnd: null, worldTimePrecision: null }
+                : { eraId: target.eraId, worldTime: Math.trunc(target.day), worldTimeEnd: null, worldTimePrecision: row.precision ?? "year" },
+        ).where(eq(loreEntries.id, loreId))
+        revalidateTimeline(row.novelId)
+        return { success: true }
+    } catch (e) {
+        console.error("[world-timeline] moveLoreOnTimeline:", e)
+        return { success: false, error: "ย้าย lore ไม่สำเร็จ" }
+    }
+}
+
+/**
+ * ลากฉากลงช่อง: ได้ยุคของช่อง · ช่องมีเวลาและผูก Day 1 ไว้แล้ว = แปลงเป็น story_date
+ * ช่องไม่มีเวลา = เปลี่ยนแค่ยุค (ไม่ล้าง story_date/storyTimeIndex ของเดิม เพราะกระดานพล็อตใช้อยู่)
+ */
+export async function moveSceneOnTimeline(sceneId: string, target: DropTarget): Promise<{ success: boolean; error?: string }> {
+    try {
+        const [row] = await db.select({ novelId: timelineEvents.novelId }).from(timelineEvents).where(eq(timelineEvents.id, sceneId))
+        if (!row) return { success: false, error: "ไม่พบฉากนี้" }
+        await requireNovelAccess(row.novelId)
+        if (target.eraId) {
+            const [era] = await db.select({ id: eras.id }).from(eras).where(and(eq(eras.id, target.eraId), eq(eras.novelId, row.novelId)))
+            if (!era) return { success: false, error: "ไม่พบยุคนี้" }
+        }
+        let storyDate: number | undefined
+        if (target.day != null) {
+            const [novelRow] = await db.select({ worldCalendar: novels.worldCalendar }).from(novels).where(eq(novels.id, row.novelId))
+            const cal = normalizeCalendar(novelRow?.worldCalendar)
+            if (!cal.anchor) return { success: false, error: "ยังไม่ได้ผูก Day 1 ของฉากกับปฏิทินโลก ตั้งได้ที่ปุ่ม \"ปฏิทินโลก\"" }
+            storyDate = Math.trunc(target.day) - dayOf(cal, cal.anchor.year, cal.anchor.month, cal.anchor.day) + 1
+            // กระดานพล็อตแสดง story_date เป็นวันที่จริงด้วย Intl ซึ่งรับได้แค่ ±100 ปี (lib/story-date.ts)
+            if (storyDate < STORY_DATE_MIN || storyDate > STORY_DATE_MAX) {
+                return { success: false, error: "ฉากห่างจาก Day 1 เกิน 100 ปี ย้ายไปช่องนั้นไม่ได้" }
+            }
+        }
+        await db.update(timelineEvents)
+            .set({ eraId: target.eraId, ...(storyDate !== undefined ? { storyDate } : {}), updatedAt: new Date() })
+            .where(eq(timelineEvents.id, sceneId))
+        revalidateTimeline(row.novelId)
+        revalidatePath(`/dashboard/project/${row.novelId}/plot`)
+        return { success: true }
+    } catch (e) {
+        console.error("[world-timeline] moveSceneOnTimeline:", e)
+        return { success: false, error: "ย้ายฉากไม่สำเร็จ" }
+    }
+}
+
+/** สร้างเหตุการณ์ในโลก (เก็บเป็น lore ชนิด event) แล้ววางลงช่องที่เลือกถ้ามี */
+export async function createWorldEvent(
+    novelId: string,
+    title: string,
+    target: DropTarget | null,
+): Promise<{ success: boolean; error?: string }> {
+    const name = title.trim()
+    if (!name) return { success: false, error: "ตั้งชื่อเหตุการณ์ก่อน" }
+    await requireNovelAccess(novelId)
+    const res = await createLoreEntry({ novelId, title: name.slice(0, 200), type: "event", eraId: target?.eraId ?? null })
+    if (!res.success || !res.data) return { success: false, error: "สร้างเหตุการณ์ไม่สำเร็จ" }
+    if (target) return moveLoreOnTimeline(res.data.id, target)
+    revalidateTimeline(novelId)
+    return { success: true }
 }

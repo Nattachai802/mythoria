@@ -7,7 +7,12 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import {
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+    AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { setLoreWorldTime } from "@/server/world-timeline"
+import { deleteLoreEntry, updateLoreEntry } from "@/server/lore"
 import { eraForYear, fromDay, type EraYear, type TimePrecision, type WorldCalendar } from "@/lib/world-calendar"
 
 interface Props {
@@ -32,6 +37,8 @@ export function LoreTimePopover({ novelId, loreId, title, calendar, eras, curren
     const router = useRouter()
     const [open, setOpen] = useState(false)
     const [isPending, startTransition] = useTransition()
+    const [name, setName] = useState(title)
+    const [confirmDelete, setConfirmDelete] = useState(false)
     const datedEras = eras.filter(e => e.startYear != null)
 
     const init = () => {
@@ -50,11 +57,30 @@ export function LoreTimePopover({ novelId, loreId, title, calendar, eras, curren
 
     const save = (clear = false) => {
         const y = Number(form.year)
-        if (!clear && (form.year.trim() === "" || !Number.isFinite(y))) {
+        // ไม่กรอกปี = แก้แค่ชื่อ (ไม่แตะเวลาเดิม)
+        const nameOnly = !clear && form.year.trim() === ""
+        if (nameOnly && name.trim() === title) {
             toast.error("กรอกปีก่อน")
             return
         }
+        if (!clear && !nameOnly && !Number.isFinite(y)) {
+            toast.error("ปีไม่ถูกต้อง")
+            return
+        }
         startTransition(async () => {
+            const newName = name.trim()
+            if (newName && newName !== title) {
+                const renamed = await updateLoreEntry(loreId, { title: newName.slice(0, 200) })
+                if (!renamed.success) {
+                    toast.error("เปลี่ยนชื่อไม่สำเร็จ")
+                    return
+                }
+            }
+            if (nameOnly) {
+                setOpen(false)
+                router.refresh()
+                return
+            }
             const res = await setLoreWorldTime(loreId, clear ? null : {
                 year: era ? era.startYear! + y - 1 : y,
                 month: form.month,
@@ -70,12 +96,27 @@ export function LoreTimePopover({ novelId, loreId, title, calendar, eras, curren
         })
     }
 
+    const remove = () => {
+        startTransition(async () => {
+            const res = await deleteLoreEntry(loreId)
+            if (!res.success) {
+                toast.error("ลบไม่สำเร็จ")
+                return
+            }
+            toast.success(`ลบ "${title}" แล้ว`)
+            setConfirmDelete(false)
+            setOpen(false)
+            router.refresh()
+        })
+    }
+
     return (
-        <Popover open={open} onOpenChange={o => { if (o) setForm(init()); setOpen(o) }}>
+        <>
+        <Popover open={open} onOpenChange={o => { if (o) { setForm(init()); setName(title) } setOpen(o) }}>
             <PopoverTrigger asChild>{children}</PopoverTrigger>
             <PopoverContent className="w-80 space-y-3 text-sm">
-                <div>
-                    <p className="truncate font-medium" title={title}>{title}</p>
+                <div className="space-y-1">
+                    <Input value={name} onChange={e => setName(e.target.value)} aria-label="ชื่อ lore" className="font-medium" />
                     <p className="text-xs text-muted-foreground">เกิดขึ้นเมื่อไหร่ในโลก</p>
                 </div>
 
@@ -93,7 +134,7 @@ export function LoreTimePopover({ novelId, loreId, title, calendar, eras, curren
                 <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">ปี</span>
                     <Input
-                        type="number" className="w-24" value={form.year} autoFocus
+                        type="number" className="w-24" value={form.year}
                         onChange={e => setForm(f => ({ ...f, year: e.target.value }))}
                         onKeyDown={e => { if (e.key === "Enter") save() }}
                     />
@@ -136,11 +177,29 @@ export function LoreTimePopover({ novelId, loreId, title, calendar, eras, curren
                     <Link href={`/dashboard/project/${novelId}/worldbuilding`} className="text-xs text-muted-foreground underline-offset-2 hover:underline">
                         เปิดหน้า Lore
                     </Link>
+                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setConfirmDelete(true)} disabled={isPending}>
+                        ลบ
+                    </Button>
                     <span className="flex-1" />
                     {current && <Button size="sm" variant="ghost" onClick={() => save(true)} disabled={isPending}>ล้างเวลา</Button>}
                     <Button size="sm" onClick={() => save()} disabled={isPending}>{isPending ? "กำลังบันทึก…" : "บันทึก"}</Button>
                 </div>
             </PopoverContent>
         </Popover>
+        <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>ลบ "{title}"?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        lore นี้จะหายจากทุกหน้า รวมถึงหน้า Lore ด้วย และกู้คืนไม่ได้ ถ้าแค่อยากเอาออกจากแกน ให้กด "ล้างเวลา" แทน
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+                    <AlertDialogAction onClick={e => { e.preventDefault(); remove() }} disabled={isPending}>ลบถาวร</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+        </>
     )
 }
