@@ -1,0 +1,288 @@
+/**
+ * เส้นเวลาโลก เฟส 1 — จัดของจากทุกหมวดลงแกนเดียว (pure ไม่แตะ DB ไม่แตะ React)
+ * ------------------------------------------------------------------------
+ * แผนเต็มอยู่ที่ docs/treatment-timeline-plan.md
+ *
+ * เฟสนี้ยังไม่มีปฏิทิน แกนจึงเป็น "ช่องตามลำดับ" ไม่ใช่เวลาจริงเป็นตัวเลข:
+ *   ยุค (ตาม eras.orderIndex) → ในยุค: lore ก่อน (ตาม orderInEra) แล้วฉาก → ท้ายสุดฉากที่ไม่ระบุยุค
+ * ponytail: ภายในยุคเดียวกันไม่รู้ว่า lore กับฉากอะไรเกิดก่อน เลยวาง lore ก่อนเสมอ
+ * (ประวัติศาสตร์มักมาก่อนเรื่องหลัก) — เฟส 2 มีเวลาจริงของ lore แล้วค่อยเรียงปนกัน
+ *
+ * ของที่ผูกกับ "บท" (life event, เข้ากลุ่ม, ได้พลัง) ไม่มีเวลาในโลก
+ * วางที่ช่องของฉากแรกในบทนั้นแล้วติด approx — บทที่ยังไม่มีฉากบนแกน = ไปถาดยังไม่ระบุเวลา
+ */
+
+export type LaneKind = "plot" | "lore" | "characters" | "factions" | "powers" | "locations" | "items";
+export type ItemKind = "scene" | "lore" | "appear" | "life" | "faction" | "power";
+
+export interface TlChapter { id: string; title: string; orderIndex: number }
+export interface TlEra { id: string; name: string; color: string | null; orderIndex: number | null }
+export interface TlNamed { id: string; name: string }
+
+export interface TlScene {
+    id: string;
+    title: string;
+    chapterId: string | null;
+    orderIndex: number;
+    storyTimeIndex: number | null;
+    storyDate: number | null;
+    eraId: string | null;
+    eventType: string | null;
+    characterIds: string[];
+    locationIds: string[];
+    povCharacterId: string | null;
+}
+
+export interface TlLore {
+    id: string;
+    title: string;
+    eraId: string | null;
+    orderInEra: number | null;
+    groupId: string | null;
+    locationId: string | null;
+}
+
+/** ของที่ผูกกับบท — life event / เข้ากลุ่ม / ได้พลัง */
+export interface TlAnchored {
+    id: string;
+    kind: "life" | "faction" | "power";
+    title: string;
+    chapterId: string | null;
+    /** id ของเลนย่อย: ตัวละคร (life) / กลุ่ม (faction) / พลัง (power) */
+    subLaneId: string;
+}
+
+export interface WorldTimelineInput {
+    chapters: TlChapter[];
+    eras: TlEra[];
+    scenes: TlScene[];
+    lore: TlLore[];
+    anchored: TlAnchored[];
+    characters: TlNamed[];
+    locations: TlNamed[];
+    factions: TlNamed[];
+    powers: TlNamed[];
+    loreGroups: TlNamed[];
+}
+
+export interface TlColumn {
+    eraId: string | null;
+    /** มีเฉพาะช่องของฉากที่ตั้งวันที่ไว้ — UI แปลงเป็นป้ายด้วย dayLabel() */
+    storyDate: number | null;
+}
+
+export interface TlSegment { eraId: string | null; name: string; color: string | null; start: number; end: number }
+
+export interface TlItem {
+    id: string;
+    kind: ItemKind;
+    title: string;
+    col: number;
+    /** ตำแหน่งประมาณ (อนุมานจากบท ไม่ใช่เวลาจริง) */
+    approx?: boolean;
+    /** ฉากที่ถูกเล่าหลังฉากที่เกิดทีหลังมัน */
+    flashback?: boolean;
+    /** id ของต้นทาง (ฉาก/lore) เผื่อ UI ทำลิงก์ */
+    sourceId: string;
+}
+
+export interface TlSubLane { id: string; label: string; items: TlItem[] }
+export interface TlLane { kind: LaneKind; label: string; subLanes: TlSubLane[]; emptyText: string }
+export interface TlUnplaced { id: string; kind: ItemKind; title: string; reason: string }
+
+export interface WorldTimeline {
+    columns: TlColumn[];
+    segments: TlSegment[];
+    lanes: TlLane[];
+    unplaced: TlUnplaced[];
+}
+
+export const NO_ERA_LABEL = "ไม่ระบุยุค";
+
+const LANE_LABEL: Record<LaneKind, string> = {
+    plot: "โครงเรื่อง",
+    lore: "Lore",
+    characters: "ตัวละคร",
+    factions: "กลุ่มอำนาจ",
+    powers: "ระบบพลัง",
+    locations: "สถานที่",
+    items: "ไอเทม",
+};
+
+const LANE_EMPTY: Record<LaneKind, string> = {
+    plot: "ยังไม่มีฉากที่ระบุเวลาหรือยุค",
+    lore: "ยังไม่มี lore ที่ผูกกับยุค",
+    characters: "ยังไม่มีตัวละครในฉากหรือเหตุการณ์ชีวิตที่ผูกกับบท",
+    factions: "ยังไม่มีการเข้ากลุ่มที่ผูกกับบท",
+    powers: "ยังไม่มีการได้พลังที่ผูกกับบท",
+    locations: "ยังไม่มีฉากหรือ lore ที่ผูกกับสถานที่",
+    items: "ไอเทมยังไม่มีข้อมูลเวลา",
+};
+
+const INF = Number.POSITIVE_INFINITY;
+
+/** ลำดับเล่า: บทตาม orderIndex → ฉากในบทตาม orderIndex → ฉากไม่ผูกบทต่อท้าย (เหมือน chrono sheet) */
+export function narrativeOrder(scenes: TlScene[], chapters: TlChapter[]): Map<string, number> {
+    const m = new Map<string, number>();
+    let n = 1;
+    for (const ch of [...chapters].sort((a, b) => a.orderIndex - b.orderIndex)) {
+        scenes
+            .filter((s) => s.chapterId === ch.id)
+            .sort((a, b) => a.orderIndex - b.orderIndex)
+            .forEach((s) => m.set(s.id, n++));
+    }
+    scenes
+        .filter((s) => !m.has(s.id))
+        .sort((a, b) => a.orderIndex - b.orderIndex)
+        .forEach((s) => m.set(s.id, n++));
+    return m;
+}
+
+export function buildWorldTimeline(input: WorldTimelineInput): WorldTimeline {
+    const columns: TlColumn[] = [];
+    const segments: TlSegment[] = [];
+    const unplaced: TlUnplaced[] = [];
+    const sceneCol = new Map<string, number>();
+    const loreCol = new Map<string, number>();
+    const narr = narrativeOrder(input.scenes, input.chapters);
+
+    const knownEra = new Set(input.eras.map((e) => e.id));
+    const eraOf = (id: string | null) => (id && knownEra.has(id) ? id : null);
+
+    const isPlaced = (s: TlScene) => s.storyTimeIndex != null || s.storyDate != null || eraOf(s.eraId) != null;
+    const sceneKey = (s: TlScene): [number, number, number] =>
+        [s.storyTimeIndex ?? INF, s.storyDate ?? INF, narr.get(s.id) ?? INF];
+    const byKey = (a: TlScene, b: TlScene) => {
+        const ka = sceneKey(a), kb = sceneKey(b);
+        return ka[0] - kb[0] || ka[1] - kb[1] || ka[2] - kb[2];
+    };
+
+    const pushSegment = (eraId: string | null, name: string, color: string | null, lore: TlLore[], scenes: TlScene[]) => {
+        if (lore.length === 0 && scenes.length === 0) return;
+        const start = columns.length;
+        for (const l of lore) {
+            loreCol.set(l.id, columns.length);
+            columns.push({ eraId, storyDate: null });
+        }
+        for (const s of scenes) {
+            sceneCol.set(s.id, columns.length);
+            columns.push({ eraId, storyDate: s.storyDate });
+        }
+        segments.push({ eraId, name, color, start, end: columns.length - 1 });
+    };
+
+    for (const era of [...input.eras].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))) {
+        const lore = input.lore
+            .filter((l) => l.eraId === era.id)
+            .sort((a, b) => (a.orderInEra ?? 0) - (b.orderInEra ?? 0));
+        const scenes = input.scenes.filter((s) => isPlaced(s) && eraOf(s.eraId) === era.id).sort(byKey);
+        pushSegment(era.id, era.name, era.color, lore, scenes);
+    }
+    pushSegment(null, NO_ERA_LABEL, null, [], input.scenes.filter((s) => isPlaced(s) && eraOf(s.eraId) == null).sort(byKey));
+
+    // flashback: มีฉากที่อยู่หลังบนแกนแต่ถูกเล่าก่อน → ฉากนี้คือการเล่าย้อน
+    const flashback = new Set<string>();
+    const placedScenes = input.scenes.filter((s) => sceneCol.has(s.id)).sort((a, b) => sceneCol.get(a.id)! - sceneCol.get(b.id)!);
+    let minLater = INF;
+    for (let i = placedScenes.length - 1; i >= 0; i--) {
+        const s = placedScenes[i];
+        const n = narr.get(s.id) ?? INF;
+        if (n > minLater || s.eventType === "flashback") flashback.add(s.id);
+        minLater = Math.min(minLater, n);
+    }
+
+    for (const s of input.scenes) {
+        if (!sceneCol.has(s.id)) unplaced.push({ id: s.id, kind: "scene", title: s.title, reason: "ยังไม่ระบุเวลาหรือยุค" });
+    }
+    for (const l of input.lore) {
+        if (!loreCol.has(l.id)) unplaced.push({ id: l.id, kind: "lore", title: l.title, reason: "ยังไม่ผูกกับยุค" });
+    }
+
+    // ช่องแรกของแต่ละบท — ใช้วางของที่ผูกกับบท
+    const chapterCol = new Map<string, number>();
+    for (const s of input.scenes) {
+        const c = sceneCol.get(s.id);
+        if (c == null || !s.chapterId) continue;
+        const prev = chapterCol.get(s.chapterId);
+        if (prev == null || c < prev) chapterCol.set(s.chapterId, c);
+    }
+
+    // ── เลน ──
+    const sub = new Map<LaneKind, Map<string, TlSubLane>>();
+    const add = (kind: LaneKind, subId: string, label: string, item: TlItem) => {
+        let lane = sub.get(kind);
+        if (!lane) sub.set(kind, (lane = new Map()));
+        let sl = lane.get(subId);
+        if (!sl) lane.set(subId, (sl = { id: subId, label, items: [] }));
+        sl.items.push(item);
+    };
+    const name = (list: TlNamed[], id: string, fallback: string) => list.find((x) => x.id === id)?.name ?? fallback;
+    const chapterTitle = (id: string | null) => (id ? name(input.chapters.map((c) => ({ id: c.id, name: c.title })), id, "บทที่ถูกลบ") : "ไม่ผูกบท");
+
+    for (const s of input.scenes) {
+        const col = sceneCol.get(s.id);
+        if (col == null) continue;
+        add("plot", s.chapterId ?? "_none", chapterTitle(s.chapterId), {
+            id: `scene:${s.id}`, kind: "scene", title: s.title, col, flashback: flashback.has(s.id), sourceId: s.id,
+        });
+        const cast = new Set([...s.characterIds, ...(s.povCharacterId ? [s.povCharacterId] : [])]);
+        for (const cid of cast) {
+            if (!input.characters.some((c) => c.id === cid)) continue;
+            add("characters", cid, name(input.characters, cid, ""), {
+                id: `appear:${s.id}:${cid}`, kind: "appear", title: s.title, col, sourceId: s.id,
+            });
+        }
+        for (const lid of new Set(s.locationIds)) {
+            if (!input.locations.some((l) => l.id === lid)) continue;
+            add("locations", lid, name(input.locations, lid, ""), {
+                id: `appear:${s.id}:${lid}`, kind: "appear", title: s.title, col, sourceId: s.id,
+            });
+        }
+    }
+
+    for (const l of input.lore) {
+        const col = loreCol.get(l.id);
+        if (col == null) continue;
+        const gid = l.groupId && input.loreGroups.some((g) => g.id === l.groupId) ? l.groupId : "_none";
+        add("lore", gid, gid === "_none" ? "ไม่มีกลุ่ม" : name(input.loreGroups, gid, ""), {
+            id: `lore:${l.id}`, kind: "lore", title: l.title, col, sourceId: l.id,
+        });
+        if (l.locationId && input.locations.some((x) => x.id === l.locationId)) {
+            add("locations", l.locationId, name(input.locations, l.locationId, ""), {
+                id: `lore:${l.id}:loc`, kind: "lore", title: l.title, col, sourceId: l.id,
+            });
+        }
+    }
+
+    const anchoredLane = { life: "characters", faction: "factions", power: "powers" } as const;
+    const anchoredNames = { life: input.characters, faction: input.factions, power: input.powers };
+    for (const a of input.anchored) {
+        const col = a.chapterId ? chapterCol.get(a.chapterId) : undefined;
+        if (col == null) {
+            unplaced.push({
+                id: a.id, kind: a.kind, title: a.title,
+                reason: a.chapterId ? "บทนี้ยังไม่มีฉากบนเส้นเวลา" : "ยังไม่ผูกกับบท",
+            });
+            continue;
+        }
+        add(anchoredLane[a.kind], a.subLaneId, name(anchoredNames[a.kind], a.subLaneId, ""), {
+            id: `${a.kind}:${a.id}`, kind: a.kind, title: a.title, col, approx: true, sourceId: a.id,
+        });
+    }
+
+    const order: LaneKind[] = ["plot", "lore", "characters", "factions", "powers", "locations", "items"];
+    const lanes: TlLane[] = order.map((kind) => {
+        const subs = [...(sub.get(kind)?.values() ?? [])];
+        for (const sl of subs) sl.items.sort((a, b) => a.col - b.col);
+        if (kind === "plot") {
+            // เรียงบทตามลำดับเล่า ไม่ใช่ตามตำแหน่งบนแกน — คนเขียนหาบทจากเลขบท
+            const ord = new Map(input.chapters.map((c) => [c.id, c.orderIndex]));
+            subs.sort((a, b) => (ord.get(a.id) ?? INF) - (ord.get(b.id) ?? INF));
+        } else {
+            subs.sort((a, b) => a.items[0].col - b.items[0].col || a.label.localeCompare(b.label, "th"));
+        }
+        return { kind, label: LANE_LABEL[kind], subLanes: subs, emptyText: LANE_EMPTY[kind] };
+    });
+
+    return { columns, segments, lanes, unplaced };
+}

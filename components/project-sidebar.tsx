@@ -20,6 +20,7 @@ import {
     Keyboard,
     Shield,
     FileInput,
+    CalendarRange,
 } from "lucide-react"
 import { useKeyboardShortcutsContext } from "@/components/keyboard-shortcuts-provider"
 
@@ -69,6 +70,7 @@ export function ProjectSidebar({ projectId, projectTitle, chapters = [], hasCont
             items: [
                 { title: "ภาพรวม", href: `/dashboard/project/${projectId}`, icon: LayoutDashboard },
                 { title: "โครงเรื่อง", href: `/dashboard/project/${projectId}/plot`, icon: ScrollText },
+                { title: "เส้นเวลา", href: `/dashboard/project/${projectId}/timeline`, icon: CalendarRange },
                 { title: "ไอเดีย", href: `/dashboard/project/${projectId}/idea`, icon: MessageSquareText },
             ],
         },
