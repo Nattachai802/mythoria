@@ -3,8 +3,9 @@
 // รูปเลข: Major.Minor.Function.Bugfix (ตาม .claude/CLAUDE.md หัวข้อ Version Numbering)
 //   มี "added"                     → Minor +1, Function รีเซ็ตเป็น 0
 //   มี "changed"/"removed" (ไม่มี added) → Function +1
-//   มีแต่ "fixed"                  → เปลี่ยนแค่ Bugfix
-//   Bugfix = เลขสุ่ม 10 หลัก สุ่มใหม่ทุกรุ่น ไม่เรียง ไม่นับ — ลำดับรุ่นดูจากตำแหน่งใน CHANGELOG + วันที่
+//   มีแต่ "fixed"                  → Bugfix +1
+//   Bugfix = ตัวนับเรียง รีเซ็ตเป็น 0 เมื่อ Major/Minor/Function ขยับ (ข้อตกลง 2026-11-10)
+//   รุ่นก่อนข้อตกลงนี้มี Bugfix เป็นเลขสุ่ม 10 หลัก (legacy) — อ่านได้ ถ้ารุ่นถัดไปมีแต่ fixed จะเริ่มนับที่ 1
 //   major ไม่เคยขึ้นเอง — ต้องเขียน `bump: "major"` ในรุ่นนั้น (ผู้ใช้สั่ง)
 // package.json เก็บได้แค่ semver 3 ส่วน (npm) จึงใส่แค่ Major.Minor.Function — ดู semverOf
 // รุ่นเก่ากว่า 2.15 เป็นรูป x.y.z (3 ส่วน) อ่านเป็น Major.Minor.Function ที่ไม่มี Bugfix
@@ -17,14 +18,12 @@ export type Bump = "major" | "minor" | "function" | "bugfix" | "patch";
 export type Version = [major: number, minor: number, fn: number, bugfix: string | null];
 
 export function parseVersion(v: string): Version | null {
-    const m = /^(\d+)\.(\d+)\.(\d+)(?:\.(\d{10}))?$/.exec(v);
+    const m = /^(\d+)\.(\d+)\.(\d+)(?:\.(\d{1,10}))?$/.exec(v);
     return m ? [Number(m[1]), Number(m[2]), Number(m[3]), m[4] ?? null] : null;
 }
 
-/** เลขสุ่ม 10 หลัก (ไม่ขึ้นต้นด้วย 0) */
-export function randomBugfix(): string {
-    return String(1_000_000_000 + Math.floor(Math.random() * 9_000_000_000));
-}
+/** Bugfix เลขสุ่ม 10 หลักจากกติกาเก่า — ไม่ใช่ตัวนับ เทียบลำดับไม่ได้ */
+export const isLegacyBugfix = (b: string | null) => b !== null && b.length === 10;
 
 /** เลขที่ต้องขึ้นตามรายการ — override (bump ที่เขียนในรุ่น) ชนะกติกา */
 export function bumpFor(entries: Array<{ kind: string }>, override?: Bump): Bump {
@@ -34,21 +33,24 @@ export function bumpFor(entries: Array<{ kind: string }>, override?: Bump): Bump
     return "bugfix";
 }
 
-export function applyBump(prev: string, bump: Bump, bugfix: string = randomBugfix()): string {
+export function applyBump(prev: string, bump: Bump): string {
     const p = parseVersion(prev);
     if (!p) throw new Error(`เลขเวอร์ชันก่อนหน้า "${prev}" ไม่ใช่รูป Major.Minor.Function(.Bugfix)`);
     const [maj, min, fn, prevBug] = p;
-    if (bugfix === prevBug) bugfix = randomBugfix(); // ซ้ำรุ่นก่อน (โอกาสน้อยมาก) สุ่มใหม่
     const b = bump === "patch" ? "function" : bump;
-    const [M, m, f] = b === "major" ? [maj + 1, 0, 0] : b === "minor" ? [maj, min + 1, 0] : b === "function" ? [maj, min, fn + 1] : [maj, min, fn];
-    return `${M}.${m}.${f}.${bugfix}`;
+    if (b === "bugfix") {
+        const n = prevBug === null || isLegacyBugfix(prevBug) ? 1 : Number(prevBug) + 1;
+        return `${maj}.${min}.${fn}.${n}`;
+    }
+    const [M, m, f] = b === "major" ? [maj + 1, 0, 0] : b === "minor" ? [maj, min + 1, 0] : [maj, min, fn + 1];
+    return `${M}.${m}.${f}.0`;
 }
 
-export function nextVersion(prev: string, entries: Array<{ kind: string }>, override?: Bump, bugfix?: string): string {
-    return applyBump(prev, bumpFor(entries, override), bugfix);
+export function nextVersion(prev: string, entries: Array<{ kind: string }>, override?: Bump): string {
+    return applyBump(prev, bumpFor(entries, override));
 }
 
-/** Major.Minor.Function — ส่วนที่ใช้เทียบกติกาและใส่ package.json (Bugfix สุ่มจึงเทียบไม่ได้) */
+/** Major.Minor.Function — ส่วนที่ใส่ package.json (npm รับ semver 3 ส่วน) */
 export function semverOf(v: string): string {
     const p = parseVersion(v);
     if (!p) throw new Error(`"${v}" ไม่ใช่เลขเวอร์ชัน`);

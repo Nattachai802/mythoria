@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useState, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -14,7 +16,10 @@ import { Textarea } from "@/components/ui/textarea";
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Shield, X, Trash2, Users, Crown, Link2, LayoutGrid, ListTree, ChevronRight, Settings2, Pencil, Lightbulb, Layers } from "lucide-react";
+import { Plus, Shield, X, Trash2, Users, Crown, Link2, LayoutGrid, ListTree, ChevronRight, Settings2, Pencil, Lightbulb, Layers, Share2 } from "lucide-react";
+import { activeIn, relActiveIn, statusAt, findDefections, findFactionIssues, type MembershipLike, type StatusPoint } from "@/lib/faction-checks";
+import { FactionMap } from "./faction-map";
+import { FactionChecksPanel } from "./faction-checks-panel";
 import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
     AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -25,6 +30,7 @@ import {
 import {
     createFaction, updateFaction, deleteFaction,
     createFactionRelationship, deleteFactionRelationship,
+    splitFactionRelationship, updateFactionRelationshipRange, updateFactionStatusTimeline,
     createFactionStatusPreset, updateFactionStatusPreset, deleteFactionStatusPreset,
 } from "@/server/factions";
 import { CreateIdeaDialog } from "@/components/project/idea/create-idea-dialog";
@@ -94,6 +100,7 @@ interface Props {
     initialStatusPresets: FactionStatusPreset[];
     ideas: Idea[];
     systems: WorldSystem[];
+    chapters?: { id: string; title: string; orderIndex: number }[];
 }
 
 const EMPTY_FORM = {
@@ -102,17 +109,17 @@ const EMPTY_FORM = {
     leaderId: "", parentFactionId: "", linkedIdeaIds: [] as string[], linkedSystemIds: [] as string[],
 };
 
-export function FactionsContent({ novelId, initialFactions, initialRelationships, characters, initialStatusPresets, ideas, systems }: Props) {
+export function FactionsContent({ novelId, initialFactions, initialRelationships, characters, initialStatusPresets, ideas, systems, chapters = [] }: Props) {
     const [factions, setFactions] = useState<Faction[]>(initialFactions);
     const [rels, setRels] = useState<FactionRel[]>(initialRelationships);
-    const [view, setView] = useState<"status" | "tree">("status");
+    const [view, setView] = useState<"status" | "map">("status");
     const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [mapSel, setMapSel] = useState<string | null>(null);
     const [isCreating, setIsCreating] = useState(false);
     const [form, setForm] = useState({ ...EMPTY_FORM });
     const [saving, setSaving] = useState(false);
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const [dragId, setDragId] = useState<string | null>(null);
-    const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
     // Status presets
     const [statusPresets, setStatusPresets] = useState<FactionStatusPreset[]>(
@@ -132,28 +139,53 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
         useSensor(KeyboardSensor),
     );
 
+    // ฝ่าย ณ บท: แสดงเฉพาะสมาชิกที่ยังอยู่ในบทที่เลือก — state factions เดิมไม่ถูกแตะ (แก้/ลากทำบน factions)
+    const [chapterId, setChapterId] = useState("all");
+    const chapterOrder = useMemo(() => new Map(chapters.map((c) => [c.id, c.orderIndex])), [chapters]);
+    const selOrder = chapterId === "all" ? null : chapterOrder.get(chapterId) ?? null;
+    const visible = useMemo<Faction[]>(
+        () => selOrder === null ? factions
+            : factions.map((f) => ({ ...f, members: (f.members ?? []).filter((m: MembershipLike) => activeIn(m, chapterOrder, selOrder)) })),
+        [factions, chapterOrder, selOrder],
+    );
+    const visibleRels = useMemo(() => rels.filter((r) => relActiveIn(r, chapterOrder, selOrder)), [rels, chapterOrder, selOrder]);
+    const allMemberships = useMemo<MembershipLike[]>(
+        () => factions.flatMap((f) => (f.members ?? []).map((m: MembershipLike) => ({ ...m, factionId: f.id }))),
+        [factions],
+    );
+    // คนย้ายฝ่าย: ทุกบท = ทั้งหมด · เลือกบท = ที่เกิดภายใน ±2 บท
+    const defections = useMemo(
+        () => findDefections(allMemberships, chapterOrder).filter((d) => selOrder === null || Math.abs(d.atOrder - selOrder) <= 2),
+        [allMemberships, chapterOrder, selOrder],
+    );
+    const sortedChapters = useMemo(() => [...chapters].sort((a, b) => a.orderIndex - b.orderIndex), [chapters]);
+
+    const issues = useMemo(() => findFactionIssues({
+        factions,
+        memberships: allMemberships,
+        rels,
+        chapterOrder,
+    }), [factions, allMemberships, rels, chapterOrder]);
+
     const selected = useMemo(
-        () => factions.find((f) => f.id === selectedId) ?? null,
-        [factions, selectedId],
+        () => visible.find((f) => f.id === selectedId) ?? null,
+        [visible, selectedId],
     );
 
     const byStatus = useMemo(() => {
         const m: Record<string, Faction[]> = {};
         for (const s of statusPresets) m[s.key] = [];
         const other: Faction[] = [];
-        for (const f of factions) {
-            const preset = statusPresets.find(p => p.key === f.status);
+        for (const f of visible) {
+            const st = statusAt(f, chapterOrder, selOrder);
+            const preset = statusPresets.find(p => p.key === st);
             (preset ? m[preset.key] : other).push(f);
         }
         return { m, other };
-    }, [factions, statusPresets]);
+    }, [visible, statusPresets, chapterOrder, selOrder]);
 
     const childrenOf = (pid: string | null) =>
-        factions.filter((f) => (f.parentFactionId ?? null) === pid);
-    const roots = useMemo(
-        () => factions.filter((f) => !f.parentFactionId || !factions.some((x) => x.id === f.parentFactionId)),
-        [factions],
-    );
+        visible.filter((f) => (f.parentFactionId ?? null) === pid);
 
     const nameById = (id: string | null) =>
         id ? (factions.find((f) => f.id === id)?.name ?? "—") : null;
@@ -173,6 +205,7 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
 
     // ── open forms (flush edit ที่ค้างก่อนสลับ) ──
     const openCreate = () => { flushEdit(); setForm({ ...EMPTY_FORM }); pristine.current = ""; setIsCreating(true); setSelectedId(null); };
+    const openById = (id: string) => { const f = factions.find((x) => x.id === id); if (f) openInspector(f); };
     const openInspector = (f: Faction) => {
         if (f.id !== selectedId) flushEdit();
         setIsCreating(false);
@@ -329,6 +362,7 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
         if (relTarget === selectedId) { toast.error("เลือกฝ่ายอื่นที่ไม่ใช่ตัวเอง"); return; }
         const res = await createFactionRelationship({
             novelId, sourceFactionId: selectedId, targetFactionId: relTarget, type: relType,
+            startChapterId: chapterId === "all" ? null : chapterId, // เลือกบทอยู่ = เริ่มมีผลตั้งแต่บทนั้น
         });
         if (res.success && res.data) {
             const src = factions.find((f) => f.id === selectedId);
@@ -344,8 +378,25 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
         else toast.error("ลบไม่สำเร็จ");
     };
 
-    const toggleCollapse = (id: string) =>
-        setCollapsed((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    const handleRelRange = async (relId: string, data: { startChapterId?: string | null; endChapterId?: string | null }) => {
+        setRels((p) => p.map((r) => (r.id === relId ? { ...r, ...data } : r)));
+        const res = await updateFactionRelationshipRange(relId, novelId, data);
+        if (!res.success) toast.error(res.error || "แก้ช่วงบทไม่สำเร็จ");
+    };
+    const handleSplitRel = async (relId: string, fromChapterId: string, newType: string) => {
+        const i = sortedChapters.findIndex((c) => c.id === fromChapterId);
+        const prev = i > 0 ? sortedChapters[i - 1].id : null;
+        const res = await splitFactionRelationship(relId, novelId, fromChapterId, prev, newType);
+        if (!res.success || !res.data) { toast.error(res.error || "เปลี่ยนไม่สำเร็จ"); return; }
+        const { created, updated, removedId } = res.data;
+        setRels((p) => [...p.filter((r) => r.id !== removedId).map((r) => (updated && r.id === updated.id ? { ...r, ...updated } : r)), created]);
+        toast.success(`เปลี่ยนเป็น ${REL_TYPES[newType] ?? newType} ตั้งแต่บทนี้แล้ว`);
+    };
+    const handleStatusTimeline = async (factionId: string, timeline: StatusPoint[]) => {
+        setFactions((p) => p.map((f) => (f.id === factionId ? { ...f, statusTimeline: timeline } : f)));
+        const res = await updateFactionStatusTimeline(factionId, timeline);
+        if (!res.success) toast.error(res.error || "บันทึกไทม์ไลน์ไม่สำเร็จ");
+    };
 
     const panelOpen = isCreating || !!selected;
     const dragFaction = dragId ? factions.find((f) => f.id === dragId) : null;
@@ -405,21 +456,21 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                 <div className="flex-1 overflow-x-auto overflow-y-hidden flex flex-col">
                     <div className="flex items-center justify-between gap-3 px-6 py-3 border-b border-steel-800/60">
                         <div className="flex items-center gap-3">
-                            <span className="font-technical text-[10px] uppercase tracking-[0.14em] text-muted-foreground tabular-nums">
+                            <span className="text-sm text-muted-foreground tabular-nums">
                                 <span className="text-base font-bold text-[var(--forge-amber)] mr-1 align-middle">{String(factions.length).padStart(2, "0")}</span>ฝ่าย
                             </span>
                             {/* View toggle */}
-                            <div className="inline-flex chamfered-sm border border-steel-800 p-0.5">
+                            <div className="inline-flex rounded-md border border-border p-0.5">
                                 <ViewBtn active={view === "status"} onClick={() => setView("status")} icon={<LayoutGrid className="h-3 w-3" />} label="สถานะ" />
-                                <ViewBtn active={view === "tree"} onClick={() => setView("tree")} icon={<ListTree className="h-3 w-3" />} label="ลำดับชั้น" />
+                                <ViewBtn active={view === "map"} onClick={() => setView("map")} icon={<Share2 className="h-3 w-3" />} label="แผนที่" />
                             </div>
                             {/* Preset manager toggle */}
                             {view === "status" && (
                                 <button
                                     onClick={() => setShowPresetManager(v => !v)}
                                     className={cn(
-                                        "inline-flex items-center gap-1 px-2 py-1 chamfered-sm font-technical text-[10px] uppercase tracking-wide transition-colors border border-steel-800",
-                                        showPresetManager ? "bg-[var(--forge-amber)] text-black border-[var(--forge-amber)]" : "text-muted-foreground hover:text-foreground",
+                                        "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-sm transition-colors cursor-pointer",
+                                        showPresetManager ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
                                     )}
                                 >
                                     <Settings2 className="h-3 w-3" /> จัดการสถานะ
@@ -430,6 +481,24 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                             <Plus className="h-3.5 w-3.5" /> เพิ่มฝ่าย
                         </Button>
                     </div>
+
+                    {sortedChapters.length > 0 && (
+                        <div className="flex items-center gap-3 px-6 py-2.5 border-b border-steel-800/60">
+                            <span className="text-sm text-muted-foreground shrink-0">ดู ณ บท</span>
+                            <input type="range" min={0} max={sortedChapters.length} step={1} aria-label="ดูฝ่าย ณ บท"
+                                value={chapterId === "all" ? 0 : sortedChapters.findIndex((c) => c.id === chapterId) + 1}
+                                onChange={(e) => { const i = Number(e.target.value); setChapterId(i === 0 ? "all" : sortedChapters[i - 1].id); }}
+                                className="flex-1 h-1 accent-[var(--forge-amber)] cursor-pointer" />
+                            <span className={cn("text-sm tabular-nums shrink-0 min-w-[9rem] text-right truncate", chapterId === "all" ? "text-muted-foreground" : "text-foreground font-medium")}>
+                                {chapterId === "all" ? "ทุกบท" : (() => { const c = sortedChapters.find((x) => x.id === chapterId); return c ? `บท ${c.orderIndex} · ${c.title}` : "—"; })()}
+                            </span>
+                            {chapterId !== "all" && (
+                                <button type="button" onClick={() => setChapterId("all")} aria-label="ดูทุกบท" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-3.5 w-3.5" /></button>
+                            )}
+                        </div>
+                    )}
+                    <FactionChecksPanel issues={issues} novelId={novelId} onSelect={openById}
+                        factionName={(id) => nameById(id) ?? "—"} characterName={(id) => charName(id) ?? "—"} />
 
                     {/* Preset Manager Panel */}
                     {showPresetManager && (
@@ -511,7 +580,7 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                             <p className="text-sm">ยังไม่มีฝ่าย — กด <span className="text-[var(--forge-amber)] font-medium">เพิ่มฝ่าย</span> เพื่อเริ่มวางองค์กรในโลกของคุณ</p>
                         </div>
                     ) : view === "status" ? (
-                        <div className="flex-1 overflow-y-auto p-6 space-y-8 grid-pattern-subtle">
+                        <div className="flex-1 overflow-y-auto px-6 py-2">
                             {statusPresets.map((preset) => (
                                 <StatusColumn
                                     key={preset.key}
@@ -528,8 +597,11 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                             )}
                         </div>
                     ) : (
-                        <TreeView roots={roots} childrenOf={childrenOf} collapsed={collapsed} onToggle={toggleCollapse}
-                            selectedId={selectedId} onSelect={openInspector} nameById={nameById} charName={charName} />
+                        <div className="flex-1 overflow-y-auto">
+                            <FactionMap factions={visible} rels={visibleRels} defections={defections} charName={(id: string) => charName(id) ?? "—"}
+                                statusOf={(f) => { const k = statusAt(f, chapterOrder, selOrder); const p = statusPresets.find((x) => x.key === k); return p ? { key: p.key, label: p.label, color: p.color } : null; }}
+                                selectedId={mapSel} onSelect={setMapSel} onOpen={openById} />
+                        </div>
                     )}
                 </div>
 
@@ -768,6 +840,12 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
 
                             {!isCreating && selected && (
                                 <div className="pt-3 mt-2 border-t border-steel-800/60 space-y-4">
+                                    {sortedChapters.length > 0 && (
+                                        <StatusTimelineEditor
+                                            base={selected.status} timeline={Array.isArray(selected.statusTimeline) ? selected.statusTimeline : []}
+                                            chapters={sortedChapters} presets={statusPresets}
+                                            onChange={(t) => handleStatusTimeline(selected.id, t)} />
+                                    )}
                                     <div>
                                         <div className="flex items-center gap-1.5 font-technical text-[10px] uppercase tracking-[0.12em] text-muted-foreground mb-2">
                                             <Users className="h-3 w-3" /> สมาชิก ({selected.members?.length ?? 0})
@@ -775,14 +853,16 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                                         {selected.members?.length ? (
                                             <div className="space-y-1">
                                                 {selected.members.map((m: any) => (
-                                                    <div key={m.id} className="flex items-center justify-between text-xs px-2.5 py-1.5 chamfered-sm bg-steel-800/40">
-                                                        <span>{m.character?.name ?? "—"}</span>
+                                                    <Link key={m.id} href={`/dashboard/project/${novelId}/characters/${m.characterId}`}
+                                                        className={cn("flex items-center justify-between text-xs px-2.5 py-1.5 chamfered-sm bg-steel-800/40 hover:bg-steel-800/70 transition-colors duration-200",
+                                                            selected.leaderId === m.characterId && "ring-1 ring-[var(--forge-gold)]")}>
+                                                        <span>{m.character?.name ?? "—"}{selected.leaderId === m.characterId && <span className="ml-1.5 text-[var(--forge-gold)]">ผู้นำ</span>}</span>
                                                         {m.role && <span className="text-muted-foreground">{m.role}</span>}
-                                                    </div>
+                                                    </Link>
                                                 ))}
                                             </div>
                                         ) : (
-                                            <p className="text-[11px] text-muted-foreground">เพิ่มสมาชิกได้ที่หน้า Characters / Relationships</p>
+                                            <p className="text-[11px] text-muted-foreground">เพิ่มสมาชิกได้ที่หน้าตัวละคร ส่วน “สังกัด” ในแท็บความสัมพันธ์</p>
                                         )}
                                     </div>
 
@@ -795,17 +875,11 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                                                 const outgoing = r.sourceFactionId === selectedId;
                                                 const otherName = outgoing ? nameById(r.targetFactionId) : nameById(r.sourceFactionId);
                                                 return (
-                                                    <div key={r.id} className="flex items-center justify-between text-xs px-2.5 py-1.5 chamfered-sm bg-steel-800/40">
-                                                        <span>
-                                                            <span className="text-[var(--forge-amber)]">{outgoing ? "" : "← "}{REL_TYPES[r.type] ?? r.type}{outgoing ? " →" : ""}</span>{" "}
-                                                            {otherName}
-                                                        </span>
-                                                        <button onClick={() => handleDeleteRel(r.id)}
-                                                            aria-label={`ลบความสัมพันธ์ ${REL_TYPES[r.type] ?? r.type} กับ ${otherName}`}
-                                                            className="h-6 w-6 -mr-1 inline-flex items-center justify-center shrink-0 text-muted-foreground hover:text-red-500 transition-colors">
-                                                            <X className="h-3.5 w-3.5" />
-                                                        </button>
-                                                    </div>
+                                                    <RelRow key={r.id} rel={r} outgoing={outgoing} otherName={otherName ?? "—"} chapters={sortedChapters}
+                                                        dim={!relActiveIn(r, chapterOrder, selOrder)}
+                                                        onDelete={() => handleDeleteRel(r.id)}
+                                                        onRange={(d) => handleRelRange(r.id, d)}
+                                                        onSplit={(from, t) => handleSplitRel(r.id, from, t)} />
                                                 );
                                             })}
                                         </div>
@@ -853,7 +927,7 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
             <DragOverlay>
                 {dragFaction ? (
                     <div className="opacity-90 rotate-1">
-                        <FactionCard f={dragFaction} active onClick={() => {}} parentName={null} leaderName={charName(dragFaction.leaderId)} />
+                        <FactionCard f={dragFaction} active compact onClick={() => {}} parentName={null} leaderName={charName(dragFaction.leaderId)} />
                     </div>
                 ) : null}
             </DragOverlay>
@@ -891,9 +965,9 @@ function ViewBtn({ active, onClick, icon, label }: { active: boolean; onClick: (
     return (
         <button onClick={onClick}
             className={cn(
-                "inline-flex items-center gap-1 px-2 py-1 chamfered-sm font-technical text-[10px] uppercase tracking-wide transition-all duration-150",
+                "inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-sm transition-colors duration-150 cursor-pointer",
                 "active:scale-95 motion-reduce:transform-none",
-                active ? "bg-[var(--forge-amber)] text-black" : "text-muted-foreground hover:text-foreground",
+                active ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground",
             )}>
             {icon}{label}
         </button>
@@ -910,6 +984,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 // ── Status board column (droppable) ──
+/** แถวสถานะ: ป้ายซ้าย + ชิปฝ่ายไหลขวา · ลากชิปข้ามแถว = เปลี่ยนสถานะ */
 function StatusColumn({
     statusKey, meta, factions, selectedId, onSelect, nameById, charName,
 }: {
@@ -921,127 +996,52 @@ function StatusColumn({
     nameById: (id: string | null) => string | null;
     charName: (id: string | null) => string | null;
 }) {
-    // เฉพาะคอลัมน์ที่มี status จริงเท่านั้นที่รับ drop (คอลัมน์ "ไม่ระบุ" ไม่รับ)
     const { setNodeRef, isOver } = useDroppable({ id: statusKey ? `status:${statusKey}` : "status:none", disabled: !statusKey });
     return (
         <section ref={setNodeRef}
-            className={cn("chamfered-sm transition-colors -m-2 p-2", isOver && "bg-[var(--forge-amber)]/10 ring-1 ring-[var(--forge-amber)]/40")}
-        >
-            <div className="flex items-center gap-3 mb-3">
-                <div className="inline-flex items-center gap-2.5 px-3 py-1.5 chamfered-sm shrink-0"
-                    style={{ background: meta.color, color: inkFor(meta.color) }}>
-                    <span className="font-technical text-[10px] font-semibold uppercase tracking-[0.16em]">{meta.label}</span>
-                    <span className="font-technical text-[11px] font-bold tabular-nums opacity-80">{String(factions.length).padStart(2, "0")}</span>
-                </div>
-                <div className="h-px flex-1" style={{ background: `color-mix(in oklab, ${meta.color} 35%, transparent)` }} />
+            className={cn("grid grid-cols-[9rem_minmax(0,1fr)] gap-4 py-4 border-b border-border/60 last:border-b-0 transition-colors", isOver && "bg-[var(--forge-amber)]/10")}>
+            <div className="flex items-center gap-2 text-sm pt-1.5">
+                <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: meta.color }} />
+                <span className="truncate font-medium">{meta.label}</span>
+                <span className="text-xs text-muted-foreground tabular-nums">{factions.length}</span>
             </div>
-            {factions.length > 0 ? (() => {
-                // จัด cluster: ลูกที่อยู่สถานะเดียวกันซ้อนใต้แม่ พร้อมเส้นเชื่อม (แม่อยู่สถานะอื่น → โชว์เป็น badge เหมือนเดิม)
-                const inSection = new Set(factions.map((f) => f.id));
-                const kidsOf = (pid: string) => factions.filter((f) => f.parentFactionId === pid);
-                const rootsHere = factions.filter((f) => !f.parentFactionId || !inSection.has(f.parentFactionId));
-                const renderNode = (f: Faction): React.ReactNode => (
-                    <li key={f.id}>
-                        <div className="w-56">
-                            <DraggableCard f={f} compact active={f.id === selectedId} onClick={() => onSelect(f)}
-                                parentName={null} leaderName={charName(f.leaderId)} statusColor={meta.color} />
+            <div className="flex flex-wrap items-start gap-2 min-h-9">
+                {factions.length ? (() => {
+                    // กลุ่มย่อยที่อยู่แถวเดียวกับแม่ = ซ้อนอยู่ในการ์ดแม่ · แม่อยู่แถวอื่น = การ์ดเดี่ยวพร้อม ↳ ชื่อแม่
+                    const here = new Set(factions.map((f) => f.id));
+                    const kidsOf = (id: string) => factions.filter((x) => x.parentFactionId === id);
+                    return factions.filter((f) => !f.parentFactionId || !here.has(f.parentFactionId)).map((f) => (
+                        <div key={f.id} className={cn("rounded-md border bg-card transition-colors", f.id === selectedId ? "border-[var(--forge-amber)]" : "border-border hover:border-foreground/30")}>
+                            <StatusChip f={f} onClick={() => onSelect(f)} leaderName={charName(f.leaderId)}
+                                parentName={f.parentFactionId ? nameById(f.parentFactionId) : null} />
+                            {kidsOf(f.id).length > 0 && (
+                                <div className="flex flex-wrap gap-1 px-2 pb-2 -mt-0.5">
+                                    {kidsOf(f.id).map((k) => <StatusChip key={k.id} f={k} sub active={k.id === selectedId} onClick={() => onSelect(k)} />)}
+                                </div>
+                            )}
                         </div>
-                        {kidsOf(f.id).length > 0 && <ul>{kidsOf(f.id).map(renderNode)}</ul>}
-                    </li>
-                );
-                return (
-                    <div className="genealogy overflow-x-auto pb-2">
-                        <ul>
-                            {rootsHere.map((root) => (
-                                <li key={root.id}>
-                                    <div className="w-56">
-                                        <DraggableCard f={root} active={root.id === selectedId} onClick={() => onSelect(root)}
-                                            parentName={root.parentFactionId && !inSection.has(root.parentFactionId) ? nameById(root.parentFactionId) : null}
-                                            leaderName={charName(root.leaderId)} statusColor={meta.color} />
-                                    </div>
-                                    {kidsOf(root.id).length > 0 && <ul>{kidsOf(root.id).map(renderNode)}</ul>}
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                );
-            })() : (
-                <div className="h-16 grid place-items-center chamfered-sm border border-dashed border-steel-800/60">
-                    <span className="text-[11px] text-muted-foreground/60">{statusKey ? "ลากฝ่ายมาวางที่นี่" : "ว่าง"}</span>
-                </div>
-            )}
+                    ));
+                })() : <span className="text-xs text-muted-foreground/60 self-center">{statusKey ? "ลากฝ่ายมาวางที่นี่" : "ว่าง"}</span>}
+            </div>
         </section>
     );
 }
 
-// ── Tree view (each node is a re-parent drop target) ──
-function TreeView({
-    roots, childrenOf, collapsed, onToggle, selectedId, onSelect, nameById, charName,
-}: {
-    roots: Faction[];
-    childrenOf: (pid: string | null) => Faction[];
-    collapsed: Set<string>;
-    onToggle: (id: string) => void;
-    selectedId: string | null;
-    onSelect: (f: Faction) => void;
-    nameById: (id: string | null) => string | null;
-    charName: (id: string | null) => string | null;
+function StatusChip({ f, onClick, parentName, leaderName, sub, active }: {
+    f: Faction; onClick: () => void; parentName?: string | null; leaderName?: string | null; sub?: boolean; active?: boolean;
 }) {
-    const rootDrop = useDroppable({ id: "parent:root" });
-    const renderLi = (f: Faction): React.ReactNode => {
-        const kids = childrenOf(f.id);
-        const isCollapsed = collapsed.has(f.id);
-        return (
-            <li key={f.id}>
-                <TreeNode f={f} hasKids={kids.length > 0} isCollapsed={isCollapsed}
-                    onToggle={() => onToggle(f.id)} active={f.id === selectedId} onSelect={() => onSelect(f)}
-                    leaderName={charName(f.leaderId)} />
-                {!isCollapsed && kids.length > 0 && <ul>{kids.map(renderLi)}</ul>}
-            </li>
-        );
-    };
+    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: f.id });
+    const n = f.members?.length ?? 0;
+    const meta = [parentName && `ใต้ ${parentName}`, n > 0 && `${n} คน`, leaderName].filter(Boolean).join(" · ");
     return (
-        <div className="flex-1 overflow-auto p-6 grid-pattern-subtle">
-            <p className="font-technical text-[10px] uppercase tracking-[0.12em] text-muted-foreground mb-4">
-                ลากการ์ดวางบนอีกฝ่ายเพื่อจัดลำดับชั้น · วางบนพื้นที่ว่างเพื่อย้ายขึ้นบนสุด
-            </p>
-            <div ref={rootDrop.setNodeRef}
-                className={cn("genealogy w-max min-w-full transition-colors", rootDrop.isOver && "bg-[var(--forge-amber)]/5")}>
-                <ul>{roots.map(renderLi)}</ul>
-            </div>
-        </div>
-    );
-}
-
-function TreeNode({
-    f, hasKids, isCollapsed, onToggle, active, onSelect, leaderName,
-}: {
-    f: Faction; hasKids: boolean; isCollapsed: boolean; onToggle: () => void;
-    active: boolean; onSelect: () => void; leaderName: string | null;
-}) {
-    const { setNodeRef, isOver } = useDroppable({ id: `parent:${f.id}` });
-    return (
-        <div ref={setNodeRef}
-            className={cn("relative w-56 chamfered-sm transition-colors", isOver && "ring-1 ring-[var(--forge-amber)] bg-[var(--forge-amber)]/10")}>
-            <DraggableCard f={f} active={active} onClick={onSelect} parentName={null} leaderName={leaderName} compact />
-            {hasKids && (
-                <button onClick={onToggle} aria-label={isCollapsed ? "ขยาย" : "ยุบ"}
-                    className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 z-10 h-5 w-5 grid place-items-center chamfered-sm border border-steel-700 bg-card text-muted-foreground hover:text-[var(--forge-amber)] hover:border-[var(--forge-amber)]/50 transition-colors">
-                    <ChevronRight className={cn("h-3 w-3 transition-transform", !isCollapsed && "rotate-90")} />
-                </button>
-            )}
-        </div>
-    );
-}
-
-// ── Draggable wrapper around a card ──
-function DraggableCard(props: { f: Faction; active: boolean; onClick: () => void; parentName: string | null; leaderName: string | null; compact?: boolean; statusColor?: string }) {
-    const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: props.f.id });
-    return (
-        <div ref={setNodeRef} {...listeners} {...attributes}
-            className={cn("h-full animate-in fade-in zoom-in-95 duration-200 motion-reduce:animate-none", isDragging && "opacity-40")}>
-            <FactionCard {...props} />
-        </div>
+        <button ref={setNodeRef} {...listeners} {...attributes} type="button" onClick={onClick}
+            className={cn("inline-flex items-center gap-2 text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--forge-amber)]/50 rounded",
+                sub ? cn("px-2 py-0.5 text-xs bg-muted/60 hover:bg-muted", active && "ring-1 ring-[var(--forge-amber)]") : "px-3 py-2 text-sm",
+                isDragging && "opacity-40")}>
+            {f.color && <span className={cn("rounded-full shrink-0", sub ? "h-1.5 w-1.5" : "h-2.5 w-2.5")} style={{ background: f.color }} />}
+            <span className={sub ? "" : "font-medium"}>{f.name}</span>
+            {!sub && meta && <span className="text-xs text-muted-foreground">{meta}</span>}
+        </button>
     );
 }
 
@@ -1110,5 +1110,110 @@ function FactionCard({
                 </div>
             </div>
         </button>
+    );
+}
+
+const ChapterPick = ({ value, chapters, empty, label, onChange }: {
+    value: string | null | undefined; chapters: { id: string; title: string; orderIndex: number }[]; empty: string; label: string; onChange: (v: string | null) => void;
+}) => (
+    <select aria-label={label} value={value ?? ""} onChange={(e) => onChange(e.target.value || null)}
+        className={cn("bg-transparent border-b border-transparent hover:border-steel-700 focus:border-[var(--forge-amber)] outline-none max-w-[6.5rem] cursor-pointer", !value && "text-muted-foreground")}>
+        <option value="">{empty}</option>
+        {chapters.map((c) => <option key={c.id} value={c.id}>{c.orderIndex}. {c.title}</option>)}
+    </select>
+);
+
+/** แถวความสัมพันธ์ฝ่าย: ช่วงบท + "เปลี่ยนตั้งแต่บท…" (ปิดแถวเดิม สร้างแถวใหม่) */
+function RelRow({ rel, outgoing, otherName, chapters, dim, onDelete, onRange, onSplit }: {
+    rel: FactionRel; outgoing: boolean; otherName: string; chapters: { id: string; title: string; orderIndex: number }[]; dim: boolean;
+    onDelete: () => void; onRange: (d: { startChapterId?: string | null; endChapterId?: string | null }) => void; onSplit: (fromChapterId: string, type: string) => void;
+}) {
+    const [splitting, setSplitting] = useState(false);
+    const [from, setFrom] = useState("");
+    const [type, setType] = useState(rel.type === "enemy" ? "ally" : "enemy");
+    const label = REL_TYPES[rel.type] ?? rel.type;
+    return (
+        <div className={cn("text-xs px-2.5 py-1.5 chamfered-sm bg-steel-800/40 transition-opacity", dim && "opacity-45")}>
+            <div className="flex items-center justify-between gap-2">
+                <span className="min-w-0">
+                    <span className="text-[var(--forge-amber)]">{outgoing ? "" : "← "}{label}{outgoing ? " →" : ""}</span>{" "}{otherName}
+                    {dim && <span className="ml-1.5 text-muted-foreground">(ไม่มีผลในบทนี้)</span>}
+                </span>
+                <span className="flex items-center shrink-0">
+                    {chapters.length > 0 && (
+                        <button type="button" onClick={() => setSplitting((v) => !v)} className="px-1.5 text-[10px] text-muted-foreground hover:text-foreground cursor-pointer">เปลี่ยนตั้งแต่บท…</button>
+                    )}
+                    <button onClick={onDelete} aria-label={`ลบความสัมพันธ์ ${label} กับ ${otherName}`}
+                        className="h-6 w-6 -mr-1 inline-flex items-center justify-center text-muted-foreground hover:text-red-500 transition-colors cursor-pointer">
+                        <X className="h-3.5 w-3.5" />
+                    </button>
+                </span>
+            </div>
+            {chapters.length > 0 && (
+                <div className="flex items-center gap-1 mt-1 text-[11px] text-muted-foreground">
+                    บท
+                    <ChapterPick label="บทเริ่ม" value={rel.startChapterId} chapters={chapters} empty="แรก" onChange={(v) => onRange({ startChapterId: v })} />
+                    –
+                    <ChapterPick label="บทจบ" value={rel.endChapterId} chapters={chapters} empty="ปัจจุบัน" onChange={(v) => onRange({ endChapterId: v })} />
+                </div>
+            )}
+            {splitting && (
+                <div className="flex items-center gap-1.5 mt-1.5 pt-1.5 border-t border-steel-800/60 text-[11px] animate-in fade-in duration-150 motion-reduce:animate-none">
+                    ตั้งแต่บท
+                    <ChapterPick label="เปลี่ยนตั้งแต่บท" value={from} chapters={chapters} empty="เลือก" onChange={(v) => setFrom(v ?? "")} />
+                    เป็น
+                    <select aria-label="ชนิดใหม่" value={type} onChange={(e) => setType(e.target.value)} className="bg-transparent border-b border-steel-700 outline-none cursor-pointer">
+                        {Object.entries(REL_TYPES).filter(([k]) => k !== rel.type).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                    <button type="button" disabled={!from} onClick={() => { onSplit(from, type); setSplitting(false); }}
+                        className="ml-auto chamfered-sm bg-[var(--forge-amber)] text-black px-2 py-0.5 disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed">ตกลง</button>
+                </div>
+            )}
+        </div>
+    );
+}
+
+/** ไทม์ไลน์สถานะ: สถานะตั้งต้น + จุดเปลี่ยนตามบท */
+function StatusTimelineEditor({ base, timeline, chapters, presets, onChange }: {
+    base: string | null; timeline: StatusPoint[]; chapters: { id: string; title: string; orderIndex: number }[];
+    presets: FactionStatusPreset[]; onChange: (t: StatusPoint[]) => void;
+}) {
+    const order = new Map(chapters.map((c) => [c.id, c.orderIndex]));
+    const sorted = [...timeline].sort((a, b) => (order.get(a.chapterId) ?? 0) - (order.get(b.chapterId) ?? 0));
+    const labelOf = (k: string | null) => presets.find((p) => p.key === k)?.label ?? k ?? "—";
+    const colorOf = (k: string | null) => presets.find((p) => p.key === k)?.color ?? "#475569";
+    const used = new Set(timeline.map((t) => t.chapterId));
+    const nextFree = chapters.find((c) => !used.has(c.id));
+    return (
+        <div>
+            <div className="flex items-center justify-between font-technical text-[10px] uppercase tracking-[0.12em] text-muted-foreground mb-2">
+                <span>ไทม์ไลน์สถานะ</span>
+                {nextFree && (
+                    <button type="button" onClick={() => onChange([...timeline, { chapterId: nextFree.id, status: presets[0]?.key ?? "active" }])}
+                        className="normal-case tracking-normal text-[11px] hover:text-foreground cursor-pointer">+ เปลี่ยนสถานะที่บท…</button>
+                )}
+            </div>
+            <div className="space-y-1 text-xs">
+                <div className="flex items-center gap-2 px-2.5 py-1 chamfered-sm bg-steel-800/40">
+                    <span className="w-2 h-2" style={{ background: colorOf(base) }} aria-hidden />
+                    <span className="text-muted-foreground w-20">ตั้งต้น</span>{labelOf(base)}
+                </div>
+                {sorted.map((t) => (
+                    <div key={t.chapterId} className="flex items-center gap-2 px-2.5 py-1 chamfered-sm bg-steel-800/40">
+                        <span className="w-2 h-2" style={{ background: colorOf(t.status) }} aria-hidden />
+                        <span className="w-20">
+                            <ChapterPick label="บทที่เปลี่ยน" value={t.chapterId} chapters={chapters.filter((c) => c.id === t.chapterId || !used.has(c.id))} empty="—"
+                                onChange={(v) => v && onChange(timeline.map((x) => (x.chapterId === t.chapterId ? { ...x, chapterId: v } : x)))} />
+                        </span>
+                        <select aria-label="สถานะ" value={t.status} onChange={(e) => onChange(timeline.map((x) => (x.chapterId === t.chapterId ? { ...x, status: e.target.value } : x)))}
+                            className="flex-1 bg-transparent outline-none cursor-pointer">
+                            {presets.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+                        </select>
+                        <button type="button" aria-label="ลบจุดนี้" onClick={() => onChange(timeline.filter((x) => x.chapterId !== t.chapterId))}
+                            className="text-muted-foreground hover:text-red-500 cursor-pointer"><X className="h-3 w-3" /></button>
+                    </div>
+                ))}
+            </div>
+        </div>
     );
 }

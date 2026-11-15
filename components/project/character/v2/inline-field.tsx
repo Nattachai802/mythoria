@@ -1,0 +1,359 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { Info } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { AiDot } from "./header-controls";
+
+/** ช่องแบบ "เขียนลงหน้ากระดาษ" — ดูเป็นข้อความ กดแล้วพิมพ์ได้ทันที ไม่มีกรอบฟอร์ม */
+export function InlineField({
+    label,
+    value,
+    onChange,
+    placeholder = "—",
+    type = "text",
+    suffix,
+    className,
+    ai,
+}: {
+    /** ประโยคอ้างอิงถ้าช่องนี้ AI เติม — แสดงจุดทอง */
+    ai?: string;
+    label: string;
+    value: string | number | undefined;
+    onChange: (v: string) => void;
+    placeholder?: string;
+    type?: "text" | "number";
+    suffix?: string;
+    className?: string;
+}) {
+    return (
+        <label className={cn("flex items-baseline justify-between gap-3 py-1.5 group", className)}>
+            <span className="flex items-center gap-1.5 font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground shrink-0">
+                {label}
+                <AiDot quote={ai} />
+            </span>
+            <span className="flex items-baseline gap-1 min-w-0 flex-1 justify-end">
+                <input
+                    type={type}
+                    inputMode={type === "number" ? "numeric" : undefined}
+                    value={value ?? ""}
+                    onChange={(e) => onChange(e.target.value)}
+                    placeholder={placeholder}
+                    className="w-full min-w-0 bg-transparent text-right text-sm font-medium outline-none placeholder:text-muted-foreground/40 border-b border-transparent group-hover:border-border focus:border-[var(--forge-gold)] transition-colors"
+                />
+                {suffix && <span className="text-xs text-muted-foreground shrink-0">{suffix}</span>}
+            </span>
+        </label>
+    );
+}
+
+/** สเกล 1–5 แบบปุ่ม — กดซ้ำค่าเดิมเพื่อล้าง */
+export function LevelPicker({
+    label,
+    value,
+    onChange,
+    lowLabel,
+    highLabel,
+}: {
+    label: string;
+    value: number | undefined;
+    onChange: (v: number | undefined) => void;
+    lowLabel?: string;
+    highLabel?: string;
+}) {
+    return (
+        <div className="py-1.5">
+            <div className="flex items-baseline justify-between gap-3 mb-1">
+                <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">{label}</span>
+                <span className="text-[10px] text-muted-foreground/70">
+                    {lowLabel} {lowLabel && highLabel && "→"} {highLabel}
+                </span>
+            </div>
+            <div className="flex gap-1" role="radiogroup" aria-label={label}>
+                {[1, 2, 3, 4, 5].map((n) => (
+                    <button
+                        key={n}
+                        type="button"
+                        role="radio"
+                        aria-checked={value === n}
+                        aria-label={`${label} ${n}`}
+                        onClick={() => onChange(value === n ? undefined : n)}
+                        className={cn(
+                            "h-6 flex-1 chamfered-sm border text-[10px] tabular-nums transition-[color,background-color,border-color,transform] duration-200 active:scale-95 motion-reduce:active:scale-100 cursor-pointer",
+                            value !== undefined && n <= value
+                                ? "bg-[var(--forge-gold)]/80 border-[var(--forge-gold)] text-background"
+                                : "border-border text-muted-foreground hover:border-[var(--forge-gold)]/60",
+                        )}
+                    >
+                        {n}
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+export const numOrUndef = (s: string) => {
+    if (s.trim() === "") return undefined;
+    const n = Number(s);
+    return Number.isFinite(n) ? Math.round(n) : undefined;
+};
+
+/** ย่อหน้าเขียนอิสระ — field-sizing ให้สูงตามเนื้อหา (เบราว์เซอร์ที่ไม่รองรับ = 3 บรรทัด) */
+/**
+ * หัวข้อ + คำอธิบาย 2 ชั้น: sub = บรรทัดรองแสดงตลอด · info = กล่องลอย (ชี้เมาส์ = เปิด, กด = ค้าง — จอสัมผัสใช้กด)
+ * กติกา: ⓘ ติดที่ระดับหัวข้อเท่านั้น ไม่ติดรายช่องย่อย
+ */
+export function InfoHead({ label, sub, info, right, className }: {
+    label: string;
+    sub?: string;
+    info?: React.ReactNode;
+    right?: React.ReactNode;
+    className?: string;
+}) {
+    const [pinned, setPinned] = useState(false);
+    const ref = useRef<HTMLSpanElement>(null);
+    useEffect(() => {
+        if (!pinned) return;
+        const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setPinned(false); };
+        const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setPinned(false); };
+        document.addEventListener("mousedown", close);
+        document.addEventListener("keydown", esc);
+        return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", esc); };
+    }, [pinned]);
+    return (
+        <div className={cn("mb-2", className)}>
+            <div className="flex items-center justify-between gap-3">
+                <span ref={ref} className="group/info relative flex items-center">
+                    <span className="font-technical text-[10px] uppercase tracking-[0.15em] text-muted-foreground">{label}</span>
+                    {info && (
+                        <>
+                            <button type="button" aria-label={`อธิบาย ${label}`} aria-expanded={pinned} onClick={() => setPinned((o) => !o)}
+                                className={cn("w-7 h-7 -my-2 inline-flex items-center justify-center cursor-pointer transition-colors duration-200",
+                                    pinned ? "text-[var(--forge-gold)]" : "text-muted-foreground/60 hover:text-foreground")}>
+                                <Info className="w-3 h-3" />
+                            </button>
+                            <div role="tooltip" className={cn(
+                                "absolute left-0 top-full z-30 w-72 max-w-[80vw] pt-1",
+                                pinned ? "block" : "hidden group-hover/info:block",
+                            )}>
+                                <div className="chamfered-sm border border-border bg-popover text-popover-foreground shadow-md px-3 py-2 text-xs leading-relaxed space-y-1 animate-in fade-in zoom-in-95 duration-150 motion-reduce:animate-none">
+                                    {info}
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </span>
+                {right}
+            </div>
+            {sub && <p className="text-[11px] text-muted-foreground/80 mt-0.5">{sub}</p>}
+        </div>
+    );
+}
+
+/** หัวกลุ่มใหญ่ในแท็บ (① ② ③) — ชั้นบนสุด เหนือ InfoHead */
+export function GroupHead({ n, title, sub }: { n: string; title: string; sub: string }) {
+    return (
+        <div className="mb-5">
+            <div className="flex items-center gap-3">
+                <span className="font-technical text-xs tracking-[0.15em] text-[var(--forge-gold)] whitespace-nowrap">{n} {title}</span>
+                <span className="flex-1 h-px bg-border" />
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">{sub}</p>
+        </div>
+    );
+}
+
+export function TextBlock({
+    label,
+    hint,
+    value,
+    onChange,
+    placeholder,
+    sub,
+    info,
+}: {
+    label: string;
+    hint?: string;
+    value: string | undefined;
+    onChange: (v: string | undefined) => void;
+    placeholder?: string;
+    sub?: string;
+    info?: React.ReactNode;
+}) {
+    if (info || sub) return (
+        <div className="py-1.5">
+            <InfoHead label={label} sub={sub} info={info} className="mb-0" />
+            <textarea rows={2} aria-label={label} value={value ?? ""}
+                onChange={(e) => onChange(e.target.value.trim() === "" ? undefined : e.target.value)}
+                placeholder={placeholder ?? "—"}
+                className="mt-1 w-full resize-none [field-sizing:content] min-h-[2.5rem] bg-transparent text-base leading-relaxed outline-none placeholder:text-muted-foreground/40 border-b border-transparent hover:border-border focus:border-[var(--forge-gold)] transition-colors" />
+        </div>
+    );
+    return (
+        <label className="block py-1.5">
+            <span className="flex items-baseline justify-between gap-3">
+                <span className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">{label}</span>
+                {hint && <span className="text-[10px] text-muted-foreground/70">{hint}</span>}
+            </span>
+            <textarea
+                rows={2}
+                value={value ?? ""}
+                onChange={(e) => onChange(e.target.value.trim() === "" ? undefined : e.target.value)}
+                placeholder={placeholder ?? "—"}
+                className="mt-1 w-full resize-none [field-sizing:content] min-h-[2.5rem] bg-transparent text-base leading-relaxed outline-none placeholder:text-muted-foreground/40 border-b border-transparent hover:border-border focus:border-[var(--forge-gold)] transition-colors"
+            />
+        </label>
+    );
+}
+
+/** ชิปเลือกหนึ่งค่า — กดซ้ำเพื่อล้าง */
+export function ChipPicker<T extends string>({
+    label,
+    options,
+    value,
+    onChange,
+    sub,
+    info,
+}: {
+    label: string;
+    options: readonly { value: T; label: string; hint?: string }[];
+    value: T | undefined;
+    onChange: (v: T | undefined) => void;
+    sub?: string;
+    info?: React.ReactNode;
+}) {
+    return (
+        <div className="py-1.5">
+            {info || sub
+                ? <InfoHead label={label} sub={sub} info={info} className="mb-1.5" />
+                : <div className="font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground mb-1.5">{label}</div>}
+            <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={label}>
+                {options.map((o) => (
+                    <button
+                        key={o.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={value === o.value}
+                        title={o.hint}
+                        onClick={() => onChange(value === o.value ? undefined : o.value)}
+                        className={cn(
+                            "chamfered-sm border px-2.5 py-1 text-xs transition-[color,background-color,border-color,transform] duration-200 active:scale-95 motion-reduce:active:scale-100 cursor-pointer",
+                            value === o.value
+                                ? "border-[var(--forge-gold)] bg-[var(--forge-gold)]/15 text-foreground"
+                                : "border-border text-muted-foreground hover:text-foreground",
+                        )}
+                    >
+                        {o.label}
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+/**
+ * สเกล 1–5 แบบรางบาง (แทนปุ่มเต็มแถวที่หนักตา) — native range ข้างใต้ = คลิก/ลาก/คีย์บอร์ดได้
+ * ยังไม่ตั้งค่า: รางจาง + "ยังไม่ตั้ง" · ปุ่ม × ล้างค่า
+ */
+export function ScaleBar({ label, value, onChange, lowLabel, highLabel }: {
+    label: string;
+    value: number | undefined;
+    onChange: (v: number | undefined) => void;
+    lowLabel?: string;
+    highLabel?: string;
+}) {
+    return (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2.5">
+            <div className="flex-1 min-w-[10rem]">
+                <div className="font-technical text-[11px] tracking-[0.08em]">{label}</div>
+                {(lowLabel || highLabel) && <div className="text-[10px] text-muted-foreground/70 mt-0.5">{lowLabel} ↔ {highLabel}</div>}
+            </div>
+            <div className="flex items-center gap-3">
+                <div className="flex w-[200px] gap-[3px]" role="radiogroup" aria-label={label}>
+                    {[1, 2, 3, 4, 5].map((n) => (
+                        <Seg key={n} role="radio" checked={value === n} aria-label={`${label} ${n}`}
+                            tone={value === undefined || n > value ? "off" : n === value ? "on" : "dim"}
+                            onClick={() => onChange(value === n ? undefined : n)} />
+                    ))}
+                </div>
+                <ClearValue label={label} value={value} onClear={() => onChange(undefined)} />
+            </div>
+        </div>
+    );
+}
+
+/** ช่องเส้นบาง — ปุ่มสูง 16px ให้กดง่าย แต่เห็นเป็นเส้น 6px · on = ค่าที่เลือก, dim = ช่องก่อนหน้า */
+function Seg({ tone, checked, onClick, role, ...rest }: {
+    tone: "on" | "dim" | "off"; checked: boolean; onClick: () => void; role?: "radio"; "aria-label": string; className?: string;
+}) {
+    return (
+        <button type="button" role={role} aria-checked={role ? checked : undefined} aria-pressed={role ? undefined : checked}
+            onClick={onClick} aria-label={rest["aria-label"]} className={cn("group h-4 flex-1 flex items-center cursor-pointer", rest.className)}>
+            <span className={cn("block w-full h-1.5 chamfered-sm transition-colors duration-200",
+                tone === "on" ? "bg-[var(--forge-gold)]" : tone === "dim" ? "bg-[var(--forge-gold)]/45" : "bg-border group-hover:bg-[var(--forge-gold)]/30")} />
+        </button>
+    );
+}
+
+function ClearValue({ label, value, onClear }: { label: string; value: number | undefined; onClear: () => void }) {
+    if (value === undefined) return <span className="w-[42px] text-right text-[10px] text-muted-foreground/50">ยังไม่ตั้ง</span>;
+    return (
+        <span className="w-[42px] flex items-center justify-end gap-1.5">
+            <span className="font-display text-sm tabular-nums">{value}</span>
+            <button type="button" aria-label={`ล้างค่า ${label}`} onClick={onClear}
+                className="text-muted-foreground/60 hover:text-foreground text-xs leading-none cursor-pointer">×</button>
+        </span>
+    );
+}
+
+/** ช่องเหลี่ยม 10 ช่อง = 0–100 ทีละ 10 · ค่าเดิมที่ไม่ลงตัวปัดเข้าช่องใกล้สุด */
+const STEPS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+
+/**
+ * แกน MBTI 0–100 (<50 = ฝั่งซ้าย) — ซ้าย 5 ช่อง | เส้นกลาง | ขวา 5 ช่อง ระบายจากกลางออกไปฝั่งที่เอียง
+ * ช่องซ้าย i (0=ริมสุด) = ค่า i*10 · ช่องขวา i = 60+i*10
+ */
+export function BipolarBar({ left, right, value, onChange, label }: {
+    left: string;
+    right: string;
+    value: number | undefined;
+    onChange: (v: number | undefined) => void;
+    label: string;
+}) {
+    const set = value !== undefined;
+    const v = Math.round((value ?? 50) / 10) * 10;
+    const lean = !set || v === 50 ? null : v < 50 ? "L" : "R";
+    const leftVals = [0, 10, 20, 30, 40];
+    const rightVals = [60, 70, 80, 90, 100];
+    const cell = (cv: number, on: boolean) => (
+        <Seg key={cv} aria-label={`${label} ${cv}`} checked={set && v === cv} tone={!on ? "off" : cv === v ? "on" : "dim"}
+            onClick={() => onChange(set && v === cv ? undefined : cv)} />
+    );
+    return (
+        <div className="flex items-center gap-2.5 py-1.5">
+            <span className={cn("w-4 text-center text-xs font-technical transition-colors duration-200", lean === "L" ? "text-[var(--forge-amber)] font-bold" : "text-muted-foreground")}>{left}</span>
+            <div className="flex flex-1 items-center gap-[3px]" role="group" aria-label={label}>
+                {leftVals.map((cv) => cell(cv, set && v < 50 && cv >= v))}
+                <span className="w-px h-4 mx-1 bg-border" aria-hidden />
+                {rightVals.map((cv) => cell(cv, set && v > 50 && cv <= v))}
+            </div>
+            <span className={cn("w-4 text-center text-xs font-technical transition-colors duration-200", lean === "R" ? "text-[var(--forge-amber)] font-bold" : "text-muted-foreground")}>{right}</span>
+            {set
+                ? <button type="button" aria-label={`ล้างค่า ${label}`} onClick={() => onChange(undefined)} className="w-3 text-muted-foreground/60 hover:text-foreground text-xs leading-none cursor-pointer">×</button>
+                : <span className="w-3" aria-hidden />}
+        </div>
+    );
+}
+
+/** ความเข้มของ facet 0–100 — 10 ช่องเล็ก */
+export function ThinBar({ value, onChange, label }: { value: number; onChange: (v: number) => void; label: string }) {
+    return (
+        <div className="flex items-center gap-[2px]" role="group" aria-label={label}>
+            {STEPS.map((cv) => (
+                <Seg key={cv} aria-label={`${label} ${cv}`} checked={value >= cv - 5 && value < cv + 5}
+                    tone={value < cv - 5 ? "off" : value < cv + 5 ? "on" : "dim"} onClick={() => onChange(cv)} />
+            ))}
+        </div>
+    );
+}

@@ -233,7 +233,7 @@ export function CharacterPowerManager({ characterId, novelId }: CharacterPowerMa
                         const accent = cp.power.color || "var(--forge-gold)";
 
                         return (
-                            <div key={cp.id} className="chamfered border border-border bg-card/50 p-4">
+                            <div key={cp.id} className="border-b border-border/60 py-3 first:pt-0">
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="flex items-center gap-3 min-w-0">
                                         <div

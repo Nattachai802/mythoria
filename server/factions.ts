@@ -9,6 +9,13 @@ import { headers } from "next/headers";
 import { requireNovelAccess, requireUser, authErrorMessage } from "@/lib/authz";
 import { addReference, removeReferenceEdge } from "./references"; // Context Fabric dual-write (P4)
 
+/** หน้าที่แสดงสังกัด — ฝั่งตัวละครและฝั่งฝ่ายอ่านตาราง character_factions เดียวกัน ต้อง revalidate ทั้งคู่ */
+function revalidateMembership(novelId: string, characterId?: string) {
+    revalidatePath(`/dashboard/project/${novelId}/relationships`);
+    revalidatePath(`/dashboard/project/${novelId}/characters`);
+    if (characterId) revalidatePath(`/dashboard/project/${novelId}/characters/${characterId}`);
+}
+
 // --- Factions CRUD ---
 
 export async function createFaction(data: {
@@ -140,7 +147,7 @@ export async function addCharacterToFaction(data: {
             meta: { role: data.role, startChapterId: data.startChapterId, endChapterId: data.endChapterId },
         });
 
-        revalidatePath(`/dashboard/project/${data.novelId}/relationships`);
+        revalidateMembership(data.novelId, data.characterId);
         return { success: true, data: membership };
     } catch (error) {
         console.error("Error adding character to faction:", error);
@@ -208,13 +215,68 @@ export async function removeCharacterFromFaction(membershipId: string, novelId: 
                 to: { type: "faction", id: deleted.factionId },
                 relation: "member_of",
             });
-            revalidatePath(`/dashboard/project/${novelId}/relationships`);
+            revalidateMembership(novelId, deleted.characterId);
         }
 
         return { success: true, data: deleted };
     } catch (error) {
         console.error("Error removing character from faction:", error);
         return { success: false, error: "Failed to remove character from faction" };
+    }
+}
+
+/** แก้บทบาท / ช่วงบทของสังกัด (เดิมต้องลบแล้วเพิ่มใหม่) — null = ล้างค่า · sync meta ของ reference member_of ด้วย */
+export async function updateCharacterFaction(membershipId: string, novelId: string, data: {
+    role?: string | null;
+    startChapterId?: string | null;
+    endChapterId?: string | null;
+}) {
+    try {
+        await requireNovelAccess(novelId);
+        const [owned] = await db.select({ id: characterFactions.id })
+            .from(characterFactions)
+            .innerJoin(factions, eq(factions.id, characterFactions.factionId))
+            .where(and(eq(characterFactions.id, membershipId), eq(factions.novelId, novelId))).limit(1);
+        if (!owned) return { success: false, error: "Membership not found in this novel" };
+
+        const patch: Partial<typeof characterFactions.$inferInsert> = {};
+        if (data.role !== undefined) patch.role = data.role?.trim() || null;
+        if (data.startChapterId !== undefined) patch.startChapterId = data.startChapterId || null;
+        if (data.endChapterId !== undefined) patch.endChapterId = data.endChapterId || null;
+
+        const [row] = await db.update(characterFactions).set(patch).where(eq(characterFactions.id, membershipId)).returning();
+        await addReference({
+            novelId,
+            from: { type: "character", id: row.characterId },
+            to: { type: "faction", id: row.factionId },
+            relation: "member_of",
+            meta: { role: row.role, startChapterId: row.startChapterId, endChapterId: row.endChapterId },
+        });
+        revalidateMembership(novelId, row.characterId);
+        return { success: true, data: row };
+    } catch (error) {
+        return { success: false, error: authErrorMessage(error, "แก้สังกัดไม่สำเร็จ") };
+    }
+}
+
+/** สังกัดทั้งนิยายแบบเบา (ไม่ดึงข้อมูลตัวละครเต็ม) — ใช้กรองหน้ารายชื่อตัวละคร */
+export async function getMembershipsByNovel(novelId: string) {
+    try {
+        await requireNovelAccess(novelId);
+        const rows = await db.select({
+            id: characterFactions.id,
+            characterId: characterFactions.characterId,
+            factionId: characterFactions.factionId,
+            role: characterFactions.role,
+            startChapterId: characterFactions.startChapterId,
+            endChapterId: characterFactions.endChapterId,
+        }).from(characterFactions)
+            .innerJoin(factions, eq(factions.id, characterFactions.factionId))
+            .where(eq(factions.novelId, novelId));
+        return { success: true, data: rows };
+    } catch (error) {
+        console.error("Error fetching memberships:", error);
+        return { success: false, error: "Failed to fetch memberships", data: [] };
     }
 }
 
@@ -285,10 +347,16 @@ export async function createFactionRelationship(data: {
     targetFactionId: string;
     type: string;
     description?: string;
+    startChapterId?: string | null; // null = เปิดปลาย
+    endChapterId?: string | null;
 }) {
     try {
         await requireNovelAccess(data.novelId);
-        const [row] = await db.insert(factionRelationships).values(data).returning();
+        const [row] = await db.insert(factionRelationships).values({
+            ...data,
+            startChapterId: data.startChapterId || null,
+            endChapterId: data.endChapterId || null,
+        }).returning();
         // Context Fabric edge (faction→faction)
         await addReference({
             novelId: data.novelId,
@@ -327,7 +395,10 @@ export async function deleteFactionRelationship(relId: string, novelId: string) 
             .where(and(eq(factionRelationships.id, relId), eq(factionRelationships.novelId, novelId)))
             .returning();
         if (deleted) {
-            await removeReferenceEdge({
+            // คู่เดียวกันอาจมีหลายแถว (คนละช่วงบท) — ลบ edge Context Fabric เฉพาะเมื่อไม่เหลือแถวไหนแล้ว
+            const [left] = await db.select({ id: factionRelationships.id }).from(factionRelationships)
+                .where(and(eq(factionRelationships.sourceFactionId, deleted.sourceFactionId), eq(factionRelationships.targetFactionId, deleted.targetFactionId))).limit(1);
+            if (!left) await removeReferenceEdge({
                 from: { type: "faction", id: deleted.sourceFactionId },
                 to: { type: "faction", id: deleted.targetFactionId },
                 relation: "related_to",
@@ -442,5 +513,78 @@ export async function deleteFactionStatusPreset(presetId: string, novelId?: stri
     } catch (error) {
         console.error("Error deleting faction status preset:", error);
         return { success: false, error: "Failed to delete preset" };
+    }
+}
+
+/**
+ * ความสัมพันธ์เปลี่ยนชนิดตั้งแต่บท fromChapterId — ปิดแถวเดิมที่บทก่อนหน้า แล้วสร้างแถวใหม่เริ่มที่บทนั้น
+ * prevChapterId = บทก่อน fromChapterId (client ส่งมา เพราะลำดับบทอยู่ฝั่งหน้าจอแล้ว) · null = ไม่มีบทก่อน → แถวเดิมถูกแทนที่ทั้งหมด
+ */
+export async function splitFactionRelationship(relId: string, novelId: string, fromChapterId: string, prevChapterId: string | null, newType: string) {
+    try {
+        await requireNovelAccess(novelId);
+        const [old] = await db.select().from(factionRelationships)
+            .where(and(eq(factionRelationships.id, relId), eq(factionRelationships.novelId, novelId))).limit(1);
+        if (!old) return { success: false, error: "ไม่พบความสัมพันธ์" };
+        const [created] = await db.insert(factionRelationships).values({
+            novelId, sourceFactionId: old.sourceFactionId, targetFactionId: old.targetFactionId,
+            type: newType, description: old.description, startChapterId: fromChapterId, endChapterId: old.endChapterId,
+        }).returning();
+        let updated = null;
+        if (prevChapterId) {
+            [updated] = await db.update(factionRelationships).set({ endChapterId: prevChapterId })
+                .where(eq(factionRelationships.id, relId)).returning();
+        } else {
+            await db.delete(factionRelationships).where(eq(factionRelationships.id, relId));
+        }
+        await addReference({
+            novelId,
+            from: { type: "faction", id: old.sourceFactionId },
+            to: { type: "faction", id: old.targetFactionId },
+            relation: "related_to",
+            meta: { factionRelType: newType },
+        });
+        revalidatePath(`/dashboard/project/${novelId}/characters`);
+        return { success: true, data: { created, updated, removedId: prevChapterId ? null : relId } };
+    } catch (error) {
+        return { success: false, error: authErrorMessage(error, "เปลี่ยนความสัมพันธ์ไม่สำเร็จ") };
+    }
+}
+
+/** แก้ช่วงบทของความสัมพันธ์ฝ่าย — null = เปิดปลาย */
+export async function updateFactionRelationshipRange(relId: string, novelId: string, data: { startChapterId?: string | null; endChapterId?: string | null }) {
+    try {
+        await requireNovelAccess(novelId);
+        const patch: Partial<typeof factionRelationships.$inferInsert> = {};
+        if (data.startChapterId !== undefined) patch.startChapterId = data.startChapterId || null;
+        if (data.endChapterId !== undefined) patch.endChapterId = data.endChapterId || null;
+        const [row] = await db.update(factionRelationships).set(patch)
+            .where(and(eq(factionRelationships.id, relId), eq(factionRelationships.novelId, novelId))).returning();
+        if (!row) return { success: false, error: "ไม่พบความสัมพันธ์" };
+        revalidatePath(`/dashboard/project/${novelId}/characters`);
+        return { success: true, data: row };
+    } catch (error) {
+        return { success: false, error: authErrorMessage(error, "แก้ช่วงบทไม่สำเร็จ") };
+    }
+}
+
+/** ไทม์ไลน์สถานะของฝ่าย — กรองรูปแบบที่ server (jsonb มาจาก client) · ซ้ำบทเดียวกัน = เก็บอันหลัง · สูงสุด 30 จุด */
+export async function updateFactionStatusTimeline(factionId: string, timeline: unknown) {
+    try {
+        const [f] = await db.select({ novelId: factions.novelId }).from(factions).where(eq(factions.id, factionId)).limit(1);
+        if (!f) return { success: false, error: "ไม่พบฝ่าย" };
+        await requireNovelAccess(f.novelId);
+        const byChapter = new Map<string, string>();
+        for (const x of Array.isArray(timeline) ? timeline : []) {
+            const o = (x ?? {}) as { chapterId?: unknown; status?: unknown };
+            if (typeof o.chapterId === "string" && o.chapterId && typeof o.status === "string" && o.status) byChapter.set(o.chapterId, o.status.slice(0, 60));
+        }
+        const clean = [...byChapter].slice(0, 30).map(([chapterId, status]) => ({ chapterId, status }));
+        const [row] = await db.update(factions).set({ statusTimeline: clean.length ? clean : null, updatedAt: new Date() })
+            .where(eq(factions.id, factionId)).returning();
+        revalidatePath(`/dashboard/project/${f.novelId}/characters`);
+        return { success: true, data: row };
+    } catch (error) {
+        return { success: false, error: authErrorMessage(error, "บันทึกไทม์ไลน์สถานะไม่สำเร็จ") };
     }
 }

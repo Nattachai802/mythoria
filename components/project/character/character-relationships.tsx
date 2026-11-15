@@ -2,11 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { getCharacterRelationships, deleteCharacterRelationship, updateCharacterRelationship } from "@/server/character";
-import { getCharacterFactions, removeCharacterFromFaction } from "@/server/factions";
 import { Button } from "@/components/ui/button";
 import { Plus, Trash2, User, Users, ArrowRight, ArrowLeft, History } from "lucide-react";
 import { AddRelationshipDialog } from "./add-relationship-dialog";
-import { ManageFactionDialog } from "./manage-faction-dialog";
 import { RelationshipTimeline } from "./relationship-timeline";
 import { RELATIONSHIP_COLORS } from "./relationship-constants";
 import { Badge } from "@/components/ui/badge";
@@ -40,15 +38,12 @@ interface CharacterRelationshipsProps {
 
 export function CharacterRelationships({ characterId, novelId }: CharacterRelationshipsProps) {
     const [relationships, setRelationships] = useState<any[]>([]);
-    const [factions, setFactions] = useState<any[]>([]);
     const [chapters, setChapters] = useState<any[]>([]);
     const [selectedChapter, setSelectedChapter] = useState<string>("all");
     const [chapterCharacters, setChapterCharacters] = useState<Set<string>>(new Set());
     const [isLoading, setIsLoading] = useState(true);
     const [isAddOpen, setIsAddOpen] = useState(false);
-    const [isFactionAddOpen, setIsFactionAddOpen] = useState(false);
     const [deleteId, setDeleteId] = useState<string | null>(null);
-    const [deleteFactionId, setDeleteFactionId] = useState<string | null>(null);
     const [editingOpinion, setEditingOpinion] = useState<string | null>(null);
     const [timelineRelId, setTimelineRelId] = useState<string | null>(null);
     const [timelineCharName, setTimelineCharName] = useState<string>("");
@@ -87,17 +82,13 @@ export function CharacterRelationships({ characterId, novelId }: CharacterRelati
     };
 
     const fetchData = async () => {
-        const [relResult, facResult, chapResult] = await Promise.all([
+        const [relResult, chapResult] = await Promise.all([
             getCharacterRelationships(characterId),
-            getCharacterFactions(characterId),
             getChapters(novelId)
         ]);
 
         if (relResult.success && relResult.data) {
             setRelationships(relResult.data);
-        }
-        if (facResult.success && facResult.data) {
-            setFactions(facResult.data);
         }
         if (chapResult.success && chapResult.chapters) {
             setChapters(chapResult.chapters);
@@ -141,18 +132,7 @@ export function CharacterRelationships({ characterId, novelId }: CharacterRelati
         setDeleteId(null);
     };
 
-    const handleRemoveFaction = async () => {
-        if (!deleteFactionId) return;
 
-        const result = await removeCharacterFromFaction(deleteFactionId, novelId);
-        if (result.success) {
-            toast.success("ออกจากกลุ่มแล้ว");
-            fetchData();
-        } else {
-            toast.error("ออกจากกลุ่มไม่สำเร็จ");
-        }
-        setDeleteFactionId(null);
-    };
 
     return (
         <>
@@ -325,50 +305,11 @@ export function CharacterRelationships({ characterId, novelId }: CharacterRelati
                         )}
                 </div>
 
-                {/* Factions membership */}
-                <div>
-                    <div className="flex items-center gap-2.5 mb-3">
-                        <span className="font-technical text-[10px] uppercase tracking-[0.2em] text-muted-foreground">สังกัด / กลุ่ม</span>
-                        <span className="flex-1 h-px bg-border/70" />
-                        <Button onClick={() => setIsFactionAddOpen(true)} size="sm" variant="ghost" className="h-7 px-2 text-xs">
-                            <Plus className="h-3.5 w-3.5 mr-1" />เข้าร่วม
-                        </Button>
-                    </div>
-                    {isLoading ? null : factions.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">ยังไม่ได้สังกัดกลุ่มใด</p>
-                    ) : (
-                        <div className="flex flex-wrap gap-2">
-                            {factions.map((membership) => (
-                                <div key={membership.id} className="flex items-center gap-2 py-1.5 pl-1.5 pr-2 chamfered-sm border border-border bg-card/50">
-                                    <div className="w-7 h-7 chamfered-sm bg-[var(--forge-gold)]/15 flex items-center justify-center font-display font-bold text-sm text-[var(--forge-amber)]">
-                                        {membership.faction.name.charAt(0)}
-                                    </div>
-                                    <div className="flex flex-col leading-tight">
-                                        <span className="text-sm font-medium">{membership.faction.name}</span>
-                                        <span className="font-technical text-[9px] uppercase tracking-[0.1em] text-muted-foreground">{membership.role || "สมาชิก"}</span>
-                                    </div>
-                                    <Button variant="ghost" size="icon" className="h-6 w-6 ml-1 text-muted-foreground hover:text-red-500" onClick={() => setDeleteFactionId(membership.id)}>
-                                        <Trash2 className="h-3 w-3" />
-                                    </Button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-
                 <AddRelationshipDialog
                     novelId={novelId}
                     sourceCharacterId={characterId}
                     open={isAddOpen}
                     onOpenChange={setIsAddOpen}
-                    onSuccess={fetchData}
-                />
-
-                <ManageFactionDialog
-                    novelId={novelId}
-                    characterId={characterId}
-                    open={isFactionAddOpen}
-                    onOpenChange={setIsFactionAddOpen}
                     onSuccess={fetchData}
                 />
 
@@ -384,23 +325,6 @@ export function CharacterRelationships({ characterId, novelId }: CharacterRelati
                             <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
                             <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">
                                 ลบ
-                            </AlertDialogAction>
-                        </AlertDialogFooter>
-                    </AlertDialogContent>
-                </AlertDialog>
-
-                <AlertDialog open={!!deleteFactionId} onOpenChange={(open) => !open && setDeleteFactionId(null)}>
-                    <AlertDialogContent>
-                        <AlertDialogHeader>
-                            <AlertDialogTitle>ออกจากกลุ่ม</AlertDialogTitle>
-                            <AlertDialogDescription>
-                                ต้องการออกจากกลุ่มนี้ใช่ไหม?
-                            </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleRemoveFaction} className="bg-red-600 hover:bg-red-700">
-                                ออก
                             </AlertDialogAction>
                         </AlertDialogFooter>
                     </AlertDialogContent>

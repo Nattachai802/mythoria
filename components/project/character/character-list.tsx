@@ -33,7 +33,7 @@ import { MoreVertical, Pencil, Trash2, User, Eye, ChevronLeft, ChevronRight } fr
 import { deleteCharacter } from "@/server/character";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 const ITEMS_PER_PAGE = 8;
 const EDGE_HOVER_DELAY = 800; // ms before auto-navigating
@@ -45,12 +45,20 @@ const ROLE_CONFIG = {
     minor: { label: "Minor", color: "bg-zinc-500/90" },
 };
 
+type FactionLite = { id: string; name: string; color: string | null };
+type Membership = { id: string; characterId: string; factionId: string; role: string | null; startChapterId: string | null; endChapterId: string | null };
+
 interface CharacterListProps {
     novelId: string;
     initialCharacters: any[];
+    factions?: FactionLite[];
+    memberships?: Membership[];
 }
 
-export function CharacterList({ novelId, initialCharacters }: CharacterListProps) {
+export function CharacterList({ novelId, initialCharacters, factions = [], memberships = [] }: CharacterListProps) {
+    const searchParams = useSearchParams();
+    // ?faction=<id> | none (ไม่สังกัด) — อยู่ใน URL ให้กด back แล้วยังกรองอยู่
+    const selectedFaction = searchParams.get("faction") ?? "all";
     const [chapters, setChapters] = useState<any[]>([]);
     const [selectedChapter, setSelectedChapter] = useState<string>("all");
     const [chapterCharacterIds, setChapterCharacterIds] = useState<Set<string>>(new Set());
@@ -97,10 +105,32 @@ export function CharacterList({ novelId, initialCharacters }: CharacterListProps
         fetchChapterCharacters();
     }, [selectedChapter]);
 
-    // Filter characters based on selection
-    const filteredCharacters = selectedChapter === "all"
-        ? initialCharacters
-        : initialCharacters.filter(char => chapterCharacterIds.has(char.id));
+    const setFaction = (v: string) => {
+        const q = new URLSearchParams(searchParams.toString());
+        if (v === "all") q.delete("faction"); else q.set("faction", v);
+        router.replace(`?${q.toString()}`, { scroll: false });
+    };
+
+    // สังกัดที่ "ยังอยู่" ในบทที่เลือก — start/end ว่าง = เปิดปลาย · ไม่ได้เลือกบท = นับทุกสังกัด
+    const chapterOrder = new Map<string, number>(chapters.map((c) => [c.id, c.orderIndex]));
+    const selOrder = selectedChapter === "all" ? null : chapterOrder.get(selectedChapter) ?? null;
+    const activeIn = (m: Membership) => {
+        if (selOrder === null) return true;
+        const st = m.startChapterId ? chapterOrder.get(m.startChapterId) : undefined;
+        const en = m.endChapterId ? chapterOrder.get(m.endChapterId) : undefined;
+        return (st === undefined || st <= selOrder) && (en === undefined || selOrder <= en);
+    };
+    const factionById = new Map(factions.map((f) => [f.id, f]));
+    const membershipsOf = (charId: string) => memberships.filter((m) => m.characterId === charId && activeIn(m));
+
+    // กรองบท AND ฝ่าย
+    const filteredCharacters = initialCharacters
+        .filter((char) => selectedChapter === "all" || chapterCharacterIds.has(char.id))
+        .filter((char) => {
+            if (selectedFaction === "all") return true;
+            const ms = membershipsOf(char.id);
+            return selectedFaction === "none" ? ms.length === 0 : ms.some((m) => m.factionId === selectedFaction);
+        });
 
     // Pagination
     const totalPages = Math.max(1, Math.ceil(filteredCharacters.length / ITEMS_PER_PAGE));
@@ -113,7 +143,7 @@ export function CharacterList({ novelId, initialCharacters }: CharacterListProps
     useEffect(() => {
         setExpandedIndex(0);
         setCurrentPage(0);
-    }, [selectedChapter, filteredCharacters.length]);
+    }, [selectedChapter, selectedFaction, filteredCharacters.length]);
 
     const goToPage = useCallback((page: number) => {
         if (isSliding || page === currentPage) return;
@@ -203,6 +233,21 @@ export function CharacterList({ novelId, initialCharacters }: CharacterListProps
 
     return (
         <>
+            {/* Faction Filter */}
+            {factions.length > 0 && (
+                <div className="mb-3 flex items-center gap-1.5 flex-wrap" role="radiogroup" aria-label="กรองตามฝ่าย">
+                    <span className="text-sm font-medium text-muted-foreground mr-1">ฝ่าย:</span>
+                    {[{ id: "all", name: "ทั้งหมด", color: null }, ...factions, { id: "none", name: "ไม่สังกัด", color: null }].map((f) => (
+                        <button key={f.id} type="button" role="radio" aria-checked={selectedFaction === f.id} onClick={() => setFaction(f.id)}
+                            className={cn("chamfered-sm border px-2.5 py-1 text-xs flex items-center gap-1.5 transition-colors duration-200 cursor-pointer",
+                                selectedFaction === f.id ? "border-[var(--forge-gold)] bg-[var(--forge-gold)]/15 text-foreground" : "border-border text-muted-foreground hover:text-foreground")}>
+                            {f.color && <span className="w-2 h-2" style={{ backgroundColor: f.color }} aria-hidden />}
+                            {f.name}
+                        </button>
+                    ))}
+                </div>
+            )}
+
             {/* Chapter Filter */}
             {chapters.length > 0 && (
                 <div className="mb-6 flex items-center gap-3">
@@ -220,7 +265,7 @@ export function CharacterList({ novelId, initialCharacters }: CharacterListProps
                             ))}
                         </SelectContent>
                     </Select>
-                    {selectedChapter !== "all" && (
+                    {(selectedChapter !== "all" || selectedFaction !== "all") && (
                         <span className="text-sm text-muted-foreground">
                             ({filteredCharacters.length} character{filteredCharacters.length !== 1 ? 's' : ''})
                         </span>
@@ -397,6 +442,23 @@ export function CharacterList({ novelId, initialCharacters }: CharacterListProps
                                                     </>
                                                 )}
                                             </div>
+
+                                            {/* สังกัด */}
+                                            {membershipsOf(character.id).length > 0 && (
+                                                <div className="flex items-center gap-x-3 gap-y-1 flex-wrap text-xs text-white/70 mb-3">
+                                                    {membershipsOf(character.id).map((m) => {
+                                                        const f = factionById.get(m.factionId);
+                                                        const end = m.endChapterId ? chapterOrder.get(m.endChapterId) : undefined;
+                                                        return (
+                                                            <span key={m.id} className="flex items-center gap-1.5">
+                                                                <span className="w-2 h-2" style={{ backgroundColor: f?.color ?? "#888" }} aria-hidden />
+                                                                {f?.name ?? "—"}{m.role && <span className="text-white/45">· {m.role}</span>}
+                                                                {end !== undefined && <span className="text-white/45">→ บท {end}</span>}
+                                                            </span>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
 
                                             {/* Description */}
                                             {character.description && (

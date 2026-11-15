@@ -73,7 +73,7 @@ export function CharacterIdeasTab({
                     {linkedIdeas.map((idea) => (
                         <div
                             key={idea.id}
-                            className="chamfered border border-border bg-card/50 p-4 cursor-pointer transition-colors hover:border-[var(--forge-gold)]/40"
+                            className="border-b border-border/60 py-3 -mx-2 px-2 cursor-pointer transition-colors duration-200 hover:bg-muted/40"
                             onClick={() => {
                                 setSelectedIdea(idea);
                                 setEditDialogOpen(true);

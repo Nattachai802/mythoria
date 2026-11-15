@@ -177,10 +177,10 @@ export function CharacterJourney({ characterId, novelId }: CharacterJourneyProps
                                 {/* Travel Time Indicator between points */}
                                 {travelInfo && travelInfo.travelTime && (
                                     <div className="relative pl-10 py-1">
-                                        <div className="absolute left-[14px] top-0 bottom-0 w-0.5 bg-amber-500/50" />
-                                        <div className="flex items-center gap-2 py-1 px-2 ml-2 chamfered-sm bg-amber-500/10 border border-amber-500/20 text-xs">
-                                            <Clock className="h-3 w-3 text-amber-500" />
-                                            <span className="text-amber-700 dark:text-amber-400">
+                                        <div className="absolute left-[14px] top-0 bottom-0 w-px bg-border border-l border-dashed border-border" />
+                                        <div className="flex items-center gap-2 py-1 px-2 ml-2 text-xs text-muted-foreground">
+                                            <Clock className="h-3 w-3" />
+                                            <span>
                                                 {travelInfo.travelTime} {travelInfo.travelTimeUnit === "hours" ? "ชม." : travelInfo.travelTimeUnit === "days" ? "วัน" : travelInfo.travelTimeUnit}
                                             </span>
                                         </div>

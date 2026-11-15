@@ -18,7 +18,6 @@ import {
     BarChart3,
     Share2,
     Keyboard,
-    Shield,
     FileInput,
     CalendarRange,
 } from "lucide-react"
@@ -77,8 +76,7 @@ export function ProjectSidebar({ projectId, projectTitle, chapters = [], hasCont
         {
             label: "สร้างโลก",
             items: [
-                { title: "ตัวละคร", href: `/dashboard/project/${projectId}/characters`, icon: Users },
-                { title: "กลุ่มอำนาจ", href: `/dashboard/project/${projectId}/factions`, icon: Shield },
+                { title: "ตัวละครและฝ่าย", href: `/dashboard/project/${projectId}/characters`, icon: Users },
                 { title: "สร้างโลก", href: `/dashboard/project/${projectId}/worldbuilding`, icon: Globe },
                 { title: "ระบบพลัง", href: `/dashboard/project/${projectId}/powers`, icon: Zap },
                 { title: "แผนผังโลก", href: `/dashboard/project/${projectId}/graph`, icon: Share2 },

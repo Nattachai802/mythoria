@@ -214,7 +214,7 @@ export function CharacterDesignBoard({ characterId, novelId }: CharacterDesignBo
     return (
         <div className="space-y-8">
             {/* Header Area */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-card/50 p-5 chamfered border border-border">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div className="space-y-1">
                     <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
                         <FolderHeart className="w-6 h-6 text-primary" />
@@ -227,7 +227,7 @@ export function CharacterDesignBoard({ characterId, novelId }: CharacterDesignBo
 
                 <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
                     <DialogTrigger asChild>
-                        <Button className="shadow-md shrink-0 gap-1.5 transition-all hover:scale-[1.02]">
+                        <Button className="chamfered-sm shrink-0 gap-1.5">
                             <Plus className="w-4 h-4" /> เพิ่มเรฟเฟอเรนซ์
                         </Button>
                     </DialogTrigger>
@@ -424,15 +424,13 @@ export function CharacterDesignBoard({ characterId, novelId }: CharacterDesignBo
 
             {/* Main Content Area */}
             {elements.length === 0 ? (
-                <div className="flex flex-col items-center justify-center text-center py-20 bg-muted/15 rounded-3xl border border-dashed p-8">
-                    <div className="w-16 h-16 rounded-full bg-primary/5 flex items-center justify-center mb-4">
-                        <Palette className="w-8 h-8 text-primary/60" />
-                    </div>
-                    <h3 className="text-lg font-bold">ยังไม่มีเรฟเฟอเรนซ์ดีไซน์</h3>
+                <div className="flex flex-col items-center justify-center text-center py-10 chamfered border border-dashed border-border bg-card/40">
+                    <Palette className="w-8 h-8 text-muted-foreground/40 mb-3" />
+                    <h3 className="font-display font-semibold">ยังไม่มีเรฟเฟอเรนซ์ดีไซน์</h3>
                     <p className="text-sm text-muted-foreground max-w-sm mt-2">
                         สร้างแรงบันดาลใจด้วยการอัปโหลดภาพ หรือบันทึกโทนสีของตัวละคร {characterId.slice(0, 4)} เพื่อช่วยไกด์ตอนแต่งนิยาย
                     </p>
-                    <Button onClick={() => setIsAddOpen(true)} variant="outline" className="mt-5 gap-1.5">
+                    <Button onClick={() => setIsAddOpen(true)} variant="outline" className="mt-5 gap-1.5 chamfered-sm">
                         <Plus className="w-4 h-4" /> เพิ่มเรฟเฟอเรนซ์แรก
                     </Button>
                 </div>
@@ -441,15 +439,15 @@ export function CharacterDesignBoard({ characterId, novelId }: CharacterDesignBo
                     {/* Color Swatches - Display inside a beautiful flex box if there are colors */}
                     {displayColors.length > 0 && (
                         <div className="space-y-4">
-                            <h3 className="text-md font-bold flex items-center gap-1.5 text-pink-500">
-                                <Palette className="w-4 h-4" />
+                            <h3 className="flex items-center gap-1.5 font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">
+                                <Palette className="w-3 h-3" />
                                 พาเลทโทนสี ({displayColors.length})
                             </h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                                 {displayColors.map((color) => (
                                     <div
                                         key={color.id}
-                                        className="group relative bg-card/50 border border-border chamfered p-3 flex items-center gap-4 transition-colors hover:border-[var(--forge-gold)]/40"
+                                        className="group relative border-b border-border/60 py-3 flex items-center gap-4 transition-colors duration-200 hover:bg-muted/40"
                                     >
                                         <div
                                             className="w-12 h-12 chamfered-sm border border-black/10 shrink-0 transition-transform duration-300 group-hover:scale-105"
@@ -485,8 +483,8 @@ export function CharacterDesignBoard({ characterId, novelId }: CharacterDesignBo
                     {/* Image references - Display inside a premium Pinterest-style moodboard grid */}
                     {displayImages.length > 0 && (
                         <div className="space-y-4">
-                            <h3 className="text-md font-bold flex items-center gap-1.5 text-primary">
-                                <Layers className="w-4 h-4" />
+                            <h3 className="flex items-center gap-1.5 font-technical text-[9px] uppercase tracking-[0.15em] text-muted-foreground">
+                                <Layers className="w-3 h-3" />
                                 รูปภาพและดีไซน์เรฟเฟอเรนซ์ ({displayImages.length})
                             </h3>
 
