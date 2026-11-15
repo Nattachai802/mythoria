@@ -6,9 +6,9 @@
 
 > **Current Version: `v2.18.1.5594552342`** — หน้าพล็อตรวมแถบเมนูเป็นแถวเดียว
 >
-> ประวัติเวอร์ชันทั้งหมดดูที่ [CHANGELOG.md](CHANGELOG.md) — แก้ที่ `lib/changelog.ts` แล้วรัน `npm run changelog`
+> ประวัติเวอร์ชันทั้งหมดดูที่ [CHANGELOG.md](CHANGELOG.md) หรือหน้า `/dashboard/changelog` ในแอป — วิธีออกรุ่นดู [🏷️ การออกรุ่น](#️-การออกรุ่น)
 >
-> **v2.3** — Launch readiness: invite-only signup, guest demo mode, data isolation ครบทุก server action, Python service auth · Story Codex ยุบรวมเข้า World Graph · Stylometry #5 (POS n-gram + emotional arc) · **AI Control Center** (gateway เดียว + CLI `npm run ai` + board)
+> **v2.4 – v2.18** — กระดานพล็อตใหม่ (เลน, เส้นเชื่อม, โน้ตจัดรูปแบบได้) · **สมุดปมเรื่อง** (ประเด็น, ปมแม่/ลูก, ความตึง, เส้นทางของปม, AI ตรวจการเฉลย) · **ตรวจคำผิดเบื้องหลังแบบคิวฝั่งเซิร์ฟเวอร์** (Longdo + Hunspell, ไม่ขีดแดงชื่อในเรื่อง) · คิวแก้ไขใหม่ · เลือกโมเดล AI ที่ทำหน้าที่ตัดสิน (LLM / Jev)
 
 ---
 
@@ -23,6 +23,7 @@
 - [🗄️ โครงสร้างฐานข้อมูล](#-โครงสร้างฐานข้อมูล)
 - [🗺️ Context Fabric](#-context-fabric)
 - [🏁 การติดตั้ง](#-การติดตั้ง)
+- [🏷️ การออกรุ่น](#️-การออกรุ่น)
 
 ---
 
@@ -61,7 +62,7 @@ graph TD
         PlotAgent["Plot Hole Agent\n/analyze-plot\n/check-all-notes-stream\n/check-timeline /validate-character"]
         CharAnalyzer["Character Analyzer\n/analyze-characters\n/analyze-queue SSE"]
         Stylo["Stylometry\n/analyze-chapter-style\n/analyze-fingerprint-bulk"]
-        SpellSvc["Spell Checker\n/spell-check\n/spell-check-note Background"]
+        SpellSvc["Spell Checker\n/spell-check\n/spell-check-note\n/spell-queue Background"]
         LanceDB[("LanceDB Vector DB")]
         SpellCache[("Spell Cache pkl")]
     end
@@ -71,7 +72,9 @@ graph TD
         GeminiEmbed["Gemini API Embeddings 768d"]
         Typhoon["Typhoon v2.1 Thai LLM"]
         Groq["Groq API Llama fast inference"]
-        PyThaiNLP["PyThaiNLP Spell Check"]
+        PyThaiNLP["Longdo Dict + Hunspell + PyThaiNLP"]
+        HFSpace["HF Space Spell Fallback"]
+        Judge["OpenRouter / TypeSafe Jev"]
         GDrive["Google Drive API"]
         Discord["Discord Webhooks"]
         Cloudinary["Cloudinary Asset Store"]
@@ -110,6 +113,8 @@ graph TD
 
     SpellSvc --> PyThaiNLP
     SpellSvc --> SpellCache
+    SpellSvc --> HFSpace
+    NextServer --> Judge
     SpellSvc --> NextServer
 ```
 
@@ -151,6 +156,10 @@ Editor ที่ออกแบบมาเพื่อการเขียน�
 - **Auto-fix**: แก้คำผิดด้วยคลิกเดียว (ระดับ Proofreading) — offset shift อัตโนมัติ
 - **Background Spell Check**: เปลี่ยน Status → Proofreading ระบบตรวจอัตโนมัติ background
 
+**Rewrite Queue (คิวแก้ไข)**
+- แบ่งกลุ่มตามสถานะ (กำลังตรวจ / ตรวจเสร็จรอดูผล / รอ Rewrite) พับได้ หน้าละ 10 ตอน
+- แต่ละตอนมีป้ายสถานะตรวจคำผิด · เลือกหลายตอนแล้วกด "ตรวจที่เลือก" หรือตรวจทั้งคิว
+
 **Find & Replace Panel** (`Cmd+F`)
 - นับจำนวน Match แบบ Real-time
 - Replace All ทั้งใน Quill Mode และ Paragraph Mode
@@ -167,14 +176,24 @@ Editor ที่ออกแบบมาเพื่อการเขียน�
   - **ePub** (ใหม่ใน v2.1): ไฟล์ ebook พร้อมหน้าปก + สารบัญต่อบท เปิดบน e-reader / ร้าน ebook ได้ (สร้างฝั่ง client ด้วย `epub-gen-memory`)
 - **Global Search**: ค้นหา Note/Chapter/ตัวละคร/สถานที่ ทั่วทั้งโปรเจกต์
 
-### 🧩 Idea Playground (Visual Plotting)
+### 🧩 หน้าพล็อต: กระดาน + ปมเรื่อง
 
-Canvas ที่ทรงพลังที่สุดสำหรับวางแผนพล็อต:
+หน้าพล็อตมี 2 แท็บ (แถบเดียวรวมชื่อหน้า แท็บ และเครื่องมือกระดาน):
 
-- **Infinite Canvas**: วางไอเดีย, ตัวละคร, ฉาก ได้ไม่จำกัด (Powered by **React Flow**)
-- **Drag & Drop**: ลาก Character/Location จาก Sidebar ลงใน Scene ได้ทันที (**DnD Kit**)
-- **Nested Thoughts**: ซ้อนไอเดียลงในไอเดียอื่นเพื่อจัดกลุ่มความคิด
-- **Visual Connections**: ลากเส้นเชื่อมโยงเหตุการณ์เพื่อดู Timeline
+**กระดาน (Idea Playground)** — Canvas วางแผนพล็อต (**React Flow** + **DnD Kit**)
+- การ์ดไอเดียเรียงเป็น **เลน** ที่มีความหมายและควบคุมได้ · เลขการ์ดบอกตำแหน่งจริง
+- **เส้นเชื่อม** สีล้วน ลากแล้วจบ บอกลักษณะการต่อระหว่างจังหวะด้วยสี
+- ผูกองค์ประกอบ (ตัวละคร/สถานที่/ของ) ในการ์ดเป็นชั้น และส่งต่อผู้เข้าร่วมตามเส้นเชื่อม
+- **โน้ตจัดรูปแบบได้** ในการ์ด พร้อม `@ชื่อ` ภาษาไทย
+- ย้อนกลับ (undo) ได้ รวมถึงการลบปม
+
+**ปมเรื่อง (Plot Thread Ledger)** — สมุดปมทั้งเรื่องแบบสองช่อง (รายการซ้าย / รายละเอียดขวา)
+- ปมมีคำอธิบาย + **ประเด็นย่อย** ที่ติ๊กได้ว่าคลี่แล้ว · จัด **ปมย่อยใต้ปมใหญ่** · ผูกความสัมพันธ์ (ต้องเฉลยก่อน / ปมหลอก)
+- **ความคืบหน้า** คำนวณจากฉากเอง แยกจาก **เจตนาผู้เขียน** (ดำเนินอยู่ / พักไว้ / ตั้งใจค้าง / ทิ้งแล้ว) · ตั้งบทเป้าหมายที่จะเฉลยได้
+- **ความตึง** 1–5 ต่อฉาก พร้อมกราฟเล็ก
+- **เส้นทางของปม**: ปมโผล่ครั้งแรกที่การ์ดไหน ห่างกันกี่การ์ด ระหว่างนั้นมีปมอะไร · กลุ่มปมแสดงปมย่อยทุกชั้นเป็นเลนบนแกนเดียวกัน
+- **คำเตือนอัตโนมัติ** (deterministic): เลยบทเป้าแล้วยังไม่เฉลย, เฉลยผิดลำดับ, ปมหลอกค้าง, ประเด็นค้าง, ความตึงไม่เพิ่ม, เฉลยโดยไม่มีเบาะแส, ปมใหญ่เฉลยแต่ปมย่อยค้าง
+- **AI ตรวจการเฉลย** (กดเอง, `thread-fairness`): ให้ AI อ่านเส้นทางถึงก่อนการ์ดเฉลยแล้วทาย 3 ข้อ ดูว่าเฉลยมีที่มาไหม
 
 ### 🗂️ Active Plot Marker
 
@@ -328,9 +347,11 @@ Agent อัจฉริยะที่ใช้ Tool Calling ตรวจสอ
 - **Chapter Summary**: รวบรวมสรุปทุก Note ใน Chapter
 - ใช้ Typhoon v2.1 เพื่อความเข้าใจภาษาไทยได้ดี
 
-### 7. Spell Checker (Background)
+### 7. Spell Checker (Background Queue)
 
-- ตรวจคำผิดอัตโนมัติเมื่อ Note ถูกเปลี่ยนสถานะเป็น **Proofreading**
+- ไม่ใช้ LLM — **Longdo Dict** เป็นหลัก + **Hunspell** (spylls) แนะนำคำ + พจนานุกรม PyThaiNLP · สำรองบน **HF Space** (`hf_space/`) เมื่อ Longdo ใช้ไม่ได้
+- **คิวฝั่งเซิร์ฟเวอร์**: สั่งตรวจแล้วปิดหน้าได้ · แผงติดตามคิวในคอลัมน์ซ้าย · ตรวจเมื่อเปลี่ยนสถานะเป็น Proofreading หรือสั่งเองทั้งคิว
+- ไม่ขีดแดง **ชื่อเฉพาะในเรื่อง** (ดึงชื่อตัวละคร/สถานที่ของนิยายเป็นข้อยกเว้น) · จับสระเบิ้ลและวรรคกลางคำ
 - ผลลัพธ์ปรากฏใน Audit Panel ของ Rewrite Workspace พร้อม Auto-fix
 
 ### 8. Publish Assistant
@@ -373,7 +394,7 @@ callAi({ feature: "librarian", prompt })
    └─ 5. Usage log       → tokens / latency / status ลง ai_usage_log
 ```
 
-- **Registry**: `lib/ai-features.ts` — ประกาศฟีเจอร์ AI ครบ **15 ตัว** (11 LLM ฝั่ง Next + 4 Python) พร้อม model / temperature / fallback chain / quota default · *ไม่ตั้งอะไรเลยก็ใช้ได้* (ไม่มีแถวใน DB = default จาก registry)
+- **Registry**: `lib/ai-features.ts` — ประกาศฟีเจอร์ AI ครบ **22 ตัว** (ฝั่ง Next + Python) พร้อม model / temperature / fallback chain / quota default · *ไม่ตั้งอะไรเลยก็ใช้ได้* (ไม่มีแถวใน DB = default จาก registry)
 - **CLI**: dev คุมผ่าน terminal ล้วน — app หยิบค่าใหม่ใน ~15 วิ **ไม่ต้องรีสตาร์ท**
 
   ```bash
@@ -384,6 +405,7 @@ callAi({ feature: "librarian", prompt })
   npm run ai reset echo-score  # คืนค่า default จาก registry
   npm run ai log 30            # runs ล่าสุด + error detail
   ```
+- **Judge mode** (v2.6): ฟีเจอร์ที่ AI ทำหน้าที่ "ตัดสิน" เลือกได้ว่าจะใช้ LLM (OpenRouter) หรือ **Jev** (TypeSafe — คืนผลเป็น typed judgment)
 - **Board** (`/dashboard/ai-control`, read-only): user logged-in ดูได้หมด — แผนผังโมเดล (ฟังก์ชันไหน → model ไหน → fallback อะไร), การ์ดสถานะ/quota/used-today รายฟีเจอร์, ตาราง runs ล่าสุดพร้อม error · guest ดูไม่ได้
 - **Python side**: endpoint ที่เผาโควตา LLM/embedding (sync/search/analyze*/check*) ถูก gate ที่ proxy `/api/py` + route triggers ผ่าน registry เดียวกัน — spell-check/stylometry (local compute) ไม่ผ่าน by design
 
@@ -411,6 +433,7 @@ callAi({ feature: "librarian", prompt })
 | **PostgreSQL / Neon** | Database |
 | **Resend + React Email** | Transactional Email |
 | **Google Drive API** | Cloud Sync |
+| **OpenRouter / TypeSafe (Jev)** | โมเดลสำหรับงาน "ตัดสิน" |
 | **Cloudinary** | Asset Storage |
 
 ### AI / Microservice (Python)
@@ -422,12 +445,14 @@ callAi({ feature: "librarian", prompt })
 | **LanceDB** | Embeddings & Vector Search |
 | **Typhoon v2.1** | Thai Large Language Model |
 | **Groq API** | Llama-based fast inference |
+| **Longdo Dict / Hunspell (spylls)** | ตรวจคำผิดภาษาไทย |
+| **HF Space (Gradio)** | ตัวตรวจคำผิดสำรอง (`hf_space/`) |
 
 ---
 
 ## 🗄️ โครงสร้างฐานข้อมูล
 
-ระบบมี **58 tables** ครอบคลุมทุกมิติของการเขียนนิยาย:
+ระบบมี **66 tables** ครอบคลุมทุกมิติของการเขียนนิยาย:
 
 | กลุ่ม | Tables |
 |---|---|
@@ -435,10 +460,10 @@ callAi({ feature: "librarian", prompt })
 | **Characters** | `characters`, `character_relationships`, `relationship_history`, `character_life_events`, `character_states`, `character_design_elements`, `character_factions`, `chapter_characters`, `note_characters` |
 | **World** | `locations`, `location_connections`, `location_entities`, `items`, `factions`, `faction_relationships`, `faction_status_presets`, `eras`, `world_systems` |
 | **Lore** | `lore_entries`, `lore_groups`, `entities` |
-| **Powers** | `powers`, `character_powers`, `power_levels`, `power_combinations` |
-| **Plotting** | `ideas`, `idea_connections`, `timeline_events`, `scene_element_details`, `plot_threads`, `plot_thread_beats`, `story_arcs` |
-| **AI** | `ai_suggestions`, `ai_chapter_reviews`, `character_analysis_queue`, `state_extraction_queue`, `note_audit_issues`, `librarian_messages`, `alias_cache` |
-| **AI Control** | `ai_features` (toggle + quota รายฟีเจอร์), `ai_usage_log` (audit ทุก AI run) |
+| **Powers** | `powers`, `character_powers`, `power_levels`, `power_combinations`, `power_rules` |
+| **Plotting** | `ideas`, `idea_connections`, `timeline_events`, `scene_element_details`, `plot_threads`, `plot_thread_points`, `plot_thread_links`, `plot_thread_beats`, `story_arcs`, `plot_findings`, `plot_recaps`, `tone_presets` |
+| **AI** | `ai_suggestions`, `ai_chapter_reviews`, `chapter_reader_response`, `character_analysis_queue`, `state_extraction_queue`, `note_audit_issues`, `librarian_messages`, `alias_cache` |
+| **AI Control** | `ai_features` (toggle + quota รายฟีเจอร์), `ai_usage_log` (audit ทุก AI run), `ai_active_runs` (กันยิง AI ซ้อน) |
 | **Stylometry** | `chapter_stylometry`, `note_stylometry` |
 | **Context Fabric** | `references` (ดัชนี derive จาก junction) |
 | **Sync** | `drive_credentials`, `drive_settings`, `drive_sync` |
@@ -500,7 +525,7 @@ L0  Entity Registry — abstraction เหนือ 56 ตาราง (resolve 
 6. ปล่อยให้ระบบดาวน์โหลดและติดตั้งทุกอย่างให้**อัตโนมัติ** (รัน `npm install`, รัน Database, รัน `db:push` ให้เสร็จสรรพ)
 7. เมื่อ Terminal แจ้งว่าโหลดเสร็จเรียบร้อย คุณสามารถสั่งรันเซิร์ฟเวอร์ได้ทันที:
    ```bash
-   npm run dev:all
+   npm run dev:all:linux
    ```
 
 ---
@@ -580,6 +605,8 @@ DATABASE_URL="postgresql://..."
 npm run db:push
 ```
 
+> ⚠️ ใช้ `db:push` อย่างเดียว — **ห้าม** `db:generate` + `db:migrate` (โฟลเดอร์ `migrations/` มี drift สะสม) · ถ้า `DATABASE_URL` ชี้ Neon ที่ใช้ร่วมกัน ทุกคำสั่งกระทบข้อมูลจริงทันที
+
 สร้างบัญชีเดโมสำหรับโหมดผู้เยี่ยมชม (ต้องตั้ง `DEMO_EMAIL` / `DEMO_PASSWORD` ใน `.env` ก่อน — รันซ้ำได้ ข้อมูลเดโมจะถูกรีเซ็ต):
 
 ```bash
@@ -590,11 +617,12 @@ npm run seed:demo
 
 ```bash
 # รันทั้ง Next.js + Python Service พร้อมกัน
-npm run dev:all
+npm run dev:all:windows      # หรือ dev:all:linux
+npm run dev:all:lite:windows # เครื่อง RAM น้อย (จำกัด heap 1GB)
 
 # หรือรันแยก
-npm run dev          # Next.js (port 3000)
-npm run dev:python   # Python Service (port 8000)
+npm run dev:windows          # Next.js (port 3000) — Mac/Linux ใช้ npm run dev
+npm run dev:python:windows   # Python Service (port 8000) — หรือ dev:python:linux
 ```
 
 - **Web App**: `http://localhost:3000`
@@ -605,7 +633,8 @@ npm run dev:python   # Python Service (port 8000)
 
 ```bash
 npm run typecheck   # tsc --noEmit
-npm run build        # next build
+npm run check       # ชุดตรวจ logic (*.check.ts) + เลขรุ่นใน changelog/package.json/README ต้องตรงกัน
+npm run build       # next build
 ```
 
 > TS error เก่า ~130 จุดที่เคยทำให้ CI แดงถาวรถูกไล่แก้หมดแล้ว — ตอนนี้ `typecheck` ควรได้ 0 error ถ้าเจอ error ให้ถือว่าเป็นของใหม่ที่เพิ่งทำพัง
@@ -614,6 +643,20 @@ npm run build        # next build
 #### หมายเหตุ: `pythonservice/discord_bot/`
 
 โฟลเดอร์นี้เป็น **repo แยกต่างหาก** ([Mythoria_bot](https://github.com/Nattachai802/Mythoria_bot)) ที่ deploy ผ่าน Render เอง ไม่ได้ผูกกับ repo นี้ — ถูกใส่ไว้ใน `.gitignore` แล้ว ไม่ต้อง `git add` โฟลเดอร์นี้จาก repo `mythoria`
+
+---
+
+## 🏷️ การออกรุ่น
+
+`lib/changelog.ts` คือแหล่งข้อมูลเดียวของประวัติรุ่น — **ไม่ต้องคิดเลขรุ่นเอง**
+
+1. ระหว่างทำงาน เพิ่มรายการไว้ในก้อนบนสุด `version: "next"`, `date: "today"` (ชนิด `added` / `changed` / `fixed` / `removed`)
+2. จะออกรุ่น: `npm run release -- --dry` ดูผลก่อน แล้ว `npm run release`
+3. ระบบคิดเลขแล้วเขียนลง `lib/changelog.ts`, `package.json`, README และ generate `CHANGELOG.md` ให้ตรงกัน
+
+รูปเลข `Major.Minor.Function.Bugfix` (เช่น `2.18.1.5594552342`):
+- **Minor** +1 เมื่อมี `added` · **Function** +1 เมื่อมีแค่ `changed`/`removed` · **Bugfix** เลขสุ่ม 10 หลัก เปลี่ยนทุกรุ่น · **Major** ต้องใส่ `bump: "major"` เอง
+- `package.json` เก็บแค่ 3 ส่วนแรก · ลำดับรุ่นดูจากตำแหน่งใน CHANGELOG ไม่ใช่การเทียบเลข
 
 ---
 
