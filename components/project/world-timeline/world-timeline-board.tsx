@@ -11,8 +11,9 @@ import type { LaneKind, TlItem, TlLane, WorldTimeline } from "@/lib/world-timeli
 import { formatWorldTime, gapLabel, type EraYear, type WorldCalendar } from "@/lib/world-calendar"
 import { moveLoreOnTimeline, moveSceneOnTimeline, type DropTarget } from "@/server/world-timeline"
 import { CalendarDialog } from "./calendar-dialog"
-import { LoreTimePopover } from "./lore-time-popover"
+import { LoreTimePopover, type Links, type StorylineOptions } from "./lore-time-popover"
 import { CreateEventDialog } from "./create-event-dialog"
+import { TreatmentSheet } from "./treatment-sheet"
 
 const LABEL_W = 176
 const ZOOM_MIN = 72
@@ -21,7 +22,7 @@ const DEFAULT_OPEN: LaneKind[] = ["plot", "lore"]
 const DRAG_MIME = "application/x-world-timeline"
 
 const KIND_LABEL: Record<TlItem["kind"], string> = {
-    scene: "ฉาก", lore: "lore", appear: "ปรากฏ", life: "เหตุการณ์ชีวิต", faction: "เข้ากลุ่ม", power: "ได้พลัง",
+    scene: "ฉาก", lore: "lore", appear: "ปรากฏ", event: "เหตุการณ์", life: "เหตุการณ์ชีวิต", faction: "เข้ากลุ่ม", power: "ได้พลัง",
 }
 
 /** ของที่ลากได้: lore กับฉาก (ตัวต้นทางจริง) — ของที่อนุมานจากบทลากไม่ได้ เพราะไม่ได้เก็บเวลาเอง */
@@ -34,9 +35,13 @@ interface Props {
     timelineEpoch: Date | null
     calendar: WorldCalendar
     eraYears: EraYear[]
+    loreLinks: Record<string, Links>
+    options: StorylineOptions
 }
 
-export function WorldTimelineBoard({ novelId, timeline, timelineEpoch, calendar, eraYears }: Props) {
+const NO_LINKS: Links = { characterIds: [], locationIds: [], sceneIds: [] }
+
+export function WorldTimelineBoard({ novelId, timeline, timelineEpoch, calendar, eraYears, loreLinks, options }: Props) {
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
     const openKey = `world-timeline:open:${novelId}`
@@ -119,6 +124,8 @@ export function WorldTimelineBoard({ novelId, timeline, timelineEpoch, calendar,
             <LoreTimePopover
                 novelId={novelId} loreId={sourceId} title={title} calendar={calendar} eras={eraYears}
                 current={c?.day != null && c.precision ? { day: c.day, precision: c.precision } : null}
+                links={loreLinks[sourceId] ?? NO_LINKS}
+                options={options}
             >
                 <button type="button" className="block w-full min-w-0 text-left hover:opacity-80">{node}</button>
             </LoreTimePopover>
@@ -153,6 +160,7 @@ export function WorldTimelineBoard({ novelId, timeline, timelineEpoch, calendar,
                 <Plus className="size-4" /> เหตุการณ์
             </button>
             <CalendarDialog novelId={novelId} calendar={calendar} eras={eraYears} />
+            <TreatmentSheet novelId={novelId} />
         </div>
     )
 
@@ -319,8 +327,9 @@ function LaneRows({ lane, colCount, colW, isOpen, onToggle, hrefOf, wrapLore, on
                             {[...byCol.entries()].map(([col, items]) => (
                                 <div key={col} className="flex min-w-0 flex-col gap-1 border-r border-border/40 p-1" style={{ gridColumn: col + 1 }}>
                                     {items.map(it => {
-                                        const chip = <ItemChip item={it} href={it.kind === "lore" ? null : hrefOf(it)} />
-                                        const body = it.kind === "lore" ? wrapLore(it.sourceId, it.title, it.col, chip) : chip
+                                        const isLore = it.kind === "lore" || it.kind === "event"
+                                        const chip = <ItemChip item={it} href={isLore ? null : hrefOf(it)} />
+                                        const body = isLore ? wrapLore(it.sourceId, it.title, it.col, chip) : chip
                                         // ลากได้เฉพาะในเลนต้นทาง (โครงเรื่อง/Lore) — เลนตัวละคร/สถานที่เป็นเงาของของเดียวกัน
                                         const canDrag = isDraggable(it.kind) && (lane.kind === "plot" || lane.kind === "lore")
                                         return (
@@ -347,7 +356,7 @@ function LaneRows({ lane, colCount, colW, isOpen, onToggle, hrefOf, wrapLore, on
 }
 
 function ItemChip({ item, href }: { item: TlItem; href: string | null }) {
-    const title = `${KIND_LABEL[item.kind]}: ${item.title}${item.approx ? " (ตำแหน่งประมาณจากบท)" : ""}${item.flashback ? " · เล่าย้อน" : ""}`
+    const title = `${KIND_LABEL[item.kind]}: ${item.title}${item.approx ? " (ตำแหน่งประมาณจากบท)" : ""}${item.flashback ? " · เล่าย้อน" : ""}${item.offscreen ? " · เกิดนอกจอ" : ""}`
     const body = (
         <span
             className={cn(
@@ -355,11 +364,14 @@ function ItemChip({ item, href }: { item: TlItem; href: string | null }) {
                 item.kind === "scene" && "bg-background",
                 item.kind === "lore" && "border-transparent bg-violet-500/12 text-violet-800 dark:text-violet-200",
                 item.kind === "appear" && "border-transparent bg-emerald-500/12 text-emerald-800 dark:text-emerald-200",
+                item.kind === "event" && "border-transparent bg-violet-500/12 text-violet-800 dark:text-violet-200",
+                item.offscreen && "border-dashed border-violet-500/50 bg-transparent",
                 item.approx && "border-dashed bg-transparent italic text-muted-foreground",
             )}
             title={title}
         >
             {item.kind === "lore" && <span aria-hidden>◆</span>}
+            {item.kind === "event" && <span aria-hidden>{item.offscreen ? "○" : "●"}</span>}
             {item.approx && <span aria-hidden>≈</span>}
             <span className="truncate">{item.title}</span>
             {item.flashback && <Undo2 className="size-3 shrink-0" aria-label="เล่าย้อน" />}

@@ -22,9 +22,9 @@ const input: WorldTimelineInput = {
         scene("s4", { chapterId: "ch3", orderIndex: 1 }),         // ไม่มีเวลาเลย → ถาด
     ],
     lore: [
-        { id: "war", title: "สงคราม", eraId: "fire", orderInEra: 0, day: null, precision: null, groupId: "g1", locationId: "castle" },
-        { id: "birth", title: "กำเนิดเวทย์", eraId: "old", orderInEra: 0, day: null, precision: null, groupId: null, locationId: null },
-        { id: "myth", title: "ตำนานลอย", eraId: null, orderInEra: 0, day: null, precision: null, groupId: null, locationId: null },
+        { id: "war", title: "สงคราม", eraId: "fire", orderInEra: 0, day: null, precision: null, groupId: "g1", locationId: "castle", characterIds: [], locationIds: [], sceneIds: [] },
+        { id: "birth", title: "กำเนิดเวทย์", eraId: "old", orderInEra: 0, day: null, precision: null, groupId: null, locationId: null, characterIds: [], locationIds: [], sceneIds: [] },
+        { id: "myth", title: "ตำนานลอย", eraId: null, orderInEra: 0, day: null, precision: null, groupId: null, locationId: null, characterIds: [], locationIds: [], sceneIds: [] },
     ],
     anchored: [
         { id: "le1", kind: "life", title: "ตาบอด", chapterId: "ch2", subLaneId: "alin" },
@@ -58,7 +58,7 @@ assert(alin.items.filter((i) => i.kind === "appear").length === 2, "อลิน
 const life = alin.items.find((i) => i.kind === "life")!;
 assert(life.col === colOf("plot", "scene:s2") && life.approx === true, "life event วางที่ฉากแรกของบท + ติด approx");
 assert(colOf("powers", "power:pw1") === colOf("plot", "scene:s3"), "ได้พลังวางที่ฉากแรกของบท 3");
-assert(colOf("locations", "lore:war:loc") === colOf("lore", "lore:war"), "lore ระดับสถานที่โผล่ในเลนสถานที่");
+assert(colOf("locations", "lore:war:loc:castle") === colOf("lore", "lore:war"), "lore ระดับสถานที่โผล่ในเลนสถานที่");
 
 const unplaced = new Set(t.unplaced.map((u) => u.id));
 assert(unplaced.has("s4") && unplaced.has("myth") && unplaced.has("fj1"), "ของที่ไม่มีเวลา/ยุค/บท ไปถาด");
@@ -76,9 +76,9 @@ const timed = buildWorldTimeline({
         scene("c", { chapterId: "ch3", eraId: "fire", storyTimeIndex: 1 }),   // ไม่มีเวลาจริง → ท้ายยุค
     ],
     lore: [
-        { id: "mid", title: "กลางเรื่อง", eraId: "fire", orderInEra: 0, day: 300, precision: "year", groupId: null, locationId: null },
-        { id: "head", title: "ไม่มีเวลา", eraId: "fire", orderInEra: 0, day: null, precision: null, groupId: null, locationId: null },
-        { id: "same", title: "วันเดียวกับ b", eraId: "fire", orderInEra: 0, day: 100, precision: "day", groupId: null, locationId: null },
+        { id: "mid", title: "กลางเรื่อง", eraId: "fire", orderInEra: 0, day: 300, precision: "year", groupId: null, locationId: null, characterIds: [], locationIds: [], sceneIds: [] },
+        { id: "head", title: "ไม่มีเวลา", eraId: "fire", orderInEra: 0, day: null, precision: null, groupId: null, locationId: null, characterIds: [], locationIds: [], sceneIds: [] },
+        { id: "same", title: "วันเดียวกับ b", eraId: "fire", orderInEra: 0, day: 100, precision: "day", groupId: null, locationId: null, characterIds: [], locationIds: [], sceneIds: [] },
     ],
     anchored: [],
 });
@@ -93,5 +93,16 @@ const flash = timed.lanes[0].subLanes.flatMap((s) => s.items).find((i) => i.sour
 assert(flash.flashback === true, "บท 2 เกิดวัน 100 ก่อนบท 1 (วัน 500) = เล่าย้อน");
 
 const loose = buildWorldTimeline({ ...input, scenes: [], anchored: [],
-    lore: [{ id: "free", title: "มีเวลาแต่ไม่มียุค", eraId: null, orderInEra: 0, day: 5, precision: "year", groupId: null, locationId: null }] });
+    lore: [{ id: "free", title: "มีเวลาแต่ไม่มียุค", eraId: null, orderInEra: 0, day: 5, precision: "year", groupId: null, locationId: null, characterIds: [], locationIds: [], sceneIds: [] }] });
 assert(loose.segments.length === 1 && loose.segments[0].name === "ไม่ระบุยุค" && loose.unplaced.length === 0, "lore มีเวลาแต่ไม่มียุค ขึ้นแกนในช่วงไม่ระบุยุค");
+
+// ── เฟส 3: storyline ──
+const story = buildWorldTimeline({ ...input, anchored: [],
+    lore: [
+        { id: "off", title: "ลอบสังหาร", eraId: "fire", orderInEra: 0, day: 10, precision: "day", groupId: null, locationId: null, characterIds: ["alin"], locationIds: ["castle"], sceneIds: [] },
+        { id: "on", title: "พิธีราชาภิเษก", eraId: "fire", orderInEra: 0, day: 20, precision: "day", groupId: null, locationId: null, characterIds: ["alin", "ghost"], locationIds: [], sceneIds: ["s1"] },
+    ] });
+const alinItems = story.lanes.find((l) => l.kind === "characters")!.subLanes.find((s) => s.id === "alin")!.items.filter((i) => i.kind === "event");
+assert(alinItems.length === 2, "เหตุการณ์ที่ตัวละครเกี่ยวข้องขึ้นเลนตัวละคร (ตัดคนที่ไม่มีในนิยาย)");
+assert(alinItems.find((i) => i.sourceId === "off")!.offscreen === true && !alinItems.find((i) => i.sourceId === "on")!.offscreen, "ไม่มีฉากเล่า = นอกจอ");
+assert(story.lanes.find((l) => l.kind === "locations")!.subLanes[0].items.some((i) => i.sourceId === "off"), "สถานที่เพิ่มเติมของเหตุการณ์ขึ้นเลนสถานที่");

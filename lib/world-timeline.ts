@@ -18,7 +18,7 @@
  */
 
 export type LaneKind = "plot" | "lore" | "characters" | "factions" | "powers" | "locations" | "items";
-export type ItemKind = "scene" | "lore" | "appear" | "life" | "faction" | "power";
+export type ItemKind = "scene" | "lore" | "appear" | "event" | "life" | "faction" | "power";
 
 export interface TlChapter { id: string; title: string; orderIndex: number }
 export interface TlEra { id: string; name: string; color: string | null; orderIndex: number | null }
@@ -50,6 +50,12 @@ export interface TlLore {
     precision: TlPrecision | null;
     groupId: string | null;
     locationId: string | null;
+    /** ผู้เกี่ยวข้อง (lore.related_character_ids) — โผล่เป็นเหตุการณ์ในเลนตัวละคร */
+    characterIds: string[];
+    /** สถานที่เพิ่มเติม (lore.related_location_ids) นอกจาก locationId */
+    locationIds: string[];
+    /** ฉากที่เล่าเหตุการณ์นี้ — ว่าง = เกิดนอกจอ */
+    sceneIds: string[];
 }
 
 /** ของที่ผูกกับบท — life event / เข้ากลุ่ม / ได้พลัง */
@@ -95,6 +101,8 @@ export interface TlItem {
     approx?: boolean;
     /** ฉากที่ถูกเล่าหลังฉากที่เกิดทีหลังมัน */
     flashback?: boolean;
+    /** เหตุการณ์ที่ไม่มีฉากไหนเล่า (เกิดนอกจอ) */
+    offscreen?: boolean;
     /** id ของต้นทาง (ฉาก/lore) เผื่อ UI ทำลิงก์ */
     sourceId: string;
 }
@@ -279,9 +287,18 @@ export function buildWorldTimeline(input: WorldTimelineInput): WorldTimeline {
         add("lore", gid, gid === "_none" ? "ไม่มีกลุ่ม" : name(input.loreGroups, gid, ""), {
             id: `lore:${l.id}`, kind: "lore", title: l.title, col, sourceId: l.id,
         });
-        if (l.locationId && input.locations.some((x) => x.id === l.locationId)) {
-            add("locations", l.locationId, name(input.locations, l.locationId, ""), {
-                id: `lore:${l.id}:loc`, kind: "lore", title: l.title, col, sourceId: l.id,
+        const offscreen = l.sceneIds.length === 0;
+        for (const lid of new Set([...(l.locationId ? [l.locationId] : []), ...l.locationIds])) {
+            if (!input.locations.some((x) => x.id === lid)) continue;
+            add("locations", lid, name(input.locations, lid, ""), {
+                id: `lore:${l.id}:loc:${lid}`, kind: "event", title: l.title, col, offscreen, sourceId: l.id,
+            });
+        }
+        // storyline: เหตุการณ์ที่ตัวละครเกี่ยวข้อง ● ถ้ามีฉากเล่า ○ ถ้าเกิดนอกจอ
+        for (const cid of new Set(l.characterIds)) {
+            if (!input.characters.some((c) => c.id === cid)) continue;
+            add("characters", cid, name(input.characters, cid, ""), {
+                id: `lore:${l.id}:char:${cid}`, kind: "event", title: l.title, col, offscreen, sourceId: l.id,
             });
         }
     }

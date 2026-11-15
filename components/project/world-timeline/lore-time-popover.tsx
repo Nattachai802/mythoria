@@ -11,7 +11,7 @@ import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
     AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { setLoreWorldTime } from "@/server/world-timeline"
+import { setLoreStoryline, setLoreWorldTime } from "@/server/world-timeline"
 import { deleteLoreEntry, updateLoreEntry } from "@/server/lore"
 import { eraForYear, fromDay, type EraYear, type TimePrecision, type WorldCalendar } from "@/lib/world-calendar"
 
@@ -23,8 +23,26 @@ interface Props {
     eras: EraYear[]
     /** เวลาที่ตั้งไว้แล้ว (เลขวัน + ความละเอียด) — null = ยังไม่ตั้ง */
     current: { day: number; precision: TimePrecision } | null
+    /** storyline ปัจจุบัน: ผู้เกี่ยวข้อง / สถานที่ / ฉากที่เล่า */
+    links: Links
+    options: StorylineOptions
     children: ReactNode
 }
+
+export interface Links { characterIds: string[]; locationIds: string[]; sceneIds: string[] }
+export interface StorylineOptions {
+    characters: { id: string; name: string }[]
+    locations: { id: string; name: string }[]
+    scenes: { id: string; name: string }[]
+}
+
+const LINK_GROUPS: { key: keyof Links; opt: keyof StorylineOptions; label: string; empty: string }[] = [
+    { key: "characterIds", opt: "characters", label: "ใครเกี่ยวข้อง", empty: "ยังไม่มีตัวละคร" },
+    { key: "locationIds", opt: "locations", label: "เกิดที่ไหน", empty: "ยังไม่มีสถานที่" },
+    { key: "sceneIds", opt: "scenes", label: "ฉากที่เล่าให้เห็น (ไม่เลือก = เกิดนอกจอ)", empty: "ยังไม่มีฉาก" },
+]
+
+const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every(x => b.includes(x))
 
 const PRECISION_LABEL: Record<TimePrecision, string> = { year: "รู้แค่ปี", month: "ถึงเดือน", day: "ถึงวัน" }
 const ABSOLUTE = "_abs"
@@ -33,12 +51,16 @@ const ABSOLUTE = "_abs"
  * ตั้งเวลาของ lore — กรอกเป็น "ปีของยุค" (คนเขียนคิดแบบนี้) แล้วแปลงเป็นปีสัมบูรณ์ตอนบันทึก
  * ยุคที่ยังไม่ตั้งปีเริ่มเลือกไม่ได้ เพราะแปลงเป็นปีสัมบูรณ์ไม่ได้ → ให้กรอกปีสัมบูรณ์แทน
  */
-export function LoreTimePopover({ novelId, loreId, title, calendar, eras, current, children }: Props) {
+export function LoreTimePopover({ novelId, loreId, title, calendar, eras, current, links, options, children }: Props) {
     const router = useRouter()
     const [open, setOpen] = useState(false)
     const [isPending, startTransition] = useTransition()
     const [name, setName] = useState(title)
     const [confirmDelete, setConfirmDelete] = useState(false)
+    const [picked, setPicked] = useState<Links>(links)
+    const togglePick = (key: keyof Links, id: string) =>
+        setPicked(p => ({ ...p, [key]: p[key].includes(id) ? p[key].filter(x => x !== id) : [...p[key], id] }))
+    const linksChanged = LINK_GROUPS.some(g => !sameSet(picked[g.key], links[g.key]))
     const datedEras = eras.filter(e => e.startYear != null)
 
     const init = () => {
@@ -57,13 +79,13 @@ export function LoreTimePopover({ novelId, loreId, title, calendar, eras, curren
 
     const save = (clear = false) => {
         const y = Number(form.year)
-        // ไม่กรอกปี = แก้แค่ชื่อ (ไม่แตะเวลาเดิม)
-        const nameOnly = !clear && form.year.trim() === ""
-        if (nameOnly && name.trim() === title) {
+        // ไม่กรอกปี = ไม่แตะเวลา (แก้แค่ชื่อ/ผู้เกี่ยวข้อง)
+        const skipTime = !clear && form.year.trim() === ""
+        if (skipTime && name.trim() === title && !linksChanged) {
             toast.error("กรอกปีก่อน")
             return
         }
-        if (!clear && !nameOnly && !Number.isFinite(y)) {
+        if (!clear && !skipTime && !Number.isFinite(y)) {
             toast.error("ปีไม่ถูกต้อง")
             return
         }
@@ -76,7 +98,14 @@ export function LoreTimePopover({ novelId, loreId, title, calendar, eras, curren
                     return
                 }
             }
-            if (nameOnly) {
+            if (linksChanged) {
+                const linked = await setLoreStoryline(loreId, picked)
+                if (!linked.success) {
+                    toast.error(linked.error ?? "บันทึกผู้เกี่ยวข้องไม่สำเร็จ")
+                    return
+                }
+            }
+            if (skipTime) {
                 setOpen(false)
                 router.refresh()
                 return
@@ -112,7 +141,7 @@ export function LoreTimePopover({ novelId, loreId, title, calendar, eras, curren
 
     return (
         <>
-        <Popover open={open} onOpenChange={o => { if (o) { setForm(init()); setName(title) } setOpen(o) }}>
+        <Popover open={open} onOpenChange={o => { if (o) { setForm(init()); setName(title); setPicked(links) } setOpen(o) }}>
             <PopoverTrigger asChild>{children}</PopoverTrigger>
             <PopoverContent className="w-80 space-y-3 text-sm">
                 <div className="space-y-1">
@@ -168,6 +197,28 @@ export function LoreTimePopover({ novelId, loreId, title, calendar, eras, curren
                         )}
                     </div>
                 )}
+
+                <details className="rounded-md border px-2 py-1.5">
+                    <summary className="cursor-pointer text-xs text-muted-foreground">
+                        storyline · {picked.characterIds.length} คน · {picked.sceneIds.length ? `${picked.sceneIds.length} ฉาก` : "นอกจอ"}
+                    </summary>
+                    <div className="mt-2 space-y-2">
+                        {LINK_GROUPS.map(g => (
+                            <fieldset key={g.key} className="space-y-1">
+                                <legend className="text-xs font-medium">{g.label}</legend>
+                                <div className="max-h-28 space-y-0.5 overflow-y-auto">
+                                    {options[g.opt].length === 0 && <p className="text-xs text-muted-foreground">{g.empty}</p>}
+                                    {options[g.opt].map(o => (
+                                        <label key={o.id} className="flex items-center gap-2 text-xs">
+                                            <input type="checkbox" checked={picked[g.key].includes(o.id)} onChange={() => togglePick(g.key, o.id)} />
+                                            <span className="truncate">{o.name}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </fieldset>
+                        ))}
+                    </div>
+                </details>
 
                 {eras.length > datedEras.length && (
                     <p className="text-xs text-muted-foreground">ยุคที่ยังไม่ตั้งปีเริ่มเลือกไม่ได้ ตั้งได้ที่ปุ่ม "ปฏิทินโลก"</p>

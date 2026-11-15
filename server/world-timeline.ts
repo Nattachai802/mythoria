@@ -2,7 +2,7 @@
 
 import { db } from "@/db/drizzle"
 import {
-    novels, chapters, eras, timelineEvents, loreEntries, loreGroups, characters, locations,
+    novels, chapters, eras, timelineEvents, locationConnections, loreEntries, loreGroups, characters, locations,
     factions, powers, characterLifeEvents, characterFactions, characterPowers,
 } from "@/db/schema"
 import { and, asc, eq, isNull } from "drizzle-orm"
@@ -10,6 +10,10 @@ import { revalidatePath } from "next/cache"
 import { STORY_DATE_MIN, STORY_DATE_MAX } from "@/lib/story-date"
 import { requireNovelAccess } from "@/lib/authz"
 import { createLoreEntry } from "@/server/lore"
+import { getConsistencyIssues, type ConsistencyIssue } from "@/server/consistency-guardian"
+import { detectTimelineConflicts, type TimelineConflict } from "@/server/timeline-conflicts"
+import { buildTravelMap } from "@/lib/travel-map"
+import { checkWorldConsistency, travelToDays, RULE_LABEL, type CsAppearance, type Finding } from "@/lib/world-consistency"
 import type { WorldTimelineInput, TlAnchored, TlPrecision } from "@/lib/world-timeline"
 import {
     normalizeCalendar, dayOf, fromDay, eraForYear, sceneDay, TIME_PRECISIONS,
@@ -51,6 +55,8 @@ export async function getWorldTimelineData(novelId: string): Promise<WorldTimeli
         db.select({
             id: loreEntries.id, title: loreEntries.title, eraId: loreEntries.eraId, orderInEra: loreEntries.orderInEra,
             worldTime: loreEntries.worldTime, worldTimePrecision: loreEntries.worldTimePrecision,
+            relatedCharacterIds: loreEntries.relatedCharacterIds, relatedLocationIds: loreEntries.relatedLocationIds,
+            sceneIds: loreEntries.sceneIds,
             groupId: loreEntries.groupId, locationId: loreEntries.locationId,
         }).from(loreEntries).where(eq(loreEntries.novelId, novelId)),
         db.select({ id: loreGroups.id, name: loreGroups.name }).from(loreGroups).where(eq(loreGroups.novelId, novelId)),
@@ -106,6 +112,7 @@ export async function getWorldTimelineData(novelId: string): Promise<WorldTimeli
             id: l.id, title: l.title, orderInEra: l.orderInEra, groupId: l.groupId, locationId: l.locationId,
             day: l.worldTime, precision: l.worldTime != null ? precisionOf(l.worldTimePrecision) : null,
             eraId: l.eraId ?? eraFromDay(l.worldTime),
+            characterIds: ids(l.relatedCharacterIds), locationIds: ids(l.relatedLocationIds), sceneIds: ids(l.sceneIds),
         })),
         anchored,
         characters: characterRows,
@@ -264,4 +271,137 @@ export async function createWorldEvent(
     if (target) return moveLoreOnTimeline(res.data.id, target)
     revalidateTimeline(novelId)
     return { success: true }
+}
+
+/**
+ * storyline ของเหตุการณ์: ใครเกี่ยวข้อง เกิดที่ไหน และฉากไหนเล่าให้เห็น (ว่าง = นอกจอ)
+ * กรอง id ที่ไม่ใช่ของนิยายนี้ทิ้ง — ห้ามผูกข้ามนิยาย
+ */
+export async function setLoreStoryline(
+    loreId: string,
+    links: { characterIds: string[]; locationIds: string[]; sceneIds: string[] },
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const [row] = await db.select({ novelId: loreEntries.novelId }).from(loreEntries).where(eq(loreEntries.id, loreId))
+        if (!row) return { success: false, error: "ไม่พบ lore นี้" }
+        await requireNovelAccess(row.novelId)
+        const [chars, locs, scenes] = await Promise.all([
+            db.select({ id: characters.id }).from(characters).where(eq(characters.novelId, row.novelId)),
+            db.select({ id: locations.id }).from(locations).where(eq(locations.novelId, row.novelId)),
+            db.select({ id: timelineEvents.id }).from(timelineEvents).where(eq(timelineEvents.novelId, row.novelId)),
+        ])
+        const keep = (want: string[], have: { id: string }[]) => {
+            const ok = new Set(have.map((h) => h.id))
+            return [...new Set(want)].filter((id) => ok.has(id))
+        }
+        await db.update(loreEntries).set({
+            relatedCharacterIds: keep(links.characterIds, chars),
+            relatedLocationIds: keep(links.locationIds, locs),
+            sceneIds: keep(links.sceneIds, scenes),
+        }).where(eq(loreEntries.id, loreId))
+        revalidateTimeline(row.novelId)
+        return { success: true }
+    } catch (e) {
+        console.error("[world-timeline] setLoreStoryline:", e)
+        return { success: false, error: "บันทึกผู้เกี่ยวข้องไม่สำเร็จ" }
+    }
+}
+
+export interface TreatmentReport {
+    findings: Finding[]
+    /** ตัวตรวจไหนรันไม่สำเร็จ — แสดงให้ผู้ใช้รู้ ไม่ปล่อยให้คิดว่าไม่มีปัญหา */
+    failed: string[]
+}
+
+/**
+ * Treatment: รวมผลตรวจความสมเหตุสมผลทุกตัวไว้ที่เดียว (กดตรวจเอง ไม่ใช้ AI)
+ * - กฎบนแกนเวลาโลก (lib/world-consistency.ts)
+ * - Consistency Guardian เดิม (ตายแล้วยังปรากฏ ระดับบท)
+ * - timeline conflicts เดิม (เดินทางไม่ทัน จากสถานะตัวละครในตอน)
+ */
+export async function getTreatmentReport(novelId: string): Promise<TreatmentReport> {
+    await requireNovelAccess(novelId)
+    const failed: string[] = []
+
+    const [data, loreEraRows, connRows, guardian, conflicts] = await Promise.all([
+        getWorldTimelineData(novelId),
+        db.select({ id: loreEntries.id, eraId: loreEntries.eraId }).from(loreEntries).where(eq(loreEntries.novelId, novelId)),
+        db.select({
+            sourceLocationId: locationConnections.sourceLocationId, targetLocationId: locationConnections.targetLocationId,
+            isBidirectional: locationConnections.isBidirectional, travelTime: locationConnections.travelTime,
+            travelTimeUnit: locationConnections.travelTimeUnit, travelMethod: locationConnections.travelMethod,
+        }).from(locationConnections)
+            .innerJoin(locations, eq(locationConnections.sourceLocationId, locations.id))
+            .where(eq(locations.novelId, novelId)),
+        getConsistencyIssues(novelId).catch(() => ({ success: false, issues: [] as ConsistencyIssue[] })),
+        detectTimelineConflicts(novelId).catch(() => ({ success: false, conflicts: [] as TimelineConflict[] })),
+    ])
+    const { input, calendar, eraYears } = data
+
+    const sceneRef = (id: string, title: string) => ({ kind: "scene" as const, id, title })
+    const loreRef = (id: string, title: string) => ({ kind: "lore" as const, id, title })
+
+    const appearances: CsAppearance[] = []
+    for (const s of input.scenes) {
+        if (s.day == null) continue
+        for (const cid of new Set([...s.characterIds, ...(s.povCharacterId ? [s.povCharacterId] : [])])) {
+            appearances.push({ characterId: cid, day: s.day, locationIds: s.locationIds, ref: sceneRef(s.id, s.title) })
+        }
+    }
+    for (const l of input.lore) {
+        if (l.day == null || l.precision !== "day") continue // รู้แค่ปี/เดือน = เทียบวันกับใครไม่ได้
+        const locIds = [...new Set([...(l.locationId ? [l.locationId] : []), ...l.locationIds])]
+        for (const cid of new Set(l.characterIds)) {
+            appearances.push({ characterId: cid, day: l.day, locationIds: locIds, ref: loreRef(l.id, l.title) })
+        }
+    }
+
+    const sceneById = new Map(input.scenes.map((s) => [s.id, s]))
+    const sceneLinks = input.lore.flatMap((l) => l.sceneIds.flatMap((sid) => {
+        const s = sceneById.get(sid)
+        return s ? [{ scene: sceneRef(s.id, s.title), sceneDay: s.day, lore: loreRef(l.id, l.title), loreDay: l.day }] : []
+    }))
+
+    const explicitEra = new Map(loreEraRows.map((r) => [r.id, r.eraId]))
+    const eraName = (id: string | null | undefined) => {
+        const e = id ? eraYears.find((x) => x.id === id) : undefined
+        return e ? { id: e.id, name: e.name } : null
+    }
+    const loreEras = input.lore.filter((l) => l.day != null).map((l) => ({
+        lore: loreRef(l.id, l.title),
+        setEra: eraName(explicitEra.get(l.id)),
+        timeEra: eraName(eraForYear(eraYears, fromDay(calendar, l.day!).year)?.id),
+    }))
+
+    const travelDays: Record<string, number> = {}
+    for (const [key, info] of buildTravelMap(connRows)) {
+        const days = travelToDays(info.travelTime, info.travelTimeUnit)
+        if (days != null) travelDays[key.replace(">", "|")] = days
+    }
+
+    const findings = checkWorldConsistency({
+        characters: input.characters, locations: input.locations, appearances, sceneLinks, loreEras, travelDays,
+    })
+
+    if (guardian.success) {
+        for (const i of guardian.issues) {
+            findings.push({
+                id: `guardian:${i.id}`, rule: "dead-reappears", severity: i.severity, message: i.message,
+                refs: [
+                    { kind: "character", id: i.characterId, title: i.characterName },
+                    { kind: "chapter", id: i.appearChapter.id, title: i.appearChapter.title },
+                ],
+            })
+        }
+    } else failed.push(RULE_LABEL["dead-reappears"])
+
+    if (conflicts.success) {
+        conflicts.conflicts.forEach((c, n) => findings.push({
+            id: `states:${c.characterId}:${n}`, rule: "travel-states", severity: c.severity, message: c.message,
+            refs: [{ kind: "character", id: c.characterId, title: c.characterName }],
+        }))
+    } else failed.push(RULE_LABEL["travel-states"])
+
+    findings.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === "error" ? -1 : 1))
+    return { findings, failed }
 }

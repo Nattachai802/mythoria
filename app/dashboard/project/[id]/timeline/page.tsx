@@ -15,6 +15,16 @@ export default async function WorldTimelinePage({ params }: Props) {
 
     const novel = novelResult.novel
     const timeline = buildWorldTimeline(data.input)
+    const loreLinks = Object.fromEntries(data.input.lore.map(l => [l.id, {
+        characterIds: l.characterIds,
+        locationIds: [...new Set([...(l.locationId ? [l.locationId] : []), ...l.locationIds])],
+        sceneIds: l.sceneIds,
+    }]))
+    const options = {
+        characters: data.input.characters,
+        locations: data.input.locations,
+        scenes: data.input.scenes.map(sc => ({ id: sc.id, name: sc.title })),
+    }
 
     return (
         <div className="flex h-[calc(100vh-4rem)] flex-col">
@@ -28,6 +38,8 @@ export default async function WorldTimelinePage({ params }: Props) {
             <WorldTimelineBoard novelId={id} timeline={timeline} timelineEpoch={novel.timelineEpoch ?? null}
                 calendar={data.calendar}
                 eraYears={data.eraYears}
+                loreLinks={loreLinks}
+                options={options}
             />
         </div>
     )

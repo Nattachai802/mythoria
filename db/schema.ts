@@ -1098,6 +1098,7 @@ export const loreEntries = pgTable("lore_entries", {
   worldTime: integer("world_time"),
   worldTimeEnd: integer("world_time_end"), // มีค่า = เหตุการณ์เป็นช่วง (เช่น สงคราม 100 ปี)
   worldTimePrecision: text("world_time_precision"), // "year" | "month" | "day"
+  sceneIds: jsonb("scene_ids"), // ฉาก (timeline_events.id) ที่เล่าเหตุการณ์นี้ให้คนอ่านเห็น — ว่าง = เกิดนอกจอ (storyline เฟส 3)
   era: text("era"), // DEPRECATED: เก็บไว้สำหรับ migration เท่านั้น
 
   novelId: text("novel_id")
