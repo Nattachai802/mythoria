@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, ChevronDown } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { FactionIssue } from "@/lib/faction-checks";
 import { cn } from "@/lib/utils";
 
@@ -32,7 +33,13 @@ export function FactionChecksPanel({ issues, novelId, factionName, characterName
     const hiddenCount = rest.length - shown.length;
 
     return (
-        <div className="border-b border-steel-800/60 px-6 py-3 text-sm">
+        <Popover>
+          <PopoverTrigger asChild>
+            <button type="button" className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-[var(--forge-amber)] hover:bg-muted cursor-pointer shrink-0">
+                <AlertTriangle className="h-4 w-4" /> {issues.length}<span className="sr-only"> ข้อควรตรวจ</span>
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-[26rem] max-h-[60vh] overflow-y-auto text-sm">
             <div className="flex items-center gap-2 text-[var(--forge-amber)]">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
                 <span className="font-medium">ตรวจระบบฝ่าย</span>
@@ -64,6 +71,7 @@ export function FactionChecksPanel({ issues, novelId, factionName, characterName
                     {all ? "ย่อ" : "ดูทั้งหมด"}<ChevronDown className={cn("h-3 w-3 transition-transform duration-200", all && "rotate-180")} />
                 </button>
             )}
-        </div>
+          </PopoverContent>
+        </Popover>
     );
 }

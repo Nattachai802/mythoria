@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Maximize2, Minus, Plus } from "lucide-react";
 import type { Defection } from "@/lib/faction-checks";
 
 type F = { id: string; name: string; color?: string | null; parentFactionId?: string | null; status?: string | null; statusTimeline?: unknown; members?: { characterId: string }[] };
@@ -40,12 +41,32 @@ export function FactionMap({ factions, rels, defections = [], charName, statusOf
     const [moved, setMoved] = useState<Record<string, P>>({});
     const svgRef = useRef<SVGSVGElement>(null);
     const drag = useRef<{ id: string; dx: number; dy: number; moved: boolean } | null>(null);
+    // กล้อง: viewBox = (cam.x, cam.y, W/k, H/k) · ล้อเมาส์ = ซูมรอบเคอร์เซอร์ · ลากพื้นที่ว่าง = เลื่อน
+    const [cam, setCam] = useState({ x: 0, y: 0, k: 1 });
+    const pan = useRef<{ sx: number; sy: number; cx: number; cy: number } | null>(null);
+    const zoomAt = (px: number, py: number, f: number) => setCam((c) => {
+        const k = Math.max(0.4, Math.min(4, c.k * f));
+        return { k, x: px - (px - c.x) * (c.k / k), y: py - (py - c.y) * (c.k / k) };
+    });
+    useEffect(() => {
+        const el = svgRef.current;
+        if (!el) return;
+        // wheel ต้อง passive:false ถึงจะกันหน้าเลื่อนได้ — React onWheel เป็น passive
+        const onWheel = (e: WheelEvent) => {
+            e.preventDefault();
+            const pt = el.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+            const q = pt.matrixTransform(el.getScreenCTM()!.inverse());
+            zoomAt(q.x, q.y, e.deltaY < 0 ? 1.15 : 1 / 1.15);
+        };
+        el.addEventListener("wheel", onWheel, { passive: false });
+        return () => el.removeEventListener("wheel", onWheel);
+    }, []);
 
     // วางเริ่มต้นเป็นวงรีรอบกลาง (คนเดียว = ตรงกลาง)
     const pos = new Map<string, P>();
     roots.forEach((r, i) => {
         const a = -Math.PI / 2 + (i * Math.PI * 2) / roots.length;
-        const base = roots.length === 1 ? { x: W / 2, y: H / 2 } : { x: W / 2 + Math.cos(a) * 270, y: H / 2 + Math.sin(a) * 170 };
+        const base = roots.length === 1 ? { x: W / 2, y: H / 2 } : { x: W / 2 + Math.cos(a) * Math.min(340, 140 + roots.length * 14), y: H / 2 + Math.sin(a) * Math.min(210, 90 + roots.length * 9) };
         pos.set(r.id, moved[r.id] ?? base);
     });
     const orbit = new Map<string, P & { root: string }>();
@@ -78,13 +99,24 @@ export function FactionMap({ factions, rels, defections = [], charName, statusOf
         const p = toSvg(e), c = pos.get(id)!;
         drag.current = { id, dx: p.x - c.x, dy: p.y - c.y, moved: false };
         (e.target as Element).setPointerCapture(e.pointerId);
+        e.stopPropagation();
+    };
+    const bgDown = (e: React.PointerEvent<SVGSVGElement>) => {
+        pan.current = { sx: e.clientX, sy: e.clientY, cx: cam.x, cy: cam.y };
+        e.currentTarget.setPointerCapture(e.pointerId);
+    };
+    const bgMove = (e: React.PointerEvent<SVGSVGElement>) => {
+        const p = pan.current;
+        if (!p) return;
+        const scale = (W / cam.k) / e.currentTarget.getBoundingClientRect().width;
+        setCam((c) => ({ ...c, x: p.cx - (e.clientX - p.sx) * scale, y: p.cy - (e.clientY - p.sy) * scale }));
     };
     const onMove = (e: React.PointerEvent) => {
         const d = drag.current;
         if (!d) return;
         const p = toSvg(e);
         d.moved = true;
-        setMoved((m) => ({ ...m, [d.id]: { x: Math.max(40, Math.min(W - 40, p.x - d.dx)), y: Math.max(50, Math.min(H - 40, p.y - d.dy)) } }));
+        setMoved((m) => ({ ...m, [d.id]: { x: p.x - d.dx, y: p.y - d.dy } }));
     };
     const onUp = (id: string) => {
         if (drag.current && !drag.current.moved) onSelect(id);
@@ -104,7 +136,10 @@ export function FactionMap({ factions, rels, defections = [], charName, statusOf
     return (
         <div className="h-full flex gap-4 p-4">
             <div className="flex-1 min-w-0 flex flex-col gap-2">
-                <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="w-full chamfered-sm border border-steel-800 bg-card/40 touch-none select-none"
+                <div className="relative">
+                <svg ref={svgRef} viewBox={`${cam.x} ${cam.y} ${W / cam.k} ${H / cam.k}`}
+                    className="w-full h-[min(68vh,640px)] rounded-md border border-border bg-card/40 touch-none select-none cursor-grab active:cursor-grabbing"
+                    onPointerDown={bgDown} onPointerMove={bgMove} onPointerUp={() => (pan.current = null)}
                     role="img" aria-label="แผนที่ความสัมพันธ์ระหว่างฝ่าย">
                     <defs>
                         <marker id="defect-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -158,6 +193,12 @@ export function FactionMap({ factions, rels, defections = [], charName, statusOf
                         );
                     })}
                 </svg>
+                <div className="absolute right-2 top-2 flex flex-col rounded-md border border-border bg-card/90 backdrop-blur-sm">
+                    <button type="button" aria-label="ซูมเข้า" onClick={() => zoomAt(cam.x + W / cam.k / 2, cam.y + H / cam.k / 2, 1.25)} className="p-2 hover:bg-muted cursor-pointer"><Plus className="h-4 w-4" /></button>
+                    <button type="button" aria-label="ซูมออก" onClick={() => zoomAt(cam.x + W / cam.k / 2, cam.y + H / cam.k / 2, 0.8)} className="p-2 hover:bg-muted cursor-pointer"><Minus className="h-4 w-4" /></button>
+                    <button type="button" aria-label="พอดีจอ" onClick={() => setCam({ x: 0, y: 0, k: 1 })} className="p-2 hover:bg-muted cursor-pointer"><Maximize2 className="h-4 w-4" /></button>
+                </div>
+                </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
                     {used.map((t) => (
                         <span key={t} className="inline-flex items-center gap-1.5">
@@ -166,7 +207,7 @@ export function FactionMap({ factions, rels, defections = [], charName, statusOf
                         </span>
                     ))}
                     {defections.length > 0 && <span className="text-[var(--forge-gold)]">→ ย้ายฝ่าย</span>}
-                    <span className="ml-auto">วงใหญ่ = ฝ่ายใหญ่ (ตัวเลข = สมาชิก) · วงเล็ก = กลุ่มย่อย  · จาง = ยุบแล้ว · ลากวงใหญ่ได้</span>
+                    <span className="ml-auto">วงใหญ่ = ฝ่ายใหญ่ (ตัวเลข = สมาชิก) · วงเล็ก = กลุ่มย่อย  · จาง = ยุบแล้ว · ลากวงใหญ่ย้ายได้ · ลากพื้นที่ว่างเลื่อนแผนที่ · ล้อเมาส์ซูม</span>
                 </div>
             </div>
 

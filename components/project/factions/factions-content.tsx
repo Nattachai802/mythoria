@@ -454,8 +454,8 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
             <div className="h-full flex relative">
                 {/* Board */}
                 <div className="flex-1 overflow-x-auto overflow-y-hidden flex flex-col">
-                    <div className="flex items-center justify-between gap-3 px-6 py-3 border-b border-steel-800/60">
-                        <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-4 px-6 py-3 border-b border-steel-800/60">
+                        <div className="flex items-center gap-3 shrink-0">
                             <span className="text-sm text-muted-foreground tabular-nums">
                                 <span className="text-base font-bold text-[var(--forge-amber)] mr-1 align-middle">{String(factions.length).padStart(2, "0")}</span>ฝ่าย
                             </span>
@@ -477,28 +477,28 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                                 </button>
                             )}
                         </div>
-                        <Button size="sm" className="h-8 gap-1.5 text-xs chamfered-sm" onClick={openCreate}>
+                        {sortedChapters.length > 0 && (
+                            <div className="flex-1 min-w-0 flex items-center gap-3">
+                                <span className="text-sm text-muted-foreground shrink-0">ดู ณ บท</span>
+                                <input type="range" min={0} max={sortedChapters.length} step={1} aria-label="ดูฝ่าย ณ บท"
+                                    value={chapterId === "all" ? 0 : sortedChapters.findIndex((c) => c.id === chapterId) + 1}
+                                    onChange={(e) => { const i = Number(e.target.value); setChapterId(i === 0 ? "all" : sortedChapters[i - 1].id); }}
+                                    className="flex-1 h-1 accent-[var(--forge-amber)] cursor-pointer" />
+                                <span className={cn("text-sm tabular-nums shrink-0 max-w-[12rem] truncate", chapterId === "all" ? "text-muted-foreground" : "text-foreground font-medium")}>
+                                    {chapterId === "all" ? "ทุกบท" : (() => { const c = sortedChapters.find((x) => x.id === chapterId); return c ? `บท ${c.orderIndex} · ${c.title}` : "—"; })()}
+                                </span>
+                                {chapterId !== "all" && (
+                                    <button type="button" onClick={() => setChapterId("all")} aria-label="ดูทุกบท" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-3.5 w-3.5" /></button>
+                                )}
+                            </div>
+                        )}
+                        <FactionChecksPanel issues={issues} novelId={novelId} onSelect={openById}
+                            factionName={(id) => nameById(id) ?? "—"} characterName={(id) => charName(id) ?? "—"} />
+
+                        <Button size="sm" className="ml-auto h-8 gap-1.5 text-xs chamfered-sm shrink-0" onClick={openCreate}>
                             <Plus className="h-3.5 w-3.5" /> เพิ่มฝ่าย
                         </Button>
                     </div>
-
-                    {sortedChapters.length > 0 && (
-                        <div className="flex items-center gap-3 px-6 py-2.5 border-b border-steel-800/60">
-                            <span className="text-sm text-muted-foreground shrink-0">ดู ณ บท</span>
-                            <input type="range" min={0} max={sortedChapters.length} step={1} aria-label="ดูฝ่าย ณ บท"
-                                value={chapterId === "all" ? 0 : sortedChapters.findIndex((c) => c.id === chapterId) + 1}
-                                onChange={(e) => { const i = Number(e.target.value); setChapterId(i === 0 ? "all" : sortedChapters[i - 1].id); }}
-                                className="flex-1 h-1 accent-[var(--forge-amber)] cursor-pointer" />
-                            <span className={cn("text-sm tabular-nums shrink-0 min-w-[9rem] text-right truncate", chapterId === "all" ? "text-muted-foreground" : "text-foreground font-medium")}>
-                                {chapterId === "all" ? "ทุกบท" : (() => { const c = sortedChapters.find((x) => x.id === chapterId); return c ? `บท ${c.orderIndex} · ${c.title}` : "—"; })()}
-                            </span>
-                            {chapterId !== "all" && (
-                                <button type="button" onClick={() => setChapterId("all")} aria-label="ดูทุกบท" className="text-muted-foreground hover:text-foreground cursor-pointer"><X className="h-3.5 w-3.5" /></button>
-                            )}
-                        </div>
-                    )}
-                    <FactionChecksPanel issues={issues} novelId={novelId} onSelect={openById}
-                        factionName={(id) => nameById(id) ?? "—"} characterName={(id) => charName(id) ?? "—"} />
 
                     {/* Preset Manager Panel */}
                     {showPresetManager && (
