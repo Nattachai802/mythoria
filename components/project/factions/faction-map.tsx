@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Maximize2, Minus, Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { Defection } from "@/lib/faction-checks";
 
 type F = { id: string; name: string; color?: string | null; parentFactionId?: string | null; status?: string | null; statusTimeline?: unknown; members?: { characterId: string }[] };
@@ -48,6 +49,23 @@ export function FactionMap({ factions, rels, defections = [], charName, statusOf
         const k = Math.max(0.4, Math.min(4, c.k * f));
         return { k, x: px - (px - c.x) * (c.k / k), y: py - (py - c.y) * (c.k / k) };
     });
+    // ปุ่มซูม/พอดีจอ: เลื่อนกล้องแบบนุ่ม ~220ms (ล้อเมาส์ไม่ต้อง — ทีละนิดอยู่แล้ว)
+    const camRef = useRef(cam);
+    useEffect(() => { camRef.current = cam; }, [cam]);
+    const glide = (to: { x: number; y: number; k: number }) => {
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setCam(to); return; }
+        const from = camRef.current, t0 = performance.now();
+        const step = (t: number) => {
+            const u = Math.min(1, (t - t0) / 220), e = 1 - Math.pow(1 - u, 3);
+            setCam({ x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e, k: from.k + (to.k - from.k) * e });
+            if (u < 1) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+    };
+    const zoomBtn = (f: number) => {
+        const c = camRef.current, px = c.x + W / c.k / 2, py = c.y + H / c.k / 2, k = Math.max(0.4, Math.min(4, c.k * f));
+        glide({ k, x: px - (px - c.x) * (c.k / k), y: py - (py - c.y) * (c.k / k) });
+    };
     useEffect(() => {
         const el = svgRef.current;
         if (!el) return;
@@ -128,6 +146,16 @@ export function FactionMap({ factions, rels, defections = [], charName, statusOf
 
     const sel = selectedId ? byId.get(selectedId) : undefined;
     const selRels = sel ? rels.filter((r) => r.sourceFactionId === sel.id || r.targetFactionId === sel.id) : [];
+    // โฟกัส: เลือกฝ่ายแล้ว ฝ่ายที่ไม่เกี่ยว (ไม่ใช่ตัวเอง แม่ ลูก หรือคู่ความสัมพันธ์) จางลง
+    const related = new Set<string>();
+    if (sel) {
+        related.add(sel.id);
+        if (sel.parentFactionId) related.add(sel.parentFactionId);
+        subtree(sel.id).forEach((x) => related.add(x));
+        selRels.forEach((r) => { related.add(r.sourceFactionId); related.add(r.targetFactionId); });
+    }
+    const dim = (id: string) => !!sel && !related.has(id);
+    const NODE = "origin-center [transform-box:fill-box] transition-[transform,stroke,fill-opacity] duration-200 ease-out motion-reduce:transition-none";
     const look = (f: F) => {
         const st = statusOf?.(f);
         return { st, hidden: st?.key === "hidden" || st?.key === "secret", dead: st?.key === "disbanded" };
@@ -148,7 +176,10 @@ export function FactionMap({ factions, rels, defections = [], charName, statusOf
                     </defs>
                     {lines.map((l) => {
                         const s = REL_STYLE[l.type] ?? REL_STYLE.neutral;
-                        return <line key={l.id} x1={l.a.x} y1={l.a.y} x2={l.b.x} y2={l.b.y} stroke={s.stroke} strokeWidth={2} strokeDasharray={s.dash} opacity={0.75} />;
+                        const r0 = rels.find((x) => x.id === l.id);
+                        const off = !!sel && !!r0 && r0.sourceFactionId !== sel.id && r0.targetFactionId !== sel.id;
+                        return <line key={l.id} x1={l.a.x} y1={l.a.y} x2={l.b.x} y2={l.b.y} stroke={s.stroke} strokeWidth={off ? 2 : sel ? 3 : 2} strokeDasharray={s.dash}
+                            className="transition-[opacity,stroke-width] duration-300 motion-safe:animate-in motion-safe:fade-in" opacity={off ? 0.12 : 0.75} />;
                     })}
                     {defections.map((d, i) => {
                         const p = at(d.fromFactionId), q = at(d.toFactionId);
@@ -166,10 +197,10 @@ export function FactionMap({ factions, rels, defections = [], charName, statusOf
                         return kids(r.id).map((k) => {
                             const p = orbit.get(k.id)!, { hidden, dead } = look(k);
                             return (
-                                <g key={k.id} role="button" tabIndex={0} aria-label={`${k.name} กลุ่มย่อยของ ${r.name}`} className="cursor-pointer focus:outline-none"
-                                    opacity={dead ? 0.35 : 1} onClick={() => onSelect(k.id)} onKeyDown={keySelect(k.id)}>
+                                <g key={k.id} role="button" tabIndex={0} aria-label={`${k.name} กลุ่มย่อยของ ${r.name}`} className="group cursor-pointer focus:outline-none transition-opacity duration-300"
+                                    opacity={(dead ? 0.35 : 1) * (dim(k.id) ? 0.3 : 1)} onPointerDown={(e) => e.stopPropagation()} onClick={() => onSelect(k.id)} onKeyDown={keySelect(k.id)}>
                                     <line x1={c.x} y1={c.y} x2={p.x} y2={p.y} stroke={color} strokeWidth={1} opacity={0.4} />
-                                    <circle cx={p.x} cy={p.y} r={11} fill={k.color ?? color} fillOpacity={hidden ? 0.4 : 0.9}
+                                    <circle cx={p.x} cy={p.y} r={11} className={cn(NODE, "group-hover:scale-125 group-focus-visible:scale-125", selectedId === k.id && "scale-125")} fill={k.color ?? color} fillOpacity={hidden ? 0.4 : 0.9}
                                         stroke={selectedId === k.id ? "var(--forge-gold)" : "transparent"} strokeWidth={3} strokeDasharray={hidden ? "3 3" : undefined} />
                                     <text x={p.x} y={p.y + 25} textAnchor="middle" className="fill-muted-foreground" style={{ fontSize: 11 }}>
                                         {k.name.length > 12 ? k.name.slice(0, 11) + "…" : k.name}
@@ -181,9 +212,13 @@ export function FactionMap({ factions, rels, defections = [], charName, statusOf
                     {roots.map((r) => {
                         const c = pos.get(r.id)!, n = count(r.id), rad = radius(n), color = r.color ?? "#c2703d", { hidden, dead } = look(r);
                         return (
-                            <g key={r.id} role="button" tabIndex={0} aria-label={`${r.name} สมาชิก ${n} คน`} className="cursor-grab active:cursor-grabbing focus:outline-none"
-                                opacity={dead ? 0.4 : 1} onPointerDown={(e) => onDown(e, r.id)} onPointerMove={onMove} onPointerUp={() => onUp(r.id)} onKeyDown={keySelect(r.id)}>
-                                <circle cx={c.x} cy={c.y} r={rad} fill={color} fillOpacity={hidden ? 0.45 : 0.9}
+                            <g key={r.id} role="button" tabIndex={0} aria-label={`${r.name} สมาชิก ${n} คน`} className="group cursor-grab active:cursor-grabbing focus:outline-none transition-opacity duration-300 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500"
+                                opacity={(dead ? 0.4 : 1) * (dim(r.id) ? 0.3 : 1)} onPointerDown={(e) => onDown(e, r.id)} onPointerMove={onMove} onPointerUp={() => onUp(r.id)} onKeyDown={keySelect(r.id)}>
+                                {selectedId === r.id && (
+                                    <circle cx={c.x} cy={c.y} r={rad + 6} fill="none" stroke="var(--forge-gold)" strokeWidth={2}
+                                        className="origin-center [transform-box:fill-box] motion-safe:animate-ping pointer-events-none" style={{ animationDuration: "1.8s", animationIterationCount: 2 }} />
+                                )}
+                                <circle cx={c.x} cy={c.y} r={rad} className={cn(NODE, "group-hover:scale-[1.06] group-focus-visible:scale-[1.06] group-active:scale-95")} fill={color} fillOpacity={hidden ? 0.45 : 0.9}
                                     stroke={selectedId === r.id ? "var(--forge-gold)" : hidden ? color : "transparent"} strokeWidth={3} strokeDasharray={hidden ? "5 4" : undefined} />
                                 <text x={c.x} y={c.y + 5} textAnchor="middle" className="fill-white font-bold pointer-events-none" style={{ fontSize: 14 }}>{n}</text>
                                 <text x={c.x} y={c.y - rad - 9} textAnchor="middle" className="fill-foreground font-bold pointer-events-none" style={{ fontSize: 14 }}>
@@ -194,9 +229,9 @@ export function FactionMap({ factions, rels, defections = [], charName, statusOf
                     })}
                 </svg>
                 <div className="absolute right-2 top-2 flex flex-col rounded-md border border-border bg-card/90 backdrop-blur-sm">
-                    <button type="button" aria-label="ซูมเข้า" onClick={() => zoomAt(cam.x + W / cam.k / 2, cam.y + H / cam.k / 2, 1.25)} className="p-2 hover:bg-muted cursor-pointer"><Plus className="h-4 w-4" /></button>
-                    <button type="button" aria-label="ซูมออก" onClick={() => zoomAt(cam.x + W / cam.k / 2, cam.y + H / cam.k / 2, 0.8)} className="p-2 hover:bg-muted cursor-pointer"><Minus className="h-4 w-4" /></button>
-                    <button type="button" aria-label="พอดีจอ" onClick={() => setCam({ x: 0, y: 0, k: 1 })} className="p-2 hover:bg-muted cursor-pointer"><Maximize2 className="h-4 w-4" /></button>
+                    <button type="button" aria-label="ซูมเข้า" onClick={() => zoomBtn(1.25)} className="p-2 hover:bg-muted cursor-pointer"><Plus className="h-4 w-4" /></button>
+                    <button type="button" aria-label="ซูมออก" onClick={() => zoomBtn(0.8)} className="p-2 hover:bg-muted cursor-pointer"><Minus className="h-4 w-4" /></button>
+                    <button type="button" aria-label="พอดีจอ" onClick={() => glide({ x: 0, y: 0, k: 1 })} className="p-2 hover:bg-muted cursor-pointer"><Maximize2 className="h-4 w-4" /></button>
                 </div>
                 </div>
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
