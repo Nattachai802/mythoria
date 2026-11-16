@@ -1,42 +1,30 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Outfit, JetBrains_Mono, Sarabun } from "next/font/google";
+import localFont from "next/font/local";
 import { ThemeProvider } from "@/components/theme-provider"
 import { KeyboardShortcutsProvider } from "@/components/keyboard-shortcuts-provider"
 import "./globals.css";
 import { Toaster } from "sonner";
 
-// Primary body font - clean and modern
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-// Monospace for code/technical elements
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
+// ฟอนต์เก็บในโปรเจกต์ (app/fonts) — เดิมใช้ next/font/google ซึ่งต้องโหลดจากเน็ตตอน build แล้วพังบ่อย
+const geistSans = localFont({ src: "./fonts/geist-sans.woff2", variable: "--font-geist-sans", weight: "100 900" });
+const geistMono = localFont({ src: "./fonts/geist-mono.woff2", variable: "--font-geist-mono", weight: "100 900" });
 // Industrial display font for headings (Forge Mode)
-const outfit = Outfit({
-  variable: "--font-outfit",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-});
-
+const outfit = localFont({ src: "./fonts/outfit.woff2", variable: "--font-outfit", weight: "100 900" });
 // Reading font for novel writing canvas
-const sarabun = Sarabun({
+const sarabun = localFont({
   variable: "--font-sarabun",
-  subsets: ["thai", "latin"],
-  weight: ["300", "400", "500"],
+  // next/font ต้องเป็นค่าตายตัว เขียนวนลูปไม่ได้
+  src: [
+    { path: "./fonts/sarabun-thai-300.woff2", weight: "300" },
+    { path: "./fonts/sarabun-latin-300.woff2", weight: "300" },
+    { path: "./fonts/sarabun-thai-400.woff2", weight: "400" },
+    { path: "./fonts/sarabun-latin-400.woff2", weight: "400" },
+    { path: "./fonts/sarabun-thai-500.woff2", weight: "500" },
+    { path: "./fonts/sarabun-latin-500.woff2", weight: "500" },
+  ],
 });
-
 // Technical monospace for industrial UI elements
-const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-jetbrains",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
+const jetbrainsMono = localFont({ src: "./fonts/jetbrains-mono.woff2", variable: "--font-jetbrains", weight: "100 800" });
 
 export const metadata: Metadata = {
   title: "Mythoria",
