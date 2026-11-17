@@ -49,7 +49,7 @@ import { ThreadRibbon } from "./thread-ribbon"
 import { ChronoTimelineSheet } from "./chrono-timeline-sheet"
 import { TimelineConflictsPanel } from "./timeline-conflicts-panel"
 import type { StoryArc } from "@/db/schema"
-import { detectTimelineConflicts, type TimelineConflict } from "@/server/timeline-conflicts"
+import { getChapterIssueMap, type TimelineConflict, type ChapterIssues } from "@/server/timeline-conflicts"
 
 type ThreadDot = { color: string; title: string }
 
@@ -139,11 +139,15 @@ export function TimelineBoard({
     const [showRibbon, setShowRibbon] = useState(false)
     const [structureId, setStructureId] = useState<string>("none")
     const [conflicts, setConflicts] = useState<TimelineConflict[] | null>(null)
+    const [chapterIssues, setChapterIssues] = useState<Record<string, ChapterIssues>>({})
 
     // Load timeline conflicts once for the toolbar chip (B1). Manual planning board — one eager query is fine.
     useEffect(() => {
-        detectTimelineConflicts(novelId)
-            .then(res => { if (res.success) setConflicts(res.conflicts) })
+        getChapterIssueMap(novelId)
+            .then(res => {
+                if (res.success) setConflicts(res.conflicts)
+                setChapterIssues(res.byChapter)
+            })
             .catch(() => setConflicts([]))
     }, [novelId])
 
@@ -642,6 +646,8 @@ export function TimelineBoard({
                                     isFiltering={isFiltering}
                                     eventThreadsMap={eventThreadsMap}
                                     onToggleComplete={handleToggleComplete}
+                                    issues={chapterIssues[chapter.id]}
+                                    novelId={novelId}
                                 />
                             )
                         })}

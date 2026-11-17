@@ -1,8 +1,9 @@
 "use server";
 
 import { db } from "@/db/drizzle";
-import { characterStates, locationConnections } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { characterStates, locationConnections, notes } from "@/db/schema";
+import { eq, and, isNull } from "drizzle-orm";
+import { requireNovelAccess } from "@/lib/authz";
 import { buildTravelMap, travelKey, type TravelInfo } from "@/lib/travel-map";
 
 // ============================================
@@ -272,4 +273,56 @@ function getMethodLabel(method: string | null): string {
         custom: "อื่นๆ",
     };
     return methodLabels[method || "walk"] || method || "เดินเท้า";
+}
+
+// ============================================
+// Per-chapter issues (B1 — badges on plot board columns)
+// ============================================
+
+export interface ChapterIssues {
+    travel: TimelineConflict[];
+    holes: { noteId: string; noteTitle: string; count: number }[];
+}
+
+/**
+ * Group travel conflicts + stored plot-hole results by chapter (via notes.linkedToChapterId).
+ * Returns the full conflict list too, so the toolbar chip needs no second call.
+ * Notes without a chapter only count in `conflicts`.
+ */
+export async function getChapterIssueMap(novelId: string): Promise<{
+    success: boolean;
+    conflicts: TimelineConflict[];
+    byChapter: Record<string, ChapterIssues>;
+}> {
+    try {
+        await requireNovelAccess(novelId);
+        const [res, noteRows] = await Promise.all([
+            detectTimelineConflicts(novelId),
+            db.select({
+                id: notes.id,
+                title: notes.title,
+                chapterId: notes.linkedToChapterId,
+                holes: notes.plotHoleCount,
+            }).from(notes).where(and(eq(notes.novelId, novelId), isNull(notes.deletedAt))),
+        ]);
+
+        const chapterOf = new Map(noteRows.map(n => [n.id, n.chapterId]));
+        const byChapter: Record<string, ChapterIssues> = {};
+        const bucket = (chapterId: string) => (byChapter[chapterId] ??= { travel: [], holes: [] });
+
+        for (const c of res.conflicts) {
+            // Flag on the arrival chapter — that's where the impossible jump is written.
+            const ch = chapterOf.get(c.toLocation.noteId);
+            if (ch) bucket(ch).travel.push(c);
+        }
+        for (const n of noteRows) {
+            if (n.chapterId && (n.holes ?? 0) > 0) {
+                bucket(n.chapterId).holes.push({ noteId: n.id, noteTitle: n.title, count: n.holes ?? 0 });
+            }
+        }
+        return { success: res.success, conflicts: res.conflicts, byChapter };
+    } catch (error) {
+        console.error("[ChapterIssueMap] Error:", error);
+        return { success: false, conflicts: [], byChapter: {} };
+    }
 }

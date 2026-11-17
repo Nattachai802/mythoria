@@ -5,7 +5,10 @@ import { useDroppable } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { useRouter } from "next/navigation"
 import { useTransition, useState } from "react"
-import { Plus, Layout } from "lucide-react"
+import { Plus, Layout, AlertTriangle } from "lucide-react"
+import Link from "next/link"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import type { ChapterIssues } from "@/server/timeline-conflicts"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { Chapter, TimelineEvent, Character, Location } from "@/db/schema"
@@ -27,6 +30,8 @@ interface ChapterColumnProps {
     isFiltering?: boolean
     eventThreadsMap?: Map<string, ThreadDot[]>
     onToggleComplete?: (id: string) => void
+    issues?: ChapterIssues
+    novelId?: string
 }
 
 export function ChapterColumn({
@@ -39,7 +44,9 @@ export function ChapterColumn({
     matchedIds,
     isFiltering = false,
     eventThreadsMap,
-    onToggleComplete
+    onToggleComplete,
+    issues,
+    novelId,
 }: ChapterColumnProps) {
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
@@ -100,6 +107,7 @@ export function ChapterColumn({
 
             {/* Realistic 35mm Film Canister */}
             <div className="relative z-10 mb-6 flex flex-col items-center">
+                {issues && <ChapterIssueBadge issues={issues} novelId={novelId} />}
                 <div
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={handleChapterClick}
@@ -294,5 +302,54 @@ export function ChapterColumn({
                 </div>
             </div>
         </div>
+    )
+}
+function ChapterIssueBadge({ issues, novelId }: { issues: ChapterIssues; novelId?: string }) {
+    const holeTotal = issues.holes.reduce((n, h) => n + h.count, 0)
+    const total = issues.travel.length + holeTotal
+    if (total === 0) return null
+    const noteHref = (id: string) => novelId ? `/dashboard/project/${novelId}/note/${id}` : "#"
+    return (
+        <Popover>
+            <PopoverTrigger asChild>
+                <button
+                    type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    aria-label={`บทนี้มีปัญหา ${total} จุด`}
+                    className="absolute -right-7 top-2 z-30 flex items-center gap-0.5 rounded-full border border-amber-500/50 bg-background px-1.5 py-0.5 text-[11px] font-medium text-amber-500 shadow-sm transition-transform hover:scale-110 cursor-pointer"
+                >
+                    <AlertTriangle className="h-3 w-3" />
+                    {total}
+                </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-72 p-3 space-y-3 text-sm" onPointerDown={(e) => e.stopPropagation()}>
+                {issues.travel.length > 0 && (
+                    <div className="space-y-1.5">
+                        <p className="text-xs font-medium text-foreground/80">เดินทางไม่ทัน ({issues.travel.length})</p>
+                        {issues.travel.map((c, i) => (
+                            <div key={`${c.characterId}-${i}`} className="rounded-md bg-amber-500/10 px-2 py-1.5 text-xs">
+                                <p>{c.message}</p>
+                                <p className="mt-1 text-muted-foreground">
+                                    <Link href={noteHref(c.fromLocation.noteId)} className="underline-offset-2 hover:underline">{c.fromLocation.noteTitle || "โน้ตต้นทาง"}</Link>
+                                    {" → "}
+                                    <Link href={noteHref(c.toLocation.noteId)} className="underline-offset-2 hover:underline">{c.toLocation.noteTitle || "โน้ตปลายทาง"}</Link>
+                                </p>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                {issues.holes.length > 0 && (
+                    <div className="space-y-1.5">
+                        <p className="text-xs font-medium text-foreground/80">ช่องโหว่พล็อต ({holeTotal})</p>
+                        {issues.holes.map(h => (
+                            <Link key={h.noteId} href={noteHref(h.noteId)} className="flex justify-between rounded-md px-2 py-1 text-xs hover:bg-muted">
+                                <span className="truncate">{h.noteTitle}</span>
+                                <span className="text-amber-500">{h.count}</span>
+                            </Link>
+                        ))}
+                    </div>
+                )}
+            </PopoverContent>
+        </Popover>
     )
 }
