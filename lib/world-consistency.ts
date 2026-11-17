@@ -42,9 +42,14 @@ export interface ConsistencyInput {
     loreEras: CsLoreEra[];
     /** key `${from}|${to}` → จำนวนวันที่ใช้เดินทาง (ทิศที่ไปได้จริง) */
     travelDays: Record<string, number>;
+    /** พลังที่ตัวละครได้มา ณ บทไหน (character_powers.start_chapter → ลำดับบท) */
+    powerGrants?: { characterId: string; powerId: string; chapterOrder: number }[];
+    /** ฉากที่มีพลังเป็นผู้เข้าร่วม + ตัวละครในฉาก + ลำดับบทของฉาก */
+    scenePowers?: { scene: CsRef; chapterOrder: number; characterIds: string[]; powerIds: string[] }[];
+    powers?: { id: string; name: string }[];
 }
 
-export type FindingRule = "two-places" | "travel-too-fast" | "shown-before-happens" | "era-mismatch" | "dead-reappears" | "travel-states";
+export type FindingRule = "two-places" | "travel-too-fast" | "shown-before-happens" | "era-mismatch" | "dead-reappears" | "travel-states" | "power-before-acquired";
 
 export interface Finding {
     id: string;
@@ -61,6 +66,7 @@ export const RULE_LABEL: Record<FindingRule, string> = {
     "era-mismatch": "ยุคไม่ตรงกับเวลา",
     "dead-reappears": "ตายแล้วยังปรากฏ",
     "travel-states": "เดินทางไม่ทัน (จากสถานะในตอน)",
+    "power-before-acquired": "ใช้พลังก่อนได้มา",
 };
 
 const fmtDays = (d: number) => (d < 1 ? `${Math.round(d * 24)} ชั่วโมง` : `${Math.round(d * 10) / 10} วัน`);
@@ -135,6 +141,23 @@ export function checkWorldConsistency(input: ConsistencyInput): Finding[] {
             message: `"${e.lore.title}" ผูกไว้กับ${e.setEra.name} แต่ปีที่ตั้งอยู่ใน${e.timeEra.name}`,
             refs: [e.lore],
         });
+    }
+
+    // ── ใช้พลังก่อนได้มา: ฉากมีพลัง P และมีผู้ถือ P อยู่ในฉาก แต่ทุกคนที่ถือได้ P ในบทหลังฉากนี้ ──
+    // ponytail: ไม่รู้ว่าใครในฉากเป็นคนใช้ → เตือนเฉพาะเมื่อไม่มีผู้ถือคนไหนในฉากที่ได้พลังมาแล้ว
+    const powerName = new Map((input.powers ?? []).map((p) => [p.id, p.name]));
+    for (const sp of input.scenePowers ?? []) {
+        for (const pid of sp.powerIds) {
+            const holders = (input.powerGrants ?? []).filter((g) => g.powerId === pid && sp.characterIds.includes(g.characterId));
+            if (!holders.length || holders.some((g) => g.chapterOrder <= sp.chapterOrder)) continue;
+            const first = holders.reduce((a, b) => (a.chapterOrder <= b.chapterOrder ? a : b));
+            const who = charName.get(first.characterId) ?? "?";
+            out.push({
+                id: `power:${sp.scene.id}:${pid}`, rule: "power-before-acquired", severity: "warning",
+                message: `ฉาก "${sp.scene.title}" มีพลัง "${powerName.get(pid) ?? "?"}" แต่ ${who} ได้พลังนี้ในบทหลังจากนั้น`,
+                refs: [{ kind: "character", id: first.characterId, title: who }, sp.scene],
+            });
+        }
     }
 
     const rank = (f: Finding) => (f.severity === "error" ? 0 : 1);

@@ -43,3 +43,9 @@ assert(mixed[0].severity === "error", "error เรียงก่อน warning
 
 assert(travelToDays(48, "hours") === 2 && travelToDays(2, "weeks") === 14 && travelToDays(3, null) === 0.125, "แปลงหน่วยเดินทางเป็นวัน");
 assert(travelToDays(null, "days") === null && travelToDays(3, "ปี") === null, "ไม่มีค่า/หน่วยแปลก = ไม่ใช้");
+
+const sp = (order: number, chars: string[]) => ({ scene: { kind: "scene" as const, id: "s", title: "ฉาก" }, chapterOrder: order, characterIds: chars, powerIds: ["fire"] });
+const grants = [{ characterId: "alin", powerId: "fire", chapterOrder: 5 }];
+assert(rules({ powerGrants: grants, scenePowers: [sp(2, ["alin"])] }).join() === "power-before-acquired", "ได้พลังบท 5 แต่ฉากบท 2 มีพลัง = เตือน");
+assert(rules({ powerGrants: grants, scenePowers: [sp(5, ["alin"]), sp(2, ["ken"])] }).length === 0, "บทเดียวกัน/ไม่มีผู้ถือในฉาก = ไม่เตือน");
+assert(rules({ powerGrants: [...grants, { characterId: "ken", powerId: "fire", chapterOrder: 1 }], scenePowers: [sp(2, ["alin", "ken"])] }).length === 0, "มีผู้ถือที่ได้มาแล้วในฉาก = ไม่เตือน");

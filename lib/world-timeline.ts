@@ -246,6 +246,16 @@ export function buildWorldTimeline(input: WorldTimelineInput): WorldTimeline {
         const prev = chapterCol.get(s.chapterId);
         if (prev == null || c < prev) chapterCol.set(s.chapterId, c);
     }
+    // บทที่ไม่มีฉากบนแกน: ยืมช่องของบทถัดไปที่มีฉาก (ไม่มีก็บทก่อนหน้า) — ยังติด approx อยู่
+    const chapterSorted = [...input.chapters].sort((a, b) => a.orderIndex - b.orderIndex);
+    const colForChapter = (id: string): number | undefined => {
+        if (chapterCol.has(id)) return chapterCol.get(id);
+        const i = chapterSorted.findIndex((c) => c.id === id);
+        if (i < 0) return undefined;
+        for (let j = i + 1; j < chapterSorted.length; j++) if (chapterCol.has(chapterSorted[j].id)) return chapterCol.get(chapterSorted[j].id);
+        for (let j = i - 1; j >= 0; j--) if (chapterCol.has(chapterSorted[j].id)) return chapterCol.get(chapterSorted[j].id);
+        return undefined;
+    };
 
     // ── เลน ──
     const sub = new Map<LaneKind, Map<string, TlSubLane>>();
@@ -306,7 +316,7 @@ export function buildWorldTimeline(input: WorldTimelineInput): WorldTimeline {
     const anchoredLane = { life: "characters", faction: "factions", power: "powers" } as const;
     const anchoredNames = { life: input.characters, faction: input.factions, power: input.powers };
     for (const a of input.anchored) {
-        const col = a.chapterId ? chapterCol.get(a.chapterId) : undefined;
+        const col = a.chapterId ? colForChapter(a.chapterId) : undefined;
         if (col == null) {
             unplaced.push({
                 id: a.id, kind: a.kind, title: a.title,

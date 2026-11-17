@@ -106,3 +106,16 @@ const alinItems = story.lanes.find((l) => l.kind === "characters")!.subLanes.fin
 assert(alinItems.length === 2, "เหตุการณ์ที่ตัวละครเกี่ยวข้องขึ้นเลนตัวละคร (ตัดคนที่ไม่มีในนิยาย)");
 assert(alinItems.find((i) => i.sourceId === "off")!.offscreen === true && !alinItems.find((i) => i.sourceId === "on")!.offscreen, "ไม่มีฉากเล่า = นอกจอ");
 assert(story.lanes.find((l) => l.kind === "locations")!.subLanes[0].items.some((i) => i.sourceId === "off"), "สถานที่เพิ่มเติมของเหตุการณ์ขึ้นเลนสถานที่");
+
+// บทที่ไม่มีฉากบนแกน → ยืมช่องบทถัดไป (ไม่มีก็บทก่อนหน้า) ยังติด approx
+const gap = buildWorldTimeline({
+    ...input,
+    chapters: [...input.chapters, { id: "ch0", title: "บท 0", orderIndex: -1 }, { id: "ch9", title: "บท 9", orderIndex: 9 }],
+    anchored: [
+        { id: "a0", kind: "power", title: "ก่อน", chapterId: "ch0", subLaneId: "fireP" },
+        { id: "a9", kind: "power", title: "หลัง", chapterId: "ch9", subLaneId: "fireP" },
+    ],
+});
+const gapCol = (id: string) => gap.lanes.find((l) => l.kind === "powers")!.subLanes.flatMap((s) => s.items).find((i) => i.id === id);
+assert(gapCol("power:a0")?.col === colOf("plot", "scene:s1") && gapCol("power:a0")?.approx === true, "บทไม่มีฉาก ยืมช่องบทถัดไป");
+assert(gapCol("power:a9")?.col === colOf("plot", "scene:s3"), "บทท้ายไม่มีฉาก ยืมช่องบทก่อนหน้า");

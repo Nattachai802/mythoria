@@ -3,9 +3,9 @@
 import { db } from "@/db/drizzle"
 import {
     novels, chapters, eras, timelineEvents, locationConnections, loreEntries, loreGroups, characters, locations,
-    factions, powers, characterLifeEvents, characterFactions, characterPowers,
+    factions, powers, characterLifeEvents, characterFactions, characterPowers, sceneElementDetails,
 } from "@/db/schema"
-import { and, asc, eq, isNull } from "drizzle-orm"
+import { and, asc, eq, inArray, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { STORY_DATE_MIN, STORY_DATE_MAX } from "@/lib/story-date"
 import { requireNovelAccess } from "@/lib/authz"
@@ -323,7 +323,7 @@ export async function getTreatmentReport(novelId: string): Promise<TreatmentRepo
     await requireNovelAccess(novelId)
     const failed: string[] = []
 
-    const [data, loreEraRows, connRows, guardian, conflicts] = await Promise.all([
+    const [data, loreEraRows, connRows, guardian, conflicts, elementRows, grantRows] = await Promise.all([
         getWorldTimelineData(novelId),
         db.select({ id: loreEntries.id, eraId: loreEntries.eraId }).from(loreEntries).where(eq(loreEntries.novelId, novelId)),
         db.select({
@@ -335,6 +335,13 @@ export async function getTreatmentReport(novelId: string): Promise<TreatmentRepo
             .where(eq(locations.novelId, novelId)),
         getConsistencyIssues(novelId).catch(() => ({ success: false, issues: [] as ConsistencyIssue[] })),
         detectTimelineConflicts(novelId).catch(() => ({ success: false, conflicts: [] as TimelineConflict[] })),
+        db.select({ sceneId: sceneElementDetails.sceneId, type: sceneElementDetails.elementType, id: sceneElementDetails.elementId })
+            .from(sceneElementDetails)
+            .where(and(eq(sceneElementDetails.novelId, novelId), inArray(sceneElementDetails.elementType, ["power", "character"]))),
+        db.select({ characterId: characterPowers.characterId, powerId: characterPowers.powerId, chapterId: characterPowers.startChapterId })
+            .from(characterPowers)
+            .innerJoin(characters, eq(characterPowers.characterId, characters.id))
+            .where(eq(characters.novelId, novelId)),
     ])
     const { input, calendar, eraYears } = data
 
@@ -379,8 +386,29 @@ export async function getTreatmentReport(novelId: string): Promise<TreatmentRepo
         if (days != null) travelDays[key.replace(">", "|")] = days
     }
 
+    // ใช้พลังก่อนได้มา — เทียบด้วยลำดับบท (ฉากที่ไม่ผูกบท / พลังที่ไม่ระบุบทที่ได้ = ข้าม)
+    const chapterOrder = new Map(input.chapters.map((c) => [c.id, c.orderIndex]))
+    const powerGrants = grantRows.flatMap((g) => {
+        const o = g.chapterId ? chapterOrder.get(g.chapterId) : undefined
+        return o == null ? [] : [{ characterId: g.characterId, powerId: g.powerId, chapterOrder: o }]
+    })
+    const elementsByScene = new Map<string, { powers: Set<string>; chars: Set<string> }>()
+    for (const r of elementRows) {
+        const e = elementsByScene.get(r.sceneId) ?? { powers: new Set<string>(), chars: new Set<string>() }
+        ;(r.type === "power" ? e.powers : e.chars).add(r.id)
+        elementsByScene.set(r.sceneId, e)
+    }
+    const scenePowers = input.scenes.flatMap((s) => {
+        const e = elementsByScene.get(s.id)
+        const o = s.chapterId ? chapterOrder.get(s.chapterId) : undefined
+        if (!e?.powers.size || o == null) return []
+        const chars = new Set([...s.characterIds, ...e.chars, ...(s.povCharacterId ? [s.povCharacterId] : [])])
+        return [{ scene: sceneRef(s.id, s.title), chapterOrder: o, characterIds: [...chars], powerIds: [...e.powers] }]
+    })
+
     const findings = checkWorldConsistency({
         characters: input.characters, locations: input.locations, appearances, sceneLinks, loreEras, travelDays,
+        powerGrants, scenePowers, powers: input.powers,
     })
 
     if (guardian.success) {

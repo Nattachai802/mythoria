@@ -3,13 +3,15 @@
 import { Fragment, useEffect, useMemo, useState, useTransition, type DragEvent, type ReactNode } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { BookOpen, ChevronDown, ChevronRight, GripVertical, Inbox, Loader2, MapPin, Package, Plus, ScrollText, Shield, Undo2, Users, Zap, ZoomIn, type LucideIcon } from "lucide-react"
+import { AlertTriangle, BookOpen, ChevronDown, ChevronRight, GitCommitHorizontal, GripVertical, Inbox, Loader2, MapPin, Package, Plus, Rows3, ScrollText, Shield, Undo2, Users, Zap, ZoomIn, type LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { dayLabel } from "@/lib/story-date"
 import type { LaneKind, TlItem, TlLane, WorldTimeline } from "@/lib/world-timeline"
-import { formatWorldTime, gapLabel, type EraYear, type WorldCalendar } from "@/lib/world-calendar"
+import { formatWorldTime, gapLabel, yearLength, type EraYear, type WorldCalendar } from "@/lib/world-calendar"
+import type { Finding } from "@/lib/world-consistency"
+import { SpineView, SPINE_COLOR, type SpineCategory, type SpineEntry } from "./spine-view"
 import { moveLoreOnTimeline, moveSceneOnTimeline, type DropTarget } from "@/server/world-timeline"
 import { CalendarDialog } from "./calendar-dialog"
 import { LoreTimePopover, type Links, type StorylineOptions } from "./lore-time-popover"
@@ -40,15 +42,30 @@ interface Props {
     options: StorylineOptions
     /** เปิดมาจากลิงก์ "ดูบนเส้นเวลา" — `scene:<id>` / `lore:<id>` เลื่อนไปหาและไฮไลต์ */
     focus?: string | null
+    /** คำเตือนจากการตรวจ treatment — ตัวที่ชี้ฉาก/lore บนแกนได้จะงอกเป็นการ์ดแดง */
+    findings?: Finding[]
+}
+
+type ViewMode = "spine" | "lanes"
+const SPINE_CATS: { key: SpineCategory; label: string }[] = [
+    { key: "plot", label: "ฉาก" }, { key: "lore", label: "Lore" }, { key: "characters", label: "ตัวละคร" },
+    { key: "factions", label: "กลุ่ม" }, { key: "powers", label: "พลัง" }, { key: "warning", label: "คำเตือน" },
+]
+// เลนที่งอกบนเส้นเดียว — "ปรากฏ" กับเลนสถานที่เป็นเงาของฉาก/lore เดิม ไม่เอามาซ้ำ
+const SPINE_FROM_LANE: Partial<Record<LaneKind, SpineCategory>> = {
+    plot: "plot", lore: "lore", characters: "characters", factions: "factions", powers: "powers",
 }
 
 const NO_LINKS: Links = { characterIds: [], locationIds: [], sceneIds: [] }
 
-export function WorldTimelineBoard({ novelId, timeline, timelineEpoch, calendar, eraYears, loreLinks, options, focus }: Props) {
+export function WorldTimelineBoard({ novelId, timeline, timelineEpoch, calendar, eraYears, loreLinks, options, focus, findings = [] }: Props) {
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
     const openKey = `world-timeline:open:${novelId}`
     const zoomKey = `world-timeline:zoom:${novelId}`
+    const viewKey = `world-timeline:view:${novelId}`
+    const [view, setView] = useState<ViewMode>("spine")
+    const [cats, setCats] = useState<Set<SpineCategory>>(() => new Set(SPINE_CATS.map(c => c.key)))
     const [open, setOpen] = useState<Set<LaneKind>>(() => new Set(DEFAULT_OPEN))
     const [colW, setColW] = useState(128)
     const [dragging, setDragging] = useState<DragPayload | null>(null)
@@ -63,8 +80,10 @@ export function WorldTimelineBoard({ novelId, timeline, timelineEpoch, calendar,
             if (rawOpen) setOpen(new Set(JSON.parse(rawOpen) as LaneKind[]))
             const rawZoom = Number(localStorage.getItem(zoomKey))
             if (rawZoom >= ZOOM_MIN && rawZoom <= ZOOM_MAX) setColW(rawZoom)
+            const rawView = localStorage.getItem(viewKey)
+            if (rawView === "lanes" || rawView === "spine") setView(rawView)
         } catch { /* ใช้ค่าเริ่มต้น */ }
-    }, [openKey, zoomKey])
+    }, [openKey, zoomKey, viewKey])
 
     const toggle = (kind: LaneKind) => {
         setOpen(prev => {
@@ -75,6 +94,16 @@ export function WorldTimelineBoard({ novelId, timeline, timelineEpoch, calendar,
             return next
         })
     }
+    const switchView = (v: ViewMode) => {
+        setView(v)
+        try { localStorage.setItem(viewKey, v) } catch { /* ไม่จำก็ไม่เป็นไร */ }
+    }
+    const toggleCat = (c: SpineCategory) => setCats(prev => {
+        const next = new Set(prev)
+        if (next.has(c)) next.delete(c)
+        else next.add(c)
+        return next
+    })
     const zoom = (w: number) => {
         setColW(w)
         try { localStorage.setItem(zoomKey, String(w)) } catch { /* ไม่จำก็ไม่เป็นไร */ }
@@ -129,10 +158,13 @@ export function WorldTimelineBoard({ novelId, timeline, timelineEpoch, calendar,
     }
     const dropOn = (e: DragEvent, col: number) => {
         e.preventDefault()
-        const raw = e.dataTransfer.getData(DRAG_MIME)
         const zone = zoneOf(e, col)
+        dropAt(e.dataTransfer.getData(DRAG_MIME), col, zone.mode)
+    }
+    const dropAt = (raw: string, col: number, mode: "on" | "before") => {
         endDrag()
         if (!raw) return
+        const zone = { mode }
         const p = JSON.parse(raw) as DragPayload
         const target = zone.mode === "before" ? insertTarget(col) : targetOf(col)
         startTransition(async () => {
@@ -169,6 +201,63 @@ export function WorldTimelineBoard({ novelId, timeline, timelineEpoch, calendar,
     const hrefOf = (item: TlItem) =>
         item.kind === "scene" || item.kind === "appear" ? `/dashboard/project/${novelId}/plot` : null
 
+    // ── ของบนเส้นเดียว: ฉากงอกขึ้น หมวดอื่นงอกลง · คำเตือนงอกลงที่ตำแหน่งของฉาก/lore ที่มันชี้ ──
+    const renderItem = (it: TlItem, canDrag: boolean) => {
+        const isLore = it.kind === "lore" || it.kind === "event"
+        const chip = <ItemChip item={it} href={isLore ? null : hrefOf(it)} />
+        return (
+            <div
+                data-focus-id={canDrag ? `${it.kind}:${it.sourceId}` : undefined}
+                className={cn(
+                    "group flex min-w-0 items-center gap-0.5 transition-shadow",
+                    "data-[focused=true]:ring-2 data-[focused=true]:ring-[var(--forge-gold)] data-[focused=true]:ring-offset-1",
+                    canDrag && "cursor-grab active:cursor-grabbing",
+                )}
+                draggable={canDrag}
+                onDragStart={canDrag ? e => startDrag(e, { kind: it.kind as "lore" | "scene", id: it.sourceId, title: it.title }) : undefined}
+                onDragEnd={canDrag ? endDrag : undefined}
+            >
+                {canDrag && <GripVertical className="size-3 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-[var(--forge-gold)]" aria-hidden />}
+                <div className="min-w-0 flex-1">{isLore ? wrapLore(it.sourceId, it.title, it.col, chip) : chip}</div>
+            </div>
+        )
+    }
+    const spineEntries = useMemo((): SpineEntry[] => {
+        const out: SpineEntry[] = []
+        const colOfSource = new Map<string, number>()
+        for (const lane of lanes) {
+            const cat = SPINE_FROM_LANE[lane.kind]
+            if (!cat) continue
+            for (const sub of lane.subLanes) for (const it of sub.items) {
+                if (it.kind === "appear") continue
+                if (lane.kind === "plot" || lane.kind === "lore") colOfSource.set(it.sourceId, it.col)
+                if (!cats.has(cat)) continue
+                out.push({
+                    key: it.id, col: it.col, side: cat === "plot" ? "up" : "down", category: cat, approx: it.approx,
+                    node: renderItem(it, isDraggable(it.kind) && (lane.kind === "plot" || lane.kind === "lore")),
+                })
+            }
+        }
+        if (cats.has("warning")) {
+            for (const f of findings) {
+                const col = f.refs.map(r => colOfSource.get(r.id)).find(c => c != null)
+                if (col == null) continue
+                out.push({
+                    key: `warn:${f.id}`, col, side: "down", category: "warning",
+                    node: (
+                        <span className="flex items-start gap-1 bg-red-500/10 px-2 py-1 text-xs text-red-700 dark:text-red-300" title={f.message}>
+                            <AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden />
+                            <span className="line-clamp-2">{f.message}</span>
+                        </span>
+                    ),
+                })
+            }
+        }
+        return out
+        // renderItem ปิดค่า state การลาก/ป๊อปอัป — คำนวณใหม่เมื่อข้อมูลหรือหมวดเปลี่ยนพอ
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [lanes, findings, cats])
+
     const toolbar = (
         <div className="flex flex-wrap items-center gap-2 border-b bg-[var(--sidebar)] px-4 py-2">
             <span className="text-technical text-muted-foreground">ลากไปวางที่ช่อง · ดับเบิลคลิกหัวช่องเพื่อสร้าง</span>
@@ -178,6 +267,42 @@ export function WorldTimelineBoard({ novelId, timeline, timelineEpoch, calendar,
                 </span>
             )}
             <span className="flex-1" />
+            {view === "spine" && columns.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1" role="group" aria-label="หมวดที่แสดงบนเส้น">
+                    {SPINE_CATS.map(c => (
+                        <button
+                            key={c.key}
+                            type="button"
+                            aria-pressed={cats.has(c.key)}
+                            onClick={() => toggleCat(c.key)}
+                            className={cn(
+                                "chamfered-sm flex items-center gap-1 border px-2 py-0.5 text-xs transition-colors",
+                                cats.has(c.key) ? "border-border bg-background text-foreground" : "border-transparent text-muted-foreground line-through",
+                            )}
+                        >
+                            <span className="size-2 rounded-full" style={{ background: SPINE_COLOR[c.key] }} aria-hidden />
+                            {c.label}
+                        </button>
+                    ))}
+                </div>
+            )}
+            <div className="chamfered-sm flex border" role="radiogroup" aria-label="มุมมอง">
+                {([["spine", GitCommitHorizontal, "เส้นเดียว"], ["lanes", Rows3, "แยกหมวด"]] as const).map(([v, Icon, label]) => (
+                    <button
+                        key={v}
+                        type="button"
+                        role="radio"
+                        aria-checked={view === v}
+                        onClick={() => switchView(v)}
+                        className={cn(
+                            "flex items-center gap-1 px-2 py-1 text-xs transition-colors",
+                            view === v ? "bg-[var(--steel-800)] text-[var(--forge-gold)]" : "text-muted-foreground hover:text-foreground",
+                        )}
+                    >
+                        <Icon className="size-3.5" aria-hidden /> {label}
+                    </button>
+                ))}
+            </div>
             {columns.length > 0 && (
                 <label className="flex items-center gap-1.5 text-muted-foreground">
                     <ZoomIn className="size-4" aria-hidden />
@@ -221,6 +346,28 @@ export function WorldTimelineBoard({ novelId, timeline, timelineEpoch, calendar,
                         กด "+ เหตุการณ์" เพื่อเริ่ม หรือกด lore ในถาดด้านล่างเพื่อใส่ปี · ฉากจะขึ้นแกนเมื่อจัดลำดับเวลาจากกระดานพล็อต หรือผูกยุคไว้
                     </p>
                 </div>
+                <UnplacedTray items={unplaced} wrapLore={wrapLore} onDragStart={startDrag} onDragEnd={endDrag} />
+                {createDialog}
+            </div>
+        )
+    }
+
+    if (view === "spine") {
+        return (
+            <div className={cn("flex min-h-0 flex-1 flex-col", isPending && "cursor-progress")}>
+                {toolbar}
+                <SpineView
+                    columns={columns}
+                    segments={segments}
+                    entries={spineEntries}
+                    base={colW}
+                    breakDays={yearLength(calendar) * 20}
+                    colLabel={colLabel}
+                    breakLabel={d => gapLabel(calendar, 0, d) ?? `${d} วัน`}
+                    dragging={dragging != null}
+                    onDrop={dropAt}
+                    onCreate={i => setCreateAt({ target: targetOf(i), label: colLabel(i) })}
+                />
                 <UnplacedTray items={unplaced} wrapLore={wrapLore} onDragStart={startDrag} onDragEnd={endDrag} />
                 {createDialog}
             </div>

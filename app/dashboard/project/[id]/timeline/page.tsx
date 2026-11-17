@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation"
 import { getNovelForPlot } from "@/server/novel"
-import { getWorldTimelineData } from "@/server/world-timeline"
+import { getTreatmentReport, getWorldTimelineData } from "@/server/world-timeline"
 import { buildWorldTimeline } from "@/lib/world-timeline"
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb"
 import { WorldTimelineBoard } from "@/components/project/world-timeline/world-timeline-board"
@@ -11,7 +11,11 @@ type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ focus?: 
 export default async function WorldTimelinePage({ params, searchParams }: Props) {
     const { id } = await params
     const { focus } = await searchParams
-    const [novelResult, data] = await Promise.all([getNovelForPlot(id), getWorldTimelineData(id)])
+    // ponytail: getTreatmentReport โหลดข้อมูลเส้นเวลาซ้ำอีกรอบ — ถ้าหน้านี้ช้าค่อยส่ง data เข้าไปแทน
+    const [novelResult, data, report] = await Promise.all([
+        getNovelForPlot(id), getWorldTimelineData(id),
+        getTreatmentReport(id).catch(() => ({ findings: [], failed: [] })),
+    ])
     if (!novelResult.success || !novelResult.novel) notFound()
 
     const novel = novelResult.novel
@@ -42,6 +46,7 @@ export default async function WorldTimelinePage({ params, searchParams }: Props)
                 loreLinks={loreLinks}
                 options={options}
                 focus={focus ?? null}
+                findings={report.findings}
             />
         </div>
     )

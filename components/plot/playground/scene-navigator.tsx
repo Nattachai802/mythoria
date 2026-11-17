@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { Check, ChevronsUpDown, Plus, Trash2, ArrowLeft } from "lucide-react"
+import { Check, ChevronsUpDown, Plus, Trash2, ArrowLeft, GanttChart } from "lucide-react"
 import { Chapter, TimelineEvent } from "@/db/schema"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -211,6 +211,16 @@ export function SceneNavigator({
                     </Button>
                 }
             />
+
+            <Button variant="ghost" size="icon" asChild className="text-muted-foreground pointer-coarse:h-11 pointer-coarse:w-11">
+                <Link
+                    href={`/dashboard/project/${novelId}/timeline?focus=${encodeURIComponent(`scene:${currentEvent.id}`)}`}
+                    aria-label="ดูฉากนี้บนเส้นเวลา"
+                    title="ดูฉากนี้บนเส้นเวลา"
+                >
+                    <GanttChart className="w-4 h-4" />
+                </Link>
+            </Button>
 
             {/* เมนูที่มีรายการเดียวไม่คุ้มเป็นเมนู — ปุ่มถังขยะตรง ๆ อ่านออกทันทีว่าคืออะไร */}
             <Button
