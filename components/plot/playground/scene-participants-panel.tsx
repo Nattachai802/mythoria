@@ -291,11 +291,11 @@ export function SceneParticipantsPanel({
                     </div>
                 </div>
 
-                <div className="p-3 space-y-3 flex-1 min-h-0 overflow-y-auto">
+                <div className="p-4 space-y-4 flex-1 min-h-0 overflow-y-auto">
                     {/* ชนิด — เห็นครบทุกตัวเลือก ไม่ต้องเปิด dropdown */}
                     <div className="space-y-1.5">
-                        <p className="text-xs text-muted-foreground">ชนิด</p>
-                        <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="ชนิดผู้เข้าร่วม">
+                        <p className="text-xs font-medium text-foreground/80">ชนิด</p>
+                        <div className="grid grid-cols-4 gap-1" role="radiogroup" aria-label="ชนิดผู้เข้าร่วม">
                             {[...PARTICIPANT_KEYS.map(k => ({ v: k as typeof partType, l: PARTICIPANT_KINDS[k].label })), { v: "dummy_character" as const, l: "ชั่วคราว" }].map(o => {
                                 const on = o.v === "dummy_character" ? isDummyType : partType === o.v
                                 return (
@@ -306,10 +306,10 @@ export function SceneParticipantsPanel({
                                         aria-checked={on}
                                         onClick={() => { if (!on) { setPartType(o.v); setSelectedEntityId("") } }}
                                         className={cn(
-                                            "chamfered-sm border px-2 py-1 text-[11px] min-h-[26px] transition-colors",
+                                            "chamfered-sm border px-1 py-1 text-[11px] min-h-[28px] w-full text-center truncate transition-colors cursor-pointer",
                                             on
-                                                ? "border-[var(--forge-amber)] bg-[var(--forge-amber)] text-zinc-900 font-medium"
-                                                : "border-border bg-card text-muted-foreground hover:text-foreground"
+                                                ? "border-[var(--forge-amber)] bg-[var(--forge-amber)]/15 text-foreground font-medium"
+                                                : "border-border bg-card text-muted-foreground hover:text-foreground hover:border-foreground/30"
                                         )}
                                     >
                                         {o.l}
@@ -363,10 +363,10 @@ export function SceneParticipantsPanel({
                     )}
 
                     <div className="space-y-1.5">
-                        <p className="text-xs text-muted-foreground">ชื่อ</p>
+                        <p className="text-xs font-medium text-foreground/80">ชื่อ</p>
                         {!isDummyType ? (
                             <Select value={selectedEntityId} onValueChange={setSelectedEntityId}>
-                                <SelectTrigger className="h-8 text-xs" aria-label="ชื่อ">
+                                <SelectTrigger className="h-8 w-full text-xs" aria-label="ชื่อ">
                                     <SelectValue placeholder={cfg?.pickPlaceholder ?? "เลือก..."} />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -396,9 +396,9 @@ export function SceneParticipantsPanel({
                         )}
                     </div>
 
-                    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] gap-2">
+                    <div className="grid grid-cols-2 gap-2">
                         <div className="space-y-1.5 min-w-0">
-                            <p className="text-xs text-muted-foreground">บทบาท</p>
+                            <p className="text-xs font-medium text-foreground/80">บทบาท</p>
                             <Select value={role} onValueChange={setRole}>
                                 <SelectTrigger className="h-8 w-full text-xs [&>span]:truncate" aria-label="บทบาท">
                                     <SelectValue />
@@ -411,7 +411,7 @@ export function SceneParticipantsPanel({
                             </Select>
                         </div>
                         <div className="space-y-1.5 min-w-0">
-                            <p className="text-xs text-muted-foreground truncate">{cfg?.actionLabel ?? "ทำอะไรในซีนนี้"}</p>
+                            <p className="text-xs font-medium text-foreground/80 truncate">{cfg?.actionLabel ?? "ทำอะไรในซีนนี้"}</p>
                             <Input
                                 value={action}
                                 onChange={e => setAction(e.target.value)}
@@ -421,9 +421,10 @@ export function SceneParticipantsPanel({
                             />
                         </div>
                     </div>
-
-                    <Button size="sm" className="w-full h-8 gap-1 chamfered-sm text-xs" onClick={() => handleAdd()} disabled={isPending}>
-                        {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                </div>
+                <div className="border-t border-border p-3 shrink-0">
+                    <Button size="sm" className="w-full h-9 gap-1.5 chamfered-sm text-sm" onClick={() => handleAdd()} disabled={isPending}>
+                        {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                         เพิ่มเข้าไอเดีย
                     </Button>
                 </div>
