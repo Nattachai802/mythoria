@@ -51,12 +51,14 @@ interface EventCardProps {
     isFirstScene?: boolean // ฉากแรกของเรื่อง — ไม่ต้องเตือน "แล้วก็"
     /** โหมดร่าง — ไม่ขึ้นป้าย "แล้วก็…" (ใช้ตอนตรวจพล็อตทีหลัง) */
     hideWeakCausal?: boolean
+    /** ชื่อฉากต้นเหตุ (causeEventId) — โชว์ต่อท้ายคำเชื่อม "ดังนั้น/แต่ว่า ← ชื่อฉาก" (task.md 20B) */
+    causeTitle?: string | null
     isSelected?: boolean
     /** มี = กดแล้วเปิดแผงข้าง ไม่เปลี่ยนหน้า */
     onOpen?: (id: string) => void
 }
 
-export function EventCard({ event, characters = [], locations = [], isDimmed = false, threadDots, onToggleComplete, isFirstScene = false, hideWeakCausal = false, isSelected = false, onOpen }: EventCardProps) {
+export function EventCard({ event, characters = [], locations = [], isDimmed = false, threadDots, onToggleComplete, isFirstScene = false, hideWeakCausal = false, isSelected = false, onOpen, causeTitle }: EventCardProps) {
     const router = useRouter()
     const [isHovered, setIsHovered] = useState(false)
 
@@ -299,6 +301,9 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
                                 </>
                             )}
                             {ideaItems.length > 0 && <span className="shrink-0 tabular-nums">{ideaItems.length} ไอเดีย</span>}
+                            {event.plotStatus === "confirmed" && (
+                                <span className="shrink-0 rounded-sm border border-emerald-500/40 px-1 text-[11px] text-emerald-700 dark:text-emerald-400" title="สถานะพล็อต: แน่นอนแล้ว">แน่นอนแล้ว</span>
+                            )}
 
                             {relatedLocation && (
                                 <>
@@ -391,6 +396,9 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
                                     title={causal.hint}
                                 >
                                     {causal.label}
+                                    {!causal.weak && causeTitle && (
+                                        <span className="ml-1 inline-block max-w-[140px] truncate align-bottom" title={`ต่อจาก “${causeTitle}”`}>← {causeTitle}</span>
+                                    )}
                                 </span>
                             )}
 

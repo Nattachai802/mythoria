@@ -6,6 +6,7 @@ import { sceneElementDetails, timelineEvents, InsertSceneElementDetails, SceneEl
 import { eq, and, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { PARTICIPANT_TYPES } from "@/lib/participant-types"
+import { requireNovelAccess } from "@/lib/authz";
 
 /**
  * Get all element details for a scene
@@ -430,5 +431,27 @@ export async function reorderIdeaNotes(novelId: string, sceneId: string, ordered
     } catch (error) {
         console.error("Error reordering idea notes:", error);
         return { success: false, error: "Failed to reorder notes" };
+    }
+}
+
+/**
+ * นับโน้ตชนิด "คำถาม" (noteKind = "question") ทั้งนิยาย — แถบล่างกระดานพล็อตโชว์เป็น "คำถามที่ยังไม่มีคำตอบ" (task.md 20D)
+ * ตอบแล้ว = ผู้ใช้เปลี่ยนชนิดโน้ตกลับ จึงนับตรง ๆ ได้ ไม่ต้องมีสถานะ "ตอบแล้ว" แยก
+ */
+export async function countOpenQuestions(novelId: string): Promise<number> {
+    try {
+        await requireNovelAccess(novelId);
+        const [row] = await db
+            .select({ n: sql<number>`count(*)::int` })
+            .from(sceneElementDetails)
+            .where(and(
+                eq(sceneElementDetails.novelId, novelId),
+                eq(sceneElementDetails.elementType, "idea_note"),
+                eq(sceneElementDetails.noteKind, "question"),
+            ));
+        return row?.n ?? 0;
+    } catch (error) {
+        console.error("Error counting open questions:", error);
+        return 0;
     }
 }

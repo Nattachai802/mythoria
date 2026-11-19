@@ -25,8 +25,11 @@ import { TimelineEvent, Character, Location, Era, LoreEntry } from "@/db/schema"
 import { PLOT_HEADER_SLOT_ID, type ChapterForBoard } from "./types"
 import { ChapterColumn } from "./chapter-column"
 import { EventCard } from "./event-card"
-import { Clock, SlidersHorizontal, Eye, X, Activity, AlertTriangle, Route, Loader2, BookPlus, GanttChart, PencilLine, Milestone } from "lucide-react"
-import { reorderTimelineEvents, updateTimelineEvent } from "@/server/timeline"
+import { Clock, SlidersHorizontal, Eye, X, Activity, AlertTriangle, Route, Loader2, BookPlus, GanttChart, PencilLine, Milestone, Lightbulb } from "lucide-react"
+import { reorderTimelineEvents, updateTimelineEvent, createTimelineEvent } from "@/server/timeline"
+import { updateIdea } from "@/server/idea"
+import type { Idea } from "@/db/schema"
+import { IdeaTray } from "./idea-tray"
 import { useMemo } from "react"
 import { toast } from "sonner"
 import {
@@ -72,6 +75,10 @@ interface TimelineBoardProps {
     arcs?: StoryArc[]
     eras?: (Era & { loreEntries: LoreEntry[] })[]
     timelineEpoch?: Date | null
+    /** ไอเดียที่ยังไม่ถูกวางที่ไหน (ideas.isUsed = false) สำหรับถาดไอเดีย */
+    trayIdeas?: Idea[]
+    /** ไอเดียที่มีโน้ตชนิด "คำถาม" ค้างอยู่ — นับในแถบล่าง */
+    openQuestions?: number
 }
 
 export function TimelineBoard({
@@ -84,9 +91,46 @@ export function TimelineBoard({
     arcs = [],
     eras = [],
     timelineEpoch = null,
+    trayIdeas = [],
+    openQuestions = 0,
 }: TimelineBoardProps) {
     const [events, setEvents] = useState<TimelineEvent[]>(initialEvents)
     const [selectedId, setSelectedId] = useState<string | null>(null)
+    // ถาดไอเดีย (task.md 20D) — เปิด/ปิดจำต่อนิยาย · รายการเป็น state ในหน้าจอ (แหล่งจริงคือตาราง ideas)
+    const trayKey = `plot-board:tray:${novelId}`
+    const [trayOpen, setTrayOpen] = useState(false)
+    const [tray, setTray] = useState<Idea[]>(trayIdeas)
+    useEffect(() => {
+        try { setTrayOpen(localStorage.getItem(trayKey) === "1") } catch { /* ปิดไว้ */ }
+    }, [trayKey])
+    const toggleTray = () => setTrayOpen(v => {
+        try { localStorage.setItem(trayKey, v ? "0" : "1") } catch { /* ไม่จำก็ได้ */ }
+        return !v
+    })
+    // วางไอเดียลงบท = สร้างฉากใหม่ท้ายบท มีการ์ดไอเดียนั้นใบแรกบน canvas แล้วติดธง isUsed
+    const placeIdea = async (ideaId: string, chapterId: string) => {
+        const idea = tray.find(i => i.id === ideaId)
+        if (!idea) return
+        setTray(prev => prev.filter(i => i.id !== ideaId))
+        const res = await createTimelineEvent({
+            novelId,
+            title: idea.title,
+            description: idea.content?.slice(0, 500) || null,
+            relatedChapterId: chapterId,
+            eventType: "scene",
+            orderIndex: 0, // server คำนวณต่อท้ายบทให้เอง (createTimelineEvent)
+            // ไม่ใส่ laneId/beatIndex — หน้าฉากสร้างเลน "ทั่วไป" ให้เองตอนเปิด (buildBoardState)
+            canvasData: [{ id: crypto.randomUUID(), type: "idea", referenceId: idea.id, title: idea.title, content: idea.content ?? "", children: [], links: [] }],
+        })
+        if (!res.success || !res.event) {
+            setTray(prev => [idea, ...prev])
+            toast.error("วางไอเดียไม่สำเร็จ")
+            return
+        }
+        setEvents(prev => [...prev, res.event!])
+        updateIdea(idea.id, { isUsed: true })
+        toast.success(`ทำ “${idea.title}” เป็นฉากแล้ว`)
+    }
     // โหมดร่าง (phase 1): ซ่อนคำเตือนบนกระดาน เหลือตัวนับในแถบเครื่องมือ — จำต่อนิยายใน localStorage
     const draftKey = `plot-board:draft:${novelId}`
     const [draftMode, setDraftMode] = useState(true)
@@ -109,7 +153,7 @@ export function TimelineBoard({
     const [filterLocation, setFilterLocation] = useState<string>("all")
     const [filterThread, setFilterThread] = useState<string>("all")
     const [showTension, setShowTension] = useState(false)
-    const [showRibbon, setShowRibbon] = useState(false)
+    const [showRibbon, setShowRibbon] = useState(threads.length > 0) // เลนปมด้านล่าง: เปิดเองเมื่อมีปม
     const [structureId, setStructureId] = useState<string>("none")
     const [conflicts, setConflicts] = useState<TimelineConflict[] | null>(null)
     const [chapterIssues, setChapterIssues] = useState<Record<string, ChapterIssues>>({})
@@ -306,6 +350,7 @@ export function TimelineBoard({
     // Get active event for drag overlay
     const activeEvent = activeId ? events.find(e => e.id === activeId) : null
     const selectedEvent = selectedId ? events.find(e => e.id === selectedId) ?? null : null
+    const eventTitles = useMemo(() => new Map(events.map(e => [e.id, e.title])), [events])
 
     if (chapters.length === 0) {
         return (
@@ -469,6 +514,16 @@ export function TimelineBoard({
 
                         <button
                             type="button"
+                            onClick={toggleTray}
+                            aria-pressed={trayOpen}
+                            title="ถาดไอเดีย — จดเร็ว แล้วลากลงบทเพื่อทำเป็นฉาก"
+                            className="inline-flex items-center gap-1.5"
+                        >
+                            <Lightbulb className="h-3.5 w-3.5" />ถาดไอเดีย{tray.length > 0 && <span className="tabular-nums">· {tray.length}</span>}
+                        </button>
+
+                        <button
+                            type="button"
                             onClick={toggleDraft}
                             aria-pressed={draftMode}
                             title={draftMode ? "โหมดร่าง: ซ่อนคำเตือนบนกระดาน — กดเพื่อแสดง" : "แสดงคำเตือนอยู่ — กดเพื่อกลับโหมดร่าง"}
@@ -573,6 +628,16 @@ export function TimelineBoard({
                 </PlotHeaderSlot>
 
                 <div className="flex min-h-0 flex-1">
+                {trayOpen && (
+                    <IdeaTray
+                        novelId={novelId}
+                        ideas={tray}
+                        chapters={sortedChapters.map(c => ({ id: c.id, title: c.title }))}
+                        onAdded={idea => setTray(prev => [idea, ...prev])}
+                        onPlace={placeIdea}
+                        onClose={toggleTray}
+                    />
+                )}
                 {/* Timeline Area — เลื่อนแนวตั้งเดียวทั้ง board (ทุกคอลัมน์เลื่อนพร้อมกัน) */}
                 <div className="min-w-0 flex-1 overflow-auto px-6 pt-4 pb-8">
                     <div className="min-w-max flex flex-col min-h-full">
@@ -593,11 +658,6 @@ export function TimelineBoard({
                         {/* Tension curve (A2) */}
                         {showTension && (
                             <TensionCurve chapters={sortedChapters} events={events} />
-                        )}
-
-                        {/* Thread ribbon (L3) — เลนปมพาดบท */}
-                        {showRibbon && (
-                            <ThreadRibbon threads={threads} chapters={sortedChapters} events={events} />
                         )}
 
                         {/* Chapter columns */}
@@ -622,11 +682,20 @@ export function TimelineBoard({
                                     draftMode={draftMode}
                                     selectedId={selectedId}
                                     onOpenScene={id => setSelectedId(cur => (cur === id ? null : id))}
+                                    eventTitles={eventTitles}
+                                    onDropIdea={placeIdea}
                                 />
                             )
                         })}
 
                         </div>
+
+                        {/* เลนปมเรื่องด้านล่าง (task.md 20B) — ติดขอบล่างของพื้นที่เลื่อน วางฉากอยู่ก็เห็นปมที่เปิดค้าง */}
+                        {showRibbon && threads.length > 0 && (
+                            <div className="sticky bottom-0 z-10 mt-auto border-t bg-background/95 pt-2 backdrop-blur-sm">
+                                <ThreadRibbon threads={threads} chapters={sortedChapters} events={events} />
+                            </div>
+                        )}
                     </div>
                 </div>
                 {selectedEvent && (
@@ -645,10 +714,12 @@ export function TimelineBoard({
                 <div className="flex shrink-0 items-center gap-3 border-t bg-[var(--sidebar)] px-6 py-1.5 pr-20 text-[11px] tabular-nums text-muted-foreground">
                     <span>{totalScenes} ฉาก · {sortedChapters.length} บท</span>
                     <span>เสร็จ {completedScenes}/{totalScenes} ({completedPct}%)</span>
+                    <span>พล็อตแน่นอนแล้ว {events.filter(e => e.plotStatus === "confirmed").length}/{totalScenes}</span>
                     {emptyChapters > 0 && <span className="text-[var(--forge-amber)]">บทที่ยังว่าง {emptyChapters}</span>}
                     {draftMode && conflicts && conflicts.length > 0 && (
                         <span>มี {conflicts.length} จุดให้ดูทีหลัง</span>
                     )}
+                    {openQuestions > 0 && <span>คำถามที่ยังไม่มีคำตอบ {openQuestions}</span>}
                 </div>
             </div>
 

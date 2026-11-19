@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation"
 import { getNovelForPlot } from "@/server/novel"
+import { getIdeasByNovelId } from "@/server/idea"
+import { countOpenQuestions } from "@/server/scene-element-details"
 import { getTimeLineEvents } from "@/server/timeline"
 import { getCharactersByNovelId } from "@/server/character"
 import { getLocationsByNovelId } from "@/server/locations"
@@ -23,7 +25,7 @@ export default async function PlotPage({ params, searchParams }: Props) {
     // ?tab=analysis เดิมถูกถอดแล้ว — ลิงก์เก่าตกมาที่กระดาน
     const isThreadsTab = tab === "threads"
 
-    const [novelResult, eventsResult, charactersResult, locationsResult, threadsResult, arcsResult, erasResult] = await Promise.all([
+    const [novelResult, eventsResult, charactersResult, locationsResult, threadsResult, arcsResult, erasResult, ideasResult, openQuestions] = await Promise.all([
         getNovelForPlot(id),
         getTimeLineEvents(id),
         getCharactersByNovelId(id),
@@ -31,6 +33,8 @@ export default async function PlotPage({ params, searchParams }: Props) {
         getThreadsByNovelId(id),
         getArcsByNovelId(id),
         getErasByNovelId(id),
+        isThreadsTab ? Promise.resolve(null) : getIdeasByNovelId(id),
+        isThreadsTab ? Promise.resolve(0) : countOpenQuestions(id),
     ])
 
     if (!novelResult.success || !novelResult.novel) {
@@ -91,6 +95,8 @@ export default async function PlotPage({ params, searchParams }: Props) {
                         arcs={arcs}
                         eras={eras}
                         timelineEpoch={novel.timelineEpoch}
+                        trayIdeas={(ideasResult?.data ?? []).filter(i => !i.isUsed)}
+                        openQuestions={openQuestions}
                     />
                 </div>
             )}

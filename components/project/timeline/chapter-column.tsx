@@ -1,5 +1,7 @@
 "use client"
 
+import { useState } from "react"
+
 import type { ChapterForBoard } from "./types"
 import { useDroppable } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
@@ -11,6 +13,7 @@ import { cn } from "@/lib/utils"
 import { TimelineEvent, Character, Location } from "@/db/schema"
 import { EventCard } from "./event-card"
 import { CreateSceneDialog } from "./create-scene-dialog"
+import { IDEA_DRAG_TYPE } from "./idea-tray"
 
 type ThreadDot = { color: string; title: string }
 
@@ -31,6 +34,10 @@ interface ChapterColumnProps {
     draftMode?: boolean
     selectedId?: string | null
     onOpenScene?: (id: string) => void
+    /** id → ชื่อฉาก ใช้ทำข้อความลิงก์เหตุ-ผลบนการ์ด */
+    eventTitles?: Map<string, string>
+    /** วางไอเดียจากถาด (ลากแบบ native) ลงบทนี้ */
+    onDropIdea?: (ideaId: string, chapterId: string) => void
 }
 
 export function ChapterColumn({
@@ -48,8 +55,11 @@ export function ChapterColumn({
     draftMode = false,
     selectedId,
     onOpenScene,
+    eventTitles,
+    onDropIdea,
 }: ChapterColumnProps) {
     const { setNodeRef, isOver } = useDroppable({ id: chapter.id })
+    const [ideaOver, setIdeaOver] = useState(false)
 
     const sortedEvents = [...events].sort((a, b) => a.orderIndex - b.orderIndex)
     const completedCount = events.filter(e => e.isCompleted).length
@@ -91,7 +101,17 @@ export function ChapterColumn({
                 </Link>
             </div>
 
-            <div className="rounded-lg bg-muted/40 p-1.5">
+            <div
+                className={cn("rounded-lg bg-muted/40 p-1.5 transition-colors", ideaOver && "bg-[var(--forge-amber)]/10 ring-2 ring-[var(--forge-amber)]/50")}
+                // ถาดไอเดียใช้ลากแบบ native (dataTransfer) แยกจาก dnd-kit ที่ใช้เรียงฉาก จึงไม่ตีกัน
+                onDragOver={onDropIdea ? (e) => { if (e.dataTransfer.types.includes(IDEA_DRAG_TYPE)) { e.preventDefault(); setIdeaOver(true) } } : undefined}
+                onDragLeave={onDropIdea ? (e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setIdeaOver(false) } : undefined}
+                onDrop={onDropIdea ? (e) => {
+                    const id = e.dataTransfer.getData(IDEA_DRAG_TYPE)
+                    setIdeaOver(false)
+                    if (id) { e.preventDefault(); onDropIdea(id, chapter.id) }
+                } : undefined}
+            >
                 <SortableContext items={sortedEvents.map(e => e.id)} strategy={verticalListSortingStrategy}>
                     {sortedEvents.map((event, index) => (
                         <EventCard
@@ -106,6 +126,7 @@ export function ChapterColumn({
                             hideWeakCausal={draftMode}
                             isSelected={selectedId === event.id}
                             onOpen={onOpenScene}
+                            causeTitle={event.causeEventId ? eventTitles?.get(event.causeEventId) : null}
                         />
                     ))}
                 </SortableContext>

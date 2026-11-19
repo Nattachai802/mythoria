@@ -350,6 +350,8 @@ export const timelineEvents = pgTable("timeline_events", {
   // Event classification
   eventType: text("event_type").default("scene"), // scene, action, dialogue, flashback, revelation, emotional, transition
   isCompleted: boolean("is_completed").default(false),
+  // สถานะพล็อตของฉาก (task.md 20D) — null = ร่าง · "confirmed" = แน่นอนแล้ว (คนละเรื่องกับ isCompleted ที่หมายถึงเขียนเสร็จ)
+  plotStatus: text("plot_status"),
   // Scene dramatic fields (D1) — โครงฉากดราม่า
   sceneType: text("scene_type"),             // setup | action | reaction | climax | resolution — null = ฉากเก่า ถือเป็น action
   sceneTone: text("scene_tone"),             // โทนที่ตั้งใจไว้สั้นๆ (เช่น "ตึงเครียด") — ลด token ตอน AI เดา ไม่ต้องอนุมานทุกครั้ง

@@ -51,6 +51,19 @@ export function SceneSidePanel({ event, chapterTitle, sceneIndex, threads, onClo
         })
     }
 
+    // ร่าง (null) / แน่นอนแล้ว — optimistic แล้วคืนค่าถ้าบันทึกพลาด เหมือนช่องสรุป
+    const setPlotStatus = (v: "confirmed" | null) => {
+        const prev = event.plotStatus ?? null
+        if (v === prev) return
+        onPatched(event.id, { plotStatus: v })
+        updateTimelineEvent(event.id, { plotStatus: v }).then(res => {
+            if (!res.success) {
+                toast.error("บันทึกสถานะไม่สำเร็จ")
+                onPatched(event.id, { plotStatus: prev })
+            }
+        })
+    }
+
     const label = "text-[11px] font-medium text-muted-foreground"
     return (
         <aside className="flex w-[320px] shrink-0 flex-col border-l bg-background" aria-label={`รายละเอียดฉาก ${event.title}`}>
@@ -75,6 +88,21 @@ export function SceneSidePanel({ event, chapterTitle, sceneIndex, threads, onClo
                         className="min-h-[64px] text-sm"
                         aria-label="สรุปฉาก"
                     />
+                </section>
+
+                <section className="space-y-1">
+                    <p className={label}>สถานะพล็อต</p>
+                    <div className="flex w-fit overflow-hidden rounded-sm border" role="radiogroup" aria-label="สถานะพล็อตของฉาก">
+                        {([[null, "ร่าง"], ["confirmed", "แน่นอนแล้ว"]] as const).map(([v, text]) => {
+                            const on = (event.plotStatus ?? null) === v
+                            return (
+                                <button key={text} type="button" role="radio" aria-checked={on} onClick={() => setPlotStatus(v)}
+                                    className={`h-7 px-2.5 text-xs transition-colors ${on ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+                                    {text}
+                                </button>
+                            )
+                        })}
+                    </div>
                 </section>
 
                 <section className="space-y-1">

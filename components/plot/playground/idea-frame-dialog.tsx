@@ -15,7 +15,21 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+
+// แผงไอเดียชิดขวาของพื้นที่กระดาน (task.md 20C) — anchor เสมือนที่มุมขวาบนของ #canvas-viewport แทนการเกาะข้างการ์ด
+// แผงจึงอยู่ที่เดิมเสมอไม่ว่าการ์ดอยู่ตรงไหน/เลื่อนกระดานไปไหน · ยังลากหัวแผงย้ายได้เหมือนเดิม
+// ponytail: เปิดหลายใบจะซ้อนที่เดียวกัน (ใบล่าสุดอยู่บน) — ถ้าต้องเทียบหลายใบบ่อย ค่อยทำ offset ต่อใบ
+const DOCK_ANCHOR = {
+  current: {
+    getBoundingClientRect: () => {
+      const r = typeof document !== "undefined" ? document.getElementById("canvas-viewport")?.getBoundingClientRect() : undefined;
+      const x = (r?.right ?? (typeof window !== "undefined" ? window.innerWidth : 0)) - 12;
+      const y = (r?.top ?? 120) + 12;
+      return DOMRect.fromRect({ x, y, width: 0, height: 0 });
+    },
+  },
+};
 import {
   Users, MapPin, X, Link as LinkIcon, Pencil, ExternalLink, Copy,
   GitBranchPlus, Shield, Check, MoreVertical, Loader2, Star, MessageCircle,
@@ -44,6 +58,15 @@ const SCENE_TYPE_ICONS: Record<string, typeof BookOpen> = {
 };
 
 // ป้ายสีจัดกลุ่มโน้ต — เดิมอยู่ใน canvas-item.tsx ย้ายมาที่นี่เพราะใช้เฉพาะระบบโน้ตของ idea
+// โน้ตชนิดพิเศษ (task.md 20D) — เก็บใน noteKind คอลัมน์เดียวกับสี (ค่าไม่ขึ้นต้น # = ชนิด ไม่ใช่สี)
+// "question" ถูกนับเป็น "คำถามที่ยังไม่มีคำตอบ" บนกระดาน — ตอบแล้วให้เปลี่ยนชนิดกลับเป็นทั่วไป/สี
+const NOTE_SPECIAL_KINDS = [
+  { key: "whatif", label: "ถ้าเกิดว่า…" },
+  { key: "question", label: "คำถาม" },
+] as const;
+const isColorKind = (k?: string | null) => !!k && k.startsWith("#");
+const specialKindLabel = (k?: string | null) => NOTE_SPECIAL_KINDS.find((s) => s.key === k)?.label;
+
 const CARD_COLORS = ["#f59e0b", "#fb923c", "#f43f5e", "#a78bfa", "#6366f1", "#22d3ee", "#34d399", "#facc15", "#e879f9", "#94a3b8"];
 
 // ต้องตรงกับ ROLES ใน scene-participants-panel
@@ -372,6 +395,8 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
         </div>
       </Card>
       </PopoverTrigger>
+      {/* หลัง trigger เสมอ: effect ของ anchor ตัวท้ายชนะ — วางก่อน trigger แล้ว trigger แย่ง anchor กลับไปเป็นการ์ด */}
+      <PopoverAnchor virtualRef={DOCK_ANCHOR} />
 
       {isOver && children.length === 0 && (
         <div className="mt-1.5 h-8 border-2 border-dashed border-primary/30 rounded bg-primary/5 flex items-center justify-center text-[10px] text-primary">
@@ -744,7 +769,7 @@ function IdeaFrameDialog({
     resetQuickNote();
   };
 
-  const activeNoteColor = quickNoteKind ?? undefined;
+  const activeNoteColor = isColorKind(quickNoteKind) ? quickNoteKind! : undefined;
 
   const deleteEditingNote = async () => {
     if (!editingNoteId || !onDeleteNote) return;
@@ -767,6 +792,20 @@ function IdeaFrameDialog({
         >
           ทั่วไป
         </button>
+        {NOTE_SPECIAL_KINDS.map((s) => (
+          <button
+            key={s.key}
+            type="button"
+            onClick={() => setQuickNoteKind(s.key)}
+            aria-pressed={quickNoteKind === s.key}
+            className={cn(
+              "text-[11px] px-2 py-0.5 rounded border transition-colors",
+              quickNoteKind === s.key ? "border-[var(--forge-amber)]/60 bg-[var(--forge-amber)]/15 text-foreground" : "border-border/60 text-muted-foreground hover:border-border"
+            )}
+          >
+            {s.label}
+          </button>
+        ))}
         {CARD_COLORS.map((color) => {
           const active = quickNoteKind === color;
           return (
@@ -1106,14 +1145,14 @@ function IdeaFrameDialog({
 
   return (
     <PopoverContent
-      side="right"
+      side="left"
       align="start"
-      sideOffset={12}
+      sideOffset={0}
       collisionPadding={16}
       onOpenAutoFocus={(e) => e.preventDefault()}
       onInteractOutside={handleInteractOutside}
       ref={contentRef}
-      className="pointer-events-auto w-[340px] max-w-[92vw] max-h-[min(var(--radix-popover-content-available-height),70vh)] flex flex-col overflow-hidden p-0"
+      className="pointer-events-auto w-[340px] max-w-[92vw] max-h-[min(var(--radix-popover-content-available-height),calc(100vh-12rem))] flex flex-col overflow-hidden p-0"
       style={floatAt ? {
         // absolute ไม่ใช่ fixed — กล่องนอกของ Radix มี transform อยู่ มันเลยกลายเป็น
         // containing block ของ fixed ทำให้ left/top แบบพิกัดจอเพี้ยนกระเด็นไปไกล
@@ -1516,7 +1555,8 @@ function IdeaFrameDialog({
                 </button>
               ) : null}
               {thisIdeaNotes.map((note) => {
-                const noteColor = note.noteKind || undefined;
+                const noteColor = isColorKind(note.noteKind) ? note.noteKind! : undefined;
+                const noteSpecial = specialKindLabel(note.noteKind);
                 return editingNoteId === note.id ? (
                   <div key={note.id}>{noteEditor}</div>
                 ) : (
@@ -1558,6 +1598,9 @@ function IdeaFrameDialog({
                   >
                     {noteColor && <span className="mt-2 h-2 w-2 rounded-full shrink-0" style={{ background: noteColor }} />}
                     <div className="flex-1 min-w-0 text-foreground/90 pr-4">
+                      {noteSpecial && (
+                        <span className="mb-0.5 inline-block rounded border border-[var(--forge-amber)]/50 px-1.5 text-[11px] text-foreground">{noteSpecial}</span>
+                      )}
                       <ClampedNote>
                         <NoteView raw={note.notes || ""} renderPlain={renderNoteMentions} />
                       </ClampedNote>
