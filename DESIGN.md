@@ -228,7 +228,7 @@ Flat and quiet; gold answers the hand.
 - Tone color and key-moment state are shown with a full tinted border or a soft background tint, never a thick single-side stripe.
 
 ### Film Reel Ornaments
-- `.film-sprockets` (steel-800 strip with background-colored holes) is a legacy plot-playground ornament. It is retired from idea cards. Do not add it to new components.
+- The film-sprocket strip was retired from idea cards and the idea panel (CSS removed). Do not reintroduce it.
 
 ## 6. Do's and Don'ts
 

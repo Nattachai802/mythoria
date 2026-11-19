@@ -268,24 +268,6 @@
       0 12px);
 }
 
-/* Film-frame sprocket strip — idea cards on the Plot Playground (film reel look) */
-.film-sprockets {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 8px;
-  padding: 0 6px;
-  background: var(--steel-800);
-  flex-shrink: 0;
-}
-
-.film-sprockets span {
-  width: 4px;
-  height: 4px;
-  border-radius: 9999px;
-  background: var(--background);
-  flex-shrink: 0;
-}
 
 /* Genealogy / org-chart — top-down tree with pure-CSS connectors */
 .genealogy ul {

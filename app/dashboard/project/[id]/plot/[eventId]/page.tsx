@@ -16,6 +16,7 @@ import { getTonePresets } from "@/server/tone-presets";
 import { getParticipantLinks } from "@/server/participant-links";
 import { PlaygroundBoard } from "@/components/plot/playground/playground-board";
 import { SceneNavigator } from "@/components/plot/playground/scene-navigator";
+import { SceneDramaStrip } from "@/components/plot/playground/scene-drama-strip";
 import { notFound } from "next/navigation";
 
 interface PlotPlaygroundPageProps {
@@ -67,7 +68,7 @@ export default async function PlotPlaygroundPage({
   return (
     <div className="h-[calc(100vh-4rem)] overflow-hidden flex flex-col">
       {/* header แถวเดียว — SceneNavigator มีปุ่มย้อนกลับในตัวอยู่แล้ว ไม่ต้องมี breadcrumb เต็มซ้ำอีกชั้น
-          โครงฉากดราม่าย้ายไปอยู่ในทูลบาร์กระดาน เพราะเป็นข้อมูลอ้างอิง ไม่ใช่ของที่ต้องเห็นตลอด */}
+          โครงดราม่า 4 ช่องอยู่แถบถัดลงมา (task.md 20C) · ช่องที่เหลืออยู่ในแผง "โครงฉากดราม่า" ท้ายแถบ */}
       <div className="border-b bg-background px-4 py-2 flex items-center gap-3">
         <SceneNavigator
           novelId={novelId}
@@ -79,6 +80,8 @@ export default async function PlotPlaygroundPage({
           {novelTitle}
         </span>
       </div>
+
+      <SceneDramaStrip event={eventRes.event} characters={charactersRes.data || []} events={eventsRes.events || []} />
 
       <div className="flex-1 overflow-hidden">
         <PlaygroundBoard

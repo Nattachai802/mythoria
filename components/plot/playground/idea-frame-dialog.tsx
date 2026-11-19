@@ -10,6 +10,10 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -58,15 +62,6 @@ const roleMeta = (role?: string) => ROLE_META[(role || 'protagonist').toLowerCas
 // fallback ไว้กันการ์ดที่ไม่ได้มาจาก board (drag overlay ฯลฯ) แสดงช่องว่าง
 const frameNumber = (item: any, frameNo?: string) =>
   frameNo ?? `#${String((item.beatIndex ?? 0) + 1).padStart(3, "0")}`;
-
-// แถบรูฟิล์ม (sprocket holes) — บน/ล่างของการ์ดและไดอะล็อกไอเดีย
-function FilmSprockets({ count = 11 }: { count?: number }) {
-  return (
-    <div className="film-sprockets" aria-hidden="true">
-      {Array.from({ length: count }).map((_, i) => <span key={i} />)}
-    </div>
-  );
-}
 
 interface AncestorConnection {
   id: string;
@@ -1103,11 +1098,6 @@ function IdeaFrameDialog({
   };
 
   const dramaCfg = SCENE_TYPES[(item.sceneType as keyof typeof SCENE_TYPES) ?? "action"] ?? SCENE_TYPES.action;
-  // ปุ่มคุณสมบัติ: ไอคอนบน-ป้ายล่าง ขนาดเท่ากันทุกปุ่ม · ตั้งแล้ว = พื้นอ่อน เส้นทึบ · ยังไม่ตั้ง = เส้นประ (ให้เห็นว่ามีฟีเจอร์นี้อยู่)
-  const tileCls = (on: boolean) => cn(
-    "flex flex-col items-center justify-center gap-1 min-w-0 rounded-md border px-1 py-1.5 text-[11px] leading-none transition-colors duration-150 motion-reduce:transition-none",
-    on ? "border-border bg-muted text-foreground" : "border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/40"
-  );
   const shortLabel = (l: string) => l.split(/ [(—]/)[0];
   const dramaOutcome = OUTCOMES.find((o) => o.value === item.sceneOutcome);
   const dramaSummary = [item.sceneGoal, dramaOutcome?.label].filter(Boolean).join(" → ") || "ยังไม่ได้ตั้งค่า";
@@ -1135,7 +1125,6 @@ function IdeaFrameDialog({
         transform: `translate3d(${dragPos?.x ?? 0}px, ${dragPos?.y ?? 0}px, 0)`,
       } : undefined}
     >
-        <FilmSprockets count={15} />
         <div className="px-3 pt-2.5 pb-2 shrink-0">
           <div
             className={cn(
@@ -1182,7 +1171,58 @@ function IdeaFrameDialog({
                   <MoreHorizontal className="w-4 h-4" />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-40">
+              {/* task.md 20C: ปุ่มคุณสมบัติ 5 ตัวรวมเข้าเมนูนี้ · ค่าที่ตั้งแล้วยังโชว์เป็นบรรทัดข้อความใต้หัวแผง */}
+              <DropdownMenuContent align="end" className="min-w-48" onCloseAutoFocus={(e) => e.preventDefault()}>
+                {onSetKeyMoment && (
+                  // ponytail: รอเมนูปิด+คืนโฟกัสเสร็จก่อน ไม่งั้น autoFocus ของช่องโดนแย่งโฟกัส → onBlur ปิดช่องทันที
+                  <DropdownMenuItem onSelect={() => setTimeout(() => { setKeyMomentDraft(item.keyMomentLabel || ""); setEditingKeyMoment(true); }, 150)}>
+                    <Star className={cn("w-3.5 h-3.5", item.keyMomentLabel && "text-[var(--forge-amber)]")} fill={item.keyMomentLabel ? "currentColor" : "none"} />
+                    {item.keyMomentLabel ? "แก้จุดสำคัญ" : "ทำเป็นจุดสำคัญ"}
+                  </DropdownMenuItem>
+                )}
+                {onOpenThreadBind && (
+                  <DropdownMenuItem onSelect={() => onOpenThreadBind()}>
+                    <LinkIcon className="w-3.5 h-3.5" /> ผูกปมเรื่อง{threadBeats && threadBeats.length > 0 ? ` (${threadBeats.length})` : ""}
+                  </DropdownMenuItem>
+                )}
+                {onSetAncestor && (
+                  <DropdownMenuItem onSelect={() => onSetAncestor()}>
+                    <GitBranchPlus className="w-3.5 h-3.5" /> เชื่อมที่มา{ancestorConnections && ancestorConnections.length > 0 ? ` (${ancestorConnections.length})` : ""}
+                  </DropdownMenuItem>
+                )}
+                {onSetColor && tonePresets.length > 0 && (
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger>
+                      <span className="h-3.5 w-3.5 flex items-center justify-center">
+                        <span className="h-2.5 w-2.5 rounded-full border border-border/70" style={{ background: item.color || "transparent" }} />
+                      </span>
+                      สีโทน
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent className="w-48">
+                      {tonePresets.map((t) => (
+                        <DropdownMenuItem key={t.id} onSelect={() => onSetColor(t.color)} className={cn(item.color === t.color && "font-medium")}>
+                          <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: t.color }} />
+                          <span className="flex-1 truncate">{t.label}</span>
+                          {item.color === t.color && <Check className="h-3 w-3 shrink-0 text-muted-foreground" />}
+                        </DropdownMenuItem>
+                      ))}
+                      {item.color && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onSelect={() => onSetColor(null)} className="text-muted-foreground">
+                            <X className="h-3 w-3 shrink-0" /> ล้างสีโทน
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                )}
+                {onSetNarration && (
+                  <DropdownMenuCheckboxItem checked={!!item.isNarration} onCheckedChange={(v) => onSetNarration(!!v)}>
+                    คำบรรยาย
+                  </DropdownMenuCheckboxItem>
+                )}
+                {(onSetKeyMoment || onOpenThreadBind || onSetAncestor || onSetColor || onSetNarration) && <DropdownMenuSeparator />}
                 <DropdownMenuItem onSelect={onCopy}>
                   <Copy className="w-3.5 h-3.5" /> คัดลอก
                 </DropdownMenuItem>
@@ -1205,72 +1245,18 @@ function IdeaFrameDialog({
             </button>
           </div>
 
-          {/* แถวคุณสมบัติ: ปุ่มขนาดเท่ากันแถวเดียว (ตั้งแล้ว = พื้นอ่อน, ยังไม่ตั้ง = เส้นประ) · ค่าที่ตั้งไว้ขึ้นเป็นบรรทัดข้อความใต้แถว */}
-          <div className="mt-2 grid grid-flow-col auto-cols-fr gap-1.5" role="group" aria-label="คุณสมบัติของการ์ด">
-            {onSetKeyMoment && (
-              <button type="button" aria-pressed={!!item.keyMomentLabel} className={tileCls(!!item.keyMomentLabel)}
-                title={item.keyMomentLabel ? "แก้ไขจุดสำคัญ" : "ทำเครื่องหมายเหตุการณ์สำคัญ"}
-                onClick={() => { setKeyMomentDraft(item.keyMomentLabel || ""); setEditingKeyMoment(true); }}>
-                <Star className={cn("w-4 h-4", item.keyMomentLabel && "text-[var(--forge-amber)]")} fill={item.keyMomentLabel ? "currentColor" : "none"} />
-                จุดสำคัญ
-              </button>
-            )}
-            {onOpenThreadBind && (
-              <button type="button" aria-pressed={!!(threadBeats && threadBeats.length > 0)} className={tileCls(!!(threadBeats && threadBeats.length > 0))}
-                title="ผูกปมเรื่อง" onClick={() => onOpenThreadBind()}>
-                <LinkIcon className="w-4 h-4" />
-                ผูกปม
-              </button>
-            )}
-            {onSetAncestor && (
-              <button type="button" aria-pressed={!!(ancestorConnections && ancestorConnections.length > 0)} className={tileCls(!!(ancestorConnections && ancestorConnections.length > 0))}
-                title="เชื่อมเหตุผล (ที่มา)" onClick={() => onSetAncestor()}>
-                <GitBranchPlus className="w-4 h-4" />
-                ที่มา
-              </button>
-            )}
-            {onSetColor && tonePresets.length > 0 && (
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button type="button" aria-pressed={!!item.color} className={tileCls(!!item.color)} title="Tone (สีการ์ด)">
-                    <span className="h-4 w-4 flex items-center justify-center">
-                      <span className="h-3 w-3 rounded-full border border-border/70" style={{ background: item.color || "transparent" }} />
-                    </span>
-                    Tone
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent side="bottom" align="center" className="w-48 p-1">
-                  {tonePresets.map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      className={cn("flex w-full items-center gap-2 px-2 py-1.5 rounded text-xs text-left transition-colors hover:bg-muted", item.color === t.color && "bg-muted font-medium")}
-                      onClick={() => onSetColor(t.color)}
-                    >
-                      <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: t.color }} />
-                      <span className="flex-1 truncate">{t.label}</span>
-                      {item.color === t.color && <Check className="h-3 w-3 shrink-0 text-muted-foreground" />}
-                    </button>
-                  ))}
-                  {item.color && (
-                    <button type="button" className="flex w-full items-center gap-2 px-2 py-1.5 rounded text-xs text-muted-foreground hover:bg-muted transition-colors" onClick={() => onSetColor(null)}>
-                      <X className="h-3 w-3 shrink-0" /> ล้าง Tone
-                    </button>
-                  )}
-                </PopoverContent>
-              </Popover>
-            )}
-            {onSetNarration && (
-              <button type="button" aria-pressed={!!item.isNarration} className={tileCls(!!item.isNarration)}
-                title="ทำเครื่องหมายเป็นคำบรรยาย" onClick={() => onSetNarration(!item.isNarration)}>
-                <Quote className="w-4 h-4" fill={item.isNarration ? "currentColor" : "none"} />
-                คำบรรยาย
-              </button>
-            )}
-          </div>
 
-          {(editingKeyMoment || item.keyMomentLabel || (threadBeats && threadBeats.length > 0) || (ancestorConnections && ancestorConnections.length > 0)) && (
+          {(editingKeyMoment || item.keyMomentLabel || item.color || item.isNarration || (threadBeats && threadBeats.length > 0) || (ancestorConnections && ancestorConnections.length > 0)) && (
             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              {item.color && (
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2 w-2 rounded-full shrink-0" style={{ background: item.color }} />
+                  {tonePresets.find((t) => t.color === item.color)?.label ?? "สีโทน"}
+                </span>
+              )}
+              {item.isNarration && (
+                <span className="inline-flex items-center gap-1"><Quote className="w-3 h-3 shrink-0" fill="currentColor" />คำบรรยาย</span>
+              )}
               {editingKeyMoment ? (
                 <span className="inline-flex items-center gap-1.5">
                   <Star className="w-3.5 h-3.5 shrink-0 text-[var(--forge-amber)]" fill="currentColor" />

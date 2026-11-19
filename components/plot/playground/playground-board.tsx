@@ -40,7 +40,6 @@ import { createPortal } from "react-dom";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import { analyzeBeats, collapseByBeat } from "@/lib/beat-coach";
-import { SceneDramaticPanel } from "./scene-dramatic-panel";
 import { buildSceneFormat, renderSceneMarkdown } from "@/lib/story-format";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -64,7 +63,7 @@ interface PlaygroundBoardProps {
     eventId: string;
     novelId: string;
     initialItems: any[];
-    sceneEvents?: any[]; // ฉากทั้งเรื่อง — ส่งต่อให้ SceneDramaticPanel ใช้เลือกฉากต้นเหตุ
+    sceneEvents?: any[]; // ฉากทั้งเรื่อง (แผงโครงดราม่าย้ายไปแถบหัวหน้าฉากแล้ว — prop นี้ยังรับไว้ให้ caller เดิม)
     event?: any; // timelineEvent เต็ม — ใช้ดึงฟิลด์ดราม่า (goal/conflict/outcome/POV/เหตุ-ผล) ตอน export
     characters: any[];
     ideas: any[];
@@ -2768,12 +2767,8 @@ export function PlaygroundBoard({
                         เดิมมีแค่ "z-30" แบบ static เลยไม่มีผล เพราะ z-index ต้องมาคู่กับ position; backdrop-blur เองก็ดัน
                         สร้าง stacking context ใหม่โดยไม่ตั้งใจ ทำให้ panel ลูก (z-50) ถูกขังอยู่ต่ำกว่ากริดที่อยู่นอก context นั้น */}
                     <div className="relative z-40 flex items-center gap-2 px-3 py-2 border-b bg-background/85 backdrop-blur">
+                        {/* toolbar เหลือ ผู้ช่วย · ⋯ · + ไอเดีย (task.md 20C) — สารบัญเปิดจากเมนู ⋯ แผงยังเกาะมุมซ้ายของทูลบาร์ */}
                         <div className="relative">
-                            <Button variant={showNavigator ? "secondary" : "ghost"} size="sm"
-                                className="h-8 gap-1.5 text-xs pointer-coarse:h-11"
-                                onClick={() => setShowNavigator(!showNavigator)} title="สารบัญ">
-                                <List className="h-4 w-4" />สารบัญ
-                            </Button>
                             {showNavigator && (
                                 <div className="absolute top-full left-0 mt-2 w-64 bg-popover text-popover-foreground rounded-lg shadow-xl border overflow-hidden flex flex-col max-h-[60vh] z-50">
                                     <div className="p-2 border-b bg-muted/30 font-semibold text-xs text-muted-foreground flex items-center gap-2">
@@ -2811,14 +2806,6 @@ export function PlaygroundBoard({
                                 </div>
                             )}
                         </div>
-
-                        <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs pointer-coarse:h-11" onClick={handleAddStickyNote} title="เพิ่มโน้ตแปะ">
-                            <StickyNote className="h-4 w-4" />โน้ต
-                        </Button>
-
-                        <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs pointer-coarse:h-11" onClick={handleAutoArrange} title='เรียงการ์ดใหม่ตามความสัมพันธ์ "นำไปสู่"'>
-                            <LayoutGrid className="h-4 w-4" />เรียงจังหวะ
-                        </Button>
 
                         {/* ผู้ช่วยทั้งสามตัวรวมไว้ในกล่องเดียว — เรียงจาก "อ่านได้ทันที" ไป "ต้องกดสั่ง AI"
                             เพื่อไม่ให้ผู้ใช้เผลอกดยิงงานที่เสีย token */}
@@ -2884,9 +2871,32 @@ export function PlaygroundBoard({
                             </PopoverContent>
                         </Popover>
 
-                        {event && (
-                            <SceneDramaticPanel event={event} characters={characters} events={sceneEvents} />
-                        )}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button size="icon" variant="ghost" className="h-8 w-8 pointer-coarse:h-11 pointer-coarse:w-11" aria-label="เครื่องมืออื่น" title="เครื่องมืออื่น">
+                                    <MoreHorizontal className="w-4 h-4" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start" className="min-w-52">
+                                <DropdownMenuItem onSelect={() => setShowNavigator(true)}>
+                                    <List className="w-4 h-4" />สารบัญการ์ด
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={handleAddStickyNote}>
+                                    <StickyNote className="w-4 h-4" />เพิ่มโน้ตแปะ
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={handleAutoArrange}>
+                                    <LayoutGrid className="w-4 h-4" />เรียงจังหวะตาม "นำไปสู่"
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground">ส่งออก</DropdownMenuLabel>
+                                <DropdownMenuItem onClick={handleExport}>
+                                    <Download className="w-4 h-4" />JSON (backup / re-import)
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={handleExportMarkdown}>
+                                    <FileText className="w-4 h-4" />Markdown (อ่านง่าย / ส่งให้ AI)
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
 
                         <div className="flex-1" />
 
@@ -2994,22 +3004,6 @@ export function PlaygroundBoard({
                             }
                         />
 
-                        {/* เมนูนี้ทำเรื่องเดียว: เอาข้อมูลออกจากกระดาน — ใช้ไอคอนดาวน์โหลดให้รู้ว่าเป็นหมวดไหน */}
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button size="icon" variant="ghost" className="h-8 w-8 pointer-coarse:h-11 pointer-coarse:w-11" aria-label="ส่งออก" title="ส่งออก">
-                                    <Download className="w-4 h-4" />
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={handleExport}>
-                                    <Download className="w-4 h-4" />JSON (backup / re-import)
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={handleExportMarkdown}>
-                                    <FileText className="w-4 h-4" />Markdown (อ่านง่าย / ส่งให้ AI)
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
                     </div>
 
                     {!isMobile && playBeat !== null && playBeat < beatCount && (

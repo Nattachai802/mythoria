@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { Check, ChevronsUpDown, Plus, Trash2, ArrowLeft, GanttChart } from "lucide-react"
+import { Check, ChevronsUpDown, ChevronLeft, ChevronRight, Plus, Trash2, ArrowLeft, GanttChart } from "lucide-react"
 import { Chapter, TimelineEvent } from "@/db/schema"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -120,13 +120,36 @@ export function SceneNavigator({
 
     const currentChapter = chapters.find(c => c.id === currentEvent.relatedChapterId)
 
+    // ลำดับเล่าแบบแบน (บทตาม orderIndex → ฉากในบท → ยังไม่จัดตอน) สำหรับปุ่มฉากก่อน/ถัดไป (task.md 20C)
+    const flat = [...eventsByChapter.chapterOrder.flatMap(id => eventsByChapter.grouped[id]), ...eventsByChapter.grouped["unassigned"]]
+    const pos = flat.findIndex(e => e.id === currentEvent.id)
+    const prev = pos > 0 ? flat[pos - 1] : null
+    const next = pos >= 0 && pos < flat.length - 1 ? flat[pos + 1] : null
+    const chapterScenes = eventsByChapter.grouped[currentEvent.relatedChapterId ?? "unassigned"] ?? eventsByChapter.grouped["unassigned"]
+    const posInChapter = chapterScenes.findIndex(e => e.id === currentEvent.id)
+    const stepBtn = (target: TimelineEvent | null, dir: "prev" | "next") => (
+        <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground pointer-coarse:h-11 pointer-coarse:w-11"
+            disabled={!target}
+            onClick={() => target && router.push(`/dashboard/project/${novelId}/plot/${target.id}`)}
+            aria-label={dir === "prev" ? "ฉากก่อนหน้า" : "ฉากถัดไป"}
+            title={target ? `${dir === "prev" ? "ฉากก่อนหน้า" : "ฉากถัดไป"}: ${target.title}` : dir === "prev" ? "ฉากแรกแล้ว" : "ฉากสุดท้ายแล้ว"}
+        >
+            {dir === "prev" ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+        </Button>
+    )
+
     return (
         <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" asChild className="mr-2">
-                <Link href={`/dashboard/project/${novelId}/plot`}>
+                <Link href={`/dashboard/project/${novelId}/plot`} aria-label="กลับกระดานพล็อต" title="กลับกระดานพล็อต">
                     <ArrowLeft className="w-4 h-4" />
                 </Link>
             </Button>
+
+            {stepBtn(prev, "prev")}
 
             <Popover open={open} onOpenChange={setOpen}>
                 <PopoverTrigger asChild>
@@ -200,6 +223,14 @@ export function SceneNavigator({
                     </Command>
                 </PopoverContent>
             </Popover>
+
+            {stepBtn(next, "next")}
+
+            {posInChapter >= 0 && (
+                <span className="hidden md:inline whitespace-nowrap text-xs text-muted-foreground tabular-nums">
+                    {currentChapter?.title ?? "ยังไม่จัดตอน"} · ฉาก {posInChapter + 1}/{chapterScenes.length}
+                </span>
+            )}
 
             <CreateSceneDialog
                 novelId={novelId}
