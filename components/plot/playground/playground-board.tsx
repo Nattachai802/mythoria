@@ -31,7 +31,7 @@ import { SceneElementDetails } from "@/db/schema";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MoreHorizontal, ChevronDown, ArrowUp, ArrowDown, Eye, Lock, LockOpen, Plus, Link2, X, Check, Download, List, Navigation, StickyNote, GitBranchPlus, Lightbulb, Loader2, Sprout, LayoutGrid, Rows3, Repeat, Target, FileText, Sparkles, Activity, Columns3 } from "lucide-react";
+import { MoreHorizontal, ChevronDown, ArrowUp, ArrowDown, Eye, Lock, LockOpen, Plus, Link2, X, Check, Download, List, Navigation, StickyNote, GitBranchPlus, Lightbulb, Loader2, Sprout, LayoutGrid, Rows3, Repeat, Target, FileText, Sparkles, Activity } from "lucide-react";
 import { CreateIdeaDialog } from "@/components/project/idea/create-idea-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -557,7 +557,7 @@ function ThreadSuggestToast({
 }
 
 // ---- Storyboard grid: เลน (แถว) x จังหวะ/beat (คอลัมน์) ----
-function LaneLabel({ lane, laneIndex, laneCount, color, stats, collapsed, locked, soloActive, isSolo, characters, onRename, onRemove, onSetColor, onSetKind, onMove, onToggleCollapse, onToggleSolo, onToggleLock, canRemove, place }: {
+function LaneLabel({ lane, laneIndex, laneCount, color, stats, collapsed, locked, soloActive, isSolo, characters, onRename, onRemove, onSetColor, onSetKind, onMove, onToggleCollapse, onToggleSolo, onToggleLock, canRemove }: {
     lane: Lane;
     laneIndex: number;
     laneCount: number;
@@ -577,18 +577,16 @@ function LaneLabel({ lane, laneIndex, laneCount, color, stats, collapsed, locked
     onToggleSolo: (id: string) => void;
     onToggleLock: (id: string) => void;
     canRemove: boolean;
-    /** วางในกริดแนวตั้ง (หัวคอลัมน์) — ไม่ส่ง = ป้ายซ้ายของกริดแนวนอน */
-    place?: React.CSSProperties;
 }) {
     const kind = lane.kind ?? 'free';
     const boundChar = lane.characterId ? characters.find((c: any) => c.id === lane.characterId) : null;
     const silent = stats.count > 0 && stats.longestGap >= LANE_GAP_WARN;
     return (
         <div
-            style={place ? { ...place, borderTop: `3px solid ${color}` } : { gridColumn: 1, gridRow: laneIndex + 3, width: LABEL_WIDTH, borderLeft: `3px solid ${color}` }}
+            style={{ gridColumn: 1, gridRow: laneIndex + 3, width: LABEL_WIDTH, borderLeft: `3px solid ${color}` }}
             className={cn(
                 "z-20 bg-muted/60 backdrop-blur-sm border-r border-b border-border/60 px-2 py-2 transition-opacity duration-200 motion-reduce:transition-none",
-                place ? "sticky top-0" : cn("sticky left-0", collapsed ? "min-h-[36px]" : "min-h-[140px]"),
+                "sticky left-0", collapsed ? "min-h-[36px]" : "min-h-[140px]",
                 soloActive && !isSolo && "opacity-40"
             )}
         >
@@ -760,7 +758,7 @@ function AddLaneButton({ characters, onAdd }: { characters: any[]; onAdd: (kind:
     );
 }
 
-function BeatCell({ laneId, beatIndex, laneIndex, isTrailing, laneColor, isDrafting, collapsed, dimmed, locked, onAddIdea, children, place }: {
+function BeatCell({ laneId, beatIndex, laneIndex, isTrailing, laneColor, isDrafting, collapsed, dimmed, locked, onAddIdea, children }: {
     laneId: string;
     beatIndex: number;
     laneIndex: number;
@@ -772,8 +770,6 @@ function BeatCell({ laneId, beatIndex, laneIndex, isTrailing, laneColor, isDraft
     locked?: boolean;
     onAddIdea?: () => void;
     children: React.ReactNode;
-    /** วางในกริดแนวตั้ง — ไม่ส่ง = กริดแนวนอนเดิม */
-    place?: React.CSSProperties;
 }) {
     const { setNodeRef, isOver } = useDroppable({
         id: `cell:${laneId}:${beatIndex}`,
@@ -785,12 +781,12 @@ function BeatCell({ laneId, beatIndex, laneIndex, isTrailing, laneColor, isDraft
         <div
             ref={setNodeRef}
             style={{
-                ...(place ?? { gridColumn: beatGridCol(beatIndex), gridRow: laneIndex + 3, width: COLUMN_WIDTH }),
+                gridColumn: beatGridCol(beatIndex), gridRow: laneIndex + 3, width: COLUMN_WIDTH,
                 background: isOver ? undefined : hexA(laneColor, 0.05),
             }}
             className={cn(
                 "group/cell p-1.5 border-r border-b flex flex-col gap-1.5 transition-colors",
-                collapsed ? "min-h-[36px] overflow-hidden" : place ? "min-h-[64px]" : "min-h-[140px]",
+                collapsed ? "min-h-[36px] overflow-hidden" : "min-h-[140px]",
                 dimmed && "opacity-40",
                 isTrailing ? "border-dashed border-border/40" : "border-border/40",
                 isOver && "bg-[var(--forge-amber)]/8 ring-1 ring-inset ring-[var(--forge-amber)]/40"
@@ -1139,15 +1135,6 @@ export function PlaygroundBoard({
     // แบบแทร็กวิดีโอ: ล็อกเลน (ลากการ์ดเข้า/ออกไม่ได้) · ซูมกระดาน · หัวอ่าน (จังหวะที่กำลังดู)
     const [lockedLanes, setLockedLanes] = useState<Set<string>>(new Set());
     const [boardZoom, setBoardZoom] = useState(BOARD_ZOOM_DEFAULT);
-    // แนวตั้ง (จังหวะเป็นแถว เลนเป็นคอลัมน์) เป็นค่าเริ่มต้น — แนวนอนเดิมเก็บไว้ให้สลับ เพราะเส้นเชื่อมวาดได้เฉพาะแนวนอน (task.md 20C)
-    const [verticalLayout, setVerticalLayout] = useState(true);
-    useEffect(() => {
-        try { if (localStorage.getItem('plot-scene:layout') === 'horizontal') setVerticalLayout(false); } catch { /* ใช้ค่าเริ่มต้น */ }
-    }, []);
-    const switchLayout = (vertical: boolean) => {
-        setVerticalLayout(vertical);
-        try { localStorage.setItem('plot-scene:layout', vertical ? 'vertical' : 'horizontal'); } catch { /* ไม่จำก็ไม่เป็นไร */ }
-    };
     const [playBeat, setPlayBeat] = useState<number | null>(null);
     const [keptNodes, setKeptNodes] = useState<any[]>(initialKept);
     // สีล่าสุดที่ผู้ใช้เลือก — เส้นใหม่ใช้สีนี้ (เลือกครั้งเดียว ลากต่อได้เลย)
@@ -2613,8 +2600,8 @@ export function PlaygroundBoard({
     }, [items, lanes_]);
 
     // การ์ดหนึ่งใบ — ใช้ร่วมกันทั้งกริด desktop และ list มือถือ (dragDisabled ปิด drag/connect บนมือถือ)
-    // เนื้อในช่อง (การ์ด + สร้างไอเดีย inline) — ใช้ร่วมกันทั้งกริดแนวนอนและแนวตั้ง
-    const cellBody = (lane: Lane, beatIndex: number, cellItems: any[], showIncoming = false) => (
+    // เนื้อในช่อง (การ์ด + สร้างไอเดีย inline)
+    const cellBody = (lane: Lane, beatIndex: number, cellItems: any[]) => (
         <>
                                                 {!collapsedLanes.has(lane.id) && cellItems.map((item, idx) => (
                                                     <Fragment key={item.id}>
@@ -2623,11 +2610,6 @@ export function PlaygroundBoard({
                                                             <div aria-hidden="true" className="shrink-0" style={{ height: LINKED_STACK_GAP }} />
                                                         )}
                                                         {renderCard(item, lockedLanes.has(lane.id))}
-                                                        {showIncoming && incomingLinks.get(item.id)?.map((l, k) => (
-                                                            <p key={k} className="-mt-1 truncate px-1 text-[10px] text-muted-foreground" title={`${l.label} จาก "${l.from}"`}>
-                                                                <span style={{ color: l.color }}>↳</span> {l.label} จาก “{l.from}”
-                                                            </p>
-                                                        ))}
                                                     </Fragment>
                                                 ))}
 
@@ -2652,18 +2634,6 @@ export function PlaygroundBoard({
                                                 ) : null}
         </>
     );
-
-    // แนวตั้งไม่วาดเส้น — บอกเป็นข้อความใต้การ์ดปลายทางแทน
-    const incomingLinks = useMemo(() => {
-        const m = new Map<string, { from: string; label: string; color: string }[]>();
-        for (const src of items) for (const raw of src.links || []) {
-            const l = normalizeLink(raw);
-            const list = m.get(l.targetId) ?? [];
-            list.push({ from: src.title || "ไม่มีชื่อ", label: l.label || LINK_KINDS[l.kind]?.label || "เกี่ยวข้อง", color: linkColor(l) });
-            m.set(l.targetId, list);
-        }
-        return m;
-    }, [items]);
 
     const renderCard = (item: any, dragDisabled = false) => (
         <DraggableCanvasItem
@@ -2767,7 +2737,7 @@ export function PlaygroundBoard({
                         เดิมมีแค่ "z-30" แบบ static เลยไม่มีผล เพราะ z-index ต้องมาคู่กับ position; backdrop-blur เองก็ดัน
                         สร้าง stacking context ใหม่โดยไม่ตั้งใจ ทำให้ panel ลูก (z-50) ถูกขังอยู่ต่ำกว่ากริดที่อยู่นอก context นั้น */}
                     <div className="relative z-40 flex items-center gap-2 px-3 py-2 border-b bg-background/85 backdrop-blur">
-                        {/* toolbar เหลือ ผู้ช่วย · ⋯ · + ไอเดีย (task.md 20C) — สารบัญเปิดจากเมนู ⋯ แผงยังเกาะมุมซ้ายของทูลบาร์ */}
+                        {/* toolbar: ผู้ช่วย ซ้าย · ซูม/สถานะ/+ ไอเดีย/⋯ ชิดขวา — สารบัญเปิดจากเมนู ⋯ แผงยังเกาะมุมซ้ายของทูลบาร์ */}
                         <div className="relative">
                             {showNavigator && (
                                 <div className="absolute top-full left-0 mt-2 w-64 bg-popover text-popover-foreground rounded-lg shadow-xl border overflow-hidden flex flex-col max-h-[60vh] z-50">
@@ -2871,54 +2841,9 @@ export function PlaygroundBoard({
                             </PopoverContent>
                         </Popover>
 
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button size="icon" variant="ghost" className="h-8 w-8 pointer-coarse:h-11 pointer-coarse:w-11" aria-label="เครื่องมืออื่น" title="เครื่องมืออื่น">
-                                    <MoreHorizontal className="w-4 h-4" />
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start" className="min-w-52">
-                                <DropdownMenuItem onSelect={() => setShowNavigator(true)}>
-                                    <List className="w-4 h-4" />สารบัญการ์ด
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={handleAddStickyNote}>
-                                    <StickyNote className="w-4 h-4" />เพิ่มโน้ตแปะ
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={handleAutoArrange}>
-                                    <LayoutGrid className="w-4 h-4" />เรียงจังหวะตาม "นำไปสู่"
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground">ส่งออก</DropdownMenuLabel>
-                                <DropdownMenuItem onClick={handleExport}>
-                                    <Download className="w-4 h-4" />JSON (backup / re-import)
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={handleExportMarkdown}>
-                                    <FileText className="w-4 h-4" />Markdown (อ่านง่าย / ส่งให้ AI)
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
 
                         <div className="flex-1" />
-
-                        {!isMobile && (
-                            <div className="flex overflow-hidden rounded-md border border-border text-xs" role="radiogroup" aria-label="ทิศของกระดาน">
-                                {([[true, Rows3, "แนวตั้ง"], [false, Columns3, "แนวนอน"]] as const).map(([v, Icon, label]) => (
-                                    <button
-                                        key={label}
-                                        type="button"
-                                        role="radio"
-                                        aria-checked={verticalLayout === v}
-                                        onClick={() => switchLayout(v)}
-                                        title={v ? "จังหวะเรียงลง เลนเป็นคอลัมน์" : "จังหวะเรียงขวา พร้อมเส้นเชื่อม"}
-                                        className={cn("flex items-center gap-1 px-2 py-1 transition-colors", verticalLayout === v ? "bg-[var(--steel-800)] text-[var(--forge-gold)]" : "text-muted-foreground hover:text-foreground")}
-                                    >
-                                        <Icon className="h-3.5 w-3.5" />{label}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-
-                        {/* ซูมกระดานแนวนอน/แนวตั้งพร้อมกัน — แบบไทม์ไลน์ตัดต่อ */}
+                        {/* ซูมกระดาน — แบบไทม์ไลน์ตัดต่อ */}
                         {!isMobile && (
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                 <span>ซูม</span>
@@ -3004,6 +2929,33 @@ export function PlaygroundBoard({
                             }
                         />
 
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button size="icon" variant="ghost" className="h-8 w-8 pointer-coarse:h-11 pointer-coarse:w-11" aria-label="เครื่องมืออื่น" title="เครื่องมืออื่น">
+                                    <MoreHorizontal className="w-4 h-4" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="min-w-52">
+                                <DropdownMenuItem onSelect={() => setShowNavigator(true)}>
+                                    <List className="w-4 h-4" />สารบัญการ์ด
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={handleAddStickyNote}>
+                                    <StickyNote className="w-4 h-4" />เพิ่มโน้ตแปะ
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={handleAutoArrange}>
+                                    <LayoutGrid className="w-4 h-4" />เรียงจังหวะตาม "นำไปสู่"
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground">ส่งออก</DropdownMenuLabel>
+                                <DropdownMenuItem onClick={handleExport}>
+                                    <Download className="w-4 h-4" />JSON (backup / re-import)
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={handleExportMarkdown}>
+                                    <FileText className="w-4 h-4" />Markdown (อ่านง่าย / ส่งให้ AI)
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+
                     </div>
 
                     {!isMobile && playBeat !== null && playBeat < beatCount && (
@@ -3030,90 +2982,6 @@ export function PlaygroundBoard({
                             chapterRanges={chapterRanges}
                             renderCard={renderCard}
                         />
-                    ) : verticalLayout ? (
-                    <div id="canvas-viewport" className="flex-1 min-h-0 overflow-auto">
-                        <div
-                            style={{
-                                display: 'grid',
-                                gridTemplateColumns: `88px repeat(${lanes_.length}, minmax(${COLUMN_WIDTH}px, 1fr)) 120px`,
-                                zoom: boardZoom,
-                            }}
-                        >
-                            <div style={{ gridColumn: 1, gridRow: 1 }} className="sticky left-0 top-0 z-30 border-b border-r border-border/60 bg-background px-2 py-2 font-technical text-[9px] uppercase tracking-[0.14em] text-muted-foreground">
-                                จังหวะ \ เลน
-                            </div>
-                            {lanes_.map((lane, laneIndex) => (
-                                <LaneLabel
-                                    key={lane.id}
-                                    place={{ gridColumn: laneIndex + 2, gridRow: 1 }}
-                                    lane={lane}
-                                    laneIndex={laneIndex}
-                                    laneCount={lanes_.length}
-                                    color={lane.color || LANE_COLORS[laneIndex % LANE_COLORS.length]}
-                                    stats={laneStats.get(lane.id) ?? { count: 0, longestGap: 0, gapStart: 0 }}
-                                    collapsed={false}
-                                    locked={lockedLanes.has(lane.id)}
-                                    soloActive={soloLaneId !== null}
-                                    isSolo={soloLaneId === lane.id}
-                                    characters={characters}
-                                    onRename={handleRenameLane}
-                                    onRemove={handleRemoveLane}
-                                    onSetColor={handleSetLaneColor}
-                                    onSetKind={handleSetLaneKind}
-                                    onMove={handleMoveLane}
-                                    onToggleCollapse={toggleLaneCollapse}
-                                    onToggleSolo={toggleLaneSolo}
-                                    onToggleLock={toggleLaneLock}
-                                    canRemove={lanes_.length > 1}
-                                />
-                            ))}
-                            <div style={{ gridColumn: lanes_.length + 2, gridRow: 1 }} className="sticky top-0 z-20 border-b border-border/60 bg-muted/40 p-1.5">
-                                <AddLaneButton characters={characters} onAdd={handleAddLane} />
-                            </div>
-                            {Array.from({ length: totalColumns }).map((_, beatIndex) => {
-                                const chapter = chapterRanges.find(c => c.startBeat === beatIndex);
-                                const trailing = beatIndex === beatCount;
-                                return (
-                                    <Fragment key={`vrow-${beatIndex}`}>
-                                        <div
-                                            style={{ gridColumn: 1, gridRow: beatIndex + 2 }}
-                                            className={cn("sticky left-0 z-10 border-b border-r border-border/40 bg-background px-2 py-2", trailing && "border-dashed")}
-                                        >
-                                            {chapter && <p className="mb-1 truncate rounded bg-[var(--forge-amber)]/12 px-1 text-[10px] font-medium" title={chapter.name}>{chapter.name}</p>}
-                                            <p className="font-technical text-[10px] tabular-nums text-muted-foreground">
-                                                {trailing ? "+ จังหวะ" : `จังหวะ ${String(beatIndex + 1).padStart(2, "0")}`}
-                                            </p>
-                                        </div>
-                                        {lanes_.map((lane, laneIndex) => {
-                                            const laneColor = lane.color || LANE_COLORS[laneIndex % LANE_COLORS.length];
-                                            const cellItems = items.filter(i => i.laneId === lane.id && i.beatIndex === beatIndex);
-                                            return (
-                                                <BeatCell
-                                                    key={lane.id}
-                                                    place={{ gridColumn: laneIndex + 2, gridRow: beatIndex + 2 }}
-                                                    laneId={lane.id}
-                                                    beatIndex={beatIndex}
-                                                    laneIndex={laneIndex}
-                                                    isTrailing={trailing}
-                                                    laneColor={laneColor}
-                                                    collapsed={false}
-                                                    locked={lockedLanes.has(lane.id)}
-                                                    dimmed={soloLaneId !== null && soloLaneId !== lane.id}
-                                                    isDrafting={
-                                                        (draftCell?.laneId === lane.id && draftCell?.beatIndex === beatIndex) ||
-                                                        (creatingCell?.laneId === lane.id && creatingCell?.beatIndex === beatIndex)
-                                                    }
-                                                    onAddIdea={() => setDraftCell({ laneId: lane.id, beatIndex })}
-                                                >
-                                                    {cellBody(lane, beatIndex, cellItems, true)}
-                                                </BeatCell>
-                                            );
-                                        })}
-                                    </Fragment>
-                                );
-                            })}
-                        </div>
-                    </div>
                     ) : (
                     <div ref={viewportRef} id="canvas-viewport" className="flex-1 min-h-0 overflow-auto">
                         <div

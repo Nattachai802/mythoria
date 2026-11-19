@@ -639,7 +639,7 @@ export function TimelineBoard({
                     />
                 )}
                 {/* Timeline Area — เลื่อนแนวตั้งเดียวทั้ง board (ทุกคอลัมน์เลื่อนพร้อมกัน) */}
-                <div className="min-w-0 flex-1 overflow-auto px-6 pt-4 pb-8">
+                <div className="min-w-0 flex-1 overflow-auto px-6 pt-4">
                     <div className="min-w-max flex flex-col min-h-full">
                         {/* Story Arc strip */}
                         {showArcs && (
@@ -660,8 +660,8 @@ export function TimelineBoard({
                             <TensionCurve chapters={sortedChapters} events={events} />
                         )}
 
-                        {/* Chapter columns */}
-                        <div className="flex min-w-max items-start gap-3 pt-2">
+                        {/* Chapter columns — ยืดทุกคอลัมน์สูงเท่าคอลัมน์ที่ยาวสุด หัวบทจึง sticky ได้ทุกบท ไม่ใช่แค่บทที่ยาว */}
+                        <div className="motion-stagger flex min-w-max flex-1 items-stretch gap-3 pb-8 pt-2">
                         {sortedChapters.map((chapter, index) => {
                             const chapterEvents = events.filter(e => e.relatedChapterId === chapter.id)
                             return (
@@ -692,7 +692,7 @@ export function TimelineBoard({
 
                         {/* เลนปมเรื่องด้านล่าง (task.md 20B) — ติดขอบล่างของพื้นที่เลื่อน วางฉากอยู่ก็เห็นปมที่เปิดค้าง */}
                         {showRibbon && threads.length > 0 && (
-                            <div className="sticky bottom-0 z-10 mt-auto border-t bg-background/95 pt-2 backdrop-blur-sm">
+                            <div className="sticky bottom-0 z-10 border-t bg-background/95 pt-1.5 backdrop-blur-sm">
                                 <ThreadRibbon threads={threads} chapters={sortedChapters} events={events} />
                             </div>
                         )}

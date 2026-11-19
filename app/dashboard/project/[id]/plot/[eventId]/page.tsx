@@ -69,16 +69,14 @@ export default async function PlotPlaygroundPage({
     <div className="h-[calc(100vh-4rem)] overflow-hidden flex flex-col">
       {/* header แถวเดียว — SceneNavigator มีปุ่มย้อนกลับในตัวอยู่แล้ว ไม่ต้องมี breadcrumb เต็มซ้ำอีกชั้น
           โครงดราม่า 4 ช่องอยู่แถบถัดลงมา (task.md 20C) · ช่องที่เหลืออยู่ในแผง "โครงฉากดราม่า" ท้ายแถบ */}
-      <div className="border-b bg-background px-4 py-2 flex items-center gap-3">
+      <div className="flex items-center border-b bg-background px-3 py-1">
         <SceneNavigator
           novelId={novelId}
           currentEvent={eventRes.event}
           events={eventsRes.events || []}
           chapters={chaptersRes.chapters || []}
+          novelTitle={novelTitle}
         />
-        <span className="truncate text-xs text-muted-foreground" title={novelTitle}>
-          {novelTitle}
-        </span>
       </div>
 
       <SceneDramaStrip event={eventRes.event} characters={charactersRes.data || []} events={eventsRes.events || []} />

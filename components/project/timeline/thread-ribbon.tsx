@@ -1,21 +1,19 @@
 "use client"
 
 import type { ChapterForBoard } from "./types"
-import { useMemo } from "react"
-import { Chapter, TimelineEvent } from "@/db/schema"
+import { useMemo, useState } from "react"
+import { TimelineEvent } from "@/db/schema"
 import { type ThreadWithBeats } from "@/server/plot-threads"
-import { cn } from "@/lib/utils"
 import { threadNeedsPayoff } from "@/lib/plot-thread-analysis"
 
-const COLUMN_WIDTH = 260 // ต้องตรงกับ chapter column / tension curve
-const LANE_HEIGHT = 26
-const STALE_GAP = 8 // บทที่ปมเงียบติดกัน → ทาบแดงเตือน (ตรงกับ ledger)
+// ต้องตรงกับ chapter-column (w-[272px]) + gap-3 ของแถวคอลัมน์
+const COLUMN_WIDTH = 272
+const COLUMN_PITCH = COLUMN_WIDTH + 12
+const ROW_H = 34
+const STACK = 9 // ระยะห่างจุดที่ซ้อนกันในฉากเดียว
+const MAX_STACK = 3
 
-const ROLE_COLOR: Record<string, string> = {
-    seed: "#f59e0b",      // หว่าน
-    reinforce: "#3b82f6", // ย้ำ
-    payoff: "#10b981",    // เฉลย
-}
+const ROLE_LABEL: Record<string, string> = { seed: "หว่าน", reinforce: "ย้ำ", payoff: "เฉลย" }
 
 interface ThreadRibbonProps {
     threads: ThreadWithBeats[]
@@ -23,165 +21,115 @@ interface ThreadRibbonProps {
     events: TimelineEvent[]
 }
 
-interface Lane {
-    thread: ThreadWithBeats
-    chapterBeats: string[][] // ต่อบท: roles ของ beats ในบทนั้น (ว่าง = ไม่แตะ)
-    firstIdx: number
-    lastIdx: number
-    isOpen: boolean // ยังไม่เฉลย/ไม่ทิ้ง
-    staleRanges: Array<[number, number]> // ช่วงเงียบเกิน STALE_GAP
-}
+interface Dot { x: number; y: number; threadId: string; thread: string; color: string; role: string; label: string }
 
+/**
+ * เส้นปมแบบเส้นเดียว — ทุก beat เป็นจุดบนเส้นแนวนอนตามตำแหน่งฉากของมัน (ซ้าย = เกิดก่อน)
+ * ชี้จุดไหน → เส้นเชื่อมจุดของปมนั้นทั้งเรื่อง ปมอื่นจางลง · ความสูงคงที่ ไม่โตตามจำนวนปม
+ */
 export function ThreadRibbon({ threads, chapters, events }: ThreadRibbonProps) {
-    const lanes = useMemo<Lane[]>(() => {
-        const chapterIdxByEvent = new Map<string, number>()
-        events.forEach(e => {
-            if (!e.relatedChapterId) return
-            const idx = chapters.findIndex(c => c.id === e.relatedChapterId)
-            if (idx >= 0) chapterIdxByEvent.set(e.id, idx)
+    const [hoverIdx, setHoverIdx] = useState<number | null>(null)
+
+    const { dots, extra, openCount } = useMemo(() => {
+        // x ของฉาก: กระจายตามลำดับฉากในคอลัมน์ของบทนั้น
+        const xByEvent = new Map<string, { x: number; title: string }>()
+        chapters.forEach((c, ci) => {
+            const list = events.filter(e => e.relatedChapterId === c.id).sort((a, b) => a.orderIndex - b.orderIndex)
+            list.forEach((e, si) => xByEvent.set(e.id, { x: ci * COLUMN_PITCH + ((si + 0.5) / list.length) * COLUMN_WIDTH, title: e.title }))
         })
-
-        return threads
-            .map(thread => {
-                const chapterBeats: string[][] = chapters.map(() => [])
-                thread.beats.forEach(b => {
-                    const idx = chapterIdxByEvent.get(b.eventId)
-                    if (idx !== undefined) chapterBeats[idx].push(b.role)
-                })
-
-                const touched = chapterBeats
-                    .map((roles, i) => (roles.length > 0 ? i : -1))
-                    .filter(i => i >= 0)
-                if (touched.length === 0) return null
-
-                const firstIdx = touched[0]
-                const lastIdx = touched[touched.length - 1]
-                const isOpen = threadNeedsPayoff(thread)
-
-                // gap เงียบระหว่าง beat ติดกัน + ช่วงท้ายถ้าปมยังเปิดค้าง
-                const staleRanges: Array<[number, number]> = []
-                for (let i = 1; i < touched.length; i++) {
-                    if (touched[i] - touched[i - 1] > STALE_GAP) {
-                        staleRanges.push([touched[i - 1], touched[i]])
-                    }
-                }
-                if (isOpen && chapters.length - 1 - lastIdx > STALE_GAP) {
-                    staleRanges.push([lastIdx, chapters.length - 1])
-                }
-
-                return { thread, chapterBeats, firstIdx, lastIdx, isOpen, staleRanges }
+        const perScene = new Map<string, number>()
+        const dots: Dot[] = []
+        const extra: { x: number; n: number }[] = []
+        for (const t of threads) for (const b of t.beats) {
+            const pos = xByEvent.get(b.eventId)
+            if (!pos) continue
+            const n = perScene.get(b.eventId) ?? 0
+            perScene.set(b.eventId, n + 1)
+            if (n >= MAX_STACK) continue
+            dots.push({
+                x: pos.x, y: ROW_H / 2 + [0, -STACK, STACK][n],
+                threadId: t.id, thread: t.title, color: t.color ?? "var(--forge-amber)", role: b.role,
+                label: `${ROLE_LABEL[b.role] ?? b.role} · ฉาก ${pos.title}`,
             })
-            .filter((l): l is Lane => l !== null)
-            // major ก่อน แล้วเรียงตามบทที่เริ่มหว่าน
-            .sort((a, b) =>
-                a.thread.importance === b.thread.importance
-                    ? a.firstIdx - b.firstIdx
-                    : a.thread.importance === "major" ? -1 : 1
-            )
+        }
+        perScene.forEach((n, id) => { if (n > MAX_STACK) extra.push({ x: xByEvent.get(id)!.x, n: n - MAX_STACK }) })
+        return { dots, extra, openCount: threads.filter(threadNeedsPayoff).length }
     }, [threads, chapters, events])
 
     if (chapters.length === 0) return null
-
-    const totalWidth = chapters.length * COLUMN_WIDTH
-    const cx = (i: number) => i * COLUMN_WIDTH + COLUMN_WIDTH / 2
-
-    if (lanes.length === 0) {
-        return (
-            <div className="flex items-center pl-2 py-1.5 flex-shrink-0" style={{ width: totalWidth + 32 }}>
-                <span className="font-technical text-[9px] uppercase tracking-widest text-muted-foreground/60">
-                    เลนปม — ผูกปมเข้ากับฉากผ่านสมุดปมเพื่อเริ่มวาดเลน
-                </span>
-            </div>
-        )
-    }
+    const width = chapters.length * COLUMN_PITCH - 12
+    const hoverDot = hoverIdx !== null ? dots[hoverIdx] : null
+    const hover = hoverDot?.threadId ?? null
+    const hovered = hover ? dots.filter(d => d.threadId === hover).sort((a, b) => a.x - b.x) : []
 
     return (
-        <div className="flex flex-col flex-shrink-0 py-1" style={{ width: totalWidth + 32 }}>
-            {lanes.map(lane => {
-                const color = lane.thread.color ?? "#f59e0b"
-                const y = LANE_HEIGHT / 2
-                const endX = lane.isOpen ? cx(chapters.length - 1) : cx(lane.lastIdx)
-
-                return (
-                    <div key={lane.thread.id} className="relative" style={{ height: LANE_HEIGHT, width: totalWidth }}>
-                        <svg width={totalWidth} height={LANE_HEIGHT} className="absolute inset-0 overflow-visible">
-                            {/* เส้นหลัก: ช่วงที่ปมมีชีวิต */}
-                            <line
-                                x1={cx(lane.firstIdx)} y1={y} x2={cx(lane.lastIdx)} y2={y}
-                                stroke={color} strokeWidth={lane.thread.importance === "major" ? 2.5 : 1.5}
-                                strokeOpacity={0.55} strokeLinecap="round"
-                            />
-                            {/* หางค้าง: ปมยังเปิด ลากเส้นประจางถึงบทสุดท้าย */}
-                            {lane.isOpen && lane.lastIdx < chapters.length - 1 && (
-                                <line
-                                    x1={cx(lane.lastIdx)} y1={y} x2={endX} y2={y}
-                                    stroke={color} strokeWidth={1.5}
-                                    strokeOpacity={0.25} strokeDasharray="2 5" strokeLinecap="round"
-                                />
-                            )}
-                            {/* ช่วงเงียบเกิน STALE_GAP — ทาบแดงจาง */}
-                            {lane.staleRanges.map(([a, b], i) => (
-                                <line
-                                    key={i}
-                                    x1={cx(a) + 8} y1={y} x2={cx(b) - 8} y2={y}
-                                    stroke="#ef4444" strokeWidth={3}
-                                    strokeOpacity={0.18} strokeLinecap="round"
-                                />
-                            ))}
-                            {/* จุด beat ต่อบท สีตาม role (เฉลย > ย้ำ > หว่าน) */}
-                            {lane.chapterBeats.map((roles, ci) => {
-                                if (roles.length === 0) return null
-                                const role = roles.includes("payoff") ? "payoff"
-                                    : roles.includes("reinforce") ? "reinforce" : "seed"
-                                return (
-                                    <g key={ci}>
-                                        <circle
-                                            cx={cx(ci)} cy={y} r={role === "payoff" ? 5 : 3.5}
-                                            fill={ROLE_COLOR[role]}
-                                            stroke="var(--background)" strokeWidth={1.5}
-                                        />
-                                        {roles.length > 1 && (
-                                            <text
-                                                x={cx(ci)} y={y - 7} textAnchor="middle"
-                                                fontSize={7} className="font-technical"
-                                                fill={ROLE_COLOR[role]}
-                                            >
-                                                ×{roles.length}
-                                            </text>
-                                        )}
-                                    </g>
-                                )
-                            })}
-                            {/* เครื่องหมายปมค้างท้ายเรื่อง */}
-                            {lane.isOpen && (
-                                <text
-                                    x={endX + 10} y={y + 3}
-                                    fontSize={8} className="font-technical"
-                                    fill="#ef4444" fillOpacity={0.8}
-                                    style={{ textTransform: "uppercase", letterSpacing: "0.08em" }}
-                                >
-                                    ค้าง
-                                </text>
-                            )}
-                        </svg>
-
-                        {/* ป้ายชื่อปม — sticky ติดขอบซ้ายตอน scroll */}
-                        <div className="sticky left-2 inline-flex items-center h-full pointer-events-none" style={{ zIndex: 2 }}>
-                            <span
-                                className={cn(
-                                    "px-1.5 py-px rounded-[3px] font-technical text-[8px] uppercase tracking-wider border backdrop-blur-sm bg-background/85 whitespace-nowrap",
-                                    lane.thread.importance === "major" ? "font-bold" : "opacity-80"
-                                )}
-                                style={{ color, borderColor: `${color}40` }}
-                                title={`${lane.thread.title} — ${lane.thread.beats.length} beats`}
-                            >
-                                {lane.thread.title}
-                                {lane.isOpen && <span className="ml-1 text-red-500/80">●</span>}
-                            </span>
-                        </div>
-                    </div>
-                )
-            })}
+        <div style={{ width }}>
+            <div className="sticky left-0 flex w-fit items-center gap-3 text-[11px] text-muted-foreground">
+                <span className="font-medium text-foreground">ปม</span>
+                <span className="inline-flex items-center gap-1"><Mark role="seed" color="currentColor" />หว่าน</span>
+                <span className="inline-flex items-center gap-1"><Mark role="reinforce" color="currentColor" />ย้ำ</span>
+                <span className="inline-flex items-center gap-1"><Mark role="payoff" color="currentColor" />เฉลย</span>
+                {openCount > 0 && <span className="text-[var(--forge-amber)]">ค้าง {openCount}</span>}
+            </div>
+            <div className="relative">
+            <svg
+                width={width} height={ROW_H} className="block overflow-visible"
+                role="img" aria-label={`เส้นปม ${threads.length} ปม ${dots.length} จุด`}
+                onMouseLeave={() => setHoverIdx(null)}
+            >
+                <line x1={0} x2={width} y1={ROW_H / 2} y2={ROW_H / 2} stroke="var(--border)" />
+                {chapters.map((c, i) => i > 0 && (
+                    <line key={c.id} x1={i * COLUMN_PITCH - 6} x2={i * COLUMN_PITCH - 6} y1={ROW_H / 2 - 4} y2={ROW_H / 2 + 4} stroke="var(--border)" />
+                ))}
+                {hovered.length > 1 && (
+                    <polyline
+                        points={hovered.map(d => `${d.x},${d.y}`).join(" ")}
+                        fill="none" stroke={hovered[0].color} strokeWidth={1.5} strokeLinejoin="round"
+                        className="animate-in fade-in duration-150"
+                    />
+                )}
+                {dots.map((d, i) => (
+                    <g
+                        key={i} transform={`translate(${d.x} ${d.y})`}
+                        className="cursor-default transition-opacity duration-150 motion-reduce:transition-none"
+                        opacity={hover && hover !== d.threadId ? 0.2 : 1}
+                        onMouseEnter={() => setHoverIdx(i)}
+                    >
+                        <title>{`${d.thread} · ${d.label}`}</title>
+                        <circle r={8} fill="transparent" />
+                        <Mark role={d.role} color={d.color} svg />
+                    </g>
+                ))}
+                {extra.map((e, i) => (
+                    <text key={i} x={e.x + 7} y={ROW_H / 2 - STACK - 2} fontSize={9} fill="var(--muted-foreground)">+{e.n}</text>
+                ))}
+            </svg>
+            {/* ป้ายชื่อปมตอนชี้ — ลอยเหนือจุด (title ของ svg ขึ้นช้าและบางเบราว์เซอร์ไม่โชว์) */}
+            {hoverDot && (
+                <div
+                    role="tooltip"
+                    className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md animate-in fade-in zoom-in-95 duration-150 motion-reduce:animate-none"
+                    style={{ left: hoverDot.x, top: hoverDot.y - 10 }}
+                >
+                    <p className="flex items-center gap-1.5 font-medium">
+                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: hoverDot.color }} />
+                        {hoverDot.thread}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">{hoverDot.label} · {hovered.length} จุดในเรื่อง</p>
+                </div>
+            )}
+            </div>
         </div>
     )
+}
+
+/** หว่าน = วงกลวง · ย้ำ = จุดทึบ · เฉลย = ข้าวหลามตัด — แยกด้วยรูปทรง ไม่พึ่งสีอย่างเดียว */
+function Mark({ role, color, svg }: { role: string; color: string; svg?: boolean }) {
+    const shape = role === "payoff"
+        ? <rect x={-3.5} y={-3.5} width={7} height={7} transform="rotate(45)" fill={color} />
+        : role === "reinforce"
+            ? <circle r={3.5} fill={color} />
+            : <circle r={3} fill="var(--background)" stroke={color} strokeWidth={1.5} />
+    if (svg) return shape
+    return <svg width={10} height={10} viewBox="-5 -5 10 10" aria-hidden="true">{shape}</svg>
 }

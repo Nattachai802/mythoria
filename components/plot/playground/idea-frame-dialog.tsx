@@ -15,21 +15,8 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu";
-import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
-// แผงไอเดียชิดขวาของพื้นที่กระดาน (task.md 20C) — anchor เสมือนที่มุมขวาบนของ #canvas-viewport แทนการเกาะข้างการ์ด
-// แผงจึงอยู่ที่เดิมเสมอไม่ว่าการ์ดอยู่ตรงไหน/เลื่อนกระดานไปไหน · ยังลากหัวแผงย้ายได้เหมือนเดิม
-// ponytail: เปิดหลายใบจะซ้อนที่เดียวกัน (ใบล่าสุดอยู่บน) — ถ้าต้องเทียบหลายใบบ่อย ค่อยทำ offset ต่อใบ
-const DOCK_ANCHOR = {
-  current: {
-    getBoundingClientRect: () => {
-      const r = typeof document !== "undefined" ? document.getElementById("canvas-viewport")?.getBoundingClientRect() : undefined;
-      const x = (r?.right ?? (typeof window !== "undefined" ? window.innerWidth : 0)) - 12;
-      const y = (r?.top ?? 120) + 12;
-      return DOMRect.fromRect({ x, y, width: 0, height: 0 });
-    },
-  },
-};
 import {
   Users, MapPin, X, Link as LinkIcon, Pencil, ExternalLink, Copy,
   GitBranchPlus, Shield, Check, MoreVertical, Loader2, Star, MessageCircle,
@@ -40,7 +27,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { noteToPlain, noteIsEmpty, noteTemplate, withTemplate, looksLikeDialogue, NOTE_TEMPLATES, type NoteTemplate } from "@/lib/note-text";
-import { RichNoteEditor, NoteView, ClampedNote } from "./rich-note-editor";
+import { RichNoteEditor, NoteView, ClampedNote, type SpeakerSide } from "./rich-note-editor";
 import { SceneElementDetails } from "@/db/schema";
 import { SceneParticipantsPanel, PromoteDummyButton } from "./scene-participants-panel";
 import { kindOf, canContainChild } from "@/lib/participant-types";
@@ -223,7 +210,7 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
       <Card
         // หน้าการ์ดใหม่ (task.md 20C): ไม่มีแถบรูฟิล์ม · สี tone = ขอบเต็มรอบจาง ๆ + จุดหน้าชื่อ (DESIGN.md ห้ามแถบข้างหนา) · เมนูโผล่ตอนชี้
         className={cn(
-          widthClass, "bg-card overflow-hidden cursor-pointer rounded-md border shadow-sm hover:shadow-md hover:border-[var(--forge-amber)]/50 transition-all duration-200 p-0 gap-0",
+          widthClass, "bg-card overflow-hidden cursor-pointer rounded-md border shadow-sm hover:-translate-y-px hover:shadow-md hover:border-[var(--forge-amber)]/50 transition-all duration-200 motion-reduce:transition-none motion-reduce:hover:translate-y-0 p-0 gap-0",
           isOver && "ring-2 ring-[var(--forge-amber)] ring-offset-1",
           isLinkingSource && "ring-2 ring-blue-500 ring-offset-1",
           isKeyMoment && "bg-amber-50/60 dark:bg-amber-500/5",
@@ -395,8 +382,6 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
         </div>
       </Card>
       </PopoverTrigger>
-      {/* หลัง trigger เสมอ: effect ของ anchor ตัวท้ายชนะ — วางก่อน trigger แล้ว trigger แย่ง anchor กลับไปเป็นการ์ด */}
-      <PopoverAnchor virtualRef={DOCK_ANCHOR} />
 
       {isOver && children.length === 0 && (
         <div className="mt-1.5 h-8 border-2 border-dashed border-primary/30 rounded bg-primary/5 flex items-center justify-center text-[10px] text-primary">
@@ -731,9 +716,7 @@ function IdeaFrameDialog({
     while ((m = re.exec(text)) !== null) {
       if (m.index > last) out.push(text.slice(last, m.index));
       out.push(
-        <span key={m.index} className="rounded bg-amber-500/10 px-0.5 font-medium text-amber-700 dark:text-amber-300">
-          @{m[1]}
-        </span>
+        <span key={m.index} className="font-medium text-amber-700 dark:text-amber-300">{m[1]}</span>
       );
       last = m.index + m[0].length;
     }
@@ -884,6 +867,20 @@ function IdeaFrameDialog({
     return elementDetails.get(key);
   };
 
+  // ฝั่งของตัวละครในการ์ดนี้ (ตามบทบาทในฉาก) — ใช้จัดบับเบิลแชตในโน้ตบทสนทนา ซ้าย = ฝ่ายเรา ขวา = ฝ่ายตรงข้าม
+  const sideOfRole = (role?: string): SpeakerSide => {
+    const r = (role || "protagonist").toLowerCase();
+    return r === "antagonist" ? "them" : r === "protagonist" ? "us" : "other";
+  };
+  const speakerSides = new Map<string, SpeakerSide>();
+  for (const c of item.children || []) {
+    if (c.type !== "character" && c.type !== "dummy_character") continue;
+    const side = sideOfRole(getChildDetail(c)?.role || c.role);
+    speakerSides.set(c.referenceId || c.id, side);
+    speakerSides.set(c.title, side);
+  }
+  const sideOf = (id: string, name: string): SpeakerSide => speakerSides.get(id) ?? speakerSides.get(name) ?? "other";
+
   const thisIdeaNotes = (ideaNotes || [])
     .filter((n) => n.canvasItemId === item.id && n.elementType === 'idea_note')
     .sort((a, b) => (a.noteOrder ?? 0) - (b.noteOrder ?? 0));
@@ -1001,7 +998,7 @@ function IdeaFrameDialog({
   };
 
   /** หนึ่งแถวในโครง + ลูกของมัน — เยื้องตามชั้น */
-  const renderNode = (child: any, depth: number): React.ReactNode => {
+  const renderNode = (child: any, depth: number, compact = false): React.ReactNode => {
     const kids = childrenOf(child.id);
     const link = linkOf(child);
     const nestLabel = link?.source === 'infer' ? link.label : null;
@@ -1039,20 +1036,22 @@ function IdeaFrameDialog({
                 style={realFaction?.color ? { color: realFaction.color } : undefined}
               />
             )}
-            <span className={cn("truncate font-medium text-foreground", isDummy && "italic text-muted-foreground")}>
+            <span className={cn("truncate font-medium text-foreground", isDummy && "italic text-muted-foreground")} title={isDummy ? `${child.title} (Dummy — ยังไม่อยู่ในคลัง)` : child.title}>
               {child.title}
-              {isDummy && <span className="text-[10px] text-muted-foreground font-normal ml-1">(Dummy)</span>}
+              {isDummy && !compact && <span className="text-[10px] text-muted-foreground font-normal ml-1">(Dummy)</span>}
             </span>
-            {isCharacter && <span className={cn("text-[10px] shrink-0", rm.text)}>{rm.label}</span>}
-            {nestLabel && (
+            {isCharacter && !compact && <span className={cn("text-[10px] shrink-0", rm.text)}>{rm.label}</span>}
+            {nestLabel && !compact && (
               <span className="shrink-0 text-[9px] uppercase tracking-wide text-muted-foreground/60 font-technical" title="อนุมานจากข้อมูลในคลัง — กดปุ่มลูกศรเพื่อผูกเอง">
                 {nestLabel}
               </span>
             )}
-            {realFaction?.type && (
+            {realFaction?.type && !compact && (
               <span className="text-[9px] uppercase tracking-wide text-muted-foreground/70 shrink-0">{realFaction.type}</span>
             )}
             <span className="flex-1" />
+            {/* คอลัมน์แคบ: ปุ่มไม่กินที่จนกว่าจะชี้ — ชื่อได้ความกว้างเต็ม (w-0 ยังโฟกัสด้วยคีย์บอร์ดได้) */}
+            <span className={cn("flex shrink-0 items-center gap-1.5", compact && "w-0 overflow-hidden group-hover/item:w-auto group-hover/item:overflow-visible focus-within:w-auto focus-within:overflow-visible")}>
             <BindButton child={child} />
             {!isDummy && !isLocation && child.referenceId && novelId && (isCharacter || isFaction) && (
               <button
@@ -1084,6 +1083,7 @@ function IdeaFrameDialog({
                 <X className="w-3 h-3" />
               </button>
             )}
+            </span>
           </div>
 
           {detail?.action && (
@@ -1121,7 +1121,7 @@ function IdeaFrameDialog({
             kids.some((k: any) => linkOf(k)?.source === 'bind')
               ? "border-[var(--forge-amber)]/40"
               : "border-dashed border-border/60")}>
-            {kids.map((k: any) => renderNode(k, depth + 1))}
+            {kids.map((k: any) => renderNode(k, depth + 1, compact))}
           </div>
         )}
       </div>
@@ -1145,14 +1145,14 @@ function IdeaFrameDialog({
 
   return (
     <PopoverContent
-      side="left"
+      side="right"
       align="start"
-      sideOffset={0}
+      sideOffset={12}
       collisionPadding={16}
       onOpenAutoFocus={(e) => e.preventDefault()}
       onInteractOutside={handleInteractOutside}
       ref={contentRef}
-      className="pointer-events-auto w-[340px] max-w-[92vw] max-h-[min(var(--radix-popover-content-available-height),calc(100vh-12rem))] flex flex-col overflow-hidden p-0"
+      className="pointer-events-auto w-[340px] max-w-[92vw] max-h-[min(var(--radix-popover-content-available-height),70vh)] flex flex-col overflow-hidden p-0"
       style={floatAt ? {
         // absolute ไม่ใช่ fixed — กล่องนอกของ Radix มี transform อยู่ มันเลยกลายเป็น
         // containing block ของ fixed ทำให้ left/top แบบพิกัดจอเพี้ยนกระเด็นไปไกล
@@ -1515,9 +1515,51 @@ function IdeaFrameDialog({
               <p className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground/80">
                 <Users className="w-3 h-3" /> องค์ประกอบ
               </p>
-              <div className="divide-y divide-border/40">
-                {treeRoots.map((c: any) => renderNode(c, 0))}
-              </div>
+              {/* สองฝั่งเผชิญหน้า: ฝ่ายเรา | ฝ่ายตรงข้าม · ผู้เห็นเหตุ/เหยื่อ และสิ่งที่ไม่ใช่คน (สถานที่ ไอเท็ม พลัง) เรียงต่อด้านล่าง */}
+              {(() => {
+                const isPerson = (c: any) => ["character", "dummy_character", "faction", "dummy_faction"].includes(c.type);
+                const roleOf = (c: any) => (getChildDetail(c)?.role || c.role || "protagonist").toLowerCase();
+                const people = treeRoots.filter(isPerson);
+                const us = people.filter((c: any) => roleOf(c) === "protagonist");
+                const them = people.filter((c: any) => roleOf(c) === "antagonist");
+                const others = people.filter((c: any) => !["protagonist", "antagonist"].includes(roleOf(c)));
+                const things = treeRoots.filter((c: any) => !isPerson(c));
+                const col = (list: any[], label: string, tone: string) => (
+                  <div className="min-w-0">
+                    <p className={cn("mb-0.5 text-[11px] font-semibold", tone)}>{label} · {list.length}</p>
+                    {list.length > 0
+                      ? list.map((c: any) => renderNode(c, 0, true))
+                      : <p className="py-1 text-[11px] text-muted-foreground">ยังไม่มี</p>}
+                  </div>
+                );
+                return (
+                  <>
+                    {people.length > 0 && (
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2">
+                        {col(us, "ฝ่ายเรา", "text-amber-700 dark:text-amber-400")}
+                        <div aria-hidden="true" className="flex flex-col items-center">
+                          <span className="w-px flex-1 bg-border" />
+                          <span className="py-1 text-[10px] text-muted-foreground">ปะทะ</span>
+                          <span className="w-px flex-1 bg-border" />
+                        </div>
+                        {col(them, "ฝ่ายตรงข้าม", "text-red-600 dark:text-red-400")}
+                      </div>
+                    )}
+                    {others.length > 0 && (
+                      <div className="border-t border-border/50 pt-1.5">
+                        <p className="text-[11px] font-semibold text-muted-foreground">ผู้เห็นเหตุ / ผู้รับเคราะห์ · {others.length}</p>
+                        {others.map((c: any) => renderNode(c, 0))}
+                      </div>
+                    )}
+                    {things.length > 0 && (
+                      <div className={cn(people.length > 0 && "border-t border-border/50 pt-1.5")}>
+                        {people.length > 0 && <p className="text-[11px] font-semibold text-muted-foreground">อื่น ๆ ในฉาก · {things.length}</p>}
+                        <div className="divide-y divide-border/40">{things.map((c: any) => renderNode(c, 0))}</div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           )}
 
@@ -1581,7 +1623,9 @@ function IdeaFrameDialog({
                       setDraggedNoteId(null);
                     }}
                     className={cn(
-                      "group/note relative flex gap-2 border-b border-border/40 px-1 py-2 text-xs leading-snug cursor-pointer transition-colors duration-700 hover:bg-muted/40",
+                      // บทสนทนา = บับเบิลลอยบนพื้นแผง · โน้ตทั่วไป = บล็อกบันทึกเต็มความกว้าง พื้นจาง แยกจากบทพูดชัด
+                      "group/note relative flex gap-2 rounded-md px-2 py-2 text-xs leading-snug cursor-pointer transition-colors duration-700",
+                      noteTemplate(note.notes) === "dialogue" ? "hover:bg-muted/40" : "bg-muted/50 hover:bg-muted",
                       draggedNoteId === note.id && "opacity-40",
                       flashNoteId === note.id && "bg-[var(--forge-amber)]/15"
                     )}
@@ -1601,20 +1645,24 @@ function IdeaFrameDialog({
                       {noteSpecial && (
                         <span className="mb-0.5 inline-block rounded border border-[var(--forge-amber)]/50 px-1.5 text-[11px] text-foreground">{noteSpecial}</span>
                       )}
-                      <ClampedNote>
-                        <NoteView raw={note.notes || ""} renderPlain={renderNoteMentions} />
+                      <ClampedNote maxH={noteTemplate(note.notes) === "dialogue" ? "max-h-[9.5rem]" : undefined}>
+                        <NoteView raw={note.notes || ""} renderPlain={renderNoteMentions} sideOf={sideOf} />
                       </ClampedNote>
+                    </div>
+                    <span className="absolute top-1.5 right-1.5 flex items-center gap-1">
                       {looksLikeDialogue(note.notes) && (
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); onQuickAddNote(item, withTemplate(note.notes || "", "dialogue", allMentionChars), note.id, note.noteKind ?? undefined); }}
-                          className="mt-1 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
+                          className="rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/note:opacity-100"
+                          title="ดูเหมือนบทสนทนา — แสดงเป็นบับเบิลแชต"
+                          aria-label="แสดงโน้ตนี้เป็นบทสนทนา"
                         >
-                          ดูเหมือนบทสนทนา — เปลี่ยนเป็นรูปแบบบทสนทนา
+                          <MessageCircle className="w-3 h-3" />
                         </button>
                       )}
-                    </div>
-                    <Pencil className="w-3 h-3 absolute top-1.5 right-1.5 text-muted-foreground opacity-40 group-hover/note:opacity-100 transition-opacity" />
+                      <Pencil className="w-3 h-3 text-muted-foreground opacity-40 group-hover/note:opacity-100 transition-opacity" />
+                    </span>
                   </div>
                 );
               })}

@@ -42,11 +42,11 @@ export function IdeaTray({ novelId, ideas, chapters, onAdded, onPlace, onClose }
     }
 
     return (
-        <aside className="flex w-[260px] shrink-0 flex-col border-r bg-background" aria-label="ถาดไอเดีย">
+        <aside className="flex w-[260px] shrink-0 flex-col border-r bg-background animate-in fade-in slide-in-from-left-3 duration-200 ease-out motion-reduce:animate-none" aria-label="ถาดไอเดีย">
             <div className="flex items-center gap-2 border-b px-3 py-2.5">
                 <Lightbulb className="h-4 w-4 text-[var(--forge-amber)]" />
                 <p className="flex-1 text-sm font-semibold">ถาดไอเดีย <span className="font-normal text-muted-foreground">· {ideas.length}</span></p>
-                <button onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="ปิดถาดไอเดีย">
+                <button onClick={onClose} className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-90" aria-label="ปิดถาดไอเดีย">
                     <X className="h-4 w-4" />
                 </button>
             </div>
@@ -71,7 +71,7 @@ export function IdeaTray({ novelId, ideas, chapters, onAdded, onPlace, onClose }
                         key={idea.id}
                         draggable
                         onDragStart={e => { e.dataTransfer.setData(IDEA_DRAG_TYPE, idea.id); e.dataTransfer.effectAllowed = "copy" }}
-                        className="group flex cursor-grab items-start gap-1.5 rounded-md border bg-card px-2 py-1.5 text-sm active:cursor-grabbing hover:border-[var(--forge-amber)]/50"
+                        className="group flex cursor-grab items-start gap-1.5 rounded-md border bg-card px-2 py-1.5 text-sm transition-[border-color,box-shadow,translate] duration-150 active:cursor-grabbing hover:-translate-y-px hover:border-[var(--forge-amber)]/50 hover:shadow-sm motion-reduce:transition-none"
                     >
                         <GripVertical className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/50" aria-hidden />
                         <div className="min-w-0 flex-1">

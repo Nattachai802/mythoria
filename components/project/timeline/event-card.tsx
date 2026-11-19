@@ -231,8 +231,8 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
             <div
                 className={cn(
                     "relative cursor-pointer chamfered-sm border bg-card",
-                    "transition-colors duration-150 ease-out motion-reduce:transition-none",
-                    isHovered && !isDragging ? "border-[var(--forge-amber)]/50 bg-accent/40" : "border-border",
+                    "transition-[color,background-color,border-color,box-shadow,translate] duration-200 ease-out motion-reduce:transition-none",
+                    isHovered && !isDragging ? "-translate-y-px border-[var(--forge-amber)]/50 bg-accent/40 shadow-[0_4px_14px_-6px_rgb(0_0_0/0.18)]" : "border-border",
                     // เสร็จแล้ว = ถอยไปเป็นพื้นหลัง ไม่ต้องมีแถบสีเรืองแสงมาป่าวประกาศ
                     event.isCompleted && !isHovered && "border-border/60 bg-muted/40",
                     isDragging && "ring-1 ring-[var(--forge-amber)]/50",
@@ -263,7 +263,9 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
                                 )}
                                 title={event.isCompleted ? "ทำเครื่องหมายเป็นฉบับร่าง" : "ทำเครื่องหมายว่าเสร็จ"}
                             >
-                                {event.isCompleted ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+                                {event.isCompleted
+                                    ? <CheckCircle2 key="done" className="h-4 w-4 animate-in zoom-in-50 duration-200 motion-reduce:animate-none" />
+                                    : <Circle key="todo" className="h-4 w-4" />}
                             </button>
 
                             <div

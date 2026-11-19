@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import "react-quill-new/dist/quill.snow.css";
 import "quill-mention/dist/quill.mention.css";
@@ -170,9 +170,7 @@ function toLines(ops: DeltaOp[]): Line[] {
       if (m?.value) {
         if (cur.length === 0) lead = { id: m.id ?? m.value, value: m.value }; // ชิปต้นบรรทัด = ผู้พูดของ template บทสนทนา
         cur.push(
-          <span key={k++} className="rounded bg-amber-500/10 px-0.5 font-medium text-amber-700 dark:text-amber-300">
-            @{m.value}
-          </span>
+          <span key={k++} className="font-medium text-amber-700 dark:text-amber-300">{m.value}</span>
         );
       }
       continue;
@@ -191,27 +189,35 @@ function toLines(ops: DeltaOp[]): Line[] {
   return lines;
 }
 
-// สีประจำตัวละคร: hash จาก id → hue คงที่ ตัวละครเดียวกันได้สีเดียวกันทุกโน้ต
-const hueOf = (id: string) => { let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
+/** ฝั่งของผู้พูด (จากบทบาทในฉาก) — ฝ่ายเราชิดซ้าย ฝ่ายตรงข้ามชิดขวา แบบแชต */
+export type SpeakerSide = "us" | "them" | "other";
+const BUBBLE: Record<SpeakerSide, { bubble: string; name: string }> = {
+  us: { bubble: "bg-[var(--forge-amber)]/12", name: "text-amber-700 dark:text-amber-300" },
+  them: { bubble: "bg-red-500/10", name: "text-red-600 dark:text-red-400" },
+  other: { bubble: "bg-muted", name: "text-muted-foreground" },
+};
 
 /**
- * template บทสนทนา: บรรทัดที่ขึ้นต้นด้วยชิป = ตาพูดของคนนั้น · บรรทัดอื่น = บรรทัดบรรยาย (เต็มความกว้าง)
- * grid สองคอลัมน์ทั้งโน้ต — คอลัมน์ชื่อกว้างตามชื่อที่ยาวสุด (เพดาน 38%) ข้อความทุกตาเลยเรียงแนวเดียวกัน
- * และบรรทัดที่ยาวพับกลับมาตรงคอลัมน์ข้อความ ไม่ลอดใต้ชื่อ
+ * template บทสนทนา → บับเบิลแชต: บรรทัดที่ขึ้นต้นด้วยชิป = ตาพูดของคนนั้น (ชิดซ้าย/ขวาตามฝั่ง)
+ * บรรทัดอื่น = บรรยาย อยู่กลางแบบข้อความระบบในแชต · คนเดิมพูดต่อกันไม่ต้องขึ้นชื่อซ้ำ
  */
-function DialogueView({ lines }: { lines: Line[] }) {
+function DialogueView({ lines, sideOf }: { lines: Line[]; sideOf?: (id: string, name: string) => SpeakerSide }) {
   const rows = lines.filter((l) => l.inline.length > 0);
   return (
-    <div className="grid grid-cols-[fit-content(38%)_1fr] gap-x-3">
+    <div className="flex flex-col gap-1">
       {rows.map((l, i) => {
-        const sep = i > 0 ? "border-t border-border/40 " : "";
-        if (!l.lead) return <p key={i} className={sep + "col-span-2 py-1.5 italic text-muted-foreground"}>{l.inline}</p>;
-        const hue = hueOf(l.lead.id);
+        if (!l.lead) return <p key={i} className="px-4 py-0.5 text-center text-[11px] italic leading-snug text-muted-foreground">{l.inline}</p>;
+        const side = sideOf?.(l.lead.id, l.lead.value) ?? "us";
+        const right = side === "them";
+        const sameAsPrev = rows[i - 1]?.lead?.id === l.lead.id;
+        const tone = BUBBLE[side];
         return (
-          <Fragment key={i}>
-            <span className={sep + "py-1.5 text-[11px] font-semibold break-words"} style={{ color: `hsl(${hue} 60% 38%)` }}>{l.lead.value}</span>
-            <div className={sep + "py-1.5 min-w-0"}>{l.inline.slice(1)}</div>
-          </Fragment>
+          <div key={i} className={"flex max-w-[85%] flex-col " + (right ? "items-end self-end" : "items-start self-start")}>
+            {!sameAsPrev && <span className={"px-1 text-[11px] font-medium " + tone.name}>{l.lead.value}</span>}
+            <div className={"min-w-0 rounded-2xl px-2.5 py-1.5 leading-snug " + tone.bubble + (right ? " rounded-br-sm" : " rounded-bl-sm")}>
+              {l.inline.slice(1)}
+            </div>
+          </div>
         );
       })}
     </div>
@@ -219,11 +225,11 @@ function DialogueView({ lines }: { lines: Line[] }) {
 }
 
 /** โน้ตรูปแบบใหม่ (Delta) → React · โน้ตเก่า (plain) ให้ fallback ไปที่ renderPlain ที่ส่งมา */
-export function NoteView({ raw, renderPlain }: { raw: string; renderPlain: (text: string) => ReactNode }) {
+export function NoteView({ raw, renderPlain, sideOf }: { raw: string; renderPlain: (text: string) => ReactNode; sideOf?: (id: string, name: string) => SpeakerSide }) {
   const delta = parseDelta(raw);
   if (!delta) return <p className="whitespace-pre-wrap">{renderPlain(raw)}</p>;
   const lines = toLines(delta.ops);
-  if (delta.template === "dialogue") return <DialogueView lines={lines} />;
+  if (delta.template === "dialogue") return <DialogueView lines={lines} sideOf={sideOf} />;
   const out: ReactNode[] = [];
   for (let i = 0; i < lines.length; ) {
     const l = lines[i];
@@ -242,7 +248,7 @@ export function NoteView({ raw, renderPlain }: { raw: string; renderPlain: (text
 }
 
 /** โน้ตยาว: ตัดที่ ~3 บรรทัด + "ดูเพิ่ม" (วัดจริงหลัง render ไม่เดาจากจำนวนตัวอักษร) */
-export function ClampedNote({ children }: { children: ReactNode }) {
+export function ClampedNote({ children, maxH = "max-h-[3.1rem]" }: { children: ReactNode; maxH?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [overflowing, setOverflowing] = useState(false);
@@ -252,7 +258,7 @@ export function ClampedNote({ children }: { children: ReactNode }) {
   });
   return (
     <>
-      <div ref={ref} className={open ? "" : "max-h-[3.1rem] overflow-hidden"}>{children}</div>
+      <div ref={ref} className={open ? "" : maxH + " overflow-hidden"}>{children}</div>
       {overflowing && (
         <button
           type="button"

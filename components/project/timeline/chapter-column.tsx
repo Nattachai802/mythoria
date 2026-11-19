@@ -71,7 +71,8 @@ export function ChapterColumn({
         <div
             ref={setNodeRef}
             className={cn(
-                "flex w-[272px] shrink-0 flex-col self-start rounded-lg transition-opacity duration-300",
+                "flex w-[272px] shrink-0 flex-col rounded-lg transition-opacity duration-300",
+                "animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out [animation-fill-mode:backwards] motion-reduce:animate-none",
                 isOver && "ring-2 ring-[var(--forge-amber)]/30",
                 columnDimmed && "opacity-30",
             )}

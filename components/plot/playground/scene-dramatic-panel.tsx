@@ -135,12 +135,13 @@ export function SceneDramaticPanel({ event, characters = [], events = [] }: Prop
                     variant="outline"
                     size="sm"
                     className={cn(
-                        "h-8 gap-1.5 chamfered-sm font-technical text-[9px] uppercase tracking-[0.08em]",
+                        "h-8 gap-1.5 rounded-md text-xs font-normal",
                         hasData && "border-[var(--forge-amber)]/50 text-[var(--forge-amber)]"
                     )}
+                    title="ประเภท / โทน / pacing / POV / เหตุ-ผล / เวลา"
                 >
                     <Drama className="h-3.5 w-3.5" />
-                    โครงฉากดราม่า
+                    รายละเอียดฉาก
                     {hasData && event.valueShift != null && (
                         <span className={cn("flex items-center", shiftCls)}>
                             <ShiftIcon className="h-3 w-3" />

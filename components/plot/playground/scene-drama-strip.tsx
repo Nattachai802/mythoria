@@ -54,52 +54,49 @@ export function SceneDramaStrip({ event, characters, events }: { event: Timeline
 
     const shift = outcome ? computeShift(outcome, mag) : 0
     const ShiftIcon = shift > 0 ? TrendingUp : shift < 0 ? TrendingDown : Minus
-    const label = "text-[11px] font-medium text-muted-foreground"
-    const input = "h-8 w-full min-w-0 rounded-sm border border-input bg-transparent px-2 text-sm placeholder:text-muted-foreground hover:border-muted-foreground/50 focus-visible:border-primary focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-primary/30 dark:bg-input/30"
-    const seg = (on: boolean) => cn("h-8 px-2 text-xs transition-colors", on ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:text-foreground")
+    // ป้ายอยู่ในกรอบเดียวกับช่อง (แถวเดียว สูงเท่ากันหมด) — แทนป้ายลอยเหนือช่องที่ทำให้แถบสูงสองชั้น
+    const group = "flex h-8 items-stretch overflow-hidden rounded-md border border-input bg-background transition-colors focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/25 hover:border-muted-foreground/50"
+    const tag = "flex shrink-0 items-center border-r border-input bg-muted/50 px-2 text-[11px] font-medium text-muted-foreground"
+    const input = "min-w-0 flex-1 bg-transparent px-2 text-sm placeholder:text-muted-foreground/70 focus-visible:outline-none"
+    const seg = (on: boolean) => cn("px-2.5 text-xs transition-colors duration-150", on ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground")
 
     return (
-        <div className="flex flex-wrap items-end gap-x-3 gap-y-2 border-b bg-background px-4 py-2">
-            <label className="flex min-w-[180px] flex-1 flex-col gap-1">
-                <span className={label}>{short(cfg.field1Label)}</span>
+        <div className="flex flex-wrap items-center gap-2 border-b bg-background px-4 py-2">
+            <label className={cn(group, "min-w-[160px] flex-1")}>
+                <span className={tag}>{short(cfg.field1Label)}</span>
                 <input value={goal} onChange={e => setGoal(e.target.value)} onBlur={() => saveText("sceneGoal", goal)}
                     onKeyDown={e => e.key === "Enter" && e.currentTarget.blur()} placeholder={cfg.field1Placeholder} className={input} />
             </label>
-            <label className="flex min-w-[180px] flex-1 flex-col gap-1">
-                <span className={label}>{short(cfg.field2Label)}</span>
+            <label className={cn(group, "min-w-[160px] flex-1")}>
+                <span className={tag}>{short(cfg.field2Label)}</span>
                 <input value={conflict} onChange={e => setConflict(e.target.value)} onBlur={() => saveText("sceneConflict", conflict)}
                     onKeyDown={e => e.key === "Enter" && e.currentTarget.blur()} placeholder={cfg.field2Placeholder} className={input} />
             </label>
             {cfg.outcomeMode !== "off" && (
                 <>
-                    <div className="flex flex-col gap-1">
-                        <span className={label}>ผลของฉาก</span>
-                        <div className="flex overflow-hidden rounded-sm border border-input" role="radiogroup" aria-label="ผลของฉาก">
-                            {OUTCOMES.map(o => (
-                                <button key={o.value} type="button" role="radio" aria-checked={outcome === o.value}
-                                    onClick={() => pickOutcome(o.value)} className={cn(seg(outcome === o.value), outcome === o.value && o.cls)}>
-                                    {o.label}
-                                </button>
-                            ))}
-                        </div>
+                    <div className={group} role="radiogroup" aria-label="ผลของฉาก">
+                        <span className={tag}>ผล</span>
+                        {OUTCOMES.map(o => (
+                            <button key={o.value} type="button" role="radio" aria-checked={outcome === o.value}
+                                onClick={() => pickOutcome(o.value)} className={cn(seg(outcome === o.value), outcome === o.value && o.cls)}>
+                                {o.label}
+                            </button>
+                        ))}
                     </div>
-                    <div className="flex flex-col gap-1">
-                        <span className={label}>สถานการณ์เปลี่ยนแรงแค่ไหน</span>
-                        <div className="flex items-center gap-1.5">
-                            <div className="flex overflow-hidden rounded-sm border border-input" role="radiogroup" aria-label="ความแรงของการเปลี่ยน">
-                                {INTENSITIES.map(i => (
-                                    <button key={i.mag} type="button" role="radio" aria-checked={mag === i.mag} disabled={!outcome}
-                                        title={outcome ? undefined : "เลือกผลของฉากก่อน"}
-                                        onClick={() => pickMag(i.mag)} className={cn(seg(!!outcome && mag === i.mag), "disabled:opacity-40")}>
-                                        {i.label}
-                                    </button>
-                                ))}
-                            </div>
-                            {outcome && (
+                    <div className={cn(group, !outcome && "opacity-60")} role="radiogroup" aria-label="สถานการณ์เปลี่ยนแรงแค่ไหน" title={outcome ? "สถานการณ์เปลี่ยนแรงแค่ไหน" : "เลือกผลของฉากก่อน"}>
+                        <span className={tag}>แรง</span>
+                        {INTENSITIES.map(i => (
+                            <button key={i.mag} type="button" role="radio" aria-checked={mag === i.mag} disabled={!outcome}
+                                onClick={() => pickMag(i.mag)} className={cn(seg(!!outcome && mag === i.mag), "disabled:pointer-events-none")}>
+                                {i.label}
+                            </button>
+                        ))}
+                        {outcome && (
+                            <span className="flex items-center px-1.5 animate-in fade-in zoom-in-75 duration-200 motion-reduce:animate-none">
                                 <ShiftIcon className={cn("h-4 w-4", shift > 0 ? "text-emerald-500" : shift < 0 ? "text-red-500" : "text-amber-500")}
                                     aria-label={`ค่าสถานการณ์ ${shift > 0 ? "+" : ""}${shift}`} />
-                            )}
-                        </div>
+                            </span>
+                        )}
                     </div>
                 </>
             )}

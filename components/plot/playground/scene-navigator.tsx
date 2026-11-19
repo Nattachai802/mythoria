@@ -42,13 +42,15 @@ interface SceneNavigatorProps {
     currentEvent: TimelineEvent
     events: TimelineEvent[]
     chapters: Chapter[]
+    novelTitle?: string
 }
 
 export function SceneNavigator({
     novelId,
     currentEvent,
     events,
-    chapters
+    chapters,
+    novelTitle,
 }: SceneNavigatorProps) {
     const router = useRouter()
     const [open, setOpen] = React.useState(false)
@@ -131,7 +133,7 @@ export function SceneNavigator({
         <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-muted-foreground pointer-coarse:h-11 pointer-coarse:w-11"
+            className="h-9 w-8 text-muted-foreground transition-transform active:scale-90 pointer-coarse:h-11 pointer-coarse:w-11"
             disabled={!target}
             onClick={() => target && router.push(`/dashboard/project/${novelId}/plot/${target.id}`)}
             aria-label={dir === "prev" ? "ฉากก่อนหน้า" : "ฉากถัดไป"}
@@ -142,8 +144,8 @@ export function SceneNavigator({
     )
 
     return (
-        <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" asChild className="mr-2">
+        <div className="flex min-w-0 flex-1 items-center gap-1">
+            <Button variant="ghost" size="icon" asChild className="mr-1 shrink-0 text-muted-foreground transition-transform active:scale-90">
                 <Link href={`/dashboard/project/${novelId}/plot`} aria-label="กลับกระดานพล็อต" title="กลับกระดานพล็อต">
                     <ArrowLeft className="w-4 h-4" />
                 </Link>
@@ -153,17 +155,21 @@ export function SceneNavigator({
 
             <Popover open={open} onOpenChange={setOpen}>
                 <PopoverTrigger asChild>
-                    <Button
-                        variant="outline"
+                    <button
+                        type="button"
                         role="combobox"
                         aria-expanded={open}
-                        className="w-[min(250px,calc(100vw-2rem))] justify-between truncate"
+                        aria-label={`เลือกฉาก (ตอนนี้: ${currentEvent.title})`}
+                        className="group flex h-11 w-[min(300px,calc(100vw-8rem))] items-center gap-2 rounded-md px-2.5 text-left transition-colors hover:bg-muted data-[state=open]:bg-muted"
                     >
-                        <span className="truncate">
-                            {currentEvent.title}
+                        <span className="min-w-0 flex-1">
+                            <span className="block truncate font-display text-[15px] font-semibold leading-tight">{currentEvent.title}</span>
+                            <span className="block truncate text-[11px] tabular-nums text-muted-foreground">
+                                {currentChapter?.title ?? "ยังไม่จัดตอน"}{posInChapter >= 0 && ` · ฉาก ${posInChapter + 1}/${chapterScenes.length}`}
+                            </span>
                         </span>
-                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
+                        <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180 motion-reduce:transition-none" />
+                    </button>
                 </PopoverTrigger>
                 <PopoverContent className="w-[min(300px,calc(100vw-2rem))] p-0" align="start">
                     <Command>
@@ -226,44 +232,48 @@ export function SceneNavigator({
 
             {stepBtn(next, "next")}
 
-            {posInChapter >= 0 && (
-                <span className="hidden md:inline whitespace-nowrap text-xs text-muted-foreground tabular-nums">
-                    {currentChapter?.title ?? "ยังไม่จัดตอน"} · ฉาก {posInChapter + 1}/{chapterScenes.length}
-                </span>
-            )}
+            {/* ฉากใหม่ชิดชื่อฉาก — สร้างในบทเดียวกับฉากนี้ */}
+            <div className="ml-1 shrink-0">
+                <CreateSceneDialog
+                    novelId={novelId}
+                    chapterId={currentEvent.relatedChapterId || ""}
+                    trigger={
+                        <Button variant="outline" size="sm" className="h-8 gap-1.5">
+                            <Plus className="w-4 h-4" />
+                            ฉากใหม่
+                        </Button>
+                    }
+                />
+            </div>
 
-            <CreateSceneDialog
-                novelId={novelId}
-                chapterId={currentEvent.relatedChapterId || ""}
-                trigger={
-                    <Button variant="default" size="sm">
-                        <Plus className="w-4 h-4 mr-2" />
-                        ฉากใหม่
-                    </Button>
-                }
-            />
+            {/* ขวา: ชื่อเรื่อง · ดูบนเส้นเวลา · ลบ */}
+            <div className="ml-auto flex shrink-0 items-center gap-1">
+                {novelTitle && (
+                    <span className="mr-2 hidden max-w-[16rem] truncate text-xs text-muted-foreground lg:inline" title={novelTitle}>{novelTitle}</span>
+                )}
 
-            <Button variant="ghost" size="icon" asChild className="text-muted-foreground pointer-coarse:h-11 pointer-coarse:w-11">
-                <Link
-                    href={`/dashboard/project/${novelId}/timeline?focus=${encodeURIComponent(`scene:${currentEvent.id}`)}`}
-                    aria-label="ดูฉากนี้บนเส้นเวลา"
-                    title="ดูฉากนี้บนเส้นเวลา"
+                <Button variant="ghost" size="icon" asChild className="text-muted-foreground pointer-coarse:h-11 pointer-coarse:w-11">
+                    <Link
+                        href={`/dashboard/project/${novelId}/timeline?focus=${encodeURIComponent(`scene:${currentEvent.id}`)}`}
+                        aria-label="ดูฉากนี้บนเส้นเวลา"
+                        title="ดูฉากนี้บนเส้นเวลา"
+                    >
+                        <GanttChart className="w-4 h-4" />
+                    </Link>
+                </Button>
+
+                {/* เมนูที่มีรายการเดียวไม่คุ้มเป็นเมนู — ปุ่มถังขยะตรง ๆ อ่านออกทันทีว่าคืออะไร */}
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setDeleteOpen(true)}
+                    aria-label="ลบฉากนี้"
+                    title="ลบฉากนี้"
+                    className="text-muted-foreground hover:text-destructive pointer-coarse:h-11 pointer-coarse:w-11"
                 >
-                    <GanttChart className="w-4 h-4" />
-                </Link>
-            </Button>
-
-            {/* เมนูที่มีรายการเดียวไม่คุ้มเป็นเมนู — ปุ่มถังขยะตรง ๆ อ่านออกทันทีว่าคืออะไร */}
-            <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setDeleteOpen(true)}
-                aria-label="ลบฉากนี้"
-                title="ลบฉากนี้"
-                className="text-muted-foreground hover:text-destructive pointer-coarse:h-11 pointer-coarse:w-11"
-            >
-                <Trash2 className="w-4 h-4" />
-            </Button>
+                    <Trash2 className="w-4 h-4" />
+                </Button>
+            </div>
 
             <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
                 <AlertDialogContent>
