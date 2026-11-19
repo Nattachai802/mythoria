@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-19T00:00:00Z",
+  "title": "Design System: Mythoria",
+  "extensions": {
+    "colorMeta": {
+      "forge-gold": { "role": "primary", "displayName": "Forge Gold", "canonical": "oklch(0.75 0.18 85)", "tonalRamp": ["oklch(0.25 0.06 85)", "oklch(0.35 0.09 85)", "oklch(0.45 0.12 85)", "oklch(0.55 0.15 85)", "oklch(0.65 0.17 85)", "oklch(0.75 0.18 85)", "oklch(0.85 0.12 85)", "oklch(0.95 0.05 85)"] },
+      "banked-amber": { "role": "primary", "displayName": "Banked Amber", "canonical": "oklch(0.68 0.17 70)" },
+      "spark-yellow": { "role": "primary", "displayName": "Spark Yellow", "canonical": "oklch(0.82 0.16 90)" },
+      "quench-red": { "role": "tertiary", "displayName": "Quench Red", "canonical": "oklch(0.55 0.22 25)" },
+      "night-iron": { "role": "neutral", "displayName": "Night Iron", "canonical": "oklch(0.12 0.015 250)", "tonalRamp": ["oklch(0.10 0.015 250)", "oklch(0.12 0.015 250)", "oklch(0.16 0.015 250)", "oklch(0.18 0.015 250)", "oklch(0.22 0.015 250)", "oklch(0.28 0.015 250)", "oklch(0.45 0.02 250)", "oklch(0.65 0.02 250)"] },
+      "night-iron-raised": { "role": "neutral", "displayName": "Night Iron Raised", "canonical": "oklch(0.16 0.015 250)" },
+      "night-iron-deep": { "role": "neutral", "displayName": "Night Iron Deep", "canonical": "oklch(0.10 0.015 250)" },
+      "night-seam": { "role": "neutral", "displayName": "Night Seam", "canonical": "oklch(0.28 0.015 250)" },
+      "ash-light": { "role": "neutral", "displayName": "Ash Light", "canonical": "oklch(0.97 0.01 85)" },
+      "ash-card": { "role": "neutral", "displayName": "Ash Card", "canonical": "oklch(0.99 0.005 85)" },
+      "ash-seam": { "role": "neutral", "displayName": "Ash Seam", "canonical": "oklch(0.88 0.02 85)" },
+      "ink-steel": { "role": "neutral", "displayName": "Ink Steel", "canonical": "oklch(0.15 0.02 250)" },
+      "pale-forge": { "role": "neutral", "displayName": "Pale Forge", "canonical": "oklch(0.93 0.01 85)" },
+      "steel-100": { "role": "neutral", "displayName": "Steel 100", "canonical": "oklch(0.98 0.005 250)" },
+      "steel-200": { "role": "neutral", "displayName": "Steel 200", "canonical": "oklch(0.91 0.01 250)" },
+      "steel-400": { "role": "neutral", "displayName": "Steel 400", "canonical": "oklch(0.68 0.02 250)" },
+      "steel-600": { "role": "neutral", "displayName": "Steel 600", "canonical": "oklch(0.45 0.02 250)" },
+      "steel-800": { "role": "neutral", "displayName": "Steel 800", "canonical": "oklch(0.25 0.02 250)" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Page and project titles." },
+      "title": { "displayName": "Title", "purpose": "Panel headers, scene titles, dialog titles." },
+      "body": { "displayName": "Body", "purpose": "All UI text; 14px workhorse." },
+      "reading": { "displayName": "Reading", "purpose": "Thai manuscript prose, max 75ch." },
+      "label": { "displayName": "Label", "purpose": "Field and section labels, meta lines. Thai floor 11px." },
+      "technical": { "displayName": "Technical", "purpose": "Counters, IDs, frame numbers, status stamps." }
+    },
+    "shadows": [
+      { "name": "rest", "value": "0 1px 2px rgb(0 0 0 / 0.05)", "purpose": "Cards and outline buttons at rest." },
+      { "name": "forge-lift", "value": "0 4px 12px oklch(0.75 0.18 85 / 0.3)", "purpose": "Primary button hover with 1px lift." },
+      { "name": "focus-ember", "value": "0 0 10px oklch(0.75 0.18 85 / 0.15)", "purpose": "Input focus, with a 3px gold ring at 30%." },
+      { "name": "floating", "value": "0 8px 24px rgb(0 0 0 / 0.14)", "purpose": "Popovers, menus, mention lists." },
+      { "name": "glow-gold", "value": "0 0 20px oklch(0.75 0.18 85 / 0.2), 0 0 40px oklch(0.75 0.18 85 / 0.1)", "purpose": "Identity surfaces only." }
+    ],
+    "motion": [
+      { "name": "duration-fast", "value": "150ms", "purpose": "Buttons, inputs, badges state changes." },
+      { "name": "duration-card", "value": "200ms", "purpose": "Card hover border/shadow." },
+      { "name": "ease-out-quart", "value": "cubic-bezier(0.25, 1, 0.5, 1)", "purpose": "Preferred easing for new transitions." }
+    ],
+    "breakpoints": [
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one action to press. Forge Gold, lifts on hover.",
+      "html": "<button class=\"ds-btn-primary\">สร้างฉากใหม่</button>",
+      "css": ".ds-btn-primary { display:inline-flex; align-items:center; gap:8px; height:36px; padding:0 16px; border:0; border-radius:4px; background:var(--primary, oklch(0.75 0.18 85)); color:var(--primary-foreground, oklch(0.12 0.02 85)); font-size:14px; font-weight:500; cursor:pointer; transition:all 150ms ease; } .ds-btn-primary:hover { background:oklch(0.75 0.18 85 / 0.9); transform:translateY(-1px); box-shadow:0 4px 12px oklch(0.75 0.18 85 / 0.3); } .ds-btn-primary:active { transform:translateY(0); } .ds-btn-primary:focus-visible { outline:none; box-shadow:0 0 0 3px oklch(0.75 0.18 85 / 0.5); }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Secondary action; seam border turns gold on hover.",
+      "html": "<button class=\"ds-btn-outline\">ยกเลิก</button>",
+      "css": ".ds-btn-outline { display:inline-flex; align-items:center; height:36px; padding:0 16px; border:1px solid var(--border, oklch(0.28 0.015 250)); border-radius:4px; background:var(--background, oklch(0.12 0.015 250)); color:var(--foreground, oklch(0.93 0.01 85)); font-size:14px; font-weight:500; box-shadow:0 1px 2px rgb(0 0 0 / 0.05); cursor:pointer; transition:all 150ms ease; } .ds-btn-outline:hover { background:var(--accent, oklch(0.24 0.02 85)); border-color:oklch(0.75 0.18 85 / 0.5); } .ds-btn-outline:focus-visible { outline:none; box-shadow:0 0 0 3px oklch(0.75 0.18 85 / 0.5); }"
+    },
+    {
+      "name": "Ghost Icon Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Toolbar default; no border until hovered.",
+      "html": "<button class=\"ds-btn-ghost\" aria-label=\"เพิ่มเติม\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><circle cx=\"12\" cy=\"5\" r=\"1\"/><circle cx=\"12\" cy=\"12\" r=\"1\"/><circle cx=\"12\" cy=\"19\" r=\"1\"/></svg></button>",
+      "css": ".ds-btn-ghost { display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; border:0; border-radius:4px; background:transparent; color:var(--foreground, oklch(0.93 0.01 85)); cursor:pointer; transition:background 150ms ease; } .ds-btn-ghost:hover { background:var(--accent, oklch(0.24 0.02 85)); } .ds-btn-ghost:focus-visible { outline:none; box-shadow:0 0 0 3px oklch(0.75 0.18 85 / 0.5); }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Seam border; gold border, ring and ember glow on focus.",
+      "html": "<input class=\"ds-input\" placeholder=\"ชื่อฉาก\" />",
+      "css": ".ds-input { height:36px; width:260px; padding:4px 12px; border:1px solid var(--input, oklch(0.18 0.015 250)); border-radius:4px; background:oklch(0.18 0.015 250 / 0.3); color:var(--foreground, oklch(0.93 0.01 85)); font-size:14px; outline:none; transition:all 150ms ease; } .ds-input::placeholder { color:var(--muted-foreground, oklch(0.65 0.02 250)); } .ds-input:hover { border-color:oklch(0.65 0.02 250 / 0.5); } .ds-input:focus-visible { border-color:oklch(0.75 0.18 85); box-shadow:0 0 0 3px oklch(0.75 0.18 85 / 0.3), 0 0 10px oklch(0.75 0.18 85 / 0.15); }"
+    },
+    {
+      "name": "Technical Badge",
+      "kind": "chip",
+      "refersTo": "badge-technical",
+      "description": "Stamped mono label for counts and codes.",
+      "html": "<span class=\"ds-badge-tech\">EP 03 · 12</span>",
+      "css": ".ds-badge-tech { display:inline-flex; align-items:center; padding:2px 8px; border:1px solid var(--steel-600, oklch(0.45 0.02 250)); border-radius:4px; color:var(--muted-foreground, oklch(0.65 0.02 250)); font-family:var(--font-jetbrains, ui-monospace, monospace); font-size:10px; letter-spacing:0.05em; text-transform:uppercase; }"
+    },
+    {
+      "name": "Scene Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Plot board scene card: full seam border, amber on hover, ring when selected.",
+      "html": "<button class=\"ds-scene-card\"><span class=\"ds-scene-title\">ศพในห้องปิดตาย</span><span class=\"ds-scene-sum\">นักสืบพบร่องรอยมนตร์บนประตู</span><span class=\"ds-scene-meta\">6 ไอเดีย</span></button>",
+      "css": ".ds-scene-card { display:flex; flex-direction:column; gap:4px; width:240px; padding:10px 12px; text-align:left; border:1px solid var(--border, oklch(0.28 0.015 250)); border-radius:6px; background:var(--card, oklch(0.16 0.015 250)); color:var(--card-foreground, oklch(0.93 0.01 85)); cursor:pointer; transition:border-color 200ms ease, box-shadow 200ms ease; } .ds-scene-card:hover { border-color:oklch(0.68 0.17 70 / 0.5); } .ds-scene-card:focus-visible { outline:none; box-shadow:0 0 0 2px oklch(0.68 0.17 70); } .ds-scene-title { font-size:14px; font-weight:600; } .ds-scene-sum { font-size:12px; color:var(--muted-foreground, oklch(0.65 0.02 250)); } .ds-scene-meta { font-size:11px; color:var(--muted-foreground, oklch(0.65 0.02 250)); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Writer's Forge",
+    "overview": "Mythoria is a workshop, not an office. Iron-dark surfaces, gold that only lights where work is happening, and technical labels that read like stamped markings on a tool. The forge is the identity; the writing is the work. Dashboards, sidebars and the plot board wear the forge openly. The editor and long-reading surfaces step back to a clean, calm canvas, because \"Forge Mode is earned, not imposed.\"\n\nDensity is high and the system pays for it with quiet surfaces: thin seams instead of heavy boxes, muted text for metadata, gold reserved for the one thing to press. Components are flat at rest; they answer the cursor with a gold border, a lift of 1px, a faint amber glow. Nothing glows when nobody is touching it.",
+    "keyCharacteristics": [
+      "Dark-first iron neutrals tinted toward blue-steel (hue 250); warm gold accent (hue 85).",
+      "Gold is an action color, not decoration.",
+      "Flat surfaces, 1px seams, small radii (4px default).",
+      "Outfit for display, Geist for UI, Sarabun for Thai prose, JetBrains Mono for stamped technical labels.",
+      "Forge ornaments (chamfered corners, hazard stripes, noise, glow) exist as utilities and are used sparingly, on identity surfaces only.",
+      "Thai-first: every label, state and empty message is written in Thai."
+    ],
+    "rules": [
+      { "name": "The Gold Means Go Rule", "body": "Forge Gold marks what the writer can act on or what is currently selected. It never fills a decorative surface, never colors a heading for flair, and covers ≤10% of any screen.", "section": "colors" },
+      { "name": "The Tone Color Belongs To The Story Rule", "body": "User-chosen tone colors (idea cards, lanes, threads) are content, not chrome. Show them as a full tinted border, a dot, or a soft background tint. Never let them compete with Forge Gold for \"this is the action.\"", "section": "colors" },
+      { "name": "The Thai Floor Rule", "body": "Thai text never drops below 11px, and running Thai text never below 12px. Thai stacked vowels and tone marks collapse first; 9–10px is reserved for Latin numerals only.", "section": "typography" },
+      { "name": "The One Stamp Rule", "body": "Technical mono labels mark data (counts, IDs, frame numbers). They are not section eyebrows. One stamp per region, not one above every heading.", "section": "typography" },
+      { "name": "The Cold Iron Rule", "body": "Surfaces are cold at rest. Heat (gold glow, lift) appears only while the cursor or focus is on the element, and disappears when it leaves.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep Forge Gold (oklch(0.75 0.18 85)) for primary actions, selection and focus only, ≤10% of the screen.",
+      "Do build depth with the Night Iron tonal steps (0.10 / 0.12 / 0.16 / 0.18) before reaching for a shadow.",
+      "Do write every label, empty state and error in Thai first.",
+      "Do keep Thai text ≥11px and running Thai text ≥12px.",
+      "Do step the forge back in writing surfaces: Sarabun at 16px / 1.8, max 75ch, no ornaments.",
+      "Do give every animation a prefers-reduced-motion: reduce fallback.",
+      "Do hide secondary card actions (⋮ menus) until hover/focus on fine pointers, and keep them always visible on touch."
+    ],
+    "donts": [
+      "Don't look like Notion: identity-free, gray-on-white flatness with no forge at all.",
+      "Don't look like Google Docs: zero personality.",
+      "Don't look like Scrivener: dated, dense chrome that isn't intuitive.",
+      "Don't drift into the generic SaaS cream/beige AI template look. Do not warm or saturate Ash Light further.",
+      "Don't use border-left or border-right wider than 1px as a colored accent stripe on cards, list items or callouts. Use a full border, a tint, or a leading dot.",
+      "Don't put Glow Gold, hazard stripes, noise textures or chamfered corners on dense working UI (board cards, panels, forms). They are identity ornaments for the landing, dashboard hero and forge buttons.",
+      "Don't put a mono uppercase stamp above every section heading.",
+      "Don't use gradient text, decorative glassmorphism, or nested cards.",
+      "Don't use Quench Red for anything except destruction and errors."
+    ]
+  }
+}

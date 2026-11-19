@@ -25,7 +25,7 @@ import { TimelineEvent, Character, Location, Era, LoreEntry } from "@/db/schema"
 import { PLOT_HEADER_SLOT_ID, type ChapterForBoard } from "./types"
 import { ChapterColumn } from "./chapter-column"
 import { EventCard } from "./event-card"
-import { Clock, CheckCircle2, FolderOpen, SlidersHorizontal, Eye, X, Activity, AlertTriangle, Route, Loader2, BookPlus } from "lucide-react"
+import { Clock, SlidersHorizontal, Eye, X, Activity, AlertTriangle, Route, Loader2, BookPlus, GanttChart, PencilLine, Milestone } from "lucide-react"
 import { reorderTimelineEvents, updateTimelineEvent } from "@/server/timeline"
 import { useMemo } from "react"
 import { toast } from "sonner"
@@ -46,49 +46,12 @@ import { ArcStrip } from "./arc-strip"
 import { PlotUndoMenu } from "./plot-undo-menu"
 import { TensionCurve } from "./tension-curve"
 import { ThreadRibbon } from "./thread-ribbon"
-import { ChronoTimelineSheet } from "./chrono-timeline-sheet"
+import { SceneSidePanel } from "./scene-side-panel"
 import { TimelineConflictsPanel } from "./timeline-conflicts-panel"
 import type { StoryArc } from "@/db/schema"
 import { getChapterIssueMap, type TimelineConflict, type ChapterIssues } from "@/server/timeline-conflicts"
 
 type ThreadDot = { color: string; title: string }
-
-const EVENT_TYPE_LABELS: Record<string, string> = {
-    scene: "ฉาก",
-    action: "แอ็กชัน",
-    dialogue: "บทสนทนา",
-    flashback: "ย้อนอดีต",
-    revelation: "เปิดเผย",
-    emotional: "อารมณ์",
-    transition: "เชื่อมฉาก",
-}
-
-function Stat({
-    icon, label, value, sub, highlight,
-}: {
-    icon: React.ReactNode
-    label: string
-    value: string | number
-    sub?: string
-    highlight?: boolean
-}) {
-    return (
-        <div className="flex flex-col gap-0.5 px-3.5 py-2">
-            <span className="font-technical text-[9px] uppercase tracking-[0.12em] text-muted-foreground flex items-center gap-1">
-                {icon}{label}
-            </span>
-            <span className="flex items-baseline gap-1">
-                <span className={cn(
-                    "text-lg font-display font-bold tabular-nums leading-none",
-                    highlight && "text-[var(--forge-amber)]"
-                )}>
-                    {value}
-                </span>
-                {sub && <span className="text-[10px] text-muted-foreground tabular-nums">{sub}</span>}
-            </span>
-        </div>
-    )
-}
 
 function FilterRow({ label, children }: { label: string; children: React.ReactNode }) {
     return (
@@ -123,14 +86,24 @@ export function TimelineBoard({
     timelineEpoch = null,
 }: TimelineBoardProps) {
     const [events, setEvents] = useState<TimelineEvent[]>(initialEvents)
-    const [epoch, setEpoch] = useState<Date | null>(timelineEpoch)
+    const [selectedId, setSelectedId] = useState<string | null>(null)
+    // โหมดร่าง (phase 1): ซ่อนคำเตือนบนกระดาน เหลือตัวนับในแถบเครื่องมือ — จำต่อนิยายใน localStorage
+    const draftKey = `plot-board:draft:${novelId}`
+    const [draftMode, setDraftMode] = useState(true)
+    const [showArcs, setShowArcs] = useState(arcs.length > 0)
+    useEffect(() => {
+        try { const v = localStorage.getItem(draftKey); if (v != null) setDraftMode(v === "1") } catch { /* ใช้ค่าเริ่มต้น */ }
+    }, [draftKey])
+    const toggleDraft = () => setDraftMode(v => {
+        try { localStorage.setItem(draftKey, v ? "0" : "1") } catch { /* ไม่จำก็ไม่เป็นไร */ }
+        return !v
+    })
 
     // useState's initializer only runs once — server refetch (router.refresh() after create/delete) needs this to reach the board
     useEffect(() => { setEvents(initialEvents) }, [initialEvents])
     const [activeId, setActiveId] = useState<string | null>(null)
 
     // ── Filter / lens state ──
-    const [filterType, setFilterType] = useState<string>("all")
     const [filterStatus, setFilterStatus] = useState<string>("all")
     const [filterCharacter, setFilterCharacter] = useState<string>("all")
     const [filterLocation, setFilterLocation] = useState<string>("all")
@@ -157,7 +130,7 @@ export function TimelineBoard({
         threads.forEach(t => {
             t.beats.forEach(b => {
                 const existing = m.get(b.eventId) ?? []
-                existing.push({ color: t.color ?? "#f59e0b", title: t.title })
+                existing.push({ color: t.color ?? "var(--forge-amber)", title: t.title })
                 m.set(b.eventId, existing)
             })
         })
@@ -173,13 +146,12 @@ export function TimelineBoard({
     }, [threads, filterThread])
 
     const activeFilterCount =
-        [filterType, filterStatus, filterCharacter, filterLocation, filterThread]
+        [filterStatus, filterCharacter, filterLocation, filterThread]
             .filter(v => v !== "all").length
     const isFiltering = activeFilterCount > 0
-    const lensCount = (showTension ? 1 : 0) + (showRibbon ? 1 : 0) + (structureId !== "none" ? 1 : 0)
+    const lensCount = (showTension ? 1 : 0) + (showRibbon ? 1 : 0) + (structureId !== "none" ? 1 : 0) + (showArcs ? 1 : 0)
 
     const matchEvent = (e: TimelineEvent) => {
-        if (filterType !== "all" && (e.eventType || "scene") !== filterType) return false
         if (filterStatus === "completed" && !e.isCompleted) return false
         if (filterStatus === "draft" && e.isCompleted) return false
         if (filterCharacter !== "all") {
@@ -196,7 +168,7 @@ export function TimelineBoard({
 
     const matchedIds = useMemo(
         () => new Set(events.filter(matchEvent).map(e => e.id)),
-        [events, filterType, filterStatus, filterCharacter, filterLocation, threadEventIds]
+        [events, filterStatus, filterCharacter, filterLocation, threadEventIds]
     )
 
     // ── Overview stats ──
@@ -208,7 +180,6 @@ export function TimelineBoard({
     ).length
 
     const clearFilters = () => {
-        setFilterType("all")
         setFilterStatus("all")
         setFilterCharacter("all")
         setFilterLocation("all")
@@ -334,6 +305,7 @@ export function TimelineBoard({
 
     // Get active event for drag overlay
     const activeEvent = activeId ? events.find(e => e.id === activeId) : null
+    const selectedEvent = selectedId ? events.find(e => e.id === selectedId) ?? null : null
 
     if (chapters.length === 0) {
         return (
@@ -354,6 +326,7 @@ export function TimelineBoard({
 
     return (
         <DndContext
+            id="plot-board"
             sensors={sensors}
             collisionDetection={closestCorners}
             onDragStart={handleDragStart}
@@ -376,7 +349,7 @@ export function TimelineBoard({
                                     size="sm"
                                     className={cn(
                                         "h-8 gap-1.5 text-xs",
-                                        conflicts && conflicts.length > 0 ? "border-amber-500/50 text-amber-500" : ""
+                                        conflicts && conflicts.length > 0 && !draftMode ? "border-amber-500/50 text-amber-500" : ""
                                     )}
                                 >
                                     <AlertTriangle className="h-3.5 w-3.5" />
@@ -384,7 +357,7 @@ export function TimelineBoard({
                                     {conflicts === null ? (
                                         <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" aria-label="กำลังตรวจสอบ" />
                                     ) : conflicts.length > 0 ? (
-                                        <span className="ml-0.5 inline-flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold tabular-nums text-black">
+                                        <span className={cn("ml-0.5 inline-flex h-4 min-w-4 px-1 items-center justify-center rounded-full text-[10px] font-bold tabular-nums", draftMode ? "bg-muted text-muted-foreground" : "bg-amber-500 text-black")}>
                                             {conflicts.length}
                                         </span>
                                     ) : null}
@@ -434,17 +407,6 @@ export function TimelineBoard({
                                         แสดง <span className="text-[var(--forge-amber)] font-medium">{matchedIds.size}</span>/{totalScenes} ฉาก
                                     </p>
                                 )}
-                                <FilterRow label="ประเภท">
-                                    <Select value={filterType} onValueChange={setFilterType}>
-                                        <SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="all">ทุกประเภท</SelectItem>
-                                            {Object.entries(EVENT_TYPE_LABELS).map(([k, v]) => (
-                                                <SelectItem key={k} value={k}>{v}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </FilterRow>
                                 <FilterRow label="สถานะ">
                                     <Select value={filterStatus} onValueChange={setFilterStatus}>
                                         <SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger>
@@ -497,16 +459,23 @@ export function TimelineBoard({
                             </PopoverContent>
                         </Popover>
 
-                        {/* เส้นเวลาจริง (P3) */}
-                        <ChronoTimelineSheet
-                            novelId={novelId}
-                            events={events}
-                            chapters={sortedChapters}
-                            onEventPatched={(id, patch) => setEvents(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e))}
-                            eras={eras}
-                            timelineEpoch={epoch}
-                            onEpochChange={setEpoch}
-                        />
+                        {/* เส้นเวลา — ชีต chrono เดิมซ้ำกับหน้าเส้นเวลาโลก จึงพาไปหน้านั้นแทน (task.md 20A) */}
+                        <Link
+                            href={`/dashboard/project/${novelId}/timeline`}
+                            className="-mb-px inline-flex items-center gap-1.5 border-b-2 border-transparent px-3 py-2 font-technical text-[13px] text-muted-foreground hover:text-foreground"
+                        >
+                            <GanttChart className="h-3.5 w-3.5" />เส้นเวลา
+                        </Link>
+
+                        <button
+                            type="button"
+                            onClick={toggleDraft}
+                            aria-pressed={draftMode}
+                            title={draftMode ? "โหมดร่าง: ซ่อนคำเตือนบนกระดาน — กดเพื่อแสดง" : "แสดงคำเตือนอยู่ — กดเพื่อกลับโหมดร่าง"}
+                            className="inline-flex items-center gap-1.5"
+                        >
+                            <PencilLine className="h-3.5 w-3.5" />{draftMode ? "โหมดร่าง" : "โหมดตรวจ"}
+                        </button>
 
                         {/* มุมมอง — เลเยอร์ที่ทาบบนกระดาน */}
                         <Popover>
@@ -541,6 +510,25 @@ export function TimelineBoard({
                                         </SelectContent>
                                     </Select>
                                 </FilterRow>
+                                <button
+                                    onClick={() => setShowArcs(v => !v)}
+                                    role="switch"
+                                    aria-checked={showArcs}
+                                    aria-label="แถบ story arc"
+                                    className={cn(
+                                        "w-full flex items-center justify-between h-8 px-2.5 chamfered-sm border text-xs transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--forge-amber)] focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+                                        showArcs
+                                            ? "border-[var(--forge-amber)]/50 text-[var(--forge-amber)] bg-[var(--forge-amber)]/5"
+                                            : "border-border text-muted-foreground hover:text-foreground"
+                                    )}
+                                >
+                                    <span className="inline-flex items-center gap-1.5">
+                                        <Milestone className="h-3.5 w-3.5" />แถบ story arc
+                                    </span>
+                                    <span className="font-technical text-[9px] uppercase tracking-[0.08em]">
+                                        {showArcs ? "เปิด" : "ปิด"}
+                                    </span>
+                                </button>
                                 <button
                                     onClick={() => setShowTension(v => !v)}
                                     role="switch"
@@ -584,35 +572,18 @@ export function TimelineBoard({
                     </div>
                 </PlotHeaderSlot>
 
-                {/* สถิติภาพรวม — อยู่ในกระดาน (ไม่ขึ้น header) */}
-                <div className="flex items-center px-8 pt-3">
-                    {/* Overview stats — เหลือเฉพาะที่ต้องลงมือ: ความคืบหน้า + บทที่ยังว่าง */}
-                    <div className="flex items-center divide-x divide-border/60 chamfered-sm border border-border bg-card/50">
-                        <Stat
-                            icon={<CheckCircle2 className="h-3 w-3" />}
-                            label="เสร็จแล้ว"
-                            value={`${completedPct}%`}
-                            sub={`${completedScenes}/${totalScenes} ฉาก`}
-                        />
-                        <Stat
-                            icon={<FolderOpen className="h-3 w-3" />}
-                            label="บทที่ยังว่าง"
-                            value={emptyChapters}
-                            highlight={emptyChapters > 0}
-                        />
-                    </div>
-
-                </div>
-
+                <div className="flex min-h-0 flex-1">
                 {/* Timeline Area — เลื่อนแนวตั้งเดียวทั้ง board (ทุกคอลัมน์เลื่อนพร้อมกัน) */}
-                <div className="flex-1 overflow-auto px-8 pt-4 pb-8">
+                <div className="min-w-0 flex-1 overflow-auto px-6 pt-4 pb-8">
                     <div className="min-w-max flex flex-col min-h-full">
                         {/* Story Arc strip */}
-                        <ArcStrip
-                            novelId={novelId}
-                            chapters={sortedChapters}
-                            arcs={arcs}
-                        />
+                        {showArcs && (
+                            <ArcStrip
+                                novelId={novelId}
+                                chapters={sortedChapters}
+                                arcs={arcs}
+                            />
+                        )}
 
                         {/* Structure overlay (template guide) */}
                         {structureId !== "none" && (
@@ -630,7 +601,7 @@ export function TimelineBoard({
                         )}
 
                         {/* Chapter columns */}
-                        <div className="flex min-w-max items-start pt-6">
+                        <div className="flex min-w-max items-start gap-3 pt-2">
                         {sortedChapters.map((chapter, index) => {
                             const chapterEvents = events.filter(e => e.relatedChapterId === chapter.id)
                             return (
@@ -648,15 +619,36 @@ export function TimelineBoard({
                                     onToggleComplete={handleToggleComplete}
                                     issues={chapterIssues[chapter.id]}
                                     novelId={novelId}
+                                    draftMode={draftMode}
+                                    selectedId={selectedId}
+                                    onOpenScene={id => setSelectedId(cur => (cur === id ? null : id))}
                                 />
                             )
                         })}
 
-                        {/* End Node */}
-                        <div className="h-1 w-16 bg-gradient-to-r from-muted-foreground/30 to-transparent mt-[26px]" />
-                        <div className="mt-[18px] h-4 w-4 rounded-full bg-muted-foreground/20" />
                         </div>
                     </div>
+                </div>
+                {selectedEvent && (
+                    <SceneSidePanel
+                        event={selectedEvent}
+                        chapterTitle={sortedChapters.find(c => c.id === selectedEvent.relatedChapterId)?.title ?? null}
+                        sceneIndex={events.filter(e => e.relatedChapterId === selectedEvent.relatedChapterId).sort((a, b) => a.orderIndex - b.orderIndex).findIndex(e => e.id === selectedEvent.id)}
+                        threads={threads}
+                        onClose={() => setSelectedId(null)}
+                        onPatched={(id, patch) => setEvents(prev => prev.map(e => (e.id === id ? { ...e, ...patch } : e)))}
+                    />
+                )}
+                </div>
+
+                {/* แถบสถานะล่าง — สถิติย้ายมาจากบนสุด (task.md 20B) */}
+                <div className="flex shrink-0 items-center gap-3 border-t bg-[var(--sidebar)] px-6 py-1.5 pr-20 text-[11px] tabular-nums text-muted-foreground">
+                    <span>{totalScenes} ฉาก · {sortedChapters.length} บท</span>
+                    <span>เสร็จ {completedScenes}/{totalScenes} ({completedPct}%)</span>
+                    {emptyChapters > 0 && <span className="text-[var(--forge-amber)]">บทที่ยังว่าง {emptyChapters}</span>}
+                    {draftMode && conflicts && conflicts.length > 0 && (
+                        <span>มี {conflicts.length} จุดให้ดูทีหลัง</span>
+                    )}
                 </div>
             </div>
 

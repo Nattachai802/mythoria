@@ -203,25 +203,26 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
       <Popover open={dialogOpen} onOpenChange={setDialogOpen}>
       <PopoverTrigger asChild>
       <Card
+        // หน้าการ์ดใหม่ (task.md 20C): ไม่มีแถบรูฟิล์ม · สี tone = ขอบเต็มรอบจาง ๆ + จุดหน้าชื่อ (DESIGN.md ห้ามแถบข้างหนา) · เมนูโผล่ตอนชี้
         className={cn(
-          widthClass, "bg-card overflow-hidden cursor-pointer border shadow-sm hover:shadow-md transition-all duration-200 p-0 gap-0",
+          widthClass, "bg-card overflow-hidden cursor-pointer rounded-md border shadow-sm hover:shadow-md hover:border-[var(--forge-amber)]/50 transition-all duration-200 p-0 gap-0",
           isOver && "ring-2 ring-[var(--forge-amber)] ring-offset-1",
           isLinkingSource && "ring-2 ring-blue-500 ring-offset-1",
-          isKeyMoment && "ring-1 ring-amber-400/60 shadow-[0_0_14px_-2px] shadow-amber-500/40",
-          item.isNarration ? "border-dashed border-amber-500/30 opacity-75 hover:opacity-100" : "border-border/70",
+          isKeyMoment && "bg-amber-50/60 dark:bg-amber-500/5",
+          item.isNarration ? "border-dashed border-amber-500/30 opacity-75 hover:opacity-100"
+            : "border-[color-mix(in_srgb,var(--tone)_55%,transparent)]",
           isDragging && !isOverlay && "opacity-0"
         )}
+        style={{ "--tone": item.color || (isKeyMoment ? "var(--forge-amber)" : "var(--border)") } as React.CSSProperties}
       >
-        <FilmSprockets />
-        <div className="px-2.5 py-2 space-y-1.5">
-          <div className="flex items-center justify-between gap-1.5">
-            <span className="flex items-center gap-1.5 font-technical text-[10px] tracking-widest text-muted-foreground/60 shrink-0">
-              {item.color && <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: item.color }} />}
-              {frameNumber(item, frameNo)}
-            </span>
-            <div className="flex items-center gap-1 shrink-0">
+        <div className="px-3 py-2 space-y-1">
+          <div className="flex items-start justify-between gap-1.5">
+            <p className="font-semibold text-sm leading-snug line-clamp-2 min-w-0">
+              {item.color && <span className="mr-1.5 inline-block h-2 w-2 rounded-full align-middle" style={{ background: item.color }} aria-hidden />}
+              {item.title}
+            </p>
+            <div className="flex items-center gap-1 shrink-0 -mr-1.5 -mt-1">
               {item.isNarration && <Quote className="w-3 h-3 text-amber-500" fill="currentColor" />}
-              {isKeyMoment && <Star className="w-3.5 h-3.5 text-amber-400" fill="currentColor" />}
               {ancestorConnections && ancestorConnections.length > 0 && (
                 <span title={`มีที่มา ${ancestorConnections.length}`} className="flex items-center"><GitBranchPlus className="w-3 h-3 text-muted-foreground" /></span>
               )}
@@ -239,7 +240,7 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 text-muted-foreground hover:text-foreground shrink-0"
+                    className="h-7 w-7 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:fine)]:opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 transition-opacity text-muted-foreground hover:text-foreground shrink-0"
                     onClick={(e) => { e.stopPropagation(); e.preventDefault(); }}
                     onPointerDown={(e) => e.stopPropagation()}
                     title="การกระทำของการ์ด"
@@ -341,9 +342,13 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
             </div>
           </div>
 
-          <p className="font-semibold text-sm leading-snug line-clamp-2">{item.title}</p>
+          {isKeyMoment && (
+            <p className="flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+              <Star className="h-3 w-3 shrink-0" fill="currentColor" /><span className="truncate">{item.keyMomentLabel}</span>
+            </p>
+          )}
           {item.content && typeof item.content === 'string' && (
-            <p className="text-[11px] text-muted-foreground leading-snug line-clamp-2">{item.content}</p>
+            <p className="text-xs text-muted-foreground leading-snug line-clamp-3">{item.content}</p>
           )}
 
           <div className="flex items-start gap-2.5 pt-0.5 text-[11px] text-muted-foreground/90 min-w-0">
@@ -363,13 +368,13 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
             {threadBeats && threadBeats.length > 0 && (
               <span className="flex items-center gap-0.5 ml-auto">
                 {threadBeats.map((b) => (
-                  <span key={b.beatId} className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: b.color ?? '#f59e0b' }} title={b.title} />
+                  <span key={b.beatId} className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: b.color ?? 'var(--forge-amber)' }} title={b.title} />
                 ))}
               </span>
             )}
+            <span className="ml-auto shrink-0 font-technical text-[9px] tracking-wider text-muted-foreground/50">{frameNumber(item, frameNo)}</span>
           </div>
         </div>
-        <FilmSprockets />
       </Card>
       </PopoverTrigger>
 

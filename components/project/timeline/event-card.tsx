@@ -49,9 +49,14 @@ interface EventCardProps {
     threadDots?: ThreadDot[]
     onToggleComplete?: (id: string) => void
     isFirstScene?: boolean // ฉากแรกของเรื่อง — ไม่ต้องเตือน "แล้วก็"
+    /** โหมดร่าง — ไม่ขึ้นป้าย "แล้วก็…" (ใช้ตอนตรวจพล็อตทีหลัง) */
+    hideWeakCausal?: boolean
+    isSelected?: boolean
+    /** มี = กดแล้วเปิดแผงข้าง ไม่เปลี่ยนหน้า */
+    onOpen?: (id: string) => void
 }
 
-export function EventCard({ event, characters = [], locations = [], isDimmed = false, threadDots, onToggleComplete, isFirstScene = false }: EventCardProps) {
+export function EventCard({ event, characters = [], locations = [], isDimmed = false, threadDots, onToggleComplete, isFirstScene = false, hideWeakCausal = false, isSelected = false, onOpen }: EventCardProps) {
     const router = useRouter()
     const [isHovered, setIsHovered] = useState(false)
 
@@ -184,11 +189,18 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
             ? { label: "ดังนั้น", hint: event.causeNote || "ผลต่อเนื่องจากเรื่องก่อนหน้า", weak: false }
             : event.causeKind === "but"
                 ? { label: "แต่ว่า", hint: event.causeNote || "หักเหจากเรื่องก่อนหน้า", weak: false }
-                : !isFirstScene
+                : !isFirstScene && !hideWeakCausal
                     ? { label: "แล้วก็…", hint: 'ยังไม่ระบุเหตุ-ผลกับเรื่องก่อนหน้า — พล็อตแบบ "แล้วก็" ตั้งได้ในโครงฉากดราม่า', weak: true }
                     : null
 
     const hasThreads = !!threadDots && threadDots.length > 0
+    // บรรทัดสรุป: description ที่กรอกเอง → เหตุการณ์สำคัญ ★ → ชื่อไอเดียแรก ๆ บน canvas (ส่วนใหญ่ไม่ได้กรอก description)
+    const ideaItems = canvasItems.filter((i: any) => i?.type === "idea")
+    const keyMoment = ideaItems.find((i: any) => i.keyMomentLabel)
+    const summary: string | null = event.description
+        || (keyMoment ? `★ ${keyMoment.keyMomentLabel}` : null)
+        || (ideaItems.length > 0 ? ideaItems.slice(0, 3).map((i: any) => i.title).filter(Boolean).join(" · ") : null)
+    const isPlainScene = eventType === "scene"
 
     // Handle completion toggle — state lives in TimelineBoard (optimistic)
     const handleToggleComplete = (e: React.MouseEvent) => {
@@ -197,9 +209,9 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
     }
 
     const handleClick = () => {
-        if (!isDragging) {
-            router.push(`/dashboard/project/${event.novelId}/plot/${event.id}`)
-        }
+        if (isDragging) return
+        if (onOpen) onOpen(event.id)
+        else router.push(`/dashboard/project/${event.novelId}/plot/${event.id}`)
     }
 
     return (
@@ -207,7 +219,7 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
             ref={setNodeRef}
             style={style}
             className={cn(
-                "relative w-full py-1.5",
+                "relative w-full py-1",
                 // Lens: de-emphasize cards that don't match the active filter
                 isDimmed && "opacity-30 transition-opacity duration-200 hover:opacity-70 motion-reduce:transition-none",
             )}
@@ -222,6 +234,7 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
                     // เสร็จแล้ว = ถอยไปเป็นพื้นหลัง ไม่ต้องมีแถบสีเรืองแสงมาป่าวประกาศ
                     event.isCompleted && !isHovered && "border-border/60 bg-muted/40",
                     isDragging && "ring-1 ring-[var(--forge-amber)]/50",
+                    isSelected && "border-[var(--forge-amber)] ring-1 ring-[var(--forge-amber)]/60",
                 )}
                 onClick={handleClick}
             >
@@ -269,23 +282,27 @@ export function EventCard({ event, characters = [], locations = [], isDimmed = f
                     </div>
 
                     {/* Description */}
-                    {event.description && (
-                        <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-                            {event.description}
+                    {summary && (
+                        <p className={cn("mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground", !event.description && "italic")}>
+                            {summary}
                         </p>
                     )}
 
                     {/* ข้อมูลฉาก — บรรทัดเดียว สีกลางทั้งแถว */}
                     <div className="mt-2 flex items-center justify-between gap-2">
                         <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-                            <TypeIcon className="h-3 w-3 shrink-0" />
-                            <span className="shrink-0 font-technical text-[10px] uppercase tracking-wide">
-                                {typeConfig.label}
-                            </span>
+                            {/* ชนิดขึ้นเฉพาะที่ไม่ใช่ "ฉาก" ธรรมดา — เดิมทุกใบมีป้าย SCENE ซึ่งไม่บอกอะไร */}
+                            {!isPlainScene && (
+                                <>
+                                    <TypeIcon className="h-3 w-3 shrink-0" />
+                                    <span className="shrink-0 font-technical text-[10px] uppercase tracking-wide">{typeConfig.label}</span>
+                                </>
+                            )}
+                            {ideaItems.length > 0 && <span className="shrink-0 tabular-nums">{ideaItems.length} ไอเดีย</span>}
 
                             {relatedLocation && (
                                 <>
-                                    <MetaDot />
+                                    {(ideaItems.length > 0 || !isPlainScene) && <MetaDot />}
                                     <MapPin className="h-3 w-3 shrink-0" />
                                     <span className="truncate">{relatedLocation.name}</span>
                                 </>
