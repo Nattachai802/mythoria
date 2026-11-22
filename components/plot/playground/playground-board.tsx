@@ -2244,10 +2244,30 @@ export function PlaygroundBoard({
             });
         });
 
+        // การ์ดซ้อนกันในคอลัมน์เดียว ไม่มีการ์ดอื่นคั่น → เส้นดิ่งสั้น ๆ ขอบล่าง→ขอบบน
+        // เช็คก่อนนับดีกรี: เส้นดิ่งไม่เข้ากลุ่มบัสรวม/แตก — เดิมการ์ดที่ส่งออกทั้งขวาและลง ถูกนับเป็น "แตก"
+        // เส้นลงเลยโดนลากออกขวาแล้ววนกลับเข้าการ์ดล่างเป็นรูปตัว C และเส้นขวาโดนเลื่อนจุดออกจนหักขึ้นลง
+        const isStackDrop = (e: typeof edges[number]) => {
+            const sItem = items.find((x: any) => x.id === e.sourceId);
+            const tItem = items.find((x: any) => x.id === e.targetId);
+            if (!sItem || !tItem || sItem.beatIndex !== tItem.beatIndex) return false;
+            if (Math.abs(e.sPos.x - e.tPos.x) > 6) return false;
+            const down = e.tPos.y > e.sPos.y;
+            const yA = down ? e.sPos.y + e.sPos.h / 2 : e.sPos.y - e.sPos.h / 2;
+            const yB = down ? e.tPos.y - e.tPos.h / 2 : e.tPos.y + e.tPos.h / 2;
+            if ((down && yB < yA) || (!down && yB > yA)) return false; // การ์ดทับกัน ใช้เส้นอ้อม
+            const lo = Math.min(yA, yB), hi = Math.max(yA, yB);
+            return ![...linkPositions.entries()].some(([id, p]) =>
+                id !== e.sourceId && id !== e.targetId &&
+                Math.abs(p.x - e.sPos.x) < p.w / 2 && p.y + p.h / 2 > lo && p.y - p.h / 2 < hi);
+        };
+        const drops = new Set(edges.filter(isStackDrop));
+
         // 2. นับดีกรี: target มีหลาย source = รวม (many→1), source มีหลาย target = แตก (1→many, mirror)
         const inCount = new Map<string, number>();
         const outCount = new Map<string, number>();
         edges.forEach(e => {
+            if (drops.has(e)) return;
             inCount.set(e.targetId, (inCount.get(e.targetId) ?? 0) + 1);
             outCount.set(e.sourceId, (outCount.get(e.sourceId) ?? 0) + 1);
         });
@@ -2274,7 +2294,8 @@ export function PlaygroundBoard({
         const SIDE_VEC: Record<Side, [number, number]> = { right: [1, 0], left: [-1, 0], up: [0, -1], down: [0, 1] };
         // จุดต่อซ้าย/ขวาวัดจากขอบบนของการ์ด (แถวชื่อ) ไม่ใช่กึ่งกลาง — การ์ดที่ขอบบนเท่ากันแต่ความสูงต่างกัน
         // (ผู้เข้าร่วมยาว 1 vs 2 บรรทัด) จะได้เส้นตรงระดับเดียวกัน ไม่ต้องหักขึ้นลงเล็ก ๆ ระหว่างทาง
-        const SIDE_ANCHOR_FROM_TOP = 44;
+        // 18 = กึ่งกลางแถวชื่อ — เดิม 44 แต่ตัดที่ h/2 การ์ดเตี้ย (ผู้เข้าร่วมบรรทัดเดียว) จุดเลยสูงกว่าการ์ดข้าง ๆ แล้วหักขึ้นลง
+        const SIDE_ANCHOR_FROM_TOP = 18;
         const sideAnchorY = (pos: { y: number; h: number }) => pos.y - pos.h / 2 + Math.min(SIDE_ANCHOR_FROM_TOP, pos.h / 2);
         const anchorOn = (pos: { x: number; y: number; w: number; h: number }, side: Side) =>
             side === 'right' ? { x: pos.x + pos.w / 2, y: pos.y }
@@ -2285,13 +2306,14 @@ export function PlaygroundBoard({
         // Y ที่เส้นมารวม: many→1 = เฉลี่ย Y ของ source ทั้งหมด (clamp เข้า target), 1→many = เฉลี่ย Y ของ target (clamp เข้า source)
         const targetMergeY = new Map<string, number>();
         const sourceMergeY = new Map<string, number>();
-        edges.forEach(e => {
+        const busEdges = edges.filter(e => !drops.has(e));
+        busEdges.forEach(e => {
             if ((inCount.get(e.targetId) ?? 0) > 1 && !targetMergeY.has(e.targetId)) {
-                const ys = edges.filter(x => x.targetId === e.targetId).map(x => x.sPos.y);
+                const ys = busEdges.filter(x => x.targetId === e.targetId).map(x => sideAnchorY(x.sPos));
                 targetMergeY.set(e.targetId, clampY(avg(ys), e.tPos));
             }
             if ((outCount.get(e.sourceId) ?? 0) > 1 && !sourceMergeY.has(e.sourceId)) {
-                const ys = edges.filter(x => x.sourceId === e.sourceId).map(x => x.tPos.y);
+                const ys = busEdges.filter(x => x.sourceId === e.sourceId).map(x => sideAnchorY(x.tPos));
                 sourceMergeY.set(e.sourceId, clampY(avg(ys), e.sPos));
             }
         });
@@ -2326,7 +2348,7 @@ export function PlaygroundBoard({
         const busGroupSize = new Map<typeof edges[number], number>();
         {
             const groups = new Map<string, typeof edges>();
-            edges.forEach(e => {
+            busEdges.forEach(e => {
                 const converge = (inCount.get(e.targetId) ?? 0) > 1;
                 const split = !converge && (outCount.get(e.sourceId) ?? 0) > 1;
                 if (!converge && !split) return;
@@ -2347,7 +2369,7 @@ export function PlaygroundBoard({
         const outSize = new Map<typeof edges[number], number>();
         {
             const groups = new Map<string, typeof edges>();
-            edges.forEach(e => {
+            busEdges.forEach(e => {
                 if ((inCount.get(e.targetId) ?? 0) <= 1 || (outCount.get(e.sourceId) ?? 0) <= 1) return;
                 const key = `${e.sourceId}:${e.tPos.x >= e.sPos.x ? 1 : -1}`;
                 if (!groups.has(key)) groups.set(key, []);
@@ -2388,14 +2410,21 @@ export function PlaygroundBoard({
         };
 
         const built = edges.map((e) => {
-            const converge = (inCount.get(e.targetId) ?? 0) > 1; // รวมเข้า target
-            const split = !converge && (outCount.get(e.sourceId) ?? 0) > 1; // แตกจาก source (mirror)
+            const drop = drops.has(e);
+            const converge = !drop && (inCount.get(e.targetId) ?? 0) > 1; // รวมเข้า target
+            const split = !drop && !converge && (outCount.get(e.sourceId) ?? 0) > 1; // แตกจาก source (mirror)
 
             const sItem = items.find((x: any) => x.id === e.sourceId);
             const tItem = items.find((x: any) => x.id === e.targetId);
 
             let points: Array<{ x: number; y: number }>;
-            if (converge || split) {
+            if (drop) {
+                const down = e.tPos.y > e.sPos.y;
+                points = [
+                    { x: e.sPos.x, y: down ? e.sPos.y + e.sPos.h / 2 : e.sPos.y - e.sPos.h / 2 },
+                    { x: e.sPos.x, y: down ? e.tPos.y - e.tPos.h / 2 : e.tPos.y + e.tPos.h / 2 },
+                ];
+            } else if (converge || split) {
                 // chain รวม/แตก: บัสแนวตั้งที่ระดับ mergeY (คงพฤติกรรมเดิม)
                 const dir = e.tPos.x >= e.sPos.x ? 1 : -1;
                 const aX = e.sPos.x + dir * e.sPos.w / 2;
@@ -2406,30 +2435,12 @@ export function PlaygroundBoard({
                 let busX: number, aY: number, bY: number;
                 if (converge) {
                     busX = bX - dir * (GAP + busOffset);
-                    aY = outIndex.has(e) ? entryY(sourceMergeY.get(e.sourceId)!, e.sPos, outIndex.get(e)!, outSize.get(e)!) : e.sPos.y;
+                    aY = outIndex.has(e) ? entryY(sourceMergeY.get(e.sourceId)!, e.sPos, outIndex.get(e)!, outSize.get(e)!) : sideAnchorY(e.sPos);
                     bY = entryY(targetMergeY.get(e.targetId)!, e.tPos, idx, n); }
-                else { busX = aX + dir * (GAP + busOffset); aY = entryY(sourceMergeY.get(e.sourceId)!, e.sPos, idx, n); bY = e.tPos.y; }
+                else { busX = aX + dir * (GAP + busOffset); aY = entryY(sourceMergeY.get(e.sourceId)!, e.sPos, idx, n); bY = sideAnchorY(e.tPos); }
                 points = [{ x: aX, y: aY }, { x: busX, y: aY }, { x: busX, y: bY }, { x: bX, y: bY }];
                 // ขาแนวนอนยาว: converge = ขาออกจากต้นทาง (ช่วง 0), split = ขาเข้าปลายทาง (ช่วง 2)
                 points = detourH(points, converge ? 0 : 2, e);
-            } else if (sItem && tItem && sItem.beatIndex === tItem.beatIndex && (() => {
-                // การ์ดอยู่ซ้อนกันในคอลัมน์เดียว และไม่มีการ์ดอื่นคั่นกลาง → เส้นดิ่งสั้น ๆ จากขอบล่างลงขอบบน
-                // (เดิมออกขวาแล้ววนเข้าขวา เป็นห่วงรูปตัว C ยึกยัก)
-                if (Math.abs(e.sPos.x - e.tPos.x) > 6) return false;
-                const down = e.tPos.y > e.sPos.y;
-                const yA = down ? e.sPos.y + e.sPos.h / 2 : e.sPos.y - e.sPos.h / 2;
-                const yB = down ? e.tPos.y - e.tPos.h / 2 : e.tPos.y + e.tPos.h / 2;
-                const lo = Math.min(yA, yB), hi = Math.max(yA, yB);
-                if ((down && yB < yA) || (!down && yB > yA)) return false; // การ์ดทับกัน ใช้เส้นอ้อมเดิม
-                return ![...linkPositions.entries()].some(([id, p]) =>
-                    id !== e.sourceId && id !== e.targetId &&
-                    Math.abs(p.x - e.sPos.x) < p.w / 2 && p.y + p.h / 2 > lo && p.y - p.h / 2 < hi);
-            })()) {
-                const down = e.tPos.y > e.sPos.y;
-                points = [
-                    { x: e.sPos.x, y: down ? e.sPos.y + e.sPos.h / 2 : e.sPos.y - e.sPos.h / 2 },
-                    { x: e.sPos.x, y: down ? e.tPos.y - e.tPos.h / 2 : e.tPos.y + e.tPos.h / 2 },
-                ];
             } else if (sItem && tItem && sItem.beatIndex === tItem.beatIndex) {
                 // จังหวะเดียวกัน (คอลัมน์เดียว) → ออกขวาทั้งคู่ แล้ววิ่งบัสในร่อง gutter ด้านขวา
                 // ไม่ลากดิ่งผ่ากลางคอลัมน์ (จะทับการ์ดที่คั่นอยู่ระหว่าง source กับ target)
