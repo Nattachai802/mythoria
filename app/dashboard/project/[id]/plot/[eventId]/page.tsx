@@ -2,6 +2,7 @@ import { getTimelineEventById, getTimeLineEvents, getNovelBoardChapters } from "
 import { getCharactersByNovelId } from "@/server/character";
 import { getLocationsByNovelId } from "@/server/locations";
 import { getIdeasByNovelId } from "@/server/idea";
+import { getVault } from "@/server/idea-vault";
 import { getChapters } from "@/server/chapter";
 import { getNovelByIdSimple } from "@/server/novel";
 import { getThreadsByNovelId } from "@/server/plot-threads";
@@ -35,7 +36,7 @@ export default async function PlotPlaygroundPage({
   const { action } = await searchParams;
 
   // Fetch all necessary data in parallel
-  const [eventRes, charactersRes, locationsRes, ideasRes, eventsRes, chaptersRes, novelRes, threadsRes, factionsRes, boardChaptersRes, echoRes, toneRes, sceneRecap, powersRes, itemsRes, entitiesRes, systemsRes, participantLinks] = await Promise.all([
+  const [eventRes, charactersRes, locationsRes, ideasRes, eventsRes, chaptersRes, novelRes, threadsRes, factionsRes, boardChaptersRes, echoRes, toneRes, sceneRecap, powersRes, itemsRes, entitiesRes, systemsRes, participantLinks, vaultRes] = await Promise.all([
     getTimelineEventById(eventId),
     getCharactersByNovelId(novelId),
     getLocationsByNovelId(novelId),
@@ -54,6 +55,7 @@ export default async function PlotPlaygroundPage({
     getEntitiesByNovelId(novelId),
     getWorldSystemsByNovelId(novelId),
     getParticipantLinks(novelId),
+    getVault(novelId),
   ]);
 
   if (!eventRes.success || !eventRes.event) {
@@ -91,6 +93,7 @@ export default async function PlotPlaygroundPage({
           boardChapters={boardChaptersRes.data || []}
           characters={charactersRes.data || []}
           ideas={ideasRes.data || []}
+          vaultNotes={vaultRes.success ? vaultRes.data.filter(n => !n.isArchived && !n.isDetected && !n.links.some(l => l.relation === "used_in")) : []}
           threads={threadsRes.data || []}
           factions={factionsRes.data || []}
           powers={powersRes.data || []}

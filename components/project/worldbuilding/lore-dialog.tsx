@@ -26,7 +26,7 @@ import { getLocationsByNovelId } from "@/server/locations";
 import { getLoreGroupsByNovelId } from "@/server/lore-groups";
 import { getErasByNovelId } from "@/server/eras";
 import { getCharactersByNovelId } from "@/server/character";
-import { deleteIdea, updateIdea, getIdeasByNovelId } from "@/server/idea";
+import { addVaultLink, getVault, removeVaultLink } from "@/server/idea-vault";
 import { getItemsByNovelId } from "@/server/items";
 import { toast } from "sonner";
 import { Loader2, Globe, MapPin, FolderTree, Layers, Clock, Plus, Sparkles, BrainCircuit } from "lucide-react";
@@ -108,10 +108,11 @@ export function LoreDialog({
     const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
     const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
     const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
-    // linkedLoreIds เก็บเป็น jsonb — ตอน unlink/link ด้านล่างอ่านค่านี้ออกมา cast เป็น string[]
-    const [detectedIdeas, setDetectedIdeas] = useState<{ id: string; title: string; category: string; linkedLoreIds?: unknown }[]>([]);
+    // โน้ตในคลังไอเดีย (idea_vault) ที่ผูกกับ lore นี้ — loreIds = ลิงก์ about ไป lore ที่มีอยู่ตอนโหลด
+    type LoreIdea = { id: string; title: string; category: string; loreIds?: string[] };
+    const [detectedIdeas, setDetectedIdeas] = useState<LoreIdea[]>([]);
     const [selectedIdeaIds, setSelectedIdeaIds] = useState<string[]>([]);
-    const [allIdeas, setAllIdeas] = useState<any[]>([]);
+    const [allIdeas, setAllIdeas] = useState<LoreIdea[]>([]);
 
     // Form fields
     const [title, setTitle] = useState(editEntry?.title || "");
@@ -143,7 +144,7 @@ export function LoreDialog({
             getErasByNovelId(novelId),
             getCharactersByNovelId(novelId),
             getItemsByNovelId(novelId),
-            getIdeasByNovelId(novelId, true),
+            getVault(novelId),
         ]);
 
         if (locResult.success && locResult.data) {
@@ -167,8 +168,13 @@ export function LoreDialog({
         if (itemsResult.success && itemsResult.data) {
             setItemsList(itemsResult.data);
         }
-        if (ideasResult.success && ideasResult.data) {
-            setAllIdeas(ideasResult.data);
+        if (ideasResult.success) {
+            setAllIdeas(ideasResult.data.map(n => ({
+                id: n.id,
+                title: n.text,
+                category: (n.scopes ?? []).includes("character") ? "character" : "worldbuilding",
+                loreIds: n.links.filter(l => l.relation === "about" && l.targetType === "lore").map(l => l.targetId),
+            })));
         }
     };
     
@@ -282,10 +288,7 @@ export function LoreDialog({
     // Handle fetching/loading linked ideas when editEntry or allIdeas changes
     useEffect(() => {
         if (editEntry && allIdeas.length > 0) {
-            const linkedIdeas = allIdeas.filter(i => {
-                const loreIds = (i.linkedLoreIds as string[]) || [];
-                return loreIds.includes(editEntry.id);
-            });
+            const linkedIdeas = allIdeas.filter(i => (i.loreIds ?? []).includes(editEntry.id));
             setDetectedIdeas(linkedIdeas);
             setSelectedIdeaIds(linkedIdeas.map(i => i.id));
         } else if (!editEntry) {
@@ -340,22 +343,9 @@ export function LoreDialog({
                     const toKeep = detectedIdeas.filter(i => selectedIdeaIds.includes(i.id));
                     const toDelete = detectedIdeas.filter(i => !selectedIdeaIds.includes(i.id));
                     
-                    // Unlink deselected ideas (remove this loreEntryId from their linkedLoreIds)
-                    await Promise.all(toDelete.map(async (i) => {
-                        const currentLoreIds = (i.linkedLoreIds as string[]) || [];
-                        if (currentLoreIds.includes(loreEntryId)) {
-                            const updatedLoreIds = currentLoreIds.filter(id => id !== loreEntryId);
-                            await updateIdea(i.id, { linkedLoreIds: updatedLoreIds });
-                        }
-                    }));
-                    
-                    // Link selected ideas (add this loreEntryId to their linkedLoreIds if not already present)
-                    await Promise.all(toKeep.map(async (i) => {
-                        const currentLoreIds = (i.linkedLoreIds as string[]) || [];
-                        if (!currentLoreIds.includes(loreEntryId)) {
-                            await updateIdea(i.id, { linkedLoreIds: [...currentLoreIds, loreEntryId] });
-                        }
-                    }));
+                    // ถอดที่ไม่ได้เลือก / ผูกที่เลือก — ลิงก์ about ใน idea_vault_links (ทั้งคู่ idempotent)
+                    await Promise.all(toDelete.map(i => removeVaultLink(i.id, "lore", loreEntryId)));
+                    await Promise.all(toKeep.map(i => addVaultLink(i.id, "lore", loreEntryId)));
                 }
 
                 toast.success(isEdit ? "แก้ไขสำเร็จ" : "สร้างสำเร็จ");
@@ -612,7 +602,7 @@ export function LoreDialog({
                                             {/* New Detected Entities (Ideas) */}
                                             {detectedIdeas.length > 0 && (
                                                 <div className="space-y-1.5">
-                                                    <p className="text-xs font-semibold text-purple-500">ไอเดียใหม่ที่ถูกสกัด (รอตรวจทานในหน้า Idea Detect):</p>
+                                                    <p className="text-xs font-semibold text-purple-500">ไอเดียใหม่ที่ถูกสกัด (รอตรวจทานในแท็บรออนุมัติของคลังไอเดีย):</p>
                                                     <div className="flex flex-wrap gap-2">
                                                         {detectedIdeas.map(idea => {
                                                             const isSelected = selectedIdeaIds.includes(idea.id);

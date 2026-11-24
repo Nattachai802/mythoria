@@ -71,7 +71,7 @@ export function GlobalSearch() {
         return [
             { label: "ภาพรวม (Overview)", keywords: "overview ภาพรวม หน้าหลัก", icon: LayoutDashboard, href: base },
             { label: "พล็อต (Plot)", keywords: "plot พล็อต timeline ไทม์ไลน์ ฉาก", icon: ScrollText, href: `${base}/plot` },
-            { label: "ไอเดีย (Ideas)", keywords: "idea ไอเดีย canvas", icon: MessageSquareText, href: `${base}/idea` },
+            { label: "คลังไอเดีย (Ideas)", keywords: "idea ไอเดีย คลัง โน้ต จดไว้ vault", icon: MessageSquareText, href: `${base}/idea` },
             { label: "ตัวละคร (Characters)", keywords: "character ตัวละคร cast", icon: Users, href: `${base}/characters` },
             { label: "สร้างโลก (World Building)", keywords: "world building lore สถานที่ ของวิเศษ ก๊ก", icon: Globe, href: `${base}/worldbuilding` },
             { label: "พลัง (Powers)", keywords: "power พลัง ความสามารถ", icon: Zap, href: `${base}/powers` },

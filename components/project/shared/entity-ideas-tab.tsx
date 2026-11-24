@@ -1,204 +1,143 @@
 "use client";
 
-import { useState } from "react";
-import { Idea } from "@/db/schema";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { CreateIdeaDialog } from "@/components/project/idea/create-idea-dialog";
-import { EditIdeaDialog } from "@/components/project/idea/edit-idea-dialog";
-import { Lightbulb, Plus, Calendar, Tag, Sparkles } from "lucide-react";
+/**
+ * แท็บ "ไอเดีย" ในหน้าตัวละคร / สถานที่ / พลัง / lore / ฝ่าย — อ่านจากคลังโน้ต (idea_vault + idea_vault_links)
+ * - ผูกกับตัวนี้แล้ว (relation about)
+ * - ติดแท็กชนิดนี้แต่ยังไม่ผูกกับตัวไหน → กดผูกได้
+ * - จดใหม่จากตรงนี้ = ผูกให้อัตโนมัติ
+ * โหลดเองตอนเปิด (prop ideas เดิมไม่ได้ใช้แล้ว — คงไว้ให้ caller เดิมคอมไพล์ผ่าน)
+ */
 
-type EntityType = "character" | "power" | "location" | "lore";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
+import { CircleCheck, Lightbulb, Link2, Loader2, Unlink } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { SCOPE_OF_TARGET, type VaultLinkTarget } from "@/lib/idea-scopes";
+import {
+    addVaultLink, createVaultNote, getVaultNotesForTarget, removeVaultLink, type VaultNoteView,
+} from "@/server/idea-vault";
+import { ScopeTags, effectiveScopes, isUsedNote } from "@/components/project/idea/vault-ui";
 
 interface EntityIdeasTabProps {
-    entityType: EntityType;
+    entityType: Exclude<VaultLinkTarget, "timelineEvent">;
     entityId: string;
     entityName: string;
     novelId: string;
-    ideas: Idea[];
+    /** @deprecated คลังใหม่โหลดเอง — ไม่ได้ใช้ */
+    ideas?: unknown;
 }
 
-export function EntityIdeasTab({
-    entityType,
-    entityId,
-    entityName,
-    novelId,
-    ideas = []
-}: EntityIdeasTabProps) {
-    const [selectedIdea, setSelectedIdea] = useState<Idea | null>(null);
-    const [editDialogOpen, setEditDialogOpen] = useState(false);
-    const [createDialogOpen, setCreateDialogOpen] = useState(false);
+export function EntityIdeasTab({ entityType, entityId, entityName, novelId }: EntityIdeasTabProps) {
+    const [linked, setLinked] = useState<VaultNoteView[] | null>(null);
+    const [suggested, setSuggested] = useState<VaultNoteView[]>([]);
+    const [draft, setDraft] = useState("");
+    const [saving, setSaving] = useState(false);
 
-    // Get the appropriate linked field name based on entity type
-    const getLinkedFieldName = (): keyof Idea => {
-        switch (entityType) {
-            case "character":
-                return "linkedCharacterIds";
-            case "power":
-                return "linkedPowerIds";
-            case "location":
-                return "linkedLocationIds";
-            case "lore":
-                return "linkedLoreIds";
-            default:
-                return "linkedCharacterIds";
+    const load = useCallback(async () => {
+        const res = await getVaultNotesForTarget(novelId, entityType, entityId);
+        if (!res.success) { toast.error(res.error); setLinked([]); return; }
+        setLinked(res.data.linked);
+        setSuggested(res.data.suggested);
+    }, [novelId, entityType, entityId]);
+
+    useEffect(() => { load(); }, [load]);
+
+    const add = async () => {
+        const text = draft.trim();
+        if (!text || saving) return;
+        setSaving(true);
+        const scope = SCOPE_OF_TARGET[entityType];
+        const res = await createVaultNote({
+            novelId, text, scopes: scope ? [scope] : [],
+            links: [{ targetType: entityType, targetId: entityId }],
+        });
+        setSaving(false);
+        if (!res.success) { toast.error(res.error); return; }
+        if (res.isDuplicate) {
+            // โน้ตเดิมข้อความเดียวกัน — ผูกให้แทนการสร้างซ้ำ
+            await addVaultLink(res.data.id, entityType, entityId);
+            toast.info("มีโน้ตนี้อยู่แล้ว ผูกให้แล้ว");
         }
+        setDraft("");
+        load();
     };
 
-    // Filter ideas that are linked to this entity
-    const linkedField = getLinkedFieldName();
-    const linkedIdeas = ideas.filter(idea => {
-        const linkedIds = idea[linkedField];
-        if (!linkedIds) return false;
-        const ids = Array.isArray(linkedIds) ? linkedIds : [];
-        return ids.includes(entityId);
-    });
-
-    // Get default linked IDs for creation
-    const getDefaultLinkedIds = () => {
-        switch (entityType) {
-            case "character":
-                return { linkedCharacterIds: [entityId] };
-            case "power":
-                return { linkedPowerIds: [entityId] };
-            case "location":
-                return { linkedLocationIds: [entityId] };
-            case "lore":
-                return { linkedLoreIds: [entityId] };
-            default:
-                return {};
-        }
+    const link = async (n: VaultNoteView) => {
+        const res = await addVaultLink(n.id, entityType, entityId);
+        if (!res.success) { toast.error(res.error); return; }
+        load();
     };
-
-    const getCategoryColor = (category: string | null) => {
-        switch (category) {
-            case "character": return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400";
-            case "power": return "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400";
-            case "lore": return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400";
-            case "location": return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
-            case "plot": return "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400";
-            default: return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400";
-        }
+    const unlink = async (n: VaultNoteView) => {
+        const res = await removeVaultLink(n.id, entityType, entityId);
+        if (!res.success) { toast.error(res.error); return; }
+        load();
     };
 
     return (
         <div className="space-y-4">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h3 className="text-lg font-semibold">Ideas & Notes</h3>
-                    <p className="text-sm text-muted-foreground">
-                        Scratchpad สำหรับ {entityName}
-                    </p>
-                </div>
-                {/* Show button only when there are ideas */}
-                {linkedIdeas.length > 0 && (
-                    <Button onClick={() => setCreateDialogOpen(true)}>
-                        <Plus className="w-4 h-4 mr-2" />
-                        New Idea
-                    </Button>
-                )}
+            <div className="flex gap-2">
+                <Input
+                    value={draft}
+                    onChange={e => setDraft(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
+                    placeholder={`จดไอเดียเกี่ยวกับ${entityName}`}
+                    aria-label={`จดไอเดียเกี่ยวกับ${entityName}`}
+                    disabled={saving}
+                />
+                <Button onClick={add} disabled={saving || !draft.trim()} className="gap-1.5">
+                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lightbulb className="h-4 w-4" />}จด
+                </Button>
             </div>
 
-            {/* Ideas List */}
-            {linkedIdeas.length === 0 ? (
-                <Card className="border-dashed">
-                    <CardContent className="flex flex-col items-center justify-center py-12">
-                        <div className="p-4 rounded-full bg-muted mb-4">
-                            <Sparkles className="w-8 h-8 text-muted-foreground" />
-                        </div>
-                        <h4 className="font-semibold mb-2">ยังไม่มีไอเดีย</h4>
-                        <p className="text-sm text-muted-foreground text-center max-w-sm mb-4">
-                            เริ่มบันทึกไอเดียหรือโน้ตสำหรับ {entityName}
-                        </p>
-                        <Button onClick={() => setCreateDialogOpen(true)} variant="outline">
-                            <Plus className="w-4 h-4 mr-2" />
-                            สร้างไอเดียแรก
-                        </Button>
-                    </CardContent>
-                </Card>
-            ) : (
-                <div className="grid gap-4">
-                    {linkedIdeas.map((idea) => (
-                        <Card
-                            key={idea.id}
-                            className="cursor-pointer hover:shadow-md transition-shadow"
-                            onClick={() => {
-                                setSelectedIdea(idea);
-                                setEditDialogOpen(true);
-                            }}
-                        >
-                            <CardContent className="pt-6">
-                                <div className="flex items-start gap-3">
-                                    <div className="p-2 rounded-lg bg-yellow-100 dark:bg-yellow-900/30 shrink-0">
-                                        <Lightbulb className="w-4 h-4 text-yellow-600 dark:text-yellow-400" />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-start justify-between gap-2 mb-2">
-                                            <h4 className="font-semibold line-clamp-1">
-                                                {idea.title || "Untitled"}
-                                            </h4>
-                                            <Badge
-                                                variant="secondary"
-                                                className={getCategoryColor(idea.category)}
-                                            >
-                                                {idea.category || "general"}
-                                            </Badge>
-                                        </div>
-
-                                        {idea.content && (
-                                            <p className="text-sm text-muted-foreground line-clamp-2 mb-3">
-                                                {typeof idea.content === 'string'
-                                                    ? idea.content
-                                                    : ''}
-                                            </p>
-                                        )}
-
-                                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                                            <div className="flex items-center gap-1">
-                                                <Calendar className="w-3 h-3" />
-                                                {new Date(idea.createdAt).toLocaleDateString('th-TH', {
-                                                    day: 'numeric',
-                                                    month: 'short',
-                                                    year: 'numeric'
-                                                })}
-                                            </div>
-                                            {Array.isArray(idea.tags) && (idea.tags as string[]).length > 0 && (
-                                                <div className="flex items-center gap-1">
-                                                    <Tag className="w-3 h-3" />
-                                                    {(idea.tags as string[]).slice(0, 2).join(', ')}
-                                                    {(idea.tags as string[]).length > 2 && ` +${(idea.tags as string[]).length - 2}`}
-                                                </div>
-                                            )}
-                                        </div>
+            <section className="space-y-2">
+                <div className="flex items-center gap-2">
+                    <p className="flex-1 text-xs text-muted-foreground">ผูกกับ{entityName}แล้ว · {linked?.length ?? 0}</p>
+                    <a href={`/dashboard/project/${novelId}/idea`} className="text-xs text-muted-foreground hover:text-foreground hover:underline">เปิดคลังไอเดีย</a>
+                </div>
+                {linked === null ? (
+                    <p className="py-6 text-center text-sm text-muted-foreground"><Loader2 className="mx-auto h-4 w-4 animate-spin" /></p>
+                ) : linked.length === 0 ? (
+                    <div className="rounded-lg border border-dashed py-8 text-center">
+                        <Lightbulb className="mx-auto h-6 w-6 text-muted-foreground" aria-hidden />
+                        <p className="mt-2 text-sm">ยังไม่มีไอเดียเกี่ยวกับ{entityName}</p>
+                        <p className="mt-0.5 text-[13px] text-muted-foreground">จดด้านบน หรือผูกโน้ตจากคลัง</p>
+                    </div>
+                ) : (
+                    <ul className="overflow-hidden rounded-lg border">
+                        {linked.map(n => (
+                            <li key={n.id} className="flex items-start gap-2 border-b px-3 py-2.5 last:border-b-0">
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-sm leading-relaxed">{n.text}</p>
+                                    {n.summary && <p className="line-clamp-2 text-[13px] text-muted-foreground">{n.summary}</p>}
+                                    <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                                        <ScopeTags scopes={effectiveScopes(n)} />
+                                        {isUsedNote(n) && <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400"><CircleCheck className="h-3.5 w-3.5" />ใช้แล้ว</span>}
                                     </div>
                                 </div>
-                            </CardContent>
-                        </Card>
-                    ))}
-                </div>
-            )}
+                                <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-muted-foreground" onClick={() => unlink(n)} aria-label={`ถอด “${n.text}” ออกจาก${entityName}`}>
+                                    <Unlink className="h-3.5 w-3.5" />ถอด
+                                </Button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </section>
 
-            {/* Create Dialog */}
-            <CreateIdeaDialog
-                novelId={novelId}
-                open={createDialogOpen}
-                onOpenChange={setCreateDialogOpen}
-                defaultCategory={entityType}
-                {...getDefaultLinkedIds()}
-            />
-
-            {/* Edit Dialog */}
-            {selectedIdea && (
-                <EditIdeaDialog
-                    idea={selectedIdea}
-                    open={editDialogOpen}
-                    onOpenChange={(open) => {
-                        setEditDialogOpen(open);
-                        if (!open) setSelectedIdea(null);
-                    }}
-                />
+            {suggested.length > 0 && (
+                <section className="space-y-2">
+                    <p className="text-xs text-muted-foreground">ติดแท็กนี้แต่ยังไม่ผูกกับใคร · {suggested.length}</p>
+                    <ul className="overflow-hidden rounded-lg border">
+                        {suggested.map(n => (
+                            <li key={n.id} className="flex items-center gap-2 border-b px-3 py-2 last:border-b-0">
+                                <p className="min-w-0 flex-1 text-sm">{n.text}</p>
+                                <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={() => link(n)}>
+                                    <Link2 className="h-3.5 w-3.5" />ผูกกับ{entityName}
+                                </Button>
+                            </li>
+                        ))}
+                    </ul>
+                </section>
             )}
         </div>
     );

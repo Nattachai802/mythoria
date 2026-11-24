@@ -33,7 +33,7 @@ import {
     splitFactionRelationship, updateFactionRelationshipRange, updateFactionStatusTimeline,
     createFactionStatusPreset, updateFactionStatusPreset, deleteFactionStatusPreset,
 } from "@/server/factions";
-import { CreateIdeaDialog } from "@/components/project/idea/create-idea-dialog";
+import { EntityIdeasTab } from "@/components/project/shared/entity-ideas-tab";
 import type { FactionStatusPreset } from "@/db/schema";
 
 // ── fallback presets (ใช้เมื่อ user ยังไม่ได้ตั้งค่าเลย)
@@ -242,23 +242,6 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
         toast.success("บันทึกแล้ว");
     };
 
-    // ── linked ideas (แปะการ์ดไอเดียกับฝ่าย) ──
-    const [ideaList, setIdeaList] = useState<Idea[]>(ideas);
-    const ideaById = useMemo(() => new Map(ideaList.map((i) => [i.id, i])), [ideaList]);
-    const [ideaPickerOpen, setIdeaPickerOpen] = useState(false);
-    const [createIdeaOpen, setCreateIdeaOpen] = useState(false);
-    const [ideaPage, setIdeaPage] = useState(0);
-    const pinIdea = (id: string) =>
-        setForm((f) => (f.linkedIdeaIds.includes(id) ? f : { ...f, linkedIdeaIds: [...f.linkedIdeaIds, id] }));
-    const unpinIdea = (id: string) =>
-        setForm((f) => ({ ...f, linkedIdeaIds: f.linkedIdeaIds.filter((x) => x !== id) }));
-
-    // สร้างไอเดียจากฟอร์มเต็ม (CreateIdeaDialog) → เก็บเข้า list + แปะกับฝ่ายนี้เลย
-    const handleIdeaCreated = (created: Idea) => {
-        if (!created?.id) return;
-        setIdeaList((p) => (p.some((i) => i.id === created.id) ? p : [...p, created]));
-        pinIdea(created.id);
-    };
 
     // ── linked world systems (ผูกระบบโลกกับฝ่าย) ──
     const systemById = useMemo(() => new Map(systems.map((s) => [s.id, s])), [systems]);
@@ -712,67 +695,12 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
 
                             <div className="space-y-4">
                             <div className="block space-y-1.5">
-                                <div className="flex items-center justify-between">
-                                    <span className="font-technical text-[10px] uppercase tracking-[0.12em] text-muted-foreground">ไอเดียที่แปะไว้</span>
-                                    <div className="flex items-center gap-2.5">
-                                        <button type="button" onClick={() => setCreateIdeaOpen(true)}
-                                            className="inline-flex items-center gap-1 text-[11px] text-[var(--forge-amber)] hover:underline">
-                                            <Plus className="h-3 w-3" /> สร้างไอเดีย
-                                        </button>
-                                        <button type="button" onClick={() => setIdeaPickerOpen((o) => !o)}
-                                            className="inline-flex items-center gap-1 text-[11px] text-[var(--forge-amber)] hover:underline">
-                                            <Lightbulb className="h-3 w-3" /> แปะไอเดีย
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {ideaPickerOpen && (() => {
-                                    const avail = ideaList.filter((i) => !form.linkedIdeaIds.includes(i.id));
-                                    return (
-                                        <div className="chamfered-sm border border-steel-800 bg-card max-h-36 overflow-y-auto divide-y divide-steel-800/50 animate-in fade-in slide-in-from-top-1 duration-150 motion-reduce:animate-none">
-                                            {avail.length === 0 ? (
-                                                <p className="text-[11px] text-muted-foreground/60 p-2">ไม่มีไอเดียให้แปะเพิ่ม — กด &ldquo;สร้างไอเดีย&rdquo; เพื่อสร้างใหม่</p>
-                                            ) : avail.map((i) => (
-                                                <button type="button" key={i.id} onClick={() => pinIdea(i.id)}
-                                                    className="w-full text-left flex items-center gap-2 p-2 hover:bg-accent transition-colors">
-                                                    <span className="h-2.5 w-2.5 chamfered-sm shrink-0" style={{ background: i.color ?? "#3b82f6" }} />
-                                                    <span className="text-xs truncate">{i.title}</span>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    );
-                                })()}
-
-                                {form.linkedIdeaIds.length > 0 ? (() => {
-                                    const pageCount = Math.ceil(form.linkedIdeaIds.length / PAGE_SIZE);
-                                    const page = Math.min(ideaPage, pageCount - 1);
-                                    const pageIds = form.linkedIdeaIds.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
-                                    return (
-                                        <div className="space-y-1.5">
-                                            {pageIds.map((id) => {
-                                                const idea = ideaById.get(id);
-                                                if (!idea) return null;
-                                                return (
-                                                    <div key={id} className="group flex items-start gap-2 p-2 chamfered-sm border border-steel-800 bg-card/60">
-                                                        <span className="h-3.5 w-3.5 chamfered-sm shrink-0 mt-0.5 ring-1 ring-black/15" style={{ background: idea.color ?? "#3b82f6" }} />
-                                                        <div className="flex-1 min-w-0">
-                                                            <p className="text-xs font-medium truncate">{idea.title}</p>
-                                                            {(idea.summary || idea.content) && (
-                                                                <p className="text-[10px] text-muted-foreground line-clamp-2 leading-relaxed">{idea.summary || idea.content}</p>
-                                                            )}
-                                                        </div>
-                                                        <button type="button" onClick={() => unpinIdea(id)} aria-label="เอาไอเดียออก"
-                                                            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-500 transition-opacity shrink-0">
-                                                            <X className="h-3 w-3" />
-                                                        </button>
-                                                    </div>
-                                                );
-                                            })}
-                                            {pageCount > 1 && <Pager page={page} pageCount={pageCount} onChange={setIdeaPage} />}
-                                        </div>
-                                    );
-                                })() : (
-                                    <p className="text-[11px] text-muted-foreground/50">ยังไม่มีไอเดียแปะไว้ — กด &ldquo;แปะไอเดีย&rdquo; เพื่อดึงการ์ดมาผูก</p>
+                                <span className="font-technical text-[10px] uppercase tracking-[0.12em] text-muted-foreground">ไอเดียที่แปะไว้</span>
+                                {/* อ่าน/เขียนผ่านคลังไอเดีย (idea_vault_links) — factions.linkedIdeaIds เดิมไม่เขียนแล้ว (ค่าเก่าย้ายเข้าคลังตอน migration) */}
+                                {selectedId && !isCreating ? (
+                                    <EntityIdeasTab entityType="faction" entityId={selectedId} entityName={form.name || "ฝ่ายนี้"} novelId={novelId} />
+                                ) : (
+                                    <p className="text-[11px] text-muted-foreground/60">บันทึกฝ่ายก่อน แล้วค่อยแปะไอเดีย</p>
                                 )}
                             </div>
 
@@ -932,14 +860,6 @@ export function FactionsContent({ novelId, initialFactions, initialRelationships
                 ) : null}
             </DragOverlay>
 
-            <CreateIdeaDialog
-                novelId={novelId}
-                open={createIdeaOpen}
-                onOpenChange={setCreateIdeaOpen}
-                defaultCategory="worldbuilding"
-                onIdeaCreated={handleIdeaCreated}
-                trigger={<span className="hidden" aria-hidden="true" />}
-            />
 
             <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
                 <AlertDialogContent>
@@ -1100,7 +1020,6 @@ function FactionCard({
                                 <div className="flex items-center gap-3 mt-1.5 text-[10px] text-muted-foreground">
                                     {leaderName && (<span className="inline-flex items-center gap-1"><Crown className="h-2.5 w-2.5 text-[var(--forge-amber)]" /> {leaderName}</span>)}
                                     {(f.members?.length ?? 0) > 0 && (<span className="inline-flex items-center gap-1"><Users className="h-2.5 w-2.5" /> {f.members.length}</span>)}
-                                    {(f.linkedIdeaIds?.length ?? 0) > 0 && (<span className="inline-flex items-center gap-1"><Lightbulb className="h-2.5 w-2.5 text-[var(--forge-amber)]" /> {f.linkedIdeaIds.length}</span>)}
                                     {(f.linkedSystemIds?.length ?? 0) > 0 && (<span className="inline-flex items-center gap-1"><Layers className="h-2.5 w-2.5 text-indigo-400" /> {f.linkedSystemIds.length}</span>)}
                                 </div>
                             )}

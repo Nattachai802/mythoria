@@ -46,7 +46,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { LoreGroupDialog } from "./lore-group-dialog";
 import { LoreDetailDialog } from "./lore-detail-dialog";
-import { getIdeasByNovelId } from "@/server/idea";
+import { getVault, type VaultNoteView } from "@/server/idea-vault";
 
 interface LoreEntry {
     id: string;
@@ -184,13 +184,12 @@ export function LoreTimeline({
         setDetailDialogOpen(true);
     };
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-    const [ideas, setIdeas] = useState<any[]>([]);
+    // โน้ตในคลังไอเดียที่ใช้เป็นแท็กของ lore (ลิงก์ about → lore)
+    const [ideas, setIdeas] = useState<VaultNoteView[]>([]);
 
     const fetchIdeas = async () => {
-        const res = await getIdeasByNovelId(novelId, true);
-        if (res.success && res.data) {
-            setIdeas(res.data);
-        }
+        const res = await getVault(novelId);
+        if (res.success) setIdeas(res.data);
     };
 
     useEffect(() => {
@@ -414,10 +413,9 @@ export function LoreTimeline({
         const matchedLocs = locations.filter(l => entryLocs.includes(l.id));
         const matchedItems = items.filter(i => entryItems.includes(i.id));
         
-        const matchedIdeas = ideas.filter(i => {
-            const loreIds = (i.linkedLoreIds as string[]) || [];
-            return loreIds.includes(entry.id);
-        });
+        const matchedIdeas = ideas.filter(i =>
+            i.links.some(l => l.relation === "about" && l.targetType === "lore" && l.targetId === entry.id)
+        );
 
         return {
             characters: matchedChars,
@@ -571,7 +569,7 @@ export function LoreTimeline({
                                                         variant="outline"
                                                         className="text-[10px] px-2 py-0.5 border border-purple-200/60 text-purple-700 bg-purple-50/50 hover:bg-purple-100/50 transition-all duration-200"
                                                     >
-                                                        ✨ {idea.title}
+                                                        ✨ {idea.text}
                                                     </Badge>
                                                 ))}
                                             </div>
@@ -793,7 +791,7 @@ export function LoreTimeline({
                                                                 variant="outline"
                                                                 className="text-[9px] px-1.5 py-0 border border-purple-200/50 text-purple-600 bg-purple-50/30 animate-fade-in"
                                                             >
-                                                                ✨ {idea.title}
+                                                                ✨ {idea.text}
                                                             </Badge>
                                                         ))}
                                                     </div>
@@ -867,7 +865,7 @@ export function LoreTimeline({
                                             {relChars.map(c => tag(c.id, c.name, Users, "border-blue-200/60 text-blue-700 bg-blue-50/50"))}
                                             {relLocs.map(l => tag(l.id, l.name, MapPin, "border-emerald-200/60 text-emerald-700 bg-emerald-50/50"))}
                                             {relItems.map(item => tag(item.id, item.name, Package, "border-amber-200/60 text-amber-700 bg-amber-50/50"))}
-                                            {relIdeas.map(idea => tag(idea.id, idea.title, Sparkles, "border-purple-200/60 text-purple-700 bg-purple-50/50"))}
+                                            {relIdeas.map(idea => tag(idea.id, idea.text, Sparkles, "border-purple-200/60 text-purple-700 bg-purple-50/50"))}
                                         </div>
                                     );
                                 })()}

@@ -1,7 +1,7 @@
 'use server';
 
 import { cloudDb, DiscordIdea } from '@/lib/neon';
-import { createIdeaWithoutRevalidate } from '@/server/idea';
+import { insertDiscordNote } from '@/server/idea-vault-detect';
 import { requireNovelAccess } from '@/lib/authz';
 
 export async function syncDiscordIdeas(novelId: string) {
@@ -22,15 +22,12 @@ export async function syncDiscordIdeas(novelId: string) {
         const syncedIds: string[] = [];
         for (const idea of unsyncedIdeas) {
             // Use non-revalidating version to avoid render-time revalidation
-            const result = await createIdeaWithoutRevalidate({
-                title: idea.title || `Discord Idea`,
-                content: idea.content,
-                novelId: idea.novel_id,
-                category: idea.category || 'general',
-                tags: [...(idea.tags || []), 'discord', 'synced'],
-            });
-            if (result.success) {
+            // เข้าคลังไอเดีย (idea_vault) — novelId จากพารามิเตอร์ที่เช็คสิทธิ์แล้ว ไม่เชื่อค่าจากแถว Discord
+            try {
+                await insertDiscordNote({ novelId, title: idea.title, content: idea.content, category: idea.category });
                 syncedIds.push(idea.id);
+            } catch (e) {
+                console.error("Discord idea → vault failed:", e);
             }
         }
         // 3. Mark as synced in Neon (update one by one for reliability)

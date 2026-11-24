@@ -27,8 +27,7 @@ import { ChapterColumn } from "./chapter-column"
 import { EventCard } from "./event-card"
 import { Clock, SlidersHorizontal, Eye, X, Activity, AlertTriangle, Route, Loader2, BookPlus, GanttChart, PencilLine, Milestone, Lightbulb } from "lucide-react"
 import { reorderTimelineEvents, updateTimelineEvent, createTimelineEvent } from "@/server/timeline"
-import { updateIdea } from "@/server/idea"
-import type { Idea } from "@/db/schema"
+import { placeNoteInChapter, type VaultNoteView } from "@/server/idea-vault"
 import { IdeaTray } from "./idea-tray"
 import { useMemo } from "react"
 import { toast } from "sonner"
@@ -75,8 +74,8 @@ interface TimelineBoardProps {
     arcs?: StoryArc[]
     eras?: (Era & { loreEntries: LoreEntry[] })[]
     timelineEpoch?: Date | null
-    /** ไอเดียที่ยังไม่ถูกวางที่ไหน (ideas.isUsed = false) สำหรับถาดไอเดีย */
-    trayIdeas?: Idea[]
+    /** โน้ตในคลังที่ยังไม่ถูกใช้ (ไม่มีลิงก์ used_in) สำหรับถาดไอเดีย */
+    trayNotes?: VaultNoteView[]
     /** ไอเดียที่มีโน้ตชนิด "คำถาม" ค้างอยู่ — นับในแถบล่าง */
     openQuestions?: number
 }
@@ -91,15 +90,15 @@ export function TimelineBoard({
     arcs = [],
     eras = [],
     timelineEpoch = null,
-    trayIdeas = [],
+    trayNotes = [],
     openQuestions = 0,
 }: TimelineBoardProps) {
     const [events, setEvents] = useState<TimelineEvent[]>(initialEvents)
     const [selectedId, setSelectedId] = useState<string | null>(null)
-    // ถาดไอเดีย (task.md 20D) — เปิด/ปิดจำต่อนิยาย · รายการเป็น state ในหน้าจอ (แหล่งจริงคือตาราง ideas)
+    // ถาดไอเดีย (task.md 20D) — เปิด/ปิดจำต่อนิยาย · รายการเป็น state ในหน้าจอ (แหล่งจริงคือ idea_vault)
     const trayKey = `plot-board:tray:${novelId}`
     const [trayOpen, setTrayOpen] = useState(false)
-    const [tray, setTray] = useState<Idea[]>(trayIdeas)
+    const [tray, setTray] = useState<VaultNoteView[]>(trayNotes)
     useEffect(() => {
         try { setTrayOpen(localStorage.getItem(trayKey) === "1") } catch { /* ปิดไว้ */ }
     }, [trayKey])
@@ -107,29 +106,20 @@ export function TimelineBoard({
         try { localStorage.setItem(trayKey, v ? "0" : "1") } catch { /* ไม่จำก็ได้ */ }
         return !v
     })
-    // วางไอเดียลงบท = สร้างฉากใหม่ท้ายบท มีการ์ดไอเดียนั้นใบแรกบน canvas แล้วติดธง isUsed
-    const placeIdea = async (ideaId: string, chapterId: string) => {
-        const idea = tray.find(i => i.id === ideaId)
-        if (!idea) return
-        setTray(prev => prev.filter(i => i.id !== ideaId))
-        const res = await createTimelineEvent({
-            novelId,
-            title: idea.title,
-            description: idea.content?.slice(0, 500) || null,
-            relatedChapterId: chapterId,
-            eventType: "scene",
-            orderIndex: 0, // server คำนวณต่อท้ายบทให้เอง (createTimelineEvent)
-            // ไม่ใส่ laneId/beatIndex — หน้าฉากสร้างเลน "ทั่วไป" ให้เองตอนเปิด (buildBoardState)
-            canvasData: [{ id: crypto.randomUUID(), type: "idea", referenceId: idea.id, title: idea.title, content: idea.content ?? "", children: [], links: [] }],
-        })
-        if (!res.success || !res.event) {
-            setTray(prev => [idea, ...prev])
+    // วางโน้ตลงบท = สร้างฉากใหม่ท้ายบท มีการ์ด (สำเนาของโน้ต) ใบแรกบน canvas + ผูก used_in
+    // โน้ตยังอยู่ในคลัง แค่หายจากถาดเพราะถาดแสดงเฉพาะที่ยังไม่ใช้
+    const placeIdea = async (noteId: string, chapterId: string) => {
+        const note = tray.find(n => n.id === noteId)
+        if (!note) return
+        setTray(prev => prev.filter(n => n.id !== noteId))
+        const res = await placeNoteInChapter(noteId, chapterId)
+        if (!res.success) {
+            setTray(prev => [note, ...prev])
             toast.error("วางไอเดียไม่สำเร็จ")
             return
         }
-        setEvents(prev => [...prev, res.event!])
-        updateIdea(idea.id, { isUsed: true })
-        toast.success(`ทำ “${idea.title}” เป็นฉากแล้ว`)
+        setEvents(prev => [...prev, res.data.event])
+        toast.success(`ทำ “${note.text}” เป็นฉากแล้ว · โน้ตยังอยู่ในคลัง`)
     }
     // โหมดร่าง (phase 1): ซ่อนคำเตือนบนกระดาน เหลือตัวนับในแถบเครื่องมือ — จำต่อนิยายใน localStorage
     const draftKey = `plot-board:draft:${novelId}`
@@ -631,9 +621,9 @@ export function TimelineBoard({
                 {trayOpen && (
                     <IdeaTray
                         novelId={novelId}
-                        ideas={tray}
+                        notes={tray}
                         chapters={sortedChapters.map(c => ({ id: c.id, title: c.title }))}
-                        onAdded={idea => setTray(prev => [idea, ...prev])}
+                        onAdded={note => setTray(prev => [note, ...prev])}
                         onPlace={placeIdea}
                         onClose={toggleTray}
                     />

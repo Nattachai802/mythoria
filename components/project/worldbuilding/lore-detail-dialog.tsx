@@ -17,7 +17,7 @@ import {
     Layers, Star, BrainCircuit, Loader2, Plus 
 } from "lucide-react";
 import { updateLoreEntry } from "@/server/lore";
-import { createIdea, updateIdea } from "@/server/idea";
+import { addVaultLink, createVaultNote, removeVaultLink, type VaultNoteView } from "@/server/idea-vault";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -50,7 +50,8 @@ interface LoreDetailDialogProps {
     characters?: { id: string; name: string }[];
     locations?: { id: string; name: string }[];
     items?: { id: string; name: string }[];
-    ideas?: any[];
+    /** โน้ตในคลังไอเดีย (idea_vault) — ใช้เป็น "แท็ก" ของ lore ผ่านลิงก์ about */
+    ideas?: VaultNoteView[];
     onEdit: () => void;
     onSuccess?: () => void;
 }
@@ -113,8 +114,8 @@ export function LoreDetailDialog({
             setLocalLocs((entry.relatedLocationIds as string[]) || []);
             setLocalItems((entry.relatedItemIds as string[]) || []);
             
-            const linkedIdeas = ideas.filter(idea => 
-                ((idea.linkedLoreIds as string[]) || []).includes(entry.id)
+            const linkedIdeas = ideas.filter(n =>
+                n.links.some(l => l.relation === "about" && l.targetType === "lore" && l.targetId === entry.id)
             );
             setLocalIdeaIds(linkedIdeas.map(i => i.id));
         }
@@ -173,15 +174,11 @@ export function LoreDetailDialog({
             : [...localIdeaIds, ideaId];
         
         setLocalIdeaIds(nextIdeaIds);
-        
-        const targetIdea = ideas.find(i => i.id === ideaId);
-        if (targetIdea) {
-            const currentLoreIds = (targetIdea.linkedLoreIds as string[]) || [];
-            const nextLoreIds = isLinked 
-                ? currentLoreIds.filter(id => id !== entry.id)
-                : [...currentLoreIds, entry.id];
-            await updateIdea(ideaId, { linkedLoreIds: nextLoreIds });
-        }
+
+        const res = isLinked
+            ? await removeVaultLink(ideaId, "lore", entry.id)
+            : await addVaultLink(ideaId, "lore", entry.id);
+        if (!res.success) { setLocalIdeaIds(localIdeaIds); toast.error(res.error); return; }
         onSuccess?.();
     };
 
@@ -189,20 +186,20 @@ export function LoreDetailDialog({
         if (!title.trim()) return;
         
         // Prevent duplicate ideas
-        const existingIdea = ideas.find(i => i.title.toLowerCase() === title.trim().toLowerCase());
+        const existingIdea = ideas.find(i => i.text.toLowerCase() === title.trim().toLowerCase());
         if (existingIdea) {
             await handleToggleIdea(existingIdea.id);
             setTagInput("");
             return;
         }
 
-        const res = await createIdea({
-            title: title.trim(),
-            category: "worldbuilding",
+        const res = await createVaultNote({
+            text: title.trim(),
+            scopes: ["worldbuilding"],
             novelId,
-            linkedLoreIds: [entry.id]
+            links: [{ targetType: "lore", targetId: entry.id }],
         });
-        if (res.success && res.data) {
+        if (res.success) {
             toast.success(`สร้างและเพิ่มแท็ก "${title}" สำเร็จ`);
             setLocalIdeaIds(prev => [...prev, res.data.id]);
             setTagInput("");
@@ -253,12 +250,7 @@ export function LoreDetailDialog({
                 const insertedIdeas = (data.insertedIdeas || []) as any[];
                 if (insertedIdeas.length > 0) {
                     setLocalIdeaIds(prev => Array.from(new Set([...prev, ...insertedIdeas.map(i => i.id)])));
-                    await Promise.all(insertedIdeas.map(async (i) => {
-                        const currentLoreIds = (i.linkedLoreIds as string[]) || [];
-                        if (!currentLoreIds.includes(entry.id)) {
-                            await updateIdea(i.id, { linkedLoreIds: [...currentLoreIds, entry.id] });
-                        }
-                    }));
+                    await Promise.all(insertedIdeas.map(i => addVaultLink(i.id, "lore", entry.id)));
                 }
 
                 toast.success("วิเคราะห์ AI และผูกแท็กเรียบร้อย!");
@@ -296,8 +288,8 @@ export function LoreDetailDialog({
             }
         });
         ideas.forEach(idea => {
-            if (idea.title.toLowerCase().includes(query) && !localIdeaIds.includes(idea.id)) {
-                matches.push({ id: idea.id, name: idea.title, type: "idea" });
+            if (idea.text.toLowerCase().includes(query) && !localIdeaIds.includes(idea.id)) {
+                matches.push({ id: idea.id, name: idea.text, type: "idea" });
             }
         });
 
@@ -579,7 +571,7 @@ export function LoreDetailDialog({
                                                             variant="secondary"
                                                             className="text-[10px] py-0.5 pl-2 pr-1.5 bg-purple-50/50 hover:bg-purple-100/50 border border-purple-200/50 text-purple-700 dark:bg-purple-950/20 dark:text-purple-300 dark:border-purple-900/50 flex items-center gap-1 group"
                                                         >
-                                                            {idea.title}
+                                                            {idea.text}
                                                             <button 
                                                                 type="button"
                                                                 onClick={() => handleToggleIdea(idea.id)}

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cloudDb, DiscordIdea } from "@/lib/neon";
-import { createIdea } from "@/server/idea";
+import { insertDiscordNote } from "@/server/idea-vault-detect";
 import { guardNovel } from "@/lib/authz";
 
 export async function POST(request: NextRequest) {
@@ -36,16 +36,12 @@ export async function POST(request: NextRequest) {
         // 2. Create each idea in local DB
         const syncedIds: string[] = [];
         for (const idea of unsyncedIdeas) {
-            const result = await createIdea({
-                title: idea.title || "Discord Idea",
-                content: idea.content,
-                novelId: idea.novel_id,
-                category: idea.category || "general",
-                tags: [...(idea.tags || []), "discord", "synced"],
-            });
-
-            if (result.success) {
+            // เข้าคลังไอเดีย (idea_vault) — novelId จากพารามิเตอร์ที่เช็คสิทธิ์แล้ว ไม่เชื่อค่าจากแถว Discord
+            try {
+                await insertDiscordNote({ novelId, title: idea.title, content: idea.content, category: idea.category });
                 syncedIds.push(idea.id);
+            } catch (e) {
+                console.error("Discord idea → vault failed:", e);
             }
         }
 

@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation"
 import { getNovelForPlot } from "@/server/novel"
-import { getIdeasByNovelId } from "@/server/idea"
+import { getVault } from "@/server/idea-vault"
 import { countOpenQuestions } from "@/server/scene-element-details"
 import { getTimeLineEvents } from "@/server/timeline"
 import { getCharactersByNovelId } from "@/server/character"
@@ -33,7 +33,7 @@ export default async function PlotPage({ params, searchParams }: Props) {
         getThreadsByNovelId(id),
         getArcsByNovelId(id),
         getErasByNovelId(id),
-        isThreadsTab ? Promise.resolve(null) : getIdeasByNovelId(id),
+        isThreadsTab ? Promise.resolve(null) : getVault(id),
         isThreadsTab ? Promise.resolve(0) : countOpenQuestions(id),
     ])
 
@@ -95,7 +95,7 @@ export default async function PlotPage({ params, searchParams }: Props) {
                         arcs={arcs}
                         eras={eras}
                         timelineEpoch={novel.timelineEpoch}
-                        trayIdeas={(ideasResult?.data ?? []).filter(i => !i.isUsed)}
+                        trayNotes={ideasResult?.success ? ideasResult.data.filter(n => !n.isArchived && !n.isDetected && !n.links.some(l => l.relation === "used_in")) : []}
                         openQuestions={openQuestions}
                     />
                 </div>

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { guardNovel } from "@/lib/authz";
 import { db } from "@/db/drizzle";
-import { characters, locations, items, ideas } from "@/db/schema";
+import { characters, locations, items } from "@/db/schema";
+import { upsertDetectedNotes, type DetectedName } from "@/server/idea-vault-detect";
 import { eq, ilike, or } from "drizzle-orm";
 import { callAi, AiControlError } from "@/lib/ai-gateway";
 
@@ -142,39 +143,9 @@ Lore Content:
             }
         }
 
-        // 5. Create new Ideas for missing entities (filtering out existing ones to prevent duplicates)
-        const existingIdeas = await db.query.ideas.findMany({
-            where: eq(ideas.novelId, novelId),
-        });
-
-        const ideasToInsert = newIdeas
-            .filter(newIdea => !existingIdeas.some((ei: any) => ei.title.toLowerCase() === newIdea.title.toLowerCase()))
-            .map(idea => ({
-                title: idea.title,
-                category: idea.category,
-                novelId,
-                content: "สกัดอัตโนมัติจากหน้า Lore",
-                summary: idea.category === "character" ? "ตัวละครที่พบใน Lore" : "สถานที่/สิ่งของที่พบใน Lore",
-                isDetected: true,
-            }));
-
-        const insertedIdeaIds: string[] = [];
-        // category เป็น nullable ใน schema — ค่านี้ถูก spread ลง JSON response ตรงๆ null จึงไม่มีปัญหา
-        let inserted: { id: string; title: string; category: string | null }[] = [];
-        if (ideasToInsert.length > 0) {
-            inserted = await db.insert(ideas).values(ideasToInsert).returning({ id: ideas.id, title: ideas.title, category: ideas.category });
-            inserted.forEach(i => insertedIdeaIds.push(i.id));
-        }
-
-        // Return matched existing ideas as well so they can be selected/linked by the frontend
-        const matchedExistingIdeas = existingIdeas.filter((ei: any) =>
-            newIdeas.some(newIdea => newIdea.title.toLowerCase() === ei.title.toLowerCase())
-        );
-
-        const allMatchedIdeas = [
-            ...inserted,
-            ...matchedExistingIdeas.map((ei: any) => ({ id: ei.id, title: ei.title, category: ei.category, linkedLoreIds: ei.linkedLoreIds }))
-        ];
+        // 5. ชื่อที่ยังไม่มีในนิยาย → คลังไอเดีย (รออนุมัติ) · ชื่อซ้ำใช้โน้ตเดิม
+        // ยังไม่ผูก lore ตรงนี้ — หน้า lore ผูกให้ตอนผู้ใช้กดบันทึก (เลือก/ไม่เลือกได้)
+        const allMatchedIdeas = await upsertDetectedNotes(novelId, newIdeas as DetectedName[]);
 
         return NextResponse.json({
             success: true,

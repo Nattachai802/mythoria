@@ -22,6 +22,7 @@ import type { EchoFinding } from "@/lib/echo-score";
 import type { CausalityVerdict } from "@/lib/plot-recap";
 import { type BoardChapter, updateTimelineCanvas, getNovelDummyParticipants } from "@/server/timeline";
 import { updateIdea, createIdea } from "@/server/idea"; // updateIdea: auto-reset isUsed flag
+import { createBeatFromNote, type VaultNoteView } from "@/server/idea-vault";
 import { getSceneElementDetails, getIdeaNotesForIdeas, promoteDummy, promoteDummyAllScenes } from "@/server/scene-element-details";
 import { noteToPlain } from "@/lib/note-text";
 import { addBeat, createThread, deleteBeat } from "@/server/plot-threads";
@@ -67,6 +68,8 @@ interface PlaygroundBoardProps {
     event?: any; // timelineEvent เต็ม — ใช้ดึงฟิลด์ดราม่า (goal/conflict/outcome/POV/เหตุ-ผล) ตอน export
     characters: any[];
     ideas: any[];
+    /** โน้ตในคลังที่ยังไม่ถูกใช้ — เลือกวางลงช่อง = คัดลอกเป็นการ์ดใหม่ (โน้ตยังอยู่ในคลัง) */
+    vaultNotes?: VaultNoteView[];
     threads?: ThreadWithBeats[];
     factions?: any[];
     powers?: any[];
@@ -1115,6 +1118,7 @@ export function PlaygroundBoard({
     sceneEvents = [],
     characters,
     ideas,
+    vaultNotes = [],
     threads = [],
     factions = [],
     powers = [],
@@ -1177,11 +1181,13 @@ export function PlaygroundBoard({
     const [newIdeaBeat, setNewIdeaBeat] = useState<'latest' | 'new'>('new');
     const [newIdeaLaneId, setNewIdeaLaneId] = useState<string>(''); // '' = เลนแรก
 
-    // ไอเดียที่ยังไม่ถูกวางบนกระดานนี้ — เช็คจาก items ด้วย ไม่ใช่แค่ flag isUsed ที่อาจตามไม่ทัน
-    const unusedIdeas = useMemo(() => {
-        const onBoard = new Set(items.filter((i: any) => i.type === 'idea').map((i: any) => i.referenceId));
-        return (ideas || []).filter((i: any) => !i.isUsed && !onBoard.has(i.id));
-    }, [ideas, items]);
+    // ตัวเลือก "หยิบจากคลัง" ตอนสร้างการ์ด inline — มาจากคลังโน้ต (idea_vault) ไม่ใช่ ideas แล้ว
+    // วางแล้วตัดออกจากรายการในหน้าจอ (ฝั่ง DB ผูก used_in ให้) · แถว ideas เก่าที่ไม่อยู่บนกระดานถูกคัดลอกเข้าคลังตอน migration
+    const [vaultLeft, setVaultLeft] = useState<VaultNoteView[]>(vaultNotes);
+    const unusedIdeas = useMemo(
+        () => vaultLeft.map(n => ({ id: n.id, title: n.text, content: n.summary || n.body || '', fromVault: true })),
+        [vaultLeft],
+    );
 
     // สร้างไอเดีย inline: การ์ดร่างในช่องที่กด +
     const [draftCell, setDraftCell] = useState<{ laneId: string; beatIndex: number } | null>(null);
@@ -1230,18 +1236,23 @@ export function PlaygroundBoard({
         );
     }
 
-    // วางไอเดียที่มีอยู่แล้วลงช่อง — เดิมทำได้ทางเดียวคือลากจากแถบซ้าย
-    const handlePickExistingIdea = useCallback((cell: { laneId: string; beatIndex: number }, idea: any) => {
+    // หยิบโน้ตจากคลังลงช่อง = คัดลอกเป็นการ์ดใหม่ใน ideas + ผูก used_in กับฉากนี้ (โน้ตไม่ถูกกิน)
+    const handlePickExistingIdea = useCallback(async (cell: { laneId: string; beatIndex: number }, idea: any) => {
         setDraftCell(null);
+        setCreatingCell({ ...cell, title: idea.title });
+        const res = await createBeatFromNote(idea.id, eventId);
+        setCreatingCell(null);
+        if (!res.success) { toast.error(res.error); return; }
+        const beat = res.data;
         setItems(prev => [...prev, {
-            id: crypto.randomUUID(), type: 'idea', referenceId: idea.id,
-            title: idea.title, content: idea.content || '',
+            id: crypto.randomUUID(), type: 'idea', referenceId: beat.id,
+            title: beat.title, content: beat.content || '',
             laneId: cell.laneId, beatIndex: cell.beatIndex, children: [], links: [],
         }]);
-        updateIdea(idea.id, { isUsed: true });
-        suggestThreadBind(idea.title);
+        setVaultLeft(prev => prev.filter(n => n.id !== idea.id));
+        suggestThreadBind(beat.title);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [eventId]);
 
     // ปมเรื่องระดับ card: เก็บ threads เป็น state เพื่ออัปเดต badge ทันทีหลังผูก/ปลด
     const [threadState, setThreadState] = useState<ThreadWithBeats[]>(threads);

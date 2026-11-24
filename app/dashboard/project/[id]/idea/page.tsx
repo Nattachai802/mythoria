@@ -1,12 +1,9 @@
-import { getIdeasByNovelId } from "@/server/idea";
-import { getChapters } from "@/server/chapter";
+import { getVault } from "@/server/idea-vault";
 import { getNovelByIdSimple } from "@/server/novel";
 import { syncDiscordIdeas } from "@/server/discord-sync";
-import { CreateIdeaDialog } from "@/components/project/idea/create-idea-dialog";
-import { IdeasView } from "@/components/project/idea/ideas-view";
+import { VaultView } from "@/components/project/idea/vault-view";
 import { ProjectBreadcrumb } from "@/components/project/project-breadcrumb";
 import { DiscordSyncButton } from "@/components/project/idea/discord-sync-button";
-import { DeleteAllIdeasButton } from "@/components/project/idea/delete-all-ideas-button";
 
 interface IdeasPageProps {
   params: Promise<{
@@ -14,65 +11,50 @@ interface IdeasPageProps {
   }>;
 }
 
+// คลังโน้ตไอเดีย — ตาราง ideas เดิมไม่ใช่คลังแล้ว (เหลือเป็นการ์ดฉากย่อยบนกระดานฉาก)
+// ปุ่ม "ลบไอเดียทั้งหมด" เดิมเอาออก: deleteAllIdeas ลบการ์ดในฉาก + โน้ตที่ผูกกับการ์ดไปด้วย
 export default async function IdeasPage({ params }: IdeasPageProps) {
   const { id: novelId } = await params;
 
-  // Sync Discord ideas เฉพาะตอนเข้าหน้านี้แทน (ย้ายมาจาก layout)
-  const [ideasResult, chaptersResult, novelResult, syncResult] = await Promise.all([
-    getIdeasByNovelId(novelId, true),
-    getChapters(novelId),
-    getNovelByIdSimple(novelId),
-    syncDiscordIdeas(novelId),
-  ]);
-
+  // Discord sync ก่อนโหลดคลัง — ของใหม่จาก Discord จะได้โผล่ในรอบเดียวกัน
+  const syncResult = await syncDiscordIdeas(novelId);
   if (syncResult.synced > 0) {
     console.log(`[Discord sync] Synced ${syncResult.synced} ideas`);
   }
+  const [vaultResult, novelResult] = await Promise.all([
+    getVault(novelId),
+    getNovelByIdSimple(novelId),
+  ]);
 
-  if (!ideasResult.success) {
+  if (!vaultResult.success) {
     return (
       <div className="p-8">
-        <p className="text-red-500">Error loading ideas: {ideasResult.error}</p>
+        <p className="text-red-500">{vaultResult.error}</p>
       </div>
     );
   }
 
-  const ideas = ideasResult.data || [];
-  // deleteAllIdeas() ลบทุกแถวของนิยายนี้ รวมที่ใช้ไปแล้วและที่ AI ตรวจพบ
-  // เดิมส่งเฉพาะจำนวนที่ยังไม่ถูกตรวจพบ → กล่องยืนยันบอกตัวเลขน้อยกว่าที่ลบจริง
-  const totalIdeasCount = ideas.length;
-  const chapters = chaptersResult.success
-    ? (chaptersResult.chapters || []).map(ch => ({ id: ch.id, title: ch.title }))
-    : [];
   const novelTitle = novelResult.novel?.title || "Project";
 
   return (
-    <div className="p-8">
+    <div className="p-4 md:p-8">
       <ProjectBreadcrumb
         novelId={novelId}
         novelTitle={novelTitle}
-        items={[{ label: "Ideas" }]}
+        items={[{ label: "คลังไอเดีย" }]}
       />
 
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Ideas</h1>
-          <p className="text-muted-foreground mt-1">
-            กองวัตถุดิบที่ยังไม่ได้ใช้ — เก็บไอเดียไว้ที่นี่ก่อน แล้วหยิบไปวางในฉากตอนวางพล็อต
+          <h1 className="text-3xl font-bold">คลังไอเดีย</h1>
+          <p className="mt-1 text-muted-foreground">
+            นึกอะไรได้ก็จดไว้ก่อน วางเอกสารยาวเก็บไว้ได้ แล้วติดแท็กว่าจะเอาไปใช้ที่ไหน — ใช้แล้วโน้ตยังอยู่
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <DeleteAllIdeasButton novelId={novelId} ideaCount={totalIdeasCount} />
-          <DiscordSyncButton novelId={novelId} />
-          <CreateIdeaDialog novelId={novelId} />
-        </div>
+        <DiscordSyncButton novelId={novelId} />
       </div>
 
-      <IdeasView
-        ideas={ideas}
-        novelId={novelId}
-        chapters={chapters}
-      />
+      <VaultView novelId={novelId} initialNotes={vaultResult.data} />
     </div>
   );
 }

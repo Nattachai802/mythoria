@@ -1,7 +1,8 @@
 "use server";
 
 import { db } from "@/db/drizzle";
-import { characters, locations, items, ideas, loreEntries } from "@/db/schema";
+import { characters, locations, items, loreEntries } from "@/db/schema";
+import { upsertDetectedNotes, type DetectedName } from "./idea-vault-detect";
 import { eq, and } from "drizzle-orm";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { CACHE_TAGS } from "@/lib/cache-config";
@@ -203,58 +204,10 @@ Lore Content:
         await removeOutgoingReferences({ type: "lore", id: loreId }, "mentions");
         if (mentionRefs.length) await addReferences(mentionRefs);
 
-        // 5. Insert unmatched entities as new ideas in the detected pool
+        // 5. ชื่อที่ยังไม่มีในนิยาย → คลังไอเดีย (รออนุมัติ) + ผูก about กับ lore นี้ — ชื่อซ้ำใช้โน้ตเดิม
         if (newIdeas.length > 0) {
-            // First, filter out newIdeas that are already in the database as ideas (to prevent duplicates)
-            const existingIdeas = await db.query.ideas.findMany({
-                where: eq(ideas.novelId, novelId),
-            });
-
-            // Update existing ideas to link them to this lore entry
-            const existingIdeasToLink = newIdeas.filter(newIdea =>
-                existingIdeas.some((ei: any) => ei.title.toLowerCase() === newIdea.title.toLowerCase())
-            );
-
-            if (existingIdeasToLink.length > 0) {
-                await Promise.all(
-                    existingIdeasToLink.map(async (newIdea) => {
-                        const existing = existingIdeas.find(
-                            (ei: any) => ei.title.toLowerCase() === newIdea.title.toLowerCase()
-                        );
-                        if (existing) {
-                            const currentLoreIds = (existing.linkedLoreIds as string[]) || [];
-                            if (!currentLoreIds.includes(loreId)) {
-                                await db
-                                    .update(ideas)
-                                    .set({
-                                        linkedLoreIds: [...currentLoreIds, loreId],
-                                        updatedAt: new Date(),
-                                    })
-                                    .where(eq(ideas.id, existing.id));
-                                console.log(`[Background Extraction] Linked existing idea "${existing.title}" to lore entry ${loreId}`);
-                            }
-                        }
-                    })
-                );
-            }
-
-            // Insert new ideas that don't exist yet
-            const ideasToInsert = newIdeas
-                .filter(newIdea => !existingIdeas.some((ei: any) => ei.title.toLowerCase() === newIdea.title.toLowerCase()))
-                .map(newIdea => ({
-                    title: newIdea.title,
-                    category: newIdea.category,
-                    novelId,
-                    content: "สกัดอัตโนมัติจากหน้า Lore",
-                    summary: newIdea.category === "character" ? "ตัวละครที่พบใน Lore" : "สถานที่/สิ่งของที่พบใน Lore",
-                    isDetected: true,
-                    linkedLoreIds: [loreId]
-                }));
-
-            if (ideasToInsert.length > 0) {
-                const inserted = await db.insert(ideas).values(ideasToInsert).returning();
-                console.log(`[Background Extraction] Inserted ${inserted.length} new detected ideas.`);
-            }
+            const notes = await upsertDetectedNotes(novelId, newIdeas as DetectedName[], loreId);
+            console.log(`[Background Extraction] ${notes.length} detected names → idea vault`);
         }
 
         // 6. Cache revalidation to ensure the UI gets updated

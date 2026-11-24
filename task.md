@@ -626,3 +626,32 @@ MICE · Third Rail · เดิมพัน 3 ระดับ · ฉากบั
 - ฉากที่เขียนจริงส่วนใหญ่ เลนน้อยจังหวะเยอะ หรือเลนเยอะจังหวะน้อย (ยืนยันทางแนวตั้ง)
 - เก็บหน้า "Board View" ของบท (pacing) ไว้ไหม หรือย้ายเข้าแผงข้าง
 - ลบ `ChronoTimelineSheet` ได้หรือยัง (ซ้ำกับเส้นเวลาโลก)
+
+---
+
+## 21. คลังไอเดีย (Idea Vault) — รอบ 1 เสร็จ 2026-11-24 · เหลือ apply migration + deploy
+
+ดีไซน์เต็ม/เหตุผล: ตาราง `idea_vault` (โน้ต) + `idea_vault_links` (about / used_in) · ตาราง `ideas` เดิมเหลือหน้าที่เก็บการ์ดฉากย่อย
+(canvas_data + idea_note ผูก id ไว้ — ห้ามรื้อ) · วางโน้ตลงฉาก = คัดลอกเป็นการ์ดใหม่ + ลิงก์ used_in
+
+### ก่อน deploy (ต้องทำตามลำดับ)
+- [x] `npm run db:sql migrations/0019_idea_vault.sql` (สร้างตาราง + backup `ideas_backup_20261124`)
+- [ ] `npx tsx scripts/migrate-idea-vault.ts --apply` ทันทีก่อน deploy (dry-run ล่าสุด: 56 โน้ต / 40 รออนุมัติ / ลิงก์ 4 · ข้าม 30 ลิงก์ที่ชี้ lore ที่ถูกลบ) — รันซ้ำได้ เก็บตกของที่เข้า ideas ระหว่างนี้
+
+### รอบหน้า (ตั้งใจยังไม่ทำ)
+- P8 AI สรุปเอกสาร: feature key `idea-summary` (Gemini 2.5 Flash) · ช่อง `summary_source` เตรียมไว้แล้ว ห้ามเขียนทับเมื่อเป็น "user"
+- P9 คลังเข้า RAG: เพิ่ม type `ideaVault` ใน entity-registry (contentCols text/summary) + chunking ใน Python sync
+  (ตอนนี้ทุก record embed แค่ 2,000 ตัวแรก เก็บ 500 — บทยาวก็โดน) · เคารพ `ai_visible`
+- P10 hybrid keyword search สำหรับชื่อเฉพาะไทย
+- UI ปุ่ม "ไม่ให้ AI เห็น" (`ai_visible` มีคอลัมน์แล้ว) · แท็กอิสระ (tags เดิม 4 แถว + หมวด "โรแมนซ์" อยู่ในแถว ideas เดิม)
+
+### เจอระหว่างทาง ยังไม่แก้
+- `idea-frame-dialog.tsx` (แผงฝ่ายในกระดานฉาก) ยังอ่าน `factions.linkedIdeaIds` + ideas เดิม — ลิงก์ฝ่ายที่ผูกใหม่จากคลังไม่โผล่ที่นั่น
+  (ต้อง map `pinnedIdeaIds` เก่าผ่าน `legacy_idea_id` ก่อนสลับ ไม่งั้นการปักหมุดเดิมหาย)
+- หน้า characters / locations / powers ยัง fetch `getIdeasByNovelId` ส่งเข้าแท็บไอเดียที่ไม่ได้ใช้แล้ว (query เปล่า ถอดได้)
+- ไฟล์ที่ไม่มีใครใช้แล้ว: `components/project/idea/{ideas-view,idea-card,create-idea-dialog?,edit-idea-dialog,delete-all-ideas-button}.tsx`
+  (create/edit dialog ยังถูก playground ใช้สร้างการ์ด — เช็คก่อนลบ) · `deleteAllIdeas` ใน server/idea.ts ลบการ์ดในฉากด้วย ไม่ควรมีปุ่มเรียก
+- `server/mentions.ts` `searchEntities` ไม่เช็คสิทธิ์นิยาย (`requireNovelAccess`)
+- drift: `idea_connections` 5 แถว vs `references` idea→idea 2 แถว — `rebuildNovelReferences` แก้ได้
+- href ของ type `idea` ใน entity-registry ชี้ `/idea#id` ซึ่งตอนนี้คือคลังโน้ต ไม่ใช่การ์ด (ไฟล์มีงานค้างของคนอื่น)
+- `lib/idea-scopes.ts` ยังไม่มี `.check.ts` ใน `npm run check` (ต้องแก้ package.json)

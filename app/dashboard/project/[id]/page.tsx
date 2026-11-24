@@ -27,7 +27,7 @@ import { getNovelByIdLight } from "@/server/novel"
 import { getNotes, getSpellIssueCounts } from "@/server/note"
 import { SpellCheckQueueButton } from "@/components/project/spell-check-queue-button"
 import { RewriteQueue } from "@/components/project/rewrite-queue"
-import { getIdeasCount } from "@/server/idea"
+import { getVaultCount } from "@/server/idea-vault"
 import { getAnalyticsSummary, getWritingActivity } from "@/server/analytics"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -90,7 +90,7 @@ export default async function ProjectOverviewPage({ params }: Props) {
     const [novelResult, notesResult, ideasCountResult, summaryResult, activityResult, stylometryResult, spellCounts] = await Promise.all([
         getNovelByIdLight(id),
         getNotes(id),
-        getIdeasCount(id),
+        getVaultCount(id),
         getAnalyticsSummary(id),
         getWritingActivity(id, 14), // Last 14 days for mini calendar
         getNovelStylometry(id),

@@ -738,6 +738,56 @@ export const ideaConnections = pgTable("idea_connections", {
 }));
 
 // ============================================
+// IDEA VAULT — คลังโน้ตไอเดีย (แทนบทบาท "ไอเดียรอใช้" ของตาราง ideas)
+// ideas เดิมยังอยู่ ทำหน้าที่เก็บการ์ดฉากย่อยบนกระดานฉาก (canvas_data + idea_note ผูก id ไว้)
+// โน้ตในคลังไม่ถูกกินเมื่อใช้ — วางลงฉาก = คัดลอกเป็นการ์ดใหม่ใน ideas + ลิงก์ used_in
+// ============================================
+export const ideaVault = pgTable("idea_vault", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  novelId: text("novel_id")
+    .notNull()
+    .references(() => novels.id, { onDelete: "cascade" }),
+  text: text("text").notNull(),             // หัวเรื่อง / โน้ตสั้น — บรรทัดที่เห็นในรายการ
+  body: text("body"),                       // ต้นฉบับยาวที่วางมา (plain text)
+  summary: text("summary"),                 // สรุป — รอบแรกผู้ใช้เขียนเอง
+  summarySource: text("summary_source"),    // "user" | "ai" — ช่องรอ AI สรุป (ยังไม่มีในรอบแรก)
+  source: text("source"),                   // มาจากไหน: ชื่อเอกสาร / URL
+  scopes: jsonb("scopes").$type<string[]>(),// จะใช้ที่ไหน — คำศัพท์ใน lib/idea-scopes.ts
+  isDetected: boolean("is_detected").default(false).notNull(), // AI สกัดได้ รออนุมัติ
+  isArchived: boolean("is_archived").default(false).notNull(),
+  aiVisible: boolean("ai_visible").default(true).notNull(),    // ช่องรอ RAG — ยังไม่มี UI
+  legacyIdeaId: text("legacy_idea_id"),     // id แถวต้นฉบับใน ideas (migration) — กันคัดลอกซ้ำ
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+}, (table) => ({
+  novelIdIdx: index("idea_vault_novel_id_idx").on(table.novelId),
+  legacyIdx: uniqueIndex("idea_vault_legacy_idx").on(table.legacyIdeaId),
+}));
+
+// ลิงก์โน้ต → ของจริงในนิยาย (ไม่มี FK ที่ target เพราะชี้ได้หลายตาราง — entity ถูกลบ = กรองทิ้งตอนอ่าน)
+// targetType ใช้ชื่อเดียวกับ EntityType ใน server/registry จะได้ย้ายเข้า references ภายหลังได้ 1:1
+export const ideaVaultLinks = pgTable("idea_vault_links", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()`),
+  novelId: text("novel_id")
+    .notNull()
+    .references(() => novels.id, { onDelete: "cascade" }),
+  noteId: text("note_id")
+    .notNull()
+    .references(() => ideaVault.id, { onDelete: "cascade" }),
+  targetType: text("target_type").notNull(), // character | faction | location | power | lore | timelineEvent
+  targetId: text("target_id").notNull(),
+  relation: text("relation").notNull(),      // "about" = เกี่ยวกับ · "used_in" = ถูกนำไปทำฉาก
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueLink: uniqueIndex("idea_vault_links_unique").on(table.noteId, table.targetType, table.targetId, table.relation),
+  targetIdx: index("idea_vault_links_target_idx").on(table.targetType, table.targetId),
+  noteIdx: index("idea_vault_links_note_idx").on(table.noteId),
+}));
+
+// ============================================
 // PLOT THREADS — Setup → Payoff / Promise Ledger
 // "ปมเรื่อง": สิ่งที่ผู้เขียนหว่านไว้แล้วต้องเฉลย กันลืมว่าผูกอะไรไว้บ้าง
 // ============================================
@@ -2357,6 +2407,8 @@ export type CharacterState = typeof characterStates.$inferSelect;
 export type StateExtractionQueue = typeof stateExtractionQueue.$inferSelect;
 export type Idea = typeof ideas.$inferSelect;
 export type IdeaConnection = typeof ideaConnections.$inferSelect;
+export type IdeaVaultNote = typeof ideaVault.$inferSelect;
+export type IdeaVaultLink = typeof ideaVaultLinks.$inferSelect;
 export type SceneElementDetails = typeof sceneElementDetails.$inferSelect;
 export type AIChapterReview = typeof aiChapterReviews.$inferSelect;
 
@@ -2463,6 +2515,8 @@ export const schema = {
   ideaRelations,
   ideaConnections,
   ideaConnectionRelations,
+  ideaVault,
+  ideaVaultLinks,
   plotThreads,
   plotThreadBeats,
   plotThreadRelations,
