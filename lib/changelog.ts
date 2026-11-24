@@ -53,8 +53,8 @@ export interface ChangelogRelease {
 /** ใหม่สุดอยู่บนสุดเสมอ — โค้ดที่อ่าน CHANGELOG[0] ยึดกติกานี้ */
 export const CHANGELOG: ChangelogRelease[] = [
     {
-        version: "next",
-        date: "today",
+        version: "2.25.0.0",
+        date: "2026-11-24",
         title: "คลังไอเดีย",
         entries: [
             {
