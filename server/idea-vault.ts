@@ -149,6 +149,7 @@ export async function createVaultNote(input: {
     novelId: string;
     text?: string;
     body?: string | null;
+    summary?: string | null;
     source?: string | null;
     scopes?: string[];
     isDetected?: boolean;
@@ -177,6 +178,8 @@ export async function createVaultNote(input: {
             novelId: input.novelId,
             text,
             body,
+            summary: input.summary?.trim() || null,
+            summarySource: input.summary?.trim() ? "user" : null,
             source: input.source?.trim() || null,
             scopes: cleanScopes(input.scopes),
             isDetected: input.isDetected ?? false,
@@ -330,7 +333,8 @@ export async function createBeatFromNote(noteId: string, eventId?: string): Prom
         const [beat] = await db.insert(ideas).values({
             novelId: note.novelId,
             title: note.text,
-            content: note.body ?? note.summary ?? null,
+            // การ์ดเก็บแค่สรุป/500 ตัวแรก — ตัวเต็มอยู่ในคลัง (โยงกลับด้วย used_in) ไม่ต้องซ้ำไป ideas + canvas_data
+            content: note.summary ?? (note.body ? note.body.slice(0, 500) : null),
             summary: note.summary,
             category: "general",
             isUsed: true,

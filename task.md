@@ -629,14 +629,28 @@ MICE · Third Rail · เดิมพัน 3 ระดับ · ฉากบั
 
 ---
 
-## 21. คลังไอเดีย (Idea Vault) — รอบ 1 เสร็จ 2026-11-24 · เหลือ apply migration + deploy
+## 21. คลังไอเดีย (Idea Vault) — รอบ 1 ออก 2.25.0.0 (2026-11-24) · นำเข้าเอกสาร F1 เสร็จ 2026-11-26
 
 ดีไซน์เต็ม/เหตุผล: ตาราง `idea_vault` (โน้ต) + `idea_vault_links` (about / used_in) · ตาราง `ideas` เดิมเหลือหน้าที่เก็บการ์ดฉากย่อย
 (canvas_data + idea_note ผูก id ไว้ — ห้ามรื้อ) · วางโน้ตลงฉาก = คัดลอกเป็นการ์ดใหม่ + ลิงก์ used_in
 
 ### ก่อน deploy (ต้องทำตามลำดับ)
 - [x] `npm run db:sql migrations/0019_idea_vault.sql` (สร้างตาราง + backup `ideas_backup_20261124`)
-- [ ] `npx tsx scripts/migrate-idea-vault.ts --apply` ทันทีก่อน deploy (dry-run ล่าสุด: 56 โน้ต / 40 รออนุมัติ / ลิงก์ 4 · ข้าม 30 ลิงก์ที่ชี้ lore ที่ถูกลบ) — รันซ้ำได้ เก็บตกของที่เข้า ideas ระหว่างนี้
+- [x] `npx tsx scripts/migrate-idea-vault.ts --apply` ทันทีก่อน deploy (dry-run ล่าสุด: 56 โน้ต / 40 รออนุมัติ / ลิงก์ 4 · ข้าม 30 ลิงก์ที่ชี้ lore ที่ถูกลบ) — รันซ้ำได้ เก็บตกของที่เข้า ideas ระหว่างนี้
+
+### นำเข้าเอกสาร (ไฟล์)
+หลัก: แปลงไฟล์เป็นข้อความดิบใน browser → `idea_vault.body` · ไม่เก็บไฟล์ ไม่อัปโหลด (เลี่ยงเพดาน 4.5MB ของ Vercel + ค่า storage)
+- [x] F1 แผงนำเข้า `components/project/idea/vault-import-sheet.tsx`: txt/md (`file.text`) · docx (`mammoth` raw text) · pdf (`pdfjs-dist` ชั้นข้อความ)
+  เพดาน 200k ตัว / ไฟล์ 30MB · กล่องจดเหลือจดสั้น (วาง/พิมพ์ยาว >300 = เปิดแผง) · ลากหลายไฟล์ = เปิดทีละไฟล์
+  · การ์ดฉากเก็บแค่ summary หรือ 500 ตัวแรก (ไม่ซ้ำ body ไป ideas + canvas_data) · test case `scratch/idea_vault_import_test_cases.xlsx`
+  · ยังไม่ได้เทสในเบราว์เซอร์จริง — จุดเสี่ยง: pdfjs worker ใน Next 16, สระ/วรรณยุกต์ไทยใน PDF บางไฟล์เพี้ยน
+- [ ] F2 เก็บไฟล์ต้นฉบับ (ให้ดาวน์โหลดคืนได้): แนะนำ Vercel Blob แบบ private + คอลัมน์ `file_url`/`file_name`/`file_size`
+  · ตัด Cloudinary: URL สาธารณะ และแพ็กฟรีบล็อกการส่ง PDF · ต้องคิดเพดานพื้นที่ต่อนิยายก่อนทำ · ทำเมื่อผู้ใช้ต้องการไฟล์คืนจริง
+- [ ] OCR (PDF สแกน / รูป): ทางเลือก Gemini vision (มีค่าใช้จ่ายต่อหน้า ต้องมี feature key + ถามก่อนรัน) vs tesseract.js (ฟรี ในเครื่อง แต่ไทยแม่นต่ำ ไฟล์ภาษาหนัก ~10MB)
+  · ตอนนี้แค่เตือน "อาจเป็นภาพสแกน"
+- [ ] xlsx / pptx / epub: ใช้ไลบรารีอ่านใน browser ได้ (SheetJS, JSZip แล้วแกะ XML) · ยังไม่มีคนขอ — ทำเมื่อเจอไฟล์จริง
+- [ ] แสดง body เป็น markdown: ตอนนี้ข้อความดิบ (ตัดสินแล้ว) · ถ้าทำ ใช้ตัว render markdown ที่มีในโปรเจกต์ก่อนเพิ่ม lib ใหม่ และต้อง sanitize
+- [ ] ค่าเก็บข้อมูล: ยังไม่ทำเพดานรวมต่อนิยาย / lz4 (DB 18MB, TOAST บีบอัดให้อยู่แล้ว) · ทบทวนเมื่อ idea_vault เกิน ~100MB หรือเริ่ม P9 (embedding คือค่าใช้จ่ายจริง)
 
 ### รอบหน้า (ตั้งใจยังไม่ทำ)
 - P8 AI สรุปเอกสาร: feature key `idea-summary` (Gemini 2.5 Flash) · ช่อง `summary_source` เตรียมไว้แล้ว ห้ามเขียนทับเมื่อเป็น "user"

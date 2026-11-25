@@ -10,7 +10,7 @@ import { useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import {
     Archive, ArchiveRestore, Check, CheckCheck, ChevronDown, CircleCheck, CircleDashed, Clapperboard,
-    CornerDownLeft, FileText, Layers, Lightbulb, Loader2, Paperclip, Pencil, Search, Sparkles, Trash2,
+    CornerDownLeft, FileText, FileUp, Layers, Lightbulb, Loader2, Paperclip, Pencil, Search, Sparkles, Trash2,
 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
@@ -22,11 +22,12 @@ import {
     AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
-import { IDEA_SCOPES, IDEA_SCOPE_LABEL, cleanScopes, isDocText, type IdeaScope } from "@/lib/idea-scopes"
+import { IDEA_SCOPES, IDEA_SCOPE_LABEL, cleanScopes, VAULT_DOC_THRESHOLD, type IdeaScope } from "@/lib/idea-scopes"
 import {
     acceptDetectedNotes, addVaultLink, createVaultNote, deleteVaultNotes, removeVaultLink, updateVaultNote,
     type VaultNoteView,
 } from "@/server/idea-vault"
+import { VaultImportSheet } from "./vault-import-sheet"
 import { LinkChip, SCOPE_ICON, ScopeTags, ScopeToggles, VaultLinkPicker, effectiveScopes, isUsedNote } from "./vault-ui"
 
 type Status = "unused" | "used" | "all" | "archived"
@@ -81,31 +82,39 @@ export function VaultView({ novelId, initialNotes }: { novelId: string; initialN
 
     // ---------- ช่องจด ----------
     const [draft, setDraft] = useState("")
-    const [source, setSource] = useState("")
     const [capScopes, setCapScopes] = useState<IdeaScope[]>([])
     const [capFocused, setCapFocused] = useState(false)
     const [capErr, setCapErr] = useState("")
     const [saving, setSaving] = useState(false)
     const capRef = useRef<HTMLTextAreaElement>(null)
-    const doc = isDocText(draft)
+    // แผงนำเข้าเอกสาร — ไฟล์ที่ลากมาหลายไฟล์เข้าคิว เปิดทีละไฟล์ · key เปลี่ยน = แผงเริ่มใหม่สะอาด
+    const [imp, setImp] = useState<{ key: number; text?: string; files: File[] } | null>(null)
+    const impSeq = useRef(0)
+    const openImport = (p: { text?: string; files?: File[] }) => setImp({ key: ++impSeq.current, text: p.text, files: p.files ?? [] })
+    const nextImport = () => setImp(cur => (cur && cur.files.length > 1 ? { key: ++impSeq.current, files: cur.files.slice(1) } : null))
+    const onImported = (note: VaultNoteView) => {
+        setNotes(prev => [note, ...prev])
+        setStatus("unused"); setFacet("all"); setKind("all"); setOpenId(note.id)
+        nextImport()
+    }
 
     const save = async () => {
         const v = draft.trim()
         if (!v) { setCapErr("พิมพ์หรือวางข้อความก่อน"); capRef.current?.focus(); return }
         if (saving) return
+        // พิมพ์ยาวเกินโน้ตสั้น = ย้ายไปแผงนำเข้า (หัวเรื่องตัดที่ 500 — กันข้อความหาย)
+        if (v.length > VAULT_DOC_THRESHOLD) { openImport({ text: v }); setDraft(""); return }
         setSaving(true)
         const res = await createVaultNote({
             novelId,
-            text: doc ? undefined : v,
-            body: doc ? v : null,
-            source: doc ? source : null,
+            text: v,
             scopes: capScopes,
         })
         setSaving(false)
         if (!res.success) { setCapErr(res.error); return }
         if (res.isDuplicate) toast.info("มีโน้ตนี้อยู่แล้ว")
         else setNotes(prev => [res.data, ...prev])
-        setDraft(""); setSource(""); setCapScopes([])
+        setDraft(""); setCapScopes([])
         setStatus("unused"); setFacet("all"); setKind("all"); setOpenId(res.data.id)
         if (!res.isDuplicate) toast.success("บันทึกแล้ว")
     }
@@ -189,22 +198,37 @@ export function VaultView({ novelId, initialNotes }: { novelId: string; initialN
                 {/* ช่องจด */}
                 <div className="rounded-xl border bg-card p-4">
                     <div className="mb-1.5 flex items-center gap-2">
-                        <label htmlFor="vault-capture" className="flex-1 text-sm text-muted-foreground">จดไอเดีย หรือวางเอกสารยาว</label>
-                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                            {doc ? <><FileText className="h-3.5 w-3.5" />โหมดเอกสาร · ⌘/Ctrl+Enter บันทึก</> : <><CornerDownLeft className="h-3.5 w-3.5" />Enter บันทึก · Shift+Enter ขึ้นบรรทัด</>}
+                        <label htmlFor="vault-capture" className="flex-1 text-sm text-muted-foreground">จดไอเดีย</label>
+                        <span className="hidden items-center gap-1 text-xs text-muted-foreground sm:inline-flex">
+                            <CornerDownLeft className="h-3.5 w-3.5" />Enter บันทึก · Shift+Enter ขึ้นบรรทัด
                         </span>
+                        <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs" onClick={() => openImport({})}>
+                            <FileUp className="h-3.5 w-3.5" />นำเข้าเอกสาร
+                        </Button>
                     </div>
                     <Textarea
                         id="vault-capture"
                         ref={capRef}
                         value={draft}
-                        rows={doc ? 8 : 1}
+                        rows={1}
                         onChange={e => { setDraft(e.target.value); setCapErr("") }}
+                        onPaste={e => {
+                            // วางข้อความยาว = เอกสาร → เปิดแผงนำเข้าแทนการยัดลงกล่องจด
+                            const t = e.clipboardData.getData("text")
+                            if (t.length > VAULT_DOC_THRESHOLD) { e.preventDefault(); openImport({ text: draft ? `${draft}\n${t}` : t }); setDraft("") }
+                        }}
+                        onDragOver={e => { if (e.dataTransfer.types.includes("Files")) e.preventDefault() }}
+                        onDrop={e => {
+                            const files = Array.from(e.dataTransfer.files)
+                            if (files.length === 0) return
+                            e.preventDefault()
+                            if (files.length > 1) toast.info(`นำเข้า ${files.length} ไฟล์ — เปิดให้ตรวจทีละไฟล์`)
+                            openImport({ files })
+                        }}
                         onFocus={() => setCapFocused(true)}
                         onKeyDown={e => {
                             if (e.key !== "Enter") return
-                            if (!doc && !e.shiftKey) { e.preventDefault(); save() }
-                            else if (doc && (e.metaKey || e.ctrlKey)) { e.preventDefault(); save() }
+                            if (!e.shiftKey) { e.preventDefault(); save() }
                         }}
                         placeholder="อารันกลัวน้ำเพราะเหตุการณ์ตอนเด็ก"
                         disabled={saving}
@@ -213,13 +237,6 @@ export function VaultView({ novelId, initialNotes }: { novelId: string; initialN
                         className="min-h-9 resize-none text-sm leading-relaxed"
                     />
                     {capErr && <p id="vault-capture-err" role="alert" className="mt-1.5 text-[13px] text-destructive">{capErr}</p>}
-                    {doc && (
-                        <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                            <span className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground"><FileText className="h-4 w-4" />{draft.length.toLocaleString()} ตัวอักษร · บรรทัดแรกจะเป็นหัวเรื่อง</span>
-                            <span className="flex-1" />
-                            <Input value={source} onChange={e => setSource(e.target.value)} placeholder="มาจากไหน (ชื่อเอกสาร หรือ URL)" aria-label="แหล่งที่มา" className="h-8 w-64 text-[13px]" />
-                        </div>
-                    )}
                     {(capFocused || draft) && (
                         <div className="mt-3 space-y-1.5">
                             <p className="text-xs text-muted-foreground">จะใช้ที่ไหน (ไม่ต้องเลือกก็ได้)</p>
@@ -340,6 +357,17 @@ export function VaultView({ novelId, initialNotes }: { novelId: string; initialN
                     ))}
                 </div>
             </TabsContent>
+            {imp && (
+                <VaultImportSheet
+                    key={imp.key}
+                    novelId={novelId}
+                    open
+                    onClose={nextImport}
+                    initialText={imp.text}
+                    initialFile={imp.files[0]}
+                    onSaved={onImported}
+                />
+            )}
         </Tabs>
     )
 }
