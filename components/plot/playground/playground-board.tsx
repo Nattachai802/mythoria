@@ -2632,12 +2632,13 @@ export function PlaygroundBoard({
         </>
     );
 
-    const renderCard = (item: any, dragDisabled = false) => (
+    const renderCard = (item: any, dragDisabled = false, inlineFrame = false) => (
         <DraggableCanvasItem
             key={item.id}
             item={item}
             frameNo={frameNoById.get(item.id)}
             dragDisabled={dragDisabled}
+            inlineFrame={inlineFrame}
             onRemove={() => handleRemoveItem(item.id)}
             onRemoveChild={(childId: string) => handleRemoveChild(item.id, childId)}
             onLinkStart={handleStartLink}

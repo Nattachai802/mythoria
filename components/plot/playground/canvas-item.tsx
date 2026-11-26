@@ -60,6 +60,7 @@ export function DraggableCanvasItem({
   onDetailSaved,
   onSetColor,
   onSetSceneDrama,
+  inlineFrame,
   onSetKeyMoment,
   onRenameIdea,
   onSetNarration,
@@ -116,6 +117,7 @@ export function DraggableCanvasItem({
   onUpdateChild?: (parentId: string, childId: string, patch: any) => void;
   onPromoteDummy?: (dummy: any, realId: string, scope?: "scene" | "all") => void;
   onDetailSaved?: (detail: SceneElementDetails) => void;
+  inlineFrame?: boolean; // มือถือ: แผงรายละเอียดเต็มแทนหน้าการ์ด
   isConnectSource?: boolean;
   isConnectTarget?: boolean;
   dragDisabled?: boolean; // mobile list view — no spatial drag/connect there
@@ -239,6 +241,7 @@ export function DraggableCanvasItem({
         onOpenThreadBind={onOpenThreadBind}
         echoFinding={echoFinding}
         onEchoResult={onEchoResult}
+        inlineFrame={inlineFrame}
       />
     </div>
   );
@@ -388,6 +391,7 @@ export function CanvasItem({
   onDetailSaved,
   onSetColor,
   onSetSceneDrama,
+  inlineFrame,
   tonePresets = [],
   onSetKeyMoment,
   onRenameIdea,
@@ -441,6 +445,7 @@ export function CanvasItem({
   onUpdateChild?: (parentId: string, childId: string, patch: any) => void;
   onPromoteDummy?: (dummy: any, realId: string, scope?: "scene" | "all") => void;
   onDetailSaved?: (detail: SceneElementDetails) => void;
+  inlineFrame?: boolean; // มือถือ: แผงรายละเอียดเต็มแทนหน้าการ์ด
 }) {
   // If use Sticky Note
   if (item.type === 'sticky-note') {
@@ -494,6 +499,7 @@ export function CanvasItem({
         onOpenThreadBind={onOpenThreadBind}
         sceneEchoFinding={echoFinding}
         onEchoResult={onEchoResult}
+        inlineFrame={inlineFrame}
       />
     );
   }

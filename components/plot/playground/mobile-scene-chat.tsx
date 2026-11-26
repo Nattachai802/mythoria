@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { ArrowUp, CornerDownRight, Link2, Loader2, Reply, X } from "lucide-react"
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 
 export interface ChatLane { id: string; name: string; color: string }
@@ -16,7 +15,7 @@ interface Props {
     onCreate: (title: string, laneId: string, beatIndex: number, replyToId: string | null) => Promise<boolean>
     onLink: (sourceId: string, targetId: string) => boolean
     onUnlink: (sourceId: string, targetId: string) => void
-    renderCard: (item: any, dragDisabled?: boolean) => React.ReactNode
+    renderCard: (item: any, dragDisabled?: boolean, inlineFrame?: boolean) => React.ReactNode
 }
 
 const targetOf = (l: any): string => (typeof l === "string" ? l : l?.targetId)
@@ -244,15 +243,22 @@ export function MobileSceneChat({ items, lanes, beatCount, isSaving, onCreate, o
                 </div>
             </form>
 
-            {/* แตะบับเบิล → แผงล่าง: ต่อเส้น / ดูเส้น / การ์ดเต็ม */}
-            <Sheet open={!!open} onOpenChange={v => { if (!v) setOpenId(null) }}>
-                <SheetContent side="bottom" className="max-h-[85dvh] gap-0 overflow-y-auto rounded-t-2xl p-0">
-                    {open && (
-                        <>
-                            <SheetHeader className="border-b px-4 pb-3 pt-4 text-left">
-                                <SheetTitle className="pr-8 text-base [overflow-wrap:anywhere]">{open.title || "ไม่มีชื่อ"}</SheetTitle>
-                                <SheetDescription className="text-xs">{laneById.get(open.laneId)?.name ?? "ไม่มีเลน"} · จังหวะ {(open.beatIndex ?? 0) + 1}</SheetDescription>
-                            </SheetHeader>
+            {/* แตะบับเบิล → แผงล่าง: ต่อเส้น / ดูเส้น / รายละเอียดเต็ม (คนในฉาก · โน้ต)
+                ไม่ใช้ Sheet (Radix Dialog แบบ modal) — มันล็อกการแตะ/ดักโฟกัส ป๊อปอัปเลือกตัวละครข้างในเลยกดไม่ได้
+                z-40 ให้ต่ำกว่าป๊อปอัป (z-50) */}
+            {open && (
+                <div className="fixed inset-0 z-40 flex flex-col justify-end" onKeyDown={e => { if (e.key === "Escape") setOpenId(null) }}>
+                    <button type="button" aria-label="ปิด" onClick={() => setOpenId(null)} className="min-h-[15dvh] flex-1 bg-black/40 animate-in fade-in duration-200 motion-reduce:animate-none" />
+                    <div role="dialog" aria-label={open.title || "ไอเดีย"} className="max-h-[85dvh] overflow-y-auto overscroll-contain rounded-t-2xl border-t bg-background pb-[env(safe-area-inset-bottom)] shadow-lg animate-in slide-in-from-bottom duration-300 ease-out motion-reduce:animate-none">
+                            <div className="sticky top-0 z-10 flex items-start gap-2 border-b bg-background px-4 pb-3 pt-4">
+                                <div className="min-w-0 flex-1">
+                                    <h2 className="text-base font-semibold [overflow-wrap:anywhere]">{open.title || "ไม่มีชื่อ"}</h2>
+                                    <p className="text-xs text-muted-foreground">{laneById.get(open.laneId)?.name ?? "ไม่มีเลน"} · จังหวะ {(open.beatIndex ?? 0) + 1}</p>
+                                </div>
+                                <button type="button" onClick={() => setOpenId(null)} aria-label="ปิดแผง" className="-mr-2 -mt-1 flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground active:bg-muted">
+                                    <X className="h-4 w-4" />
+                                </button>
+                            </div>
                             <div className="grid grid-cols-2 gap-2 px-4 py-3">
                                 <button type="button" onClick={() => startReply(open.id)} className="flex h-11 items-center justify-center gap-1.5 rounded-lg border text-sm active:scale-[0.98]">
                                     <Reply className="h-4 w-4" aria-hidden />ต่อจากอันนี้
@@ -274,11 +280,10 @@ export function MobileSceneChat({ items, lanes, beatCount, isSaving, onCreate, o
                                     </ul>
                                 </div>
                             )}
-                            <div className="border-t bg-muted/30 p-3">{renderCard(open, true)}</div>
-                        </>
-                    )}
-                </SheetContent>
-            </Sheet>
+                            <div className="border-t">{renderCard(open, true, true)}</div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }

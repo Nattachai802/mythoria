@@ -136,6 +136,8 @@ interface IdeaFilmCardProps {
   threadBeats?: ThreadBeat[];
   onOpenThreadBind?: () => void;
   sceneEchoFinding?: EchoFinding; // ผล Echo Score ของฉาก (จาก PlaygroundBoard) ผูกตาม cardId — ต่างจาก echoFinding state ด้านล่างที่ยิงเฉพาะการ์ดนี้ตอนเปิด dialog
+  /** มือถือ: แสดงแผงรายละเอียดเต็มทันที (ไม่มีหน้าการ์ด/ป๊อปอัป) — ใช้ในแผงล่างของห้องแชท */
+  inlineFrame?: boolean;
   onEchoResult?: (finding: EchoFinding) => void; // แจ้ง PlaygroundBoard เมื่อรัน Echo เฉพาะการ์ดนี้เสร็จ กัน badge มุมการ์ดกับผลใน dialog ไม่ตรงกัน
 }
 
@@ -148,7 +150,7 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
     factions, powers, items, entities, worldSystems, participantLinks, ideas, onAddChild, onUpdateChild, onPromoteDummy, onDetailSaved, onSetColor,
     onSetSceneDrama,
     tonePresets = [], onSetKeyMoment, onRenameIdea, onSetNarration, threadBeats, onOpenThreadBind,
-    sceneEchoFinding, onEchoResult,
+    sceneEchoFinding, onEchoResult, inlineFrame,
   } = props;
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -202,6 +204,51 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
       toast.error('ไม่สามารถคัดลอกได้');
     }
   };
+
+  const frame = (
+    <IdeaFrameDialog
+      open={dialogOpen}
+      onClose={() => setDialogOpen(false)}
+      item={item}
+      frameNo={frameNo}
+      elementDetails={elementDetails}
+      onEditChild={onEditChild}
+      onRemoveChild={onRemoveChild}
+      ideaNotes={ideaNotes}
+      onQuickAddNote={onQuickAddNote}
+      onDeleteNote={onDeleteNote}
+      onReorderNotes={onReorderNotes}
+      novelId={novelId}
+      ancestorConnections={ancestorConnections}
+      onRemoveAncestor={onRemoveAncestor}
+      sceneId={sceneId}
+      characters={characters}
+      novelDummyNames={novelDummyNames}
+      factions={factions}
+      powers={powers}
+      items={items}
+      entities={entities}
+      worldSystems={worldSystems}
+      participantLinks={participantLinks}
+      ideas={ideas}
+      onAddChild={onAddChild}
+      onUpdateChild={onUpdateChild}
+      onPromoteDummy={onPromoteDummy}
+      onDetailSaved={onDetailSaved}
+      onSetKeyMoment={onSetKeyMoment}
+      onSetAncestor={onSetAncestor}
+      onSetNarration={onSetNarration}
+      onSetColor={onSetColor}
+      tonePresets={tonePresets}
+      onRenameIdea={onRenameIdea}
+      onSetSceneDrama={onSetSceneDrama}
+      onOpenThreadBind={onOpenThreadBind}
+      threadBeats={threadBeats}
+      onCopy={copyToClipboard}
+      onEchoResult={onEchoResult}
+    />
+  );
+  if (inlineFrame) return frame;
 
   return (
     <div className="relative group">
@@ -419,47 +466,7 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
         </div>
       )}
 
-      <IdeaFrameDialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        item={item}
-        frameNo={frameNo}
-        elementDetails={elementDetails}
-        onEditChild={onEditChild}
-        onRemoveChild={onRemoveChild}
-        ideaNotes={ideaNotes}
-        onQuickAddNote={onQuickAddNote}
-        onDeleteNote={onDeleteNote}
-        onReorderNotes={onReorderNotes}
-        novelId={novelId}
-        ancestorConnections={ancestorConnections}
-        onRemoveAncestor={onRemoveAncestor}
-        sceneId={sceneId}
-        characters={characters}
-        novelDummyNames={novelDummyNames}
-        factions={factions}
-        powers={powers}
-        items={items}
-        entities={entities}
-        worldSystems={worldSystems}
-        participantLinks={participantLinks}
-        ideas={ideas}
-        onAddChild={onAddChild}
-        onUpdateChild={onUpdateChild}
-        onPromoteDummy={onPromoteDummy}
-        onDetailSaved={onDetailSaved}
-        onSetKeyMoment={onSetKeyMoment}
-        onSetAncestor={onSetAncestor}
-        onSetNarration={onSetNarration}
-        onSetColor={onSetColor}
-        tonePresets={tonePresets}
-        onRenameIdea={onRenameIdea}
-        onSetSceneDrama={onSetSceneDrama}
-        onOpenThreadBind={onOpenThreadBind}
-        threadBeats={threadBeats}
-        onCopy={copyToClipboard}
-        onEchoResult={onEchoResult}
-      />
+      {frame}
       </Popover>
     </div>
   );
@@ -472,6 +479,8 @@ interface IdeaFrameDialogProps {
    * จึงไม่ถูก unmount · state ตำแหน่งเลยค้างข้ามรอบเปิด-ปิดถ้าไม่ล้างเอง
    */
   open: boolean;
+  /** แสดงเป็นกล่องธรรมดาในหน้า (มือถือ) แทนป๊อปอัปลอยข้างการ์ด — ไม่มีลากย้าย ไม่มีปุ่มปิดของตัวเอง */
+  inline?: boolean;
   onClose: () => void;
   item: any;
   frameNo?: string;
@@ -519,7 +528,7 @@ const DOUBLE_CLICK_MS = 400;
 // เพื่อให้เปิดดูได้พร้อมกันหลายใบสำหรับเทียบ ๆ กัน — ไม่บังพื้นหลัง ไม่ auto-close ตอนคลิกการ์ดอื่น
 // ปิดได้ 3 ทาง: ปุ่มกากบาท · Esc · ดับเบิลคลิกนอกแผง
 function IdeaFrameDialog({
-  open, onClose, item, frameNo, elementDetails, onEditChild, onRemoveChild, ideaNotes,
+  open, inline, onClose, item, frameNo, elementDetails, onEditChild, onRemoveChild, ideaNotes,
   onQuickAddNote, onDeleteNote, onReorderNotes, novelId, ancestorConnections, onRemoveAncestor,
   sceneId, characters, novelDummyNames, factions, powers, items, entities, worldSystems, participantLinks, ideas, onAddChild, onUpdateChild,
   onPromoteDummy, onDetailSaved, onSetKeyMoment, onSetAncestor, onSetNarration, onSetColor, tonePresets = [],
@@ -591,6 +600,7 @@ function IdeaFrameDialog({
   };
 
   const startDrag = (e: React.PointerEvent) => {
+    if (inline) return;
     // เว้นของที่กดได้ในแถวหัว (ปุ่มปิด, ช่องแก้ชื่อ, ชื่อที่กดเพื่อแก้)
     if ((e.target as HTMLElement).closest("button,input,[data-no-drag]")) return;
     if (!floatAt && contentRef.current) {
@@ -648,6 +658,7 @@ function IdeaFrameDialog({
   }, [noteDirty]);
 
   useEffect(() => {
+    if (inline) return; // inline ไม่มีกล่องห่อของ Radix — อย่าไปปิดการแตะของแผงแม่
     const wrapper = contentRef.current?.parentElement;
     if (wrapper) wrapper.style.pointerEvents = "none";
   }, []);
@@ -1141,34 +1152,38 @@ function IdeaFrameDialog({
   const dramaOutcome = OUTCOMES.find((o) => o.value === item.sceneOutcome);
   const dramaSummary = [item.sceneGoal, dramaOutcome?.label].filter(Boolean).join(" → ") || "ยังไม่ได้ตั้งค่า";
 
+  // ponytail: Shell เปลี่ยนแค่กล่องนอก เนื้อหาข้างในใช้ร่วมกันทั้งป๊อปอัป (คอม) และ inline (มือถือ)
+  const Shell: any = inline ? "div" : PopoverContent;
+
   const getDetailPageUrl = () => (novelId ? `/dashboard/project/${novelId}/idea` : null);
 
   return (
-    <PopoverContent
-      side="right"
-      align="start"
-      sideOffset={12}
-      collisionPadding={16}
-      onOpenAutoFocus={(e) => e.preventDefault()}
-      onInteractOutside={handleInteractOutside}
-      ref={contentRef}
-      className="pointer-events-auto w-[340px] max-w-[92vw] max-h-[min(var(--radix-popover-content-available-height),70vh)] flex flex-col overflow-hidden p-0"
-      style={floatAt ? {
-        // absolute ไม่ใช่ fixed — กล่องนอกของ Radix มี transform อยู่ มันเลยกลายเป็น
-        // containing block ของ fixed ทำให้ left/top แบบพิกัดจอเพี้ยนกระเด็นไปไกล
-        // absolute ที่ 0,0 = ตำแหน่งเดิมของแผงพอดี แล้วค่อยขยับด้วย translate
-        position: "absolute",
-        left: 0,
-        top: 0,
-        margin: 0,
-        transform: `translate3d(${dragPos?.x ?? 0}px, ${dragPos?.y ?? 0}px, 0)`,
-      } : undefined}
+    <Shell
+      {...(inline ? { ref: contentRef, className: "flex flex-col" } : {
+        side: "right",
+        align: "start",
+        sideOffset: 12,
+        collisionPadding: 16,
+        onOpenAutoFocus: (e: Event) => e.preventDefault(),
+        onInteractOutside: handleInteractOutside,
+        ref: contentRef,
+        className: "pointer-events-auto w-[340px] max-w-[92vw] max-h-[min(var(--radix-popover-content-available-height),70vh)] flex flex-col overflow-hidden p-0",
+        // floatAt: absolute ไม่ใช่ fixed — กล่องนอกของ Radix มี transform อยู่ มันเลยกลายเป็น containing block ของ fixed
+        // ทำให้ left/top แบบพิกัดจอเพี้ยน · absolute ที่ 0,0 = ตำแหน่งเดิมของแผงพอดี แล้วค่อยขยับด้วย translate
+        style: floatAt ? {
+          position: "absolute",
+          left: 0,
+          top: 0,
+          margin: 0,
+          transform: `translate3d(${dragPos?.x ?? 0}px, ${dragPos?.y ?? 0}px, 0)`,
+        } : undefined,
+      })}
     >
         <div className="px-3 pt-2.5 pb-2 shrink-0">
           <div
             className={cn(
-              "flex items-center gap-1.5 text-left -mx-1 px-1 rounded touch-none select-none",
-              "cursor-grab active:cursor-grabbing hover:bg-muted/40 transition-colors"
+              "flex items-center gap-1.5 text-left -mx-1 px-1 rounded",
+              !inline && "touch-none select-none cursor-grab active:cursor-grabbing hover:bg-muted/40 transition-colors"
             )}
             title="ลากเพื่อย้ายแผง · ดับเบิลคลิกเพื่อคืนตำแหน่ง"
             onPointerDown={startDrag}
@@ -1274,14 +1289,14 @@ function IdeaFrameDialog({
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
-            <button
+            {!inline && <button
               onClick={onClose}
               aria-label="ปิด"
               className="shrink-0 rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors active:scale-90"
               title="ปิด"
             >
               <X className="w-4 h-4" />
-            </button>
+            </button>}
           </div>
 
 
@@ -1682,6 +1697,6 @@ function IdeaFrameDialog({
             currentSceneId={sceneId}
           />
         )}
-    </PopoverContent>
+    </Shell>
   );
 }
