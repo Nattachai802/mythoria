@@ -53,6 +53,17 @@ export interface ChangelogRelease {
 /** ใหม่สุดอยู่บนสุดเสมอ — โค้ดที่อ่าน CHANGELOG[0] ยึดกติกานี้ */
 export const CHANGELOG: ChangelogRelease[] = [
     {
+        version: "next",
+        date: "today",
+        title: "แก้หน้าฉากมือถือค้าง",
+        entries: [
+            {
+                kind: "fixed",
+                text: "หน้าฉากบนมือถือ: แตะไอเดียแล้วหน้าพัง (error เรื่องป๊อปอัป) — แก้แล้ว แผงรายละเอียดเปิดได้ปกติ",
+            },
+        ],
+    },
+    {
         version: "2.27.0.0",
         date: "2026-11-27",
         title: "โครงเรื่องบนมือถือแบบแชท",

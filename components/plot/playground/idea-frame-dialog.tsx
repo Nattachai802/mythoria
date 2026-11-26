@@ -207,7 +207,8 @@ export function IdeaFilmCard(props: IdeaFilmCardProps) {
 
   const frame = (
     <IdeaFrameDialog
-      open={dialogOpen}
+      open={inlineFrame || dialogOpen}
+      inline={inlineFrame}
       onClose={() => setDialogOpen(false)}
       item={item}
       frameNo={frameNo}
