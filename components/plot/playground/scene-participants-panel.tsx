@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { toast } from "sonner"
 import { upsertSceneElementDetail } from "@/server/scene-element-details"
 import { getNovelDummyParticipants, getNearbyParticipants, type SceneDummies, type NearbyParticipants } from "@/server/timeline"
@@ -52,6 +53,7 @@ export function SceneParticipantsPanel({
     onAddChild, onDetailSaved,
 }: Props) {
     const [open, setOpen] = useState(false)
+    const isMobile = useIsMobile()
     const [isPending, startTransition] = useTransition()
 
     // Add form
@@ -270,12 +272,12 @@ export function SceneParticipantsPanel({
                 </button>
             </PopoverTrigger>
             <PopoverContent
-                // ตัวไดอะล็อกไอเดียเป็นแผงชิดขอบขวา — ออกซ้ายจึงไม่บังตัวเอง
-                // ถ้าซ้ายไม่พอ Radix พลิกไปขวาเองอัตโนมัติ
-                side="left"
+                // คอม: แผงไอเดียชิดขอบขวา — ออกซ้ายจึงไม่บังตัวเอง (ซ้ายไม่พอ Radix พลิกไปขวาเอง)
+                // มือถือ: แผงกว้างเต็มจอ ข้าง ๆ ไม่มีที่ — เปิดลงล่าง และกว้างไม่เกินจอ ไม่งั้นหลุดจอกดไม่ได้
+                side={isMobile ? "bottom" : "left"}
                 align="start"
                 sideOffset={8}
-                className="w-[340px] p-0 overflow-hidden flex flex-col max-h-[var(--radix-popover-content-available-height)]"
+                className="w-[min(340px,calc(100vw-24px))] p-0 overflow-hidden flex flex-col max-h-[var(--radix-popover-content-available-height)]"
                 collisionPadding={12}
                 onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
