@@ -43,6 +43,7 @@ import { cn } from "@/lib/utils";
 import { analyzeBeats, collapseByBeat } from "@/lib/beat-coach";
 import { buildSceneFormat, renderSceneMarkdown } from "@/lib/story-format";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { MobileSceneChat } from "./mobile-scene-chat";
 
 // KeyboardSensor ตัวเดิมกิน Space ที่ bubble ขึ้นมาจากช่องพิมพ์ในการ์ด (เช่นโน้ตของไอเดีย)
 // เพราะ dnd-kit จะข้าม guard ของตัวเองเมื่อ activatorNode เป็น null แล้ว preventDefault ทิ้ง
@@ -1061,55 +1062,6 @@ function ThreadBindDialog({ cardTitle, threads, bound, onBind, onCreateAndBind, 
     );
 }
 
-// มือถือ: list ตามจังหวะ (เวลา) แทนกริดเลน×จังหวะ — ไม่มี drag/zoom/เส้นเชื่อม แค่ดู/แก้/เพิ่มการ์ด (เพิ่มผ่านปุ่ม "ไอเดียใหม่" ใน toolbar)
-function MobilePlotList({ items, lanes, beatCount, chapterRanges, renderCard }: {
-    items: any[];
-    lanes: Lane[];
-    beatCount: number;
-    chapterRanges: Array<{ id: string; name: string; startBeat: number; endBeat: number }>;
-    renderCard: (item: any, dragDisabled?: boolean) => React.ReactNode;
-}) {
-    if (items.length === 0) {
-        return (
-            <div className="flex-1 min-h-0 flex items-center justify-center p-6 text-center text-sm text-muted-foreground">
-                ยังไม่มีการ์ดในฉากนี้ — กด “ไอเดียใหม่” ด้านบนเพื่อเริ่ม
-            </div>
-        );
-    }
-    return (
-        <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-5">
-            {Array.from({ length: beatCount }).map((_, beatIndex) => {
-                const beatItems = items.filter(i => i.beatIndex === beatIndex);
-                if (beatItems.length === 0) return null;
-                const chapter = chapterRanges.find(c => beatIndex >= c.startBeat && beatIndex <= c.endBeat);
-                return (
-                    <div key={beatIndex} className="space-y-2.5">
-                        <div className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground font-technical">
-                            {chapter ? `${chapter.name} · ` : ""}จังหวะ {String(beatIndex + 1).padStart(2, "0")}
-                        </div>
-                        <div className="space-y-3">
-                            {lanes.map((lane, laneIndex) => {
-                                const laneItems = beatItems.filter(i => i.laneId === lane.id);
-                                if (laneItems.length === 0) return null;
-                                const laneColor = lane.color || LANE_COLORS[laneIndex % LANE_COLORS.length];
-                                return laneItems.map(item => (
-                                    <div key={item.id}>
-                                        <div className="flex items-center gap-1.5 mb-1">
-                                            <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: laneColor }} />
-                                            <span className="text-[10px] text-muted-foreground truncate">{lane.name}</span>
-                                        </div>
-                                        {renderCard(item, true)}
-                                    </div>
-                                ));
-                            })}
-                        </div>
-                    </div>
-                );
-            })}
-        </div>
-    );
-}
-
 export function PlaygroundBoard({
     eventId,
     novelId,
@@ -1757,6 +1709,29 @@ export function PlaygroundBoard({
     const handleCompleteLink = (targetId: string) => {
         if (!linkingSourceId) return;
         addLink(linkingSourceId, targetId);
+    };
+
+    // มือถือ (ห้องแชท): ส่งข้อความ = สร้างไอเดียใหม่ในเลน/จังหวะที่เลือก · ตอบกลับ = เส้นจากการ์ดต้นทางมาหาการ์ดใหม่
+    // เส้น + การ์ดใหม่ลงใน setItems ครั้งเดียว (addLink หา tgtItem ไม่เจอเพราะการ์ดยังไม่อยู่ใน state) · autosave 2 วิ persist เอง
+    const handleMobileCreate = async (title: string, laneId: string, beatIndex: number, replyToId: string | null) => {
+        const res = await createIdea({ title, novelId, category: 'general' });
+        if (!res.success || !res.data) { toast.error('สร้างไอเดียไม่สำเร็จ'); return false; }
+        const idea = res.data;
+        const newId = crypto.randomUUID();
+        setItems(prev => {
+            const src = replyToId ? prev.find(i => i.id === replyToId) : null;
+            const carried = src ? participantsToCarry(src, { children: [] }) : [];
+            const next = src
+                ? prev.map(i => i.id === src.id ? { ...i, links: [...(i.links || []), { targetId: newId, kind: "related", label: null, color: lastLinkColor }] } : i)
+                : prev;
+            return [...next, {
+                id: newId, type: 'idea', referenceId: idea.id,
+                title: idea.title, content: idea.content || '',
+                laneId, beatIndex, children: carried, links: [],
+            }];
+        });
+        updateIdea(idea.id, { isUsed: true });
+        return true;
     };
 
     const handleFinishLinking = () => {
@@ -2758,7 +2733,7 @@ export function PlaygroundBoard({
                     {/* Toolbar — relative+z-40 ทำให้เป็น stacking context ของตัวเอง อยู่เหนือ sticky header ของกริด (z-30)
                         เดิมมีแค่ "z-30" แบบ static เลยไม่มีผล เพราะ z-index ต้องมาคู่กับ position; backdrop-blur เองก็ดัน
                         สร้าง stacking context ใหม่โดยไม่ตั้งใจ ทำให้ panel ลูก (z-50) ถูกขังอยู่ต่ำกว่ากริดที่อยู่นอก context นั้น */}
-                    <div className="relative z-40 flex items-center gap-2 px-3 py-2 border-b bg-background/85 backdrop-blur">
+                    <div className="relative z-40 hidden md:flex items-center gap-2 px-3 py-2 border-b bg-background/85 backdrop-blur">
                         {/* toolbar: ผู้ช่วย ซ้าย · ซูม/สถานะ/+ ไอเดีย/⋯ ชิดขวา — สารบัญเปิดจากเมนู ⋯ แผงยังเกาะมุมซ้ายของทูลบาร์ */}
                         <div className="relative">
                             {showNavigator && (
@@ -2997,11 +2972,14 @@ export function PlaygroundBoard({
                     )}
 
                     {isMobile ? (
-                        <MobilePlotList
+                        <MobileSceneChat
                             items={items}
-                            lanes={lanes_}
+                            lanes={lanes_.map((l, i) => ({ id: l.id, name: l.name, color: l.color || LANE_COLORS[i % LANE_COLORS.length] }))}
                             beatCount={beatCount}
-                            chapterRanges={chapterRanges}
+                            isSaving={isSaving}
+                            onCreate={handleMobileCreate}
+                            onLink={addLink}
+                            onUnlink={handleUnlink}
                             renderCard={renderCard}
                         />
                     ) : (

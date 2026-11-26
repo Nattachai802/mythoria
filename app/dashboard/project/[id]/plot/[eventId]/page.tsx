@@ -68,7 +68,7 @@ export default async function PlotPlaygroundPage({
   const initialEchoFindings = echoRes.success ? echoRes.findings : [];
 
   return (
-    <div className="h-[calc(100vh-4rem)] overflow-hidden flex flex-col">
+    <div className="h-[calc(100dvh-4rem)] overflow-hidden flex flex-col">
       {/* header แถวเดียว — SceneNavigator มีปุ่มย้อนกลับในตัวอยู่แล้ว ไม่ต้องมี breadcrumb เต็มซ้ำอีกชั้น
           โครงดราม่า 4 ช่องอยู่แถบถัดลงมา (task.md 20C) · ช่องที่เหลืออยู่ในแผง "โครงฉากดราม่า" ท้ายแถบ */}
       <div className="flex items-center border-b bg-background px-3 py-1">
@@ -81,7 +81,10 @@ export default async function PlotPlaygroundPage({
         />
       </div>
 
-      <SceneDramaStrip event={eventRes.event} characters={charactersRes.data || []} events={eventsRes.events || []} />
+      {/* มือถือ: ซ่อนแถบโครงดราม่า — จอแคบใช้ห้องแชทเต็มพื้นที่ */}
+      <div className="hidden md:block">
+        <SceneDramaStrip event={eventRes.event} characters={charactersRes.data || []} events={eventsRes.events || []} />
+      </div>
 
       <div className="flex-1 overflow-hidden">
         <PlaygroundBoard

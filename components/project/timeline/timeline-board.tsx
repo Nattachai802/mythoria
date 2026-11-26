@@ -49,6 +49,8 @@ import { PlotUndoMenu } from "./plot-undo-menu"
 import { TensionCurve } from "./tension-curve"
 import { ThreadRibbon } from "./thread-ribbon"
 import { SceneSidePanel } from "./scene-side-panel"
+import { MobileSceneList } from "./mobile-scene-list"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { TimelineConflictsPanel } from "./timeline-conflicts-panel"
 import type { StoryArc } from "@/db/schema"
 import { getChapterIssueMap, type TimelineConflict, type ChapterIssues } from "@/server/timeline-conflicts"
@@ -341,6 +343,7 @@ export function TimelineBoard({
     const activeEvent = activeId ? events.find(e => e.id === activeId) : null
     const selectedEvent = selectedId ? events.find(e => e.id === selectedId) ?? null : null
     const eventTitles = useMemo(() => new Map(events.map(e => [e.id, e.title])), [events])
+    const isMobile = useIsMobile()
 
     if (chapters.length === 0) {
         return (
@@ -358,6 +361,9 @@ export function TimelineBoard({
             </div>
         )
     }
+
+    // มือถือ: รายการห้องแทนคอลัมน์แนวนอน (ไม่มีลาก/เส้นปม)
+    if (isMobile) return <MobileSceneList novelId={novelId} chapters={sortedChapters} events={events} />
 
     return (
         <DndContext

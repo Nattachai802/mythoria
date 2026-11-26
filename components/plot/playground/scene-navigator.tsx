@@ -233,7 +233,7 @@ export function SceneNavigator({
             {stepBtn(next, "next")}
 
             {/* ฉากใหม่ชิดชื่อฉาก — สร้างในบทเดียวกับฉากนี้ */}
-            <div className="ml-1 shrink-0">
+            <div className="ml-1 hidden shrink-0 md:block">
                 <CreateSceneDialog
                     novelId={novelId}
                     chapterId={currentEvent.relatedChapterId || ""}
@@ -252,7 +252,7 @@ export function SceneNavigator({
                     <span className="mr-2 hidden max-w-[16rem] truncate text-xs text-muted-foreground lg:inline" title={novelTitle}>{novelTitle}</span>
                 )}
 
-                <Button variant="ghost" size="icon" asChild className="text-muted-foreground pointer-coarse:h-11 pointer-coarse:w-11">
+                <Button variant="ghost" size="icon" asChild className="hidden text-muted-foreground pointer-coarse:h-11 pointer-coarse:w-11 md:inline-flex">
                     <Link
                         href={`/dashboard/project/${novelId}/timeline?focus=${encodeURIComponent(`scene:${currentEvent.id}`)}`}
                         aria-label="ดูฉากนี้บนเส้นเวลา"
