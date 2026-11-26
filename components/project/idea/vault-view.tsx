@@ -114,8 +114,13 @@ export function VaultView({ novelId, initialNotes }: { novelId: string; initialN
         if (!res.success) { setCapErr(res.error); return }
         if (res.isDuplicate) toast.info("มีโน้ตนี้อยู่แล้ว")
         else setNotes(prev => [res.data, ...prev])
-        setDraft(""); setCapScopes([])
-        setStatus("unused"); setFacet("all"); setKind("all"); setOpenId(res.data.id)
+        // ช่องไม่ถูกล็อกระหว่างบันทึกแล้ว — ถ้าพิมพ์อันใหม่ต่อไประหว่างรอ อย่าล้างทิ้ง
+        setDraft(d => (d.trim() === v ? "" : d)); setCapScopes([])
+        // จดต่อเนื่องได้: ไม่เปิดโน้ตขยายเอง · รีเซ็ตตัวกรองเฉพาะตอนที่มันจะซ่อนโน้ตใหม่
+        if (!(statusOk(res.data, status) && kindOk(res.data, kind) && facetOk(res.data, facet) && qOk(res.data))) {
+            setStatus("unused"); setFacet("all"); setKind("all"); setQ("")
+        }
+        capRef.current?.focus()
         if (!res.isDuplicate) toast.success("บันทึกแล้ว")
     }
 
@@ -196,7 +201,10 @@ export function VaultView({ novelId, initialNotes }: { novelId: string; initialN
 
             <TabsContent value="vault" className="mt-0 space-y-4">
                 {/* ช่องจด */}
-                <div className="rounded-xl border bg-card p-4">
+                <div
+                    className="rounded-xl border bg-card p-4"
+                    onBlur={e => { if (!draft && !e.currentTarget.contains(e.relatedTarget as Node)) setCapFocused(false) }}
+                >
                     <div className="mb-1.5 flex items-center gap-2">
                         <label htmlFor="vault-capture" className="flex-1 text-sm text-muted-foreground">จดไอเดีย</label>
                         <span className="hidden items-center gap-1 text-xs text-muted-foreground sm:inline-flex">
@@ -231,11 +239,13 @@ export function VaultView({ novelId, initialNotes }: { novelId: string; initialN
                             if (!e.shiftKey) { e.preventDefault(); save() }
                         }}
                         placeholder="อารันกลัวน้ำเพราะเหตุการณ์ตอนเด็ก"
-                        disabled={saving}
                         aria-invalid={!!capErr}
                         aria-describedby={capErr ? "vault-capture-err" : undefined}
                         className="min-h-9 resize-none text-sm leading-relaxed"
                     />
+                    {draft.trim().length > VAULT_DOC_THRESHOLD && (
+                        <p className="mt-1.5 text-[13px] text-muted-foreground">ยาวเกิน {VAULT_DOC_THRESHOLD} ตัว — จะเปิดแผงนำเข้าเอกสารให้ตรวจก่อนบันทึก</p>
+                    )}
                     {capErr && <p id="vault-capture-err" role="alert" className="mt-1.5 text-[13px] text-destructive">{capErr}</p>}
                     {(capFocused || draft) && (
                         <div className="mt-3 space-y-1.5">
@@ -243,7 +253,7 @@ export function VaultView({ novelId, initialNotes }: { novelId: string; initialN
                             <div className="flex flex-wrap items-end gap-2">
                                 <div className="flex-1"><ScopeToggles value={capScopes} onToggle={k => setCapScopes(s => (s.includes(k) ? s.filter(x => x !== k) : [...s, k]))} disabled={saving} /></div>
                                 <Button size="sm" onClick={save} disabled={saving} className="gap-1.5">
-                                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}บันทึก
+                                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}{draft.trim().length > VAULT_DOC_THRESHOLD ? "เปิดแผงนำเข้า" : "บันทึก"}
                                 </Button>
                             </div>
                         </div>
