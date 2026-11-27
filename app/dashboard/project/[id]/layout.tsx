@@ -2,7 +2,6 @@ import { ReactNode } from "react"
 import { notFound } from "next/navigation"
 import { getNovelByIdSimple } from "@/server/novel"
 import { ProjectSidebar } from "@/components/project-sidebar"
-import { AssistantLauncher } from "@/components/project/assistant-launcher"
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -42,7 +41,7 @@ export default async function ProjectLayout({ params, children }: Props) {
                 <div className="flex flex-1 flex-col gap-4 p-4 min-w-0">
                     {children}
                 </div>
-                <AssistantLauncher novelId={id} />
+                {/* ปุ่มลอย "ผู้ช่วยจัดการข้อมูล" (AssistantLauncher) ถอดออกชั่วคราว — รกตา รอหาที่วางที่เหมาะกว่า · ตัวคอมโพเนนต์ยังอยู่ */}
             </SidebarInset>
         </SidebarProvider>
     )

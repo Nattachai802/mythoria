@@ -53,6 +53,17 @@ export interface ChangelogRelease {
 /** ใหม่สุดอยู่บนสุดเสมอ — โค้ดที่อ่าน CHANGELOG[0] ยึดกติกานี้ */
 export const CHANGELOG: ChangelogRelease[] = [
     {
+        version: "next",
+        date: "today",
+        title: "เอาปุ่มผู้ช่วยลอยออก",
+        entries: [
+            {
+                kind: "removed",
+                text: "เอาปุ่มลอย \"ผู้ช่วยจัดการข้อมูล\" ที่มุมจอออกชั่วคราว เพราะบังและรกตา จะหาที่วางที่เหมาะกว่าทีหลัง",
+            },
+        ],
+    },
+    {
         version: "2.27.0.2",
         date: "2026-11-27",
         title: "ป๊อปอัปเพิ่มผู้เข้าร่วมบนมือถือ",
